@@ -1,0 +1,56 @@
+{
+    "name": "Generic Softphone",
+    "slug": "generic-softphone",
+    "vendor": "generic",
+    "family": "softphone",
+    "description": "Vendor neutral JSON profile for softphones. One output: config.json.",
+    "defaults": {
+        "sip.port": 5060,
+        "sip.transport": "udp",
+        "sip.register_expires": 300
+    },
+    "parameters": {
+        "sip.username": {
+            "type": "string",
+            "required": true,
+            "description": "SIP user / auth id. Resolved from the extension when left empty."
+        },
+        "sip.password": {
+            "type": "string",
+            "required": true,
+            "secret": true,
+            "description": "SIP secret. Resolved from the extension when left empty."
+        },
+        "sip.domain": {
+            "type": "string",
+            "required": true,
+            "description": "SIP registrar / domain the phone registers to."
+        },
+        "sip.port": {
+            "type": "integer",
+            "default": 5060,
+            "description": "SIP server port."
+        },
+        "sip.transport": {
+            "type": "string",
+            "default": "udp",
+            "allowed": [
+                "udp",
+                "tcp",
+                "tls"
+            ],
+            "description": "SIP transport."
+        },
+        "user.display_name": {
+            "type": "string",
+            "description": "Caller ID name shown on the device."
+        }
+    },
+    "outputs": [
+        {
+            "filename": "config.json",
+            "contentType": "application/json",
+            "template": "{\n    \"account\": {\n        \"enabled\": true,\n        \"displayName\": \"{{user.display_name}}\",\n        \"username\": \"{{sip.username}}\",\n        \"authUsername\": \"{{sip.auth_username}}\",\n        \"password\": \"{{sip.password}}\",\n        \"domain\": \"{{sip.domain}}\",\n        \"port\": {{sip.port|default:5060}},\n        \"transport\": \"{{sip.transport}}\",\n        \"registerExpires\": {{sip.register_expires|default:300}}\n    },\n    \"user\": {\n        \"extension\": \"{{user.extension}}\",\n        \"displayName\": \"{{user.display_name}}\",\n        \"email\": \"{{user.email}}\"\n    },\n    \"features\": {\n        \"voicemailNumber\": \"{{sip.voicemail_number|default:*97}}\",\n        \"srtp\": {{sip.secure|bool:true,false}}\n    },\n    \"provisioning\": {\n        \"device\": \"{{device.identifier}}\",\n        \"template\": \"{{template.slug}}\",\n        \"generated\": \"{{system.date}} {{system.time}}\"\n    }\n}\n"
+        }
+    ]
+}

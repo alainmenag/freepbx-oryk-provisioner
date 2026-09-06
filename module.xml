@@ -14,13 +14,22 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
+		*1.0.1* Template driven provisioning engine, device and template management, AJAX admin interface, provisioning endpoints and GraphQL API
 		*1.0.1* New
 	</changelog>
 	<category>Oryk</category>
 	<description>Provision and manage VoIP endpoints with standardized device configurations for softphones, Yealink, Polycom, Grandstream, and other supported devices. Generate configuration data in JSON, XML, key-value, and device-specific formats.</description>
 	<more-info>https://oryk.com/voip/media</more-info>
 	<menuitems>
-		<oryk_provisioner category="Oryk" order="1" display="oryk_provisioner" access="all" requires_auth="true">
+		<!--
+			requires_auth is false so a device can fetch its configuration from
+			the documented URL:
+			  config.php?display=oryk_provisioner&token={token}&filename={file}
+			Requests without a token are the admin interface and are rejected
+			unless there is a FreePBX admin session - see
+			Oryk_provisioner::doConfigPageInit().
+		-->
+		<oryk_provisioner category="Oryk" order="1" display="oryk_provisioner" access="all" requires_auth="false">
 			<![CDATA[
 				<i class="fa fa-cogs"></i>
 				<span>Provisioner</span>

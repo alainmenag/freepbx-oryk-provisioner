@@ -1,0 +1,308 @@
+/**
+ * Oryk Provisioner - admin interface styles.
+ *
+ * Everything is namespaced under .oryk-* so nothing here can leak into other
+ * FreePBX pages. Colours follow the FreePBX/Bootstrap 3 palette.
+ */
+
+.oryk-provisioner .oryk-page-head {
+	padding: 10px 15px 0;
+}
+
+.oryk-provisioner .oryk-page-title {
+	margin: 0 0 4px;
+}
+
+.oryk-provisioner .oryk-page-sub {
+	color: #777;
+	margin-bottom: 10px;
+}
+
+.oryk-provisioner .oryk-summary {
+	text-align: right;
+	padding-top: 12px;
+}
+
+.oryk-provisioner .oryk-stat {
+	display: inline-block;
+	margin-left: 18px;
+	color: #777;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+}
+
+.oryk-provisioner .oryk-stat strong {
+	display: block;
+	font-size: 22px;
+	color: #333;
+	letter-spacing: 0;
+}
+
+.oryk-provisioner .oryk-tab-content {
+	padding: 15px;
+	border: 1px solid #ddd;
+	border-top: 0;
+	background: #fff;
+}
+
+/* Toolbars ---------------------------------------------------------------- */
+
+.oryk-provisioner .oryk-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+
+.oryk-provisioner .oryk-toolbar-right {
+	display: flex;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.oryk-provisioner .oryk-toolbar-right .form-control {
+	width: auto;
+	min-width: 180px;
+}
+
+/* Tables ------------------------------------------------------------------ */
+
+.oryk-provisioner .oryk-table-wrap {
+	overflow-x: auto;
+}
+
+.oryk-provisioner .oryk-table {
+	margin-bottom: 0;
+}
+
+.oryk-provisioner .oryk-table > tbody > tr > td {
+	vertical-align: middle;
+}
+
+.oryk-provisioner .oryk-actions-col {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.oryk-provisioner .oryk-empty td {
+	color: #999;
+	text-align: center;
+	padding: 26px 10px;
+}
+
+.oryk-provisioner .oryk-ua {
+	display: inline-block;
+	max-width: 280px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: bottom;
+	color: #777;
+}
+
+/* Forms ------------------------------------------------------------------- */
+
+.oryk-form-nav {
+	margin-bottom: 15px;
+}
+
+.oryk-form-body {
+	min-height: 260px;
+}
+
+.oryk-switch {
+	display: block;
+	font-weight: normal;
+	cursor: pointer;
+}
+
+.oryk-switch input {
+	margin-right: 6px;
+}
+
+.oryk-inline-number {
+	width: 110px;
+	display: inline-block;
+	margin-top: 6px;
+}
+
+.oryk-code-editor {
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	font-size: 12px;
+	line-height: 1.45;
+	white-space: pre;
+	overflow-wrap: normal;
+	overflow-x: auto;
+	tab-size: 4;
+}
+
+/* Repeaters --------------------------------------------------------------- */
+
+.oryk-repeater-row {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 6px;
+}
+
+.oryk-repeater-row .form-control {
+	flex: 1 1 auto;
+}
+
+.oryk-output-row .panel-heading {
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	font-size: 12px;
+}
+
+.oryk-schema-table input[type="text"] {
+	min-width: 90px;
+}
+
+/* Parameters -------------------------------------------------------------- */
+
+.oryk-parameters .oryk-param-row code {
+	background: none;
+	color: #337ab7;
+	padding: 0;
+}
+
+.oryk-param-overridden > label code {
+	font-weight: bold;
+}
+
+.oryk-extra-params {
+	margin-top: 18px;
+	padding-top: 12px;
+	border-top: 1px solid #eee;
+}
+
+/* Provisioning URLs ------------------------------------------------------- */
+
+.oryk-url-block {
+	margin-bottom: 14px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #f0f0f0;
+}
+
+.oryk-url-file {
+	margin-bottom: 6px;
+}
+
+.oryk-url-row {
+	margin-bottom: 4px;
+}
+
+.oryk-url-input {
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	font-size: 11px;
+}
+
+.oryk-token-actions {
+	margin-top: 12px;
+}
+
+/* Preview ----------------------------------------------------------------- */
+
+.oryk-preview-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-bottom: 12px;
+}
+
+.oryk-preview-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 6px 0;
+}
+
+.oryk-preview-body {
+	padding-top: 10px;
+}
+
+.oryk-code {
+	max-height: 420px;
+	overflow: auto;
+	font-size: 12px;
+	line-height: 1.45;
+	background: #f7f7f9;
+	border: 1px solid #e6e6e6;
+}
+
+.oryk-param-table code {
+	background: none;
+	padding: 0;
+	color: #337ab7;
+}
+
+.oryk-param-table .oryk-param-value {
+	font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+	font-size: 12px;
+	word-break: break-all;
+}
+
+.oryk-source {
+	font-weight: normal;
+}
+
+.oryk-source-freepbx   { background-color: #5bc0de; }
+.oryk-source-template  { background-color: #777; }
+.oryk-source-schema    { background-color: #999; }
+.oryk-source-device    { background-color: #337ab7; }
+.oryk-source-override  { background-color: #f0ad4e; }
+.oryk-source-system    { background-color: #aaa; }
+.oryk-source-derived   { background-color: #5cb85c; }
+
+.oryk-issue-list {
+	margin: 6px 0 0 18px;
+}
+
+.oryk-var-list {
+	list-style: none;
+	padding: 0;
+	columns: 2;
+	font-size: 12px;
+}
+
+.oryk-var-list li {
+	margin-bottom: 3px;
+	break-inside: avoid;
+}
+
+.oryk-filter-list code {
+	display: inline-block;
+	margin: 0 4px 4px 0;
+}
+
+/* Modal ------------------------------------------------------------------- */
+
+.oryk-modal .modal-body {
+	max-height: 65vh;
+	overflow-y: auto;
+}
+
+.oryk-modal .modal-footer .oryk-modal-message {
+	float: left;
+	padding-top: 8px;
+}
+
+/* Fallback toast ---------------------------------------------------------- */
+
+.oryk-toast {
+	display: none;
+	position: fixed;
+	right: 20px;
+	bottom: 20px;
+	z-index: 3000;
+	max-width: 380px;
+	padding: 12px 16px;
+	border-radius: 3px;
+	color: #fff;
+	background: #333;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+
+.oryk-toast-error   { background: #d9534f; }
+.oryk-toast-success { background: #5cb85c; }
