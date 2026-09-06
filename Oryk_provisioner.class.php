@@ -64,6 +64,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *   ?display=oryk_provisioner&profile=<id> the editor, bound to that profile
 	 *   ?display=oryk_provisioner&profile=     the editor, writing a new one
 	 *
+	 * A fourth URL, ?mac=<mac>&config=, never reaches here: it is
+	 * configuration text rather than a page, and doConfigPageInit() has
+	 * already answered it and ended the request.
+	 *
 	 * `profile` present but empty is deliberate rather than a degenerate case:
 	 * it is the same page doing the same thing, minus a row to replace. A
 	 * device association is small enough to stay in a dialog on the list; a
@@ -96,6 +100,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		return load_view(__DIR__ . '/views/profile.php', [
 			'profile' => $profile,
 			'assigned' => $profile['id'] ? $this->profileDevices((int) $profile['id']) : [],
+			'placeholders' => $this->templatePlaceholders(),
 		]);
 	}
 
@@ -252,12 +257,28 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * that cannot be saved back. It is sent to the list instead, and it is
 	 * done here because this runs before any of the page has been written.
 	 *
+	 * ?config= is answered here too, and for the same reason: it is
+	 * configuration text rather than a page, so it has to be written before
+	 * FreePBX starts writing HTML around it. The request ends there.
+	 *
 	 * @param string $page Current configuration page.
 	 *
 	 * @return void
 	 */
 	public function doConfigPageInit($page)
 	{
+		$this->FreePBX->Logger->logWrite(
+				'My debug message',
+				[],
+				'DEBUG'
+		);
+		
+		die('test');
+		error_log("test\n", 3, "/tmp/debug.log");
+		if (isset($_REQUEST['config'])) {
+			$this->serveConfig($_REQUEST['mac'] ?? '');
+		}
+
 		if (!isset($_REQUEST['profile'])) {
 			return;
 		}
@@ -712,6 +733,336 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$stmt->execute([':id' => $id]);
 
 		return ['status' => true];
+	}
+
+	/**
+	 * What a template can refer to, as the editor lists it.
+	 *
+	 * Written out here rather than derived from a rendering, because the
+	 * editor has to be able to say what the names are with no device in hand
+	 * -- a new profile is not assigned to anything yet. The `sip.` names are
+	 * whatever the device carries in FreePBX, so the view names a few by way
+	 * of example instead of listing them.
+	 *
+	 * @return array<string, array<string, string>> Group heading to name and note.
+	 */
+	private function templatePlaceholders()
+	{
+		return [
+			_('Device') => [
+				'device.mac' => _('00908F3BBCBA'),
+				'device.mac_lower' => _('00908f3bbcba'),
+				'device.mac_colon' => _('00:90:8F:3B:BC:BA'),
+				'device.mac_colon_lower' => _('00:90:8f:3b:bc:ba'),
+				'device.id' => _('FreePBX device'),
+				'device.description' => _('Device description'),
+				'device.tech' => _('pjsip or sip'),
+				'device.username' => _('SIP username'),
+				'device.secret' => _('SIP secret'),
+			],
+			_('Extension') => [
+				'extension.number' => _('Extension the device is attached to'),
+				'extension.name' => _('Display name'),
+				'extension.voicemail' => _('Voicemail setting'),
+			],
+			_('Profile and server') => [
+				'profile.name' => _('This profile'),
+				'server.host' => _('Host the PBX is reached on'),
+				'server.port' => _('5060'),
+			],
+		];
+	}
+
+	/**
+	 * Answer ?config= with the configuration a MAC provisions with, and end
+	 * the request.
+	 *
+	 *   config.php?display=oryk_provisioner&mac=00908F3BBCBA&config=
+	 *
+	 * `config` is present but empty, the same shape `profile` has on the
+	 * editor: a later stage gives it a filename, so a profile that renders
+	 * more than one file can say which one is being asked for.
+	 *
+	 * This is still config.php, so it is still behind an admin session --
+	 * the unauthenticated token endpoint the README describes is a later
+	 * stage, and no phone can reach this URL. That is also why a failure says
+	 * what went wrong here, rather than returning the endpoint's uniform 404:
+	 * the only reader is the administrator who typed the URL.
+	 *
+	 * @param mixed $mac MAC address from the request.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	private function serveConfig($mac)
+	{
+		$result = $this->renderConfig($mac);
+
+		if (!$result['status']) {
+			$this->sendText(404, $result['message'] . "\n");
+		}
+
+		$this->sendText(200, $result['config']);
+	}
+
+	/**
+	 * The configuration text a MAC provisions with.
+	 *
+	 * Separate from serveConfig() because this is the part worth calling
+	 * again: a preview in the editor, a console command, the device endpoint
+	 * when there is one. Only the caller here ends the request.
+	 *
+	 * @param mixed $mac MAC address, written however it was written.
+	 *
+	 * @return array<string, mixed> Status, the rendered config when there is
+	 *                              one, and a message when there is not.
+	 */
+	public function renderConfig($mac)
+	{
+		$mac = $this->normalizeMac($mac);
+
+		if ($mac === '') {
+			return [
+				'status' => false,
+				'message' => _('A MAC address is 12 hexadecimal characters, with or without separators.'),
+			];
+		}
+
+		$row = $this->associationByMac($mac);
+
+		if (!$row) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is not associated with anything.'), $mac),
+			];
+		}
+
+		if ($row['profile_id'] === null) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s has no profile assigned.'), $mac),
+			];
+		}
+
+		return [
+			'status' => true,
+			'mac' => $mac,
+			'profile' => (string) $row['profile_name'],
+			'config' => $this->renderTemplate((string) $row['template'], $this->provisioningValues($row)),
+		];
+	}
+
+	/**
+	 * Write a plain-text response and end the request.
+	 *
+	 * @param int    $code HTTP status code.
+	 * @param string $body Response body.
+	 *
+	 * @return void Never returns.
+	 */
+	private function sendText($code, $body)
+	{
+		http_response_code($code);
+		header('Content-Type: text/plain; charset=utf-8');
+		// A phone that re-reads its config expects what is stored now, not
+		// what a cache kept from the last time it asked.
+		header('Cache-Control: no-store');
+
+		echo $body;
+		exit;
+	}
+
+	/**
+	 * The association a MAC names, with the device and profile behind it.
+	 *
+	 * One statement rather than three lookups: the whole of what rendering
+	 * needs is one row wide.
+	 *
+	 * @param string $mac Normalised MAC address.
+	 *
+	 * @return array<string, mixed>|null The row, or null when the MAC is unknown.
+	 */
+	private function associationByMac($mac)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT
+				pd.mac,
+				pd.device_id,
+				pd.profile_id,
+				d.user AS extension,
+				d.description,
+				d.tech,
+				p.name AS profile_name,
+				p.template
+			FROM `{$this->devicesTable}` pd
+			LEFT JOIN devices d ON d.id = pd.device_id
+			LEFT JOIN `{$this->profilesTable}` p ON p.id = pd.profile_id
+			WHERE pd.mac = :mac"
+		);
+		$stmt->execute([':mac' => $mac]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		return $row ?: null;
+	}
+
+	/**
+	 * What a template can refer to, as a flat map of dotted names.
+	 *
+	 * Flat and dotted rather than nested, because that is what the
+	 * placeholders are: `{{device.mac}}` is a key here, not a path walked
+	 * through arrays. The eventual resolver puts sources in precedence order
+	 * behind the same names.
+	 *
+	 * An association with no FreePBX device still renders -- everything the
+	 * device would have answered for is simply empty, which is what a profile
+	 * of pure static configuration wants anyway.
+	 *
+	 * @param array<string, mixed> $row Association row from associationByMac().
+	 *
+	 * @return array<string, string> Placeholder name to value.
+	 */
+	private function provisioningValues(array $row)
+	{
+		$mac = (string) $row['mac'];
+		$colon = implode(':', str_split($mac, 2));
+
+		$sip = $this->deviceSipSettings($row['device_id'] ?? null);
+		$extension = $this->extensionRow($row['extension'] ?? null);
+
+		$values = [
+			'device.mac' => $mac,
+			'device.mac_lower' => strtolower($mac),
+			'device.mac_colon' => $colon,
+			'device.mac_colon_lower' => strtolower($colon),
+			'device.id' => (string) ($row['device_id'] ?? ''),
+			'device.description' => (string) ($row['description'] ?? ''),
+			'device.tech' => (string) ($row['tech'] ?? ''),
+			'device.username' => (string) ($sip['username'] ?? $row['device_id'] ?? ''),
+			'device.secret' => (string) ($sip['secret'] ?? ''),
+			'extension.number' => (string) ($row['extension'] ?? ''),
+			'extension.name' => (string) ($extension['name'] ?? ''),
+			'extension.voicemail' => (string) ($extension['voicemail'] ?? ''),
+			'profile.id' => (string) ($row['profile_id'] ?? ''),
+			'profile.name' => (string) ($row['profile_name'] ?? ''),
+			'server.host' => $this->serverHost(),
+			'server.port' => '5060',
+		];
+
+		// Everything else the device is configured with in FreePBX, under its
+		// own prefix: transport, callerid, dtmfmode and the rest are vendor
+		// business, so the template asks for what it needs by name rather
+		// than this file deciding in advance what a phone might want.
+		foreach ($sip as $keyword => $data) {
+			$values['sip.' . $keyword] = $data;
+		}
+
+		return $values;
+	}
+
+	/**
+	 * The FreePBX device settings for a device id.
+	 *
+	 * `sip` is where core keeps them, one keyword per row, for both drivers.
+	 * A site without that table -- or with a device that has no settings --
+	 * renders a template with those values empty rather than failing.
+	 *
+	 * @param string|null $deviceId FreePBX devices.id.
+	 *
+	 * @return array<string, string> Keyword to value.
+	 */
+	private function deviceSipSettings($deviceId)
+	{
+		if ($deviceId === null || $deviceId === '') {
+			return [];
+		}
+
+		try {
+			$stmt = $this->db->prepare("SELECT keyword, data FROM sip WHERE id = :id");
+			$stmt->execute([':id' => $deviceId]);
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return [];
+		}
+
+		$settings = [];
+
+		foreach ($rows as $setting) {
+			// Keywords become placeholder names, and a placeholder name is
+			// letters, digits, underscores and the dot that separates the
+			// prefix -- so anything else in a keyword is folded to an
+			// underscore rather than producing a name nothing can spell.
+			$keyword = preg_replace('/[^A-Za-z0-9_]/', '_', (string) $setting['keyword']);
+			$settings[$keyword] = (string) $setting['data'];
+		}
+
+		return $settings;
+	}
+
+	/**
+	 * The extension a device is attached to.
+	 *
+	 * @param string|null $extension Extension number.
+	 *
+	 * @return array<string, mixed>|null The row, or null when there is none.
+	 */
+	private function extensionRow($extension)
+	{
+		if ($extension === null || $extension === '') {
+			return null;
+		}
+
+		try {
+			$stmt = $this->db->prepare("SELECT name, voicemail FROM users WHERE extension = :extension");
+			$stmt->execute([':extension' => $extension]);
+			$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return null;
+		}
+
+		return $row ?: null;
+	}
+
+	/**
+	 * The host a phone would register against.
+	 *
+	 * Taken from the request, which is the host the administrator is looking
+	 * at the PBX on and, on a single-address system, the one the phones use.
+	 * A module setting overrides it once there are settings to hold one.
+	 *
+	 * @return string Hostname or address, without a port.
+	 */
+	private function serverHost()
+	{
+		$host = (string) ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '');
+		$host = preg_replace('/:\d+$/', '', $host);
+
+		return $host !== '' ? $host : (string) ($_SERVER['SERVER_ADDR'] ?? '');
+	}
+
+	/**
+	 * Fill in a template's {{ }} placeholders.
+	 *
+	 * The delimiters and the dotted names are the ones the full engine will
+	 * use, so profiles written against this keep rendering: what is missing
+	 * is filters, sections and escaping, not the syntax.
+	 *
+	 * A name nothing answers to renders as nothing. A phone parsing a config
+	 * copes with an empty value; it does not cope with a literal `{{ }}` left
+	 * where a value was meant to be.
+	 *
+	 * @param string                $template Template text.
+	 * @param array<string, string> $values   Placeholder name to value.
+	 *
+	 * @return string Rendered configuration.
+	 */
+	private function renderTemplate($template, array $values)
+	{
+		return preg_replace_callback(
+			'/\{\{\s*([A-Za-z0-9_.]+)\s*\}\}/',
+			function ($match) use ($values) {
+				return $values[$match[1]] ?? '';
+			},
+			$template
+		);
 	}
 
 	/**

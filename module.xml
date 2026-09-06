@@ -3,7 +3,7 @@
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
 	<repo>commercial</repo>
-	<version>1.0.2</version>
+	<version>1.0.3</version>
 	<dbversion>1.0.2</dbversion>
 	<publisher>Oryk</publisher>
 	<type>setup</type>
@@ -14,6 +14,7 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
+		*1.0.3* Rendered configuration at ?display=oryk_provisioner&amp;mac=&lt;mac&gt;&amp;config=, with {{ }} placeholders filled in from the device, its extension and the profile
 		*1.0.2* Devices and Profiles: a MAC address is associated with a FreePBX device and a profile, and a profile is a name and a block of configuration text
 		*1.0.1* New
 	</changelog>

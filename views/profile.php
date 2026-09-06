@@ -15,12 +15,14 @@
  * Nothing here lists devices or profiles -- that is views/admin.php, which
  * Close and a finished Save both return to.
  *
- * @var array<string, mixed>            $profile  id (0 when new), name, template
- * @var array<int, array<string, mixed>> $assigned Device associations using it
+ * @var array<string, mixed>             $profile      id (0 when new), name, template
+ * @var array<int, array<string, mixed>>  $assigned     Device associations using it
+ * @var array<string, array<string, string>> $placeholders What a template can refer to
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => '', 'template' => ''];
 $assigned = $assigned ?? [];
+$placeholders = $placeholders ?? [];
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -40,6 +42,22 @@ $isNew = ((int) $profile['id']) === 0;
 		display: inline-block;
 		margin-right: 10px;
 		white-space: nowrap;
+	}
+	.oryk-placeholders {
+		padding-top: 6px;
+	}
+	.oryk-placeholder-group {
+		margin-bottom: 4px;
+	}
+	.oryk-placeholder-group strong {
+		display: block;
+		font-weight: normal;
+		color: #777;
+	}
+	.oryk-placeholder-group code {
+		display: inline-block;
+		margin: 2px 4px 0 0;
+		cursor: help;
 	}
 </style>
 
@@ -135,8 +153,24 @@ $isNew = ((int) $profile['id']) === 0;
 					<div class="row">
 						<div class="col-md-12">
 							<span class="help-block fpbx-help-block">
-								<?php echo _('Configuration text, stored as typed.'); ?>
+								<?php echo _('Configuration text, stored as typed. Names in double braces are replaced when a device asks for its configuration; a name nothing answers to is replaced with nothing.'); ?>
 							</span>
+							<div class="oryk-placeholders">
+								<?php foreach ($placeholders as $group => $names): ?>
+									<div class="oryk-placeholder-group">
+										<strong><?php echo $h($group); ?></strong>
+										<?php foreach ($names as $name => $note): ?>
+											<code title="<?php echo $h($note); ?>"><?php echo '{{' . $h($name) . '}}'; ?></code>
+										<?php endforeach; ?>
+									</div>
+								<?php endforeach; ?>
+								<div class="oryk-placeholder-group">
+									<strong><?php echo _('Anything else the device is configured with in FreePBX'); ?></strong>
+									<code><?php echo '{{sip.transport}}'; ?></code>
+									<code><?php echo '{{sip.callerid}}'; ?></code>
+									<code><?php echo '{{sip.dtmfmode}}'; ?></code>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>

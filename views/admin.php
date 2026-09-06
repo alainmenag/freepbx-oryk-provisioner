@@ -233,13 +233,23 @@ $saved = (int) ($saved ?? 0);
 		return `${device} <a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">(${extension})</a>`;
 	}
 
+	// Config is a link rather than a button: the rendered configuration is a
+	// page of plain text at its own URL, the same one a phone will be given,
+	// so it opens in a tab instead of being fetched back into this one. A row
+	// with no profile has nothing to render, so it does not offer it.
 	function formatDeviceActions(value, row) {
-		return [
-			`<div class="flex gap-3">`,
-			`<button type="button" class="btn btn-primary btn-sm" name="device_edit" value="${row.id}">Edit</button>`,
-			`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash"></i></button>`,
-			`</div>`
-		].join('');
+		const actions = [
+			`<button type="button" class="btn btn-primary btn-sm" name="device_edit" value="${row.id}">Edit</button>`
+		];
+
+		if (row.profile_id) {
+			const url = `?display=oryk_provisioner&mac=${encodeURIComponent(row.mac)}&config=`;
+			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Config</a>`);
+		}
+
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash"></i></button>`);
+
+		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
 
 	// Editing a profile is a page, not a dialog, so Edit is a link: the row's
