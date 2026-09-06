@@ -267,14 +267,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function doConfigPageInit($page)
 	{
-		$this->FreePBX->Logger->logWrite(
-				'My debug message',
-				[],
-				'DEBUG'
-		);
-		
-		die('test');
-		error_log("test\n", 3, "/tmp/debug.log");
 		if (isset($_REQUEST['config'])) {
 			$this->serveConfig($_REQUEST['mac'] ?? '');
 		}
