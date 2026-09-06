@@ -25,6 +25,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private $profilesTable = 'oryk_provisioner_profiles';
 
 	/**
+	 * Name of the web-root symlink that points at the engine directory.
+	 *
+	 * @var string
+	 */
+	private $engineLink = 'provisioner';
+
+	/**
 	 * FreePBX application instance.
 	 *
 	 * @var object
@@ -179,7 +186,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * Install the module.
 	 *
 	 * Both tables are created if they are not already there, so installing
-	 * over an existing install leaves the data where it is.
+	 * over an existing install leaves the data where it is, and the web-root
+	 * symlink that gives the device endpoint a short URL is put in place.
 	 *
 	 * @return bool True when installation completes.
 	 */
@@ -215,18 +223,157 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
+		$this->linkEngine();
+
 		return true;
 	}
 
 	/**
 	 * Uninstall the module.
 	 *
-	 * The tables are deliberately left in place.
+	 * The tables are deliberately left in place; the symlink is not, since it
+	 * would be left pointing into a directory that has gone.
 	 *
 	 * @return void
 	 */
 	public function uninstall()
 	{
+		$this->unlinkEngine();
+	}
+
+	/**
+	 * Point a web-root symlink at the engine directory.
+	 *
+	 * The device endpoint lives in engine/, under the module, which puts it at
+	 * /admin/modules/oryk_provisioner/engine/ -- a URL no phone should have to
+	 * be given, and a path under an /admin that a hardened site may well not
+	 * serve to an anonymous caller at all. The link gives it a short public one
+	 * instead:
+	 *
+	 *   /var/www/html/provisioner -> .../admin/modules/oryk_provisioner/engine
+	 *   http(s)://<pbx>/provisioner/?mac=00908F3BBCBA
+	 *
+	 * A symlink rather than a copied shim, so there is one engine and nothing
+	 * to keep in step across an upgrade. Apache has to be willing to follow it
+	 * -- Options FollowSymLinks on the web root, which is the FreePBX default.
+	 *
+	 * Nothing in here fails the install. A module that could not write to the
+	 * web root is still a working module minus a friendly URL, and the endpoint
+	 * stays reachable at its real path either way.
+	 *
+	 * @return bool True when the link is in place.
+	 */
+	private function linkEngine()
+	{
+		$engine = __DIR__ . '/engine';
+		$link = $this->engineLinkPath();
+
+		if (!is_dir($engine)) {
+			$this->installMessage('Provisioner: no engine directory to link, skipped.');
+
+			return false;
+		}
+
+		if (is_link($link)) {
+			// Compared resolved rather than by the stored target: the link may
+			// have been made through a path that is itself a link.
+			if (realpath($link) === realpath($engine)) {
+				return true;
+			}
+
+			// Ours to replace -- it is a link, not somebody's directory.
+			@unlink($link);
+		}
+
+		// A real file or directory there belongs to someone else. A site that
+		// already has its own /provisioner is not one to overwrite.
+		if (file_exists($link)) {
+			$this->installMessage("Provisioner: {$link} exists and is not a symlink, left alone.");
+
+			return false;
+		}
+
+		if (!@symlink($engine, $link)) {
+			$this->installMessage("Provisioner: could not create {$link}, the endpoint is still at admin/modules/oryk_provisioner/engine/.");
+
+			return false;
+		}
+
+		// Apache follows the link as the owner of the target, so this changes
+		// nothing about whether it works; it is here so FreePBX's file
+		// permission pass finds what it expects under the web root.
+		if (function_exists('lchown')) {
+			$user = (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER');
+			$group = (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP');
+
+			if ($user !== '') {
+				@lchown($link, $user);
+			}
+
+			if ($group !== '') {
+				@lchgrp($link, $group);
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Remove the web-root symlink.
+	 *
+	 * Only a link that resolves to this module's engine is removed: anything
+	 * else at that path is someone else's, and an uninstall is not the moment
+	 * to find that out the hard way.
+	 *
+	 * @return bool True when the link was removed.
+	 */
+	private function unlinkEngine()
+	{
+		$link = $this->engineLinkPath();
+
+		if (!is_link($link) || realpath($link) !== realpath(__DIR__ . '/engine')) {
+			return false;
+		}
+
+		return (bool) @unlink($link);
+	}
+
+	/**
+	 * Full path of the web-root symlink.
+	 *
+	 * @return string Absolute path to the link.
+	 */
+	private function engineLinkPath()
+	{
+		$root = trim((string) $this->FreePBX->Config->get('AMPWEBROOT'));
+
+		if ($root === '') {
+			$root = '/var/www/html';
+		}
+
+		return rtrim($root, '/') . '/' . $this->engineLink;
+	}
+
+	/**
+	 * Report something that happened during install or uninstall.
+	 *
+	 * fwconsole is where an operator is actually looking when a module is
+	 * installed, so it is told first; anywhere else (the GUI's module admin,
+	 * a test harness) there is no out() and the log is the only place left.
+	 *
+	 * @param string $message Message to report.
+	 *
+	 * @return void
+	 */
+	private function installMessage($message)
+	{
+		if (function_exists('out')) {
+			out($message);
+
+			return;
+		}
+
+		error_log($message);
 	}
 
 	/**

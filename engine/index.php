@@ -1,5 +1,7 @@
 <?php
 
+die('test');
+
 /**
  * provision.php -- the unauthenticated device provisioning endpoint.
  *
@@ -23,6 +25,8 @@
 // Asterisk manager connection (this endpoint only reads the database), and
 // load this module alone rather than every module's functions. These are read
 // by bootstrap.php, which /etc/freepbx.conf pulls in.
+
+/*
 $bootstrap_settings['freepbx_auth'] = false;
 $bootstrap_settings['skip_astman']  = true;
 $restrict_mods = ['oryk_provisioner' => true];
@@ -66,3 +70,5 @@ if (empty($result['status'])) {
 
 http_response_code(200);
 echo $result['config'];
+
+*/
