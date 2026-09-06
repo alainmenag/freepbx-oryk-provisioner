@@ -1,6 +1,6 @@
 <?php
 /**
- * The module page: a Devices tab and a Device Profiles tab.
+ * The module page: a Devices tab and a Profiles tab.
  *
  * Both tables are filled by the module's AJAX commands; the only thing
  * rendered here is what the two forms offer as choices.
@@ -40,7 +40,7 @@ $profiles = $profiles ?? [];
 				</li>
 				<li role="presentation">
 					<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
-						<?php echo _('Device Profiles'); ?>
+						<?php echo _('Profiles'); ?>
 					</a>
 				</li>
 			</ul>

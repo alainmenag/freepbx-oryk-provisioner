@@ -4,7 +4,7 @@ Oryk Provisioner is a template-driven VoIP endpoint provisioning module for Free
 
 The goal is to provide a vendor-neutral provisioning layer that separates **device data** from **device-specific configuration formats**.
 
-Provisioning templates define how configuration files should look, while device profiles provide the values inserted into those templates.
+Provisioning templates define how configuration files should look, while profiles provide the values inserted into those templates.
 
 The initial implementation focuses on softphone provisioning, with support planned for physical devices including Yealink, Poly, Grandstream, and other SIP endpoints.
 

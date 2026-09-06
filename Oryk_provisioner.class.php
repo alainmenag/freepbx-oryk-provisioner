@@ -296,7 +296,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Rows for the Device Profiles table.
+	 * Rows for the Profiles table.
 	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */

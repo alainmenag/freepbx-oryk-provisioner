@@ -14,7 +14,7 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
-		*1.0.2* Devices and Device Profiles: a MAC address is associated with a FreePBX device and a profile, and a profile is a name and a block of configuration text
+		*1.0.2* Devices and Profiles: a MAC address is associated with a FreePBX device and a profile, and a profile is a name and a block of configuration text
 		*1.0.1* New
 	</changelog>
 	<category>Oryk</category>
