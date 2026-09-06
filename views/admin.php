@@ -113,8 +113,12 @@ $profiles = $profiles ?? [];
 <div class="modal fade" id="device_modal" tabindex="-1" role="dialog">
 	<div class="modal-dialog" role="document">
 		<div class="modal-content">
-			<form id="device_form">
-				<input type="hidden" name="id" value="">
+			<!-- Not a form: the module page is itself inside a FreePBX form, and a
+			     nested one is dropped by the browser, which leaves the fields
+			     submitting the page instead. The values are read by id and
+			     posted to ajax.php. -->
+			<div id="device_form">
+				<input type="hidden" id="device_row_id" value="">
 
 				<div class="modal-header">
 					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
@@ -129,14 +133,14 @@ $profiles = $profiles ?? [];
 							<?php echo _('MAC Address'); ?>
 							<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
 						</label>
-						<input type="text" class="form-control" id="device_mac" name="mac"
+						<input type="text" class="form-control" id="device_mac"
 							placeholder="001565AABBCC" autocomplete="off">
 						<span class="help-block"><?php echo _('Stored as 12 uppercase hexadecimal characters; separators are removed.'); ?></span>
 					</div>
 
 					<div class="form-group">
 						<label class="control-label" for="device_device_id"><?php echo _('FreePBX Device'); ?></label>
-						<select class="form-control" id="device_device_id" name="device_id">
+						<select class="form-control" id="device_device_id">
 							<option value=""><?php echo _('None'); ?></option>
 							<?php foreach ($freepbxDevices as $device): ?>
 								<option value="<?php echo htmlspecialchars((string) $device['id']); ?>">
@@ -154,7 +158,7 @@ $profiles = $profiles ?? [];
 
 					<div class="form-group">
 						<label class="control-label" for="device_profile_id"><?php echo _('Device Profile'); ?></label>
-						<select class="form-control" id="device_profile_id" name="profile_id">
+						<select class="form-control" id="device_profile_id">
 							<option value=""><?php echo _('None'); ?></option>
 							<?php foreach ($profiles as $profile): ?>
 								<option value="<?php echo (int) $profile['id']; ?>">
@@ -167,9 +171,9 @@ $profiles = $profiles ?? [];
 
 				<div class="modal-footer">
 					<button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _('Cancel'); ?></button>
-					<button type="submit" class="btn btn-primary"><?php echo _('Save'); ?></button>
+					<button type="button" class="btn btn-primary" id="device_save"><?php echo _('Save'); ?></button>
 				</div>
-			</form>
+			</div>
 		</div>
 	</div>
 </div>
@@ -177,8 +181,8 @@ $profiles = $profiles ?? [];
 <div class="modal fade" id="profile_modal" tabindex="-1" role="dialog">
 	<div class="modal-dialog modal-lg" role="document">
 		<div class="modal-content">
-			<form id="profile_form">
-				<input type="hidden" name="id" value="">
+			<div id="profile_form">
+				<input type="hidden" id="profile_row_id" value="">
 
 				<div class="modal-header">
 					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
@@ -193,12 +197,12 @@ $profiles = $profiles ?? [];
 							<?php echo _('Name'); ?>
 							<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
 						</label>
-						<input type="text" class="form-control" id="profile_name" name="name" autocomplete="off">
+						<input type="text" class="form-control" id="profile_name" autocomplete="off">
 					</div>
 
 					<div class="form-group">
 						<label class="control-label" for="profile_template"><?php echo _('Template'); ?></label>
-						<textarea class="form-control oryk-template" id="profile_template" name="template"
+						<textarea class="form-control oryk-template" id="profile_template"
 							rows="18" spellcheck="false" wrap="off"></textarea>
 						<span class="help-block"><?php echo _('Configuration text, stored as typed.'); ?></span>
 					</div>
@@ -206,9 +210,9 @@ $profiles = $profiles ?? [];
 
 				<div class="modal-footer">
 					<button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _('Cancel'); ?></button>
-					<button type="submit" class="btn btn-primary"><?php echo _('Save'); ?></button>
+					<button type="button" class="btn btn-primary" id="profile_save"><?php echo _('Save'); ?></button>
 				</div>
-			</form>
+			</div>
 		</div>
 	</div>
 </div>
@@ -216,6 +220,17 @@ $profiles = $profiles ?? [];
 <script>
 
 	const orykAjax = 'ajax.php?module=oryk_provisioner&command=';
+
+	// Every call to the module is a POST to ajax.php with the command in the
+	// query string, which is what FreePBX dispatches on.
+	function orykPost(command, data) {
+		return $.ajax({
+			url: orykAjax + command,
+			type: 'POST',
+			data: data,
+			dataType: 'json'
+		});
+	}
 
 	function orykEscape(value) {
 		return $('<div>').text(value === null || value === undefined ? '' : value).html();
@@ -265,24 +280,37 @@ $profiles = $profiles ?? [];
 		].join('');
 	}
 
+	// A table drawn while its tab is hidden has no width to lay itself out
+	// against, so it is told to measure again once the tab is on screen.
+	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
+		$($(this).attr('href')).find('table[data-toggle="table"]').bootstrapTable('resetView');
+	});
+
 	function orykShowError($box, message) {
 		$box.text(message || 'Something went wrong.').removeClass('hidden');
 	}
+
+	// The page is rendered inside the FreePBX page form. Both dialogs are moved
+	// out to the end of the document so nothing in them belongs to that form,
+	// and so the backdrop sits behind them.
+	$(function () {
+		$('#device_modal, #profile_modal').appendTo('body');
+	});
 
 	// Devices
 
 	$(document).on('click', '#device_add', function () {
 		$('#device_error').addClass('hidden').text('');
 		$('#device_modal_title').text('Add Device');
-		$('#device_form')[0].reset();
-		$('#device_form [name="id"]').val('');
+		$('#device_row_id').val('');
+		$('#device_mac').val('');
+		$('#device_device_id').val('');
+		$('#device_profile_id').val('');
 		$('#device_modal').modal('show');
 	});
 
 	$(document).on('click', '[name="device_edit"]', function () {
-		const id = $(this).val();
-
-		$.post(orykAjax + 'getDevice', { id: id }, function (response) {
+		orykPost('getDevice', { id: $(this).val() }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Device not found.', 4);
 				return;
@@ -290,18 +318,21 @@ $profiles = $profiles ?? [];
 
 			$('#device_error').addClass('hidden').text('');
 			$('#device_modal_title').text('Edit Device');
-			$('#device_form [name="id"]').val(response.device.id);
+			$('#device_row_id').val(response.device.id);
 			$('#device_mac').val(response.device.mac);
 			$('#device_device_id').val(response.device.device_id || '');
 			$('#device_profile_id').val(response.device.profile_id || '');
 			$('#device_modal').modal('show');
-		}, 'json');
+		});
 	});
 
-	$(document).on('submit', '#device_form', function (event) {
-		event.preventDefault();
-
-		$.post(orykAjax + 'saveDevice', $(this).serialize(), function (response) {
+	$(document).on('click', '#device_save', function () {
+		orykPost('saveDevice', {
+			id: $('#device_row_id').val(),
+			mac: $('#device_mac').val(),
+			device_id: $('#device_device_id').val(),
+			profile_id: $('#device_profile_id').val()
+		}).done(function (response) {
 			if (!response || !response.status) {
 				orykShowError($('#device_error'), response && response.message);
 				return;
@@ -311,17 +342,17 @@ $profiles = $profiles ?? [];
 			$('#device_table').bootstrapTable('refresh');
 			$('#profile_table').bootstrapTable('refresh');
 			notie.alert(1, 'Saved.', 2);
-		}, 'json');
+		}).fail(function () {
+			orykShowError($('#device_error'), 'The server could not be reached.');
+		});
 	});
 
 	$(document).on('click', '[name="device_delete"]', function () {
-		const id = $(this).val();
-
 		if (!window.confirm('Delete this device association?')) {
 			return;
 		}
 
-		$.post(orykAjax + 'deleteDevice', { id: id }, function (response) {
+		orykPost('deleteDevice', { id: $(this).val() }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 				return;
@@ -330,7 +361,7 @@ $profiles = $profiles ?? [];
 			$('#device_table').bootstrapTable('refresh');
 			$('#profile_table').bootstrapTable('refresh');
 			notie.alert(1, 'Deleted.', 2);
-		}, 'json');
+		});
 	});
 
 	// Profiles
@@ -338,15 +369,14 @@ $profiles = $profiles ?? [];
 	$(document).on('click', '#profile_add', function () {
 		$('#profile_error').addClass('hidden').text('');
 		$('#profile_modal_title').text('Add Profile');
-		$('#profile_form')[0].reset();
-		$('#profile_form [name="id"]').val('');
+		$('#profile_row_id').val('');
+		$('#profile_name').val('');
+		$('#profile_template').val('');
 		$('#profile_modal').modal('show');
 	});
 
 	$(document).on('click', '[name="profile_edit"]', function () {
-		const id = $(this).val();
-
-		$.post(orykAjax + 'getProfile', { id: id }, function (response) {
+		orykPost('getProfile', { id: $(this).val() }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Profile not found.', 4);
 				return;
@@ -354,23 +384,25 @@ $profiles = $profiles ?? [];
 
 			$('#profile_error').addClass('hidden').text('');
 			$('#profile_modal_title').text('Edit Profile');
-			$('#profile_form [name="id"]').val(response.profile.id);
+			$('#profile_row_id').val(response.profile.id);
 			$('#profile_name').val(response.profile.name);
 			$('#profile_template').val(response.profile.template || '');
 			$('#profile_modal').modal('show');
-		}, 'json');
+		});
 	});
 
-	$(document).on('submit', '#profile_form', function (event) {
-		event.preventDefault();
-
-		$.post(orykAjax + 'saveProfile', $(this).serialize(), function (response) {
+	$(document).on('click', '#profile_save', function () {
+		orykPost('saveProfile', {
+			id: $('#profile_row_id').val(),
+			name: $('#profile_name').val(),
+			template: $('#profile_template').val()
+		}).done(function (response) {
 			if (!response || !response.status) {
 				orykShowError($('#profile_error'), response && response.message);
 				return;
 			}
 
-			// The device form's profile list is rendered with the page, so a
+			// The device dialog's profile list is rendered with the page, so a
 			// profile saved here is put into it rather than making the page
 			// have to be reloaded before it can be picked.
 			const $options = $('#device_profile_id');
@@ -385,7 +417,9 @@ $profiles = $profiles ?? [];
 			$('#profile_modal').modal('hide');
 			$('#profile_table').bootstrapTable('refresh');
 			notie.alert(1, 'Saved.', 2);
-		}, 'json');
+		}).fail(function () {
+			orykShowError($('#profile_error'), 'The server could not be reached.');
+		});
 	});
 
 	$(document).on('click', '[name="profile_delete"]', function () {
@@ -395,7 +429,7 @@ $profiles = $profiles ?? [];
 			return;
 		}
 
-		$.post(orykAjax + 'deleteProfile', { id: id }, function (response) {
+		orykPost('deleteProfile', { id: id }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 				return;
@@ -404,7 +438,7 @@ $profiles = $profiles ?? [];
 			$('#device_profile_id').find(`option[value="${id}"]`).remove();
 			$('#profile_table').bootstrapTable('refresh');
 			notie.alert(1, 'Deleted.', 2);
-		}, 'json');
+		});
 	});
 
 </script>
