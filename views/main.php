@@ -42,24 +42,27 @@ use Oryk\Provisioner\Admin\View;
 					</div>
 				</div>
 
+				<?php /* Note: never use data-target here - Bootstrap's tab plugin reads
+					it instead of href, which breaks tab switching. The pane a tab loads
+					its data for is named with data-oryk-tab. */ ?>
 				<ul class="nav nav-tabs" role="tablist" id="oryk-tabs">
 					<li role="presentation" class="active">
-						<a href="#oryk-tab-devices" data-target="devices" data-toggle="tab" role="tab">
+						<a href="#oryk-tab-devices" data-oryk-tab="devices" data-toggle="tab" role="tab">
 							<i class="fa fa-phone"></i> <?php echo View::esc(View::t('Devices')); ?>
 						</a>
 					</li>
 					<li role="presentation">
-						<a href="#oryk-tab-templates" data-target="templates" data-toggle="tab" role="tab">
+						<a href="#oryk-tab-templates" data-oryk-tab="templates" data-toggle="tab" role="tab">
 							<i class="fa fa-file-code-o"></i> <?php echo View::esc(View::t('Templates')); ?>
 						</a>
 					</li>
 					<li role="presentation">
-						<a href="#oryk-tab-logs" data-target="logs" data-toggle="tab" role="tab">
+						<a href="#oryk-tab-logs" data-oryk-tab="logs" data-toggle="tab" role="tab">
 							<i class="fa fa-list"></i> <?php echo View::esc(View::t('Provisioning Log')); ?>
 						</a>
 					</li>
 					<li role="presentation">
-						<a href="#oryk-tab-settings" data-target="settings" data-toggle="tab" role="tab">
+						<a href="#oryk-tab-settings" data-oryk-tab="settings" data-toggle="tab" role="tab">
 							<i class="fa fa-sliders"></i> <?php echo View::esc(View::t('Settings')); ?>
 						</a>
 					</li>

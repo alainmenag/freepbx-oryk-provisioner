@@ -111,3 +111,26 @@ $html = $view->render('devices/parameters', array(
 ));
 
 oryk_check('secret inputs use type=password', strpos($html, 'type="password"') !== false);
+
+// Regression guard: data-target belongs to Bootstrap's own plugins. Using it on
+// a tab link makes Bootstrap treat its value as the pane selector, which stops
+// tab switching. Tabs carry data-oryk-tab instead.
+$offenders = array();
+
+$iterator = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator(dirname(__DIR__) . '/views')
+);
+
+foreach ($iterator as $file) {
+    if ($file->getExtension() !== 'php') {
+        continue;
+    }
+
+    $contents = file_get_contents($file->getPathname());
+
+    if (preg_match('/data-target\s*=/i', $contents)) {
+        $offenders[] = $file->getFilename();
+    }
+}
+
+oryk_check('no view uses data-target', empty($offenders), implode(', ', $offenders));

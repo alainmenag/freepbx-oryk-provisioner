@@ -46,19 +46,56 @@
 		}
 	}
 
+	/**
+	 * Switch tabs ourselves when Bootstrap's tab plugin is not on the page.
+	 * Nothing else here depends on it, so this keeps the interface usable.
+	 */
+	function bindTabFallback() {
+		if ($.fn.tab) {
+			return;
+		}
+
+		$(document).on('click', '[data-toggle="tab"]', function (event) {
+			event.preventDefault();
+
+			var $link = $(this);
+			var target = $link.attr('href');
+
+			if (!target || target.charAt(0) !== '#') {
+				return;
+			}
+
+			var $pane = $(target);
+
+			if (!$pane.length) {
+				return;
+			}
+
+			$link.closest('ul').find('> li').removeClass('active');
+			$link.closest('li').addClass('active');
+			$pane.closest('.tab-content').children('.tab-pane').removeClass('active in');
+			$pane.addClass('active');
+
+			$link.trigger('shown.bs.tab');
+		});
+	}
+
 	$(function () {
 		if (!$('#oryk-provisioner').length) {
 			return;
 		}
 
+		bindTabFallback();
 		App.bindRepeaters(document);
 		App.devices.bind();
 		App.templates.bind();
 		App.logs.bind();
 		App.settings.bind();
 
+		// data-oryk-tab, never data-target: Bootstrap's tab plugin treats
+		// data-target as the pane selector and would break switching.
 		$('#oryk-tabs a[data-toggle="tab"]').on('shown.bs.tab', function (event) {
-			activateTab($(event.target).data('target'));
+			activateTab($(event.target).data('oryk-tab'));
 		});
 
 		// Nested tabs inside the modal (forms, preview) must not bubble up to
