@@ -3,14 +3,22 @@
  * The module page: a Devices tab and a Profiles tab.
  *
  * Both tables are filled by the module's AJAX commands; the only thing
- * rendered here is what the two forms offer as choices.
+ * rendered here is what the device dialog offers as choices.
+ *
+ * A device association is small enough to stay in a dialog. A profile is not:
+ * it carries a block of configuration text, so it has a page of its own,
+ * views/profile.php, which the Add and Edit buttons here link to.
  *
  * @var array<int, array<string, mixed>> $freepbxDevices
  * @var array<int, array<string, mixed>> $profiles
+ * @var string                           $tab    Tab to open on: devices|profiles
+ * @var int                              $saved  Profile just written, highlighted here
  */
 
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
+$tab = ($tab ?? '') === 'profiles' ? 'profiles' : 'devices';
+$saved = (int) ($saved ?? 0);
 ?>
 <style>
 	.flex {
@@ -22,10 +30,6 @@ $profiles = $profiles ?? [];
 	.oryk-toolbar {
 		padding-bottom: 5px;
 	}
-	.oryk-template {
-		font-family: monospace;
-		white-space: pre;
-	}
 </style>
 
 <div class="container-fluid">
@@ -33,12 +37,12 @@ $profiles = $profiles ?? [];
 		<div class="display no-border">
 
 			<ul class="nav nav-tabs" role="tablist">
-				<li role="presentation" class="active">
+				<li role="presentation" class="<?php echo $tab === 'devices' ? 'active' : ''; ?>">
 					<a href="#oryk_devices" aria-controls="oryk_devices" role="tab" data-toggle="tab">
 						<?php echo _('Devices'); ?>
 					</a>
 				</li>
-				<li role="presentation">
+				<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
 					<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
 						<?php echo _('Profiles'); ?>
 					</a>
@@ -47,7 +51,7 @@ $profiles = $profiles ?? [];
 
 			<div class="tab-content">
 
-				<div role="tabpanel" class="tab-pane active" id="oryk_devices">
+				<div role="tabpanel" class="tab-pane <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
 					<div id="device_toolbar" class="oryk-toolbar">
 						<button type="button" class="btn btn-primary" id="device_add">
 							<i class="fa fa-plus"></i> <?php echo _('Add Device'); ?>
@@ -77,11 +81,11 @@ $profiles = $profiles ?? [];
 					</table>
 				</div>
 
-				<div role="tabpanel" class="tab-pane" id="oryk_profiles">
+				<div role="tabpanel" class="tab-pane <?php echo $tab === 'profiles' ? 'active' : ''; ?>" id="oryk_profiles">
 					<div id="profile_toolbar" class="oryk-toolbar">
-						<button type="button" class="btn btn-primary" id="profile_add">
+						<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=">
 							<i class="fa fa-plus"></i> <?php echo _('Add Profile'); ?>
-						</button>
+						</a>
 					</div>
 
 					<table
@@ -93,6 +97,8 @@ $profiles = $profiles ?? [];
 						data-side-pagination="server"
 						data-pagination="true"
 						data-search="true"
+						data-unique-id="id"
+						data-row-style="formatProfileRow"
 						data-sort-name="name"
 						data-sort-order="asc">
 						<thead>
@@ -178,48 +184,13 @@ $profiles = $profiles ?? [];
 	</div>
 </div>
 
-<div class="modal fade" id="profile_modal" tabindex="-1" role="dialog">
-	<div class="modal-dialog modal-lg" role="document">
-		<div class="modal-content">
-			<div id="profile_form">
-				<input type="hidden" id="profile_row_id" value="">
-
-				<div class="modal-header">
-					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-					<h4 class="modal-title" id="profile_modal_title"><?php echo _('Add Profile'); ?></h4>
-				</div>
-
-				<div class="modal-body">
-					<div class="alert alert-danger hidden" id="profile_error"></div>
-
-					<div class="form-group">
-						<label class="control-label" for="profile_name">
-							<?php echo _('Name'); ?>
-							<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-						</label>
-						<input type="text" class="form-control" id="profile_name" autocomplete="off">
-					</div>
-
-					<div class="form-group">
-						<label class="control-label" for="profile_template"><?php echo _('Template'); ?></label>
-						<textarea class="form-control oryk-template" id="profile_template"
-							rows="18" spellcheck="false" wrap="off"></textarea>
-						<span class="help-block"><?php echo _('Configuration text, stored as typed.'); ?></span>
-					</div>
-				</div>
-
-				<div class="modal-footer">
-					<button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _('Cancel'); ?></button>
-					<button type="button" class="btn btn-primary" id="profile_save"><?php echo _('Save'); ?></button>
-				</div>
-			</div>
-		</div>
-	</div>
-</div>
-
 <script>
 
 	const orykAjax = 'ajax.php?module=oryk_provisioner&command=';
+
+	// The profile just written by the editor, so the row it landed on can say
+	// so rather than the page looking unchanged after coming back.
+	const orykSavedProfile = <?php echo $saved; ?>;
 
 	// Every call to the module is a POST to ajax.php with the command in the
 	// query string, which is what FreePBX dispatches on.
@@ -271,13 +242,20 @@ $profiles = $profiles ?? [];
 		].join('');
 	}
 
+	// Editing a profile is a page, not a dialog, so Edit is a link: the row's
+	// id is the whole of what the editor needs, and it reads the profile back
+	// itself rather than being handed one.
 	function formatProfileActions(value, row) {
 		return [
 			`<div class="flex gap-3">`,
-			`<button type="button" class="btn btn-primary btn-sm" name="profile_edit" value="${row.id}">Edit</button>`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
 			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}"><i class="fa fa-trash"></i></button>`,
 			`</div>`
 		].join('');
+	}
+
+	function formatProfileRow(row) {
+		return orykSavedProfile && Number(row.id) === orykSavedProfile ? { classes: 'success' } : {};
 	}
 
 	// A table drawn while its tab is hidden has no width to lay itself out
@@ -290,11 +268,11 @@ $profiles = $profiles ?? [];
 		$box.text(message || 'Something went wrong.').removeClass('hidden');
 	}
 
-	// The page is rendered inside the FreePBX page form. Both dialogs are moved
-	// out to the end of the document so nothing in them belongs to that form,
-	// and so the backdrop sits behind them.
+	// The page is rendered inside the FreePBX page form. The dialog is moved
+	// out to the end of the document so nothing in it belongs to that form,
+	// and so the backdrop sits behind it.
 	$(function () {
-		$('#device_modal, #profile_modal').appendTo('body');
+		$('#device_modal').appendTo('body');
 	});
 
 	// Devices
@@ -365,62 +343,9 @@ $profiles = $profiles ?? [];
 	});
 
 	// Profiles
-
-	$(document).on('click', '#profile_add', function () {
-		$('#profile_error').addClass('hidden').text('');
-		$('#profile_modal_title').text('Add Profile');
-		$('#profile_row_id').val('');
-		$('#profile_name').val('');
-		$('#profile_template').val('');
-		$('#profile_modal').modal('show');
-	});
-
-	$(document).on('click', '[name="profile_edit"]', function () {
-		orykPost('getProfile', { id: $(this).val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Profile not found.', 4);
-				return;
-			}
-
-			$('#profile_error').addClass('hidden').text('');
-			$('#profile_modal_title').text('Edit Profile');
-			$('#profile_row_id').val(response.profile.id);
-			$('#profile_name').val(response.profile.name);
-			$('#profile_template').val(response.profile.template || '');
-			$('#profile_modal').modal('show');
-		});
-	});
-
-	$(document).on('click', '#profile_save', function () {
-		orykPost('saveProfile', {
-			id: $('#profile_row_id').val(),
-			name: $('#profile_name').val(),
-			template: $('#profile_template').val()
-		}).done(function (response) {
-			if (!response || !response.status) {
-				orykShowError($('#profile_error'), response && response.message);
-				return;
-			}
-
-			// The device dialog's profile list is rendered with the page, so a
-			// profile saved here is put into it rather than making the page
-			// have to be reloaded before it can be picked.
-			const $options = $('#device_profile_id');
-			const $existing = $options.find(`option[value="${response.id}"]`);
-
-			if ($existing.length) {
-				$existing.text(response.name);
-			} else {
-				$options.append($('<option>').attr('value', response.id).text(response.name));
-			}
-
-			$('#profile_modal').modal('hide');
-			$('#profile_table').bootstrapTable('refresh');
-			notie.alert(1, 'Saved.', 2);
-		}).fail(function () {
-			orykShowError($('#profile_error'), 'The server could not be reached.');
-		});
-	});
+	//
+	// Adding and editing are views/profile.php; what is left here is the one
+	// action that needs no page of its own.
 
 	$(document).on('click', '[name="profile_delete"]', function () {
 		const id = $(this).val();

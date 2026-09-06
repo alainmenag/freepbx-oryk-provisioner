@@ -58,18 +58,116 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Render the requested module page.
 	 *
-	 * The whole module is one page with two tabs; the tables on it are filled
-	 * over AJAX, so the only thing handed to the view is what the two forms
-	 * need to offer as choices.
+	 * Two pages, told apart by ?profile=.
+	 *
+	 *   ?display=oryk_provisioner              the list: devices and profiles
+	 *   ?display=oryk_provisioner&profile=<id> the editor, bound to that profile
+	 *   ?display=oryk_provisioner&profile=     the editor, writing a new one
+	 *
+	 * `profile` present but empty is deliberate rather than a degenerate case:
+	 * it is the same page doing the same thing, minus a row to replace. A
+	 * device association is small enough to stay in a dialog on the list; a
+	 * profile carries a block of configuration text, which wants a page.
 	 *
 	 * @return string Rendered page output.
 	 */
 	public function showPage()
 	{
+		if (!isset($_REQUEST['profile'])) {
+			return $this->showList();
+		}
+
+		$wanted = trim((string) $_REQUEST['profile']);
+		$profile = ['id' => 0, 'name' => '', 'template' => ''];
+
+		if ($wanted !== '') {
+			$found = $this->profileRow($wanted);
+
+			// doConfigPageInit() has already sent an id that names nothing
+			// back to the list, so this is only reachable if the profile went
+			// between that check and here; the list is where it is not.
+			if (!$found) {
+				return $this->showList('profiles');
+			}
+
+			$profile = $found;
+		}
+
+		return load_view(__DIR__ . '/views/profile.php', [
+			'profile' => $profile,
+			'assigned' => $profile['id'] ? $this->profileDevices((int) $profile['id']) : [],
+		]);
+	}
+
+	/**
+	 * Render the list page.
+	 *
+	 * The tables on it are filled over AJAX, so the only thing handed to the
+	 * view is what the device dialog needs to offer as choices, plus which tab
+	 * to open on and which profile the editor has just written.
+	 *
+	 * @param string|null $tab Tab to open on, or null to take it from the request.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showList($tab = null)
+	{
+		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
+
 		return load_view(__DIR__ . '/views/admin.php', [
 			'freepbxDevices' => $this->freepbxDevices(),
 			'profiles' => $this->profileChoices(),
+			'tab' => $tab === 'profiles' ? 'profiles' : 'devices',
+			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
+	}
+
+	/**
+	 * Buttons FreePBX draws in the page header.
+	 *
+	 * Only the editor has any: the list's two tabs each carry their own Add,
+	 * and a single button in the header could not say which tab it meant.
+	 *
+	 * Deliberately not the usual submit/delete names -- those are wired by
+	 * core to a `form.fpbx-submit`, and this page has no form: a profile is
+	 * saved over AJAX, not posted. These are ours, and views/profile.php binds
+	 * them.
+	 *
+	 * @param string $request Current page request.
+	 *
+	 * @return array<string, array<string, string>> Action bar buttons.
+	 */
+	public function getActionBar($request)
+	{
+		if (!isset($_REQUEST['profile'])) {
+			return [];
+		}
+
+		$bar = [
+			'oryksave' => [
+				'name' => 'oryksave',
+				'id' => 'oryksave',
+				'value' => _('Save'),
+			],
+		];
+
+		// Nothing to delete until there is a row: on a new profile the button
+		// would refer to something that has never been written.
+		if (trim((string) $_REQUEST['profile']) !== '') {
+			$bar['orykdelete'] = [
+				'name' => 'orykdelete',
+				'id' => 'orykdelete',
+				'value' => _('Delete'),
+			];
+		}
+
+		$bar['orykclose'] = [
+			'name' => 'orykclose',
+			'id' => 'orykclose',
+			'value' => _('Close'),
+		];
+
+		return $bar;
 	}
 
 	/**
@@ -149,12 +247,32 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Initialise the module configuration page.
 	 *
+	 * An id that names no profile is a stale link or a hand-edited URL, not a
+	 * profile: opening the editor on it would bind the fields to something
+	 * that cannot be saved back. It is sent to the list instead, and it is
+	 * done here because this runs before any of the page has been written.
+	 *
 	 * @param string $page Current configuration page.
 	 *
 	 * @return void
 	 */
 	public function doConfigPageInit($page)
 	{
+		if (!isset($_REQUEST['profile'])) {
+			return;
+		}
+
+		$wanted = trim((string) $_REQUEST['profile']);
+
+		// Empty is the new-profile editor, not a lookup that failed.
+		if ($wanted === '') {
+			return;
+		}
+
+		if (!ctype_digit($wanted) || !$this->profileExists((int) $wanted)) {
+			header('Location: config.php?display=oryk_provisioner&tab=profiles');
+			exit;
+		}
 	}
 
 	/**
@@ -171,7 +289,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listDevices':
 			case 'listProfiles':
 			case 'getDevice':
-			case 'getProfile':
 			case 'saveDevice':
 			case 'saveProfile':
 			case 'deleteDevice':
@@ -200,9 +317,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'getDevice':
 				return $this->getDevice($_REQUEST['id'] ?? null);
-
-			case 'getProfile':
-				return $this->getProfile($_REQUEST['id'] ?? null);
 
 			case 'saveDevice':
 				return $this->saveDevice($_REQUEST);
@@ -380,13 +494,16 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * One profile, for the edit form.
+	 * One profile, for the editor.
+	 *
+	 * Read on the way into the page rather than fetched by it: the editor is a
+	 * page of its own now, so there is nothing to wait for over AJAX.
 	 *
 	 * @param mixed $id Profile id.
 	 *
-	 * @return array<string, mixed> Status and the profile.
+	 * @return array<string, mixed>|null The profile, or null when there is none.
 	 */
-	private function getProfile($id)
+	private function profileRow($id)
 	{
 		$stmt = $this->db->prepare(
 			"SELECT id, name, template
@@ -396,11 +513,31 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$stmt->execute([':id' => (int) $id]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-		if (!$row) {
-			return ['status' => false, 'message' => _('Profile not found.')];
-		}
+		return $row ?: null;
+	}
 
-		return ['status' => true, 'profile' => $row];
+	/**
+	 * The device associations a profile is assigned to.
+	 *
+	 * The editor says what a save here would change, and this is what it says
+	 * it about.
+	 *
+	 * @param int $profileId Profile id.
+	 *
+	 * @return array<int, array<string, mixed>> Associations, MAC order.
+	 */
+	private function profileDevices($profileId)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT pd.mac, pd.device_id, d.user AS extension, d.description
+			FROM `{$this->devicesTable}` pd
+			LEFT JOIN devices d ON d.id = pd.device_id
+			WHERE pd.profile_id = :id
+			ORDER BY pd.mac"
+		);
+		$stmt->execute([':id' => (int) $profileId]);
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
 	}
 
 	/**
