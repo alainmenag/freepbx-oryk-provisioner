@@ -1,0 +1,38 @@
+<!-- /var/www/html/admin/modules/oryk_provisioner/module.xml -->
+<module>
+	<rawname>oryk_provisioner</rawname>
+	<name>Provisioner</name>
+	<repo>commercial</repo>
+	<version>1.0.1</version>
+	<dbversion>1.0.1</dbversion>
+	<publisher>Oryk</publisher>
+	<type>setup</type>
+	<class>Oryk_provisioner</class>
+	<phpclass>Oryk_provisioner</phpclass>
+	<canuninstall>yes</canuninstall>
+	<candisable>yes</candisable>
+	<license>AGPLv3</license>
+	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
+	<changelog>
+		*1.0.1* New
+	</changelog>
+	<category>Oryk</category>
+	<description>Provision and manage VoIP endpoints with standardized device configurations for softphones, Yealink, Polycom, Grandstream, and other supported devices. Generate configuration data in JSON, XML, key-value, and device-specific formats.</description>
+	<more-info>https://oryk.com/voip/media</more-info>
+	<menuitems>
+		<oryk_provisioner category="Oryk" order="1" display="oryk_provisioner" access="all" requires_auth="true">
+			<![CDATA[
+				<i class="fa fa-cogs"></i>
+				<span>Provisioner</span>
+			]]>
+		</oryk_provisioner>
+	</menuitems>
+	<depends>
+		<module>core</module>
+		<module>userman</module>
+	</depends>
+	<supported>
+		<version>16.0</version>
+		<version>17.0</version>
+	</supported>
+</module>
