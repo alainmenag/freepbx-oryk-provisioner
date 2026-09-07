@@ -10,26 +10,29 @@
  * Profile is the main config -- the name and the one template every profile
  * has. Resources are the other files a phone asks that profile for, each its
  * own page at &resource=<id>, for the reason a profile is its own page: a
- * block of configuration text wants room and a monospace column.
+ * block of configuration text wants room and a monospace column. Devices is
+ * who this is all for: the associations assigned to the profile, the same
+ * table the module page draws, narrowed to this one.
  *
- * Two tabs rather than two pages because they are one thing being edited. The
- * Resources tab is inert until the profile has been saved -- a resource hangs
- * off a profile_id, and a profile that has never been written has none.
+ * Tabs rather than pages because they are one thing being edited. Resources
+ * and Devices are both inert until the profile has been saved -- a resource
+ * hangs off a profile_id, and nothing can have been assigned to a profile
+ * that has never been written.
  *
  * Save, Delete and Close are the action bar's, drawn by FreePBX from
  * getActionBar() and bound by views/partials/editor.php.
  *
  * @var array<string, mixed>                 $profile      id (0 when new), name, template
- * @var array<int, array<string, mixed>>     $assigned     Device associations using it
+ * @var int                                  $assigned     Devices using it, for the tab's count
  * @var array<string, array<string, string>> $placeholders What a template can refer to
- * @var string                               $tab          Tab to open on: profile|resources
+ * @var string                               $tab          Tab to open on: profile|resources|devices
  * @var int                                  $saved        Resource just written, highlighted here
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => '', 'template' => ''];
-$assigned = $assigned ?? [];
+$assigned = (int) ($assigned ?? 0);
 $placeholders = $placeholders ?? [];
-$tab = ($tab ?? '') === 'resources' ? 'resources' : 'profile';
+$tab = in_array($tab ?? '', ['resources', 'devices'], true) ? $tab : 'profile';
 $saved = (int) ($saved ?? 0);
 
 $h = function ($value) {
@@ -39,9 +42,10 @@ $h = function ($value) {
 $id = (int) $profile['id'];
 $isNew = $id === 0;
 
-// A new profile has nothing for a resource to belong to, so the tab is there
-// but does not open: hidden, it would look like a feature this profile does
-// not have rather than one it does not have yet.
+// A new profile has nothing for a resource to belong to and nothing assigned
+// to it, so those tabs are there but do not open: hidden, they would look
+// like features this profile does not have rather than ones it does not have
+// yet.
 $tab = $isNew ? 'profile' : $tab;
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
@@ -85,35 +89,24 @@ $tab = $isNew ? 'profile' : $tab;
 							</a>
 						<?php endif; ?>
 					</li>
+					<li role="presentation" class="<?php echo $tab === 'devices' ? 'active' : ($isNew ? 'disabled' : ''); ?>">
+						<?php if ($isNew): ?>
+							<a href="#" title="<?php echo _('Save the profile first -- nothing can be assigned to one that has not been written.'); ?>"
+								onclick="return false;">
+								<?php echo _('Devices'); ?>
+							</a>
+						<?php else: ?>
+							<a href="#oryk_devices" aria-controls="oryk_devices" role="tab" data-toggle="tab">
+								<?php echo _('Devices'); ?>
+								<span class="badge"><?php echo $assigned; ?></span>
+							</a>
+						<?php endif; ?>
+					</li>
 				</ul>
 
 				<div class="tab-content">
 
 					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'profile' ? 'active' : ''; ?>" id="oryk_profile">
-
-						<?php if (!empty($assigned)): ?>
-							<div class="alert alert-info oryk-assigned">
-								<strong>
-									<?php
-									echo sprintf(
-										_('Assigned to %s device(s).'),
-										count($assigned)
-									);
-									?>
-								</strong>
-								<?php echo _('Whatever is saved here is what they provision with.'); ?>
-								<div class="oryk-assigned-macs">
-									<?php foreach ($assigned as $device): ?>
-										<span class="oryk-assigned-device">
-											<code><?php echo $h($device['mac']); ?></code>
-											<?php if (($device['extension'] ?? '') !== ''): ?>
-												<a href="?display=extensions&amp;extdisplay=<?php echo rawurlencode((string) $device['extension']); ?>">(<?php echo $h($device['extension']); ?>)</a>
-											<?php endif; ?>
-										</span>
-									<?php endforeach; ?>
-								</div>
-							</div>
-						<?php endif; ?>
 
 						<!-- Not a form: see the note in partials/editor.php. -->
 						<input type="hidden" id="profile_row_id" value="<?php echo $id; ?>">
@@ -204,6 +197,35 @@ $tab = $isNew ? 'profile' : $tab;
 							</table>
 
 						</div>
+
+						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
+
+							<p class="help-block fpbx-help-block">
+								<?php echo _('Devices assigned to this profile. Whatever is saved on the Profile and Resources tabs is what they provision with.'); ?>
+							</p>
+
+							<table
+								id="device_table"
+								data-toggle="table"
+								data-url="ajax.php?module=oryk_provisioner&command=listDevices&profile_id=<?php echo $id; ?>"
+								class="table table-striped"
+								data-side-pagination="server"
+								data-pagination="true"
+								data-search="true"
+								data-unique-id="id"
+								data-sort-name="mac"
+								data-sort-order="asc">
+								<thead>
+									<tr>
+										<th data-field="mac" data-formatter="formatDeviceMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
+										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('FreePBX Device / Extension'); ?></th>
+										<th data-field="description" data-formatter="formatDeviceText" data-sortable="true"><?php echo _('Description'); ?></th>
+										<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
+									</tr>
+								</thead>
+							</table>
+
+						</div>
 					<?php endif; ?>
 
 				</div>
@@ -246,6 +268,44 @@ $tab = $isNew ? 'profile' : $tab;
 		return orykSavedResource && Number(row.id) === orykSavedResource ? { classes: 'success' } : {};
 	}
 
+	function formatDeviceText(value) {
+		return value ? orykEscape(value) : '-';
+	}
+
+	function formatDeviceMac(value) {
+		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	}
+
+	// The column the list draws, drawn the same way here: the FreePBX device,
+	// and the extension it is attached to alongside it when there is one.
+	function formatDevice(value, row) {
+		if (!value) {
+			return '-';
+		}
+
+		const device = orykEscape(value);
+
+		if (!row.extension) {
+			return device;
+		}
+
+		return `${device} <a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">(${orykEscape(row.extension)})</a>`;
+	}
+
+	// An association is edited in the dialog on the list, so Edit links back
+	// to it naming this row rather than there being a second dialog here --
+	// which is also where a device is moved to another profile, and so off
+	// this tab. Config is the URL a phone is given; every row here has a
+	// profile by definition, so every row has one.
+	function formatDeviceActions(value, row) {
+		return [
+			`<div class="flex gap-3">`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&tab=devices&device=${encodeURIComponent(row.id)}">Edit</a>`,
+			`<a class="btn btn-default btn-sm" href="/provisioner/${encodeURIComponent(row.mac)}.cfg" target="_blank" title="View the rendered configuration">Config</a>`,
+			`</div>`
+		].join('');
+	}
+
 	// A table drawn while its tab is hidden has no width to lay itself out
 	// against, so it is told to measure again once the tab is on screen. The
 	// URL is kept in step at the same time, so a reload -- and the Add
@@ -256,7 +316,8 @@ $tab = $isNew ? 'profile' : $tab;
 		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
 
 		if (window.history && window.history.replaceState) {
-			const tab = pane === '#oryk_resources' ? '&tab=resources' : '';
+			const tabs = { '#oryk_resources': '&tab=resources', '#oryk_devices': '&tab=devices' };
+			const tab = tabs[pane] || '';
 			window.history.replaceState(null, '', `?display=oryk_provisioner&profile=${orykProfileId}${tab}`);
 		}
 	});

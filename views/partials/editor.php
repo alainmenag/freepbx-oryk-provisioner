@@ -26,14 +26,6 @@
 	.oryk-name {
 		font-family: monospace;
 	}
-	.oryk-assigned-macs {
-		padding-top: 4px;
-	}
-	.oryk-assigned-device {
-		display: inline-block;
-		margin-right: 10px;
-		white-space: nowrap;
-	}
 	.oryk-placeholders {
 		padding-top: 6px;
 	}

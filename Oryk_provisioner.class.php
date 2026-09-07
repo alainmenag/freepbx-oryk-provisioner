@@ -130,11 +130,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$tab = 'resources';
 		}
 
+		// Resources and Devices both hang off a profile that has been
+		// written, so a new one opens on Profile whichever tab is asked for.
+		$tabs = ['resources', 'devices'];
+
 		return load_view(__DIR__ . '/views/profile.php', [
 			'profile' => $profile,
-			'assigned' => $profile['id'] ? $this->profileDevices((int) $profile['id']) : [],
+			'assigned' => $profile['id'] ? $this->profileDeviceCount((int) $profile['id']) : 0,
 			'placeholders' => $this->templatePlaceholders(),
-			'tab' => ($tab === 'resources' && $profile['id']) ? 'resources' : 'profile',
+			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
 	}
@@ -177,7 +181,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * The tables on it are filled over AJAX, so the only thing handed to the
 	 * view is what the device dialog needs to offer as choices, plus which tab
-	 * to open on and which profile the editor has just written.
+	 * to open on, which profile the editor has just written, and which device
+	 * a link has asked to have opened -- the dialog for an association lives
+	 * here, so a link from anywhere else comes back to this page naming a row.
 	 *
 	 * @param string|null $tab Tab to open on, or null to take it from the request.
 	 *
@@ -192,6 +198,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'profiles' => $this->profileChoices(),
 			'tab' => $tab === 'profiles' ? 'profiles' : 'devices',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
+			'openDevice' => (int) ($_REQUEST['device'] ?? 0),
 		]);
 	}
 
@@ -621,6 +628,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Rows for the Devices table.
 	 *
+	 * Narrowed to one profile when profile_id is passed, which is how the
+	 * profile editor's Devices tab is filled: the same rows read the same
+	 * way, rather than a second statement that would drift from this one.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
 	private function listDevices()
@@ -644,16 +655,31 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$search = (string) ($_REQUEST['search'] ?? '');
 
 		$params = [];
-		$where = '';
+		$clauses = [];
 
+		// The same rows twice: every association on the module page, and one
+		// profile's own on that profile's Devices tab, which asks with
+		// profile_id. An id is honoured as given rather than falling back to
+		// everything, so a profile nothing points at comes back empty instead
+		// of coming back as the whole list.
+		if (isset($_REQUEST['profile_id'])) {
+			$clauses[] = 'pd.profile_id = :profile_id';
+			$params[':profile_id'] = (int) $_REQUEST['profile_id'];
+		}
+
+		// Bracketed, now that it is no longer the only thing in there: an
+		// unbracketed OR chain ANDed with the profile would match every
+		// association whose profile name contains the search.
 		if ($search !== '') {
-			$where = "WHERE pd.mac LIKE :search
+			$clauses[] = "(pd.mac LIKE :search
 				OR pd.device_id LIKE :search
 				OR d.user LIKE :search
 				OR d.description LIKE :search
-				OR p.name LIKE :search";
+				OR p.name LIKE :search)";
 			$params[':search'] = '%' . $search . '%';
 		}
+
+		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
 
 		$from = "FROM `{$this->devicesTable}` pd
 			LEFT JOIN devices d ON d.id = pd.device_id
@@ -800,27 +826,25 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * The device associations a profile is assigned to.
+	 * How many device associations a profile is assigned to.
 	 *
-	 * The editor says what a save here would change, and this is what it says
-	 * it about.
+	 * Which devices they are is the editor's Devices tab, and that asks for
+	 * them itself over listDevices, a page at a time. This is the number
+	 * alone: what the tab is labelled with, and what a profile still in use
+	 * is refused deletion over.
 	 *
 	 * @param int $profileId Profile id.
 	 *
-	 * @return array<int, array<string, mixed>> Associations, MAC order.
+	 * @return int Associations pointing at the profile.
 	 */
-	private function profileDevices($profileId)
+	private function profileDeviceCount($profileId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pd.mac, pd.device_id, d.user AS extension, d.description
-			FROM `{$this->devicesTable}` pd
-			LEFT JOIN devices d ON d.id = pd.device_id
-			WHERE pd.profile_id = :id
-			ORDER BY pd.mac"
+			"SELECT COUNT(*) FROM `{$this->devicesTable}` WHERE profile_id = :id"
 		);
 		$stmt->execute([':id' => (int) $profileId]);
 
-		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+		return (int) $stmt->fetchColumn();
 	}
 
 	/**
@@ -975,11 +999,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$id = (int) $id;
 
-		$assigned = $this->db->prepare(
-			"SELECT COUNT(*) FROM `{$this->devicesTable}` WHERE profile_id = :id"
-		);
-		$assigned->execute([':id' => $id]);
-		$count = (int) $assigned->fetchColumn();
+		$count = $this->profileDeviceCount($id);
 
 		if ($count) {
 			return [

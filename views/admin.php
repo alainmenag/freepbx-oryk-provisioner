@@ -13,12 +13,16 @@
  * @var array<int, array<string, mixed>> $profiles
  * @var string                           $tab    Tab to open on: devices|profiles
  * @var int                              $saved  Profile just written, highlighted here
+ * @var int                              $openDevice Association to open the dialog on
  */
 
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
 $tab = ($tab ?? '') === 'profiles' ? 'profiles' : 'devices';
 $saved = (int) ($saved ?? 0);
+// Not $device: the FreePBX device dropdown below loops over $freepbxDevices
+// as $device, and this is read after that loop has run.
+$openDevice = (int) ($openDevice ?? 0);
 ?>
 <style>
 	.flex {
@@ -192,6 +196,11 @@ $saved = (int) ($saved ?? 0);
 	// so rather than the page looking unchanged after coming back.
 	const orykSavedProfile = <?php echo $saved; ?>;
 
+	// An association linked to from a profile's Devices tab. Its dialog is
+	// here on the list rather than on that tab, so the link comes back here
+	// and says which row it meant.
+	const orykOpenDevice = <?php echo $openDevice; ?>;
+
 	// Every call to the module is a POST to ajax.php with the command in the
 	// query string, which is what FreePBX dispatches on.
 	function orykPost(command, data) {
@@ -297,8 +306,11 @@ $saved = (int) ($saved ?? 0);
 		$('#device_modal').modal('show');
 	});
 
-	$(document).on('click', '[name="device_edit"]', function () {
-		orykPost('getDevice', { id: $(this).val() }).done(function (response) {
+	// The row is read back rather than taken off the table, which is what
+	// lets a link open it: arriving from a profile's Devices tab, the table
+	// this row belongs to has not necessarily drawn the row yet.
+	function orykEditDevice(id) {
+		orykPost('getDevice', { id: id }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Device not found.', 4);
 				return;
@@ -312,6 +324,25 @@ $saved = (int) ($saved ?? 0);
 			$('#device_profile_id').val(response.device.profile_id || '');
 			$('#device_modal').modal('show');
 		});
+	}
+
+	$(document).on('click', '[name="device_edit"]', function () {
+		orykEditDevice($(this).val());
+	});
+
+	// Arriving with an association named in the URL opens its dialog. The id
+	// is taken back out of the address afterwards, so a reload is the list
+	// rather than the dialog a second time.
+	$(function () {
+		if (!orykOpenDevice) {
+			return;
+		}
+
+		orykEditDevice(orykOpenDevice);
+
+		if (window.history && window.history.replaceState) {
+			window.history.replaceState(null, '', '?display=oryk_provisioner&tab=devices');
+		}
 	});
 
 	$(document).on('click', '#device_save', function () {
