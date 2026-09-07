@@ -334,10 +334,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * Install the module.
 	 *
 	 * Every table is created if it is not already there, so installing over an
-	 * existing install leaves the data where it is; the one thing that is not
-	 * additive is dropProfileTemplate(), which takes a column away that no
-	 * longer has anything to hold. The web-root symlink that gives the device
-	 * endpoint a short URL is put in place last.
+	 * existing install leaves the data where it is;
 	 *
 	 * @return bool True when installation completes.
 	 */
@@ -354,11 +351,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
-		$this->dropProfileTemplate();
-
 		// A resource is a filename and a block of text hanging off the profile
-		// that serves it. Every file a profile serves is one of these, the
-		// main config included -- see dropProfileTemplate() above. The name is
+		// that serves it. Every file a profile serves is one of these. The name is
 		// unique per profile rather than globally: two profiles both serving a
 		// `{{device.mac}}-phone.cfg` is the normal case, not a collision.
 		//
@@ -401,51 +395,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->linkEngine();
 
 		return true;
-	}
-
-	/**
-	 * Take the `template` column off the profiles table.
-	 *
-	 * A profile is a name, a set of resources and the devices assigned to it.
-	 * It no longer carries configuration text of its own: the main config is a
-	 * resource named `.cfg` (or `{{device.mac}}.cfg`) like every other file the
-	 * profile serves, so there is one kind of thing being edited and one path
-	 * through the renderer rather than a special case beside it.
-	 *
-	 * The column is dropped rather than migrated into a resource. What it held
-	 * was configuration text an operator wrote, and it is going: anyone
-	 * upgrading a site with profiles in use wants that text copied into a
-	 * resource *before* this runs, because afterwards it is not there to copy.
-	 *
-	 * Read from information_schema rather than attempted and caught, because a
-	 * failed DDL statement on some MySQL builds is not something a PDO
-	 * exception cleanly distinguishes from a connection that has gone. Not
-	 * guarded on dbversion either -- the question this asks is the one that
-	 * matters ("is the column there?"), and it answers it the same way whether
-	 * the module arrived at 1.0.4 by upgrade, by reinstall, or by a restore of
-	 * a backup taken before it.
-	 *
-	 * @return void
-	 */
-	private function dropProfileTemplate()
-	{
-		$stmt = $this->db->prepare(
-			"SELECT COUNT(*)
-			FROM information_schema.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-				AND TABLE_NAME = :table
-				AND COLUMN_NAME = 'template'"
-		);
-		$stmt->execute([':table' => $this->profilesTable]);
-
-		if (!$stmt->fetchColumn()) {
-			return;
-		}
-
-		// Not a prepared statement: an identifier cannot be bound, and this
-		// one is a private property holding a literal, not anything a request
-		// supplied.
-		$this->db->exec("ALTER TABLE `{$this->profilesTable}` DROP COLUMN `template`");
 	}
 
 	/**
