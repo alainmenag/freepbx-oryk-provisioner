@@ -243,7 +243,7 @@ $saved = (int) ($saved ?? 0);
 		];
 
 		if (row.profile_id) {
-			const url = `?display=oryk_provisioner&mac=${encodeURIComponent(row.mac)}&config=`;
+			const url = `/provisioner/${encodeURIComponent(row.mac)}.cfg`;
 			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Config</a>`);
 		}
 

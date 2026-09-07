@@ -414,10 +414,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function doConfigPageInit($page)
 	{
-		if (isset($_REQUEST['config'])) {
-			$this->serveConfig($_REQUEST['mac'] ?? '');
-		}
-
 		if (!isset($_REQUEST['profile'])) {
 			return;
 		}
@@ -987,12 +983,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			];
 		}
 
-		return [
+		$out = [
 			'status' => true,
 			'mac' => $mac,
 			'profile' => (string) $row['profile_name'],
 			'config' => $this->renderTemplate((string) $row['template'], $this->provisioningValues($row)),
 		];
+
+		$this->FreePBX->Logger->log(
+				FPBX_LOG_INFO,
+				'Rendering: ' . $out['config']
+		);
+
+		return $out;
 	}
 
 	/**
