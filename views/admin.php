@@ -140,8 +140,8 @@ $saved = (int) ($saved ?? 0);
 							<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
 						</label>
 						<input type="text" class="form-control" id="device_mac"
-							placeholder="001565AABBCC" autocomplete="off">
-						<span class="help-block"><?php echo _('Stored as 12 uppercase hexadecimal characters; separators are removed.'); ?></span>
+							placeholder="001565aabbcc" autocomplete="off">
+						<span class="help-block"><?php echo _('Stored as 12 lowercase hexadecimal characters; separators are removed.'); ?></span>
 					</div>
 
 					<div class="form-group">

@@ -90,7 +90,7 @@ config.json
 A physical phone may require:
 
 ```text
-001565AABBCC.cfg
+001565aabbcc.cfg
 directory.xml
 favorites.xml
 ```
@@ -311,7 +311,7 @@ A physical device may additionally contain:
 
 ```json
 {
-    "mac": "001565AABBCC",
+    "mac": "001565aabbcc",
     "vendor": "yealink",
     "model": "T54W"
 }
@@ -449,7 +449,7 @@ Example:
 For a physical phone:
 
 ```text
-/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=001565AABBCC.cfg
+/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=001565aabbcc.cfg
 ```
 
 When a valid provisioning token and filename are supplied, the module:
@@ -511,7 +511,7 @@ Where URL rewriting is available, the same configuration may optionally be expos
 Example:
 
 ```text
-/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565AABBCC.cfg
+/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565aabbcc.cfg
 ```
 
 The friendly URL resolves to the same provisioning engine as the FreePBX URL.
@@ -602,20 +602,20 @@ Example:
 
 ```text
 Device ID:       42
-MAC:             001565AABBCC
+MAC:             001565aabbcc
 Provision Token: 9f31d772d2d742c792b5c93fb1c52a51
 ```
 
 A provisioning URL may therefore look like:
 
 ```text
-https://pbx.example.com/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=001565AABBCC.cfg
+https://pbx.example.com/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=001565aabbcc.cfg
 ```
 
 or:
 
 ```text
-https://pbx.example.com/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565AABBCC.cfg
+https://pbx.example.com/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565aabbcc.cfg
 ```
 
 MAC addresses identify devices but should not be treated as authentication credentials.
@@ -763,7 +763,7 @@ A Yealink device could use:
 {
     "name": "Office T54W",
     "template": "yealink-t54w",
-    "mac": "001565AABBCC",
+    "mac": "001565aabbcc",
     "extension": "1001"
 }
 ```
@@ -790,13 +790,13 @@ The template may define:
 The same device can then request:
 
 ```text
-/provisioner/{token}/001565AABBCC.cfg
+/provisioner/{token}/001565aabbcc.cfg
 ```
 
 and:
 
 ```text
-/provisioner/{token}/001565AABBCC-directory.xml
+/provisioner/{token}/001565aabbcc-directory.xml
 ```
 
 Both files are generated from the same device and parameter context.
@@ -920,7 +920,7 @@ At a high level:
                                │
                      ┌─────────┴─────────┐
                      ▼                   ▼
-              config.json        001565AABBCC.cfg
+              config.json        001565aabbcc.cfg
 ```
 
 The same renderer should be used by:

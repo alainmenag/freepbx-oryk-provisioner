@@ -1213,7 +1213,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * A MAC address as it is stored: uppercase hexadecimal, no separators.
+	 * A MAC address as it is stored: lowercase hexadecimal, no separators.
 	 *
 	 * @param mixed $mac MAC address as it was typed.
 	 *
@@ -1221,9 +1221,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	private function normalizeMac($mac)
 	{
-		$mac = strtoupper(preg_replace('/[^0-9A-Fa-f]/', '', (string) $mac));
+		$mac = strtolower(preg_replace('/[^0-9A-Fa-f]/', '', (string) $mac));
 
-		return preg_match('/^[0-9A-F]{12}$/', $mac) ? $mac : '';
+		return preg_match('/^[0-9a-f]{12}$/', $mac) ? $mac : '';
 	}
 
 	/**
