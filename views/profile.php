@@ -7,12 +7,22 @@
  * new one. `profile` present but empty is deliberate rather than a degenerate
  * case: it is the same page doing the same thing, minus a row to replace.
  *
- * Profile is the main config -- the name and the one template every profile
- * has. Resources are the other files a phone asks that profile for, each its
- * own page at &resource=<id>, for the reason a profile is its own page: a
+ * Profile is the name, and since 1.0.7 that is all it is. The profile used to
+ * carry a template of its own -- the main config, served for [mac].cfg -- with
+ * resources as the other files alongside it. There is no "alongside" any more:
+ * every file a profile serves is a resource, the main config included, named
+ * `.cfg` or `{{device.mac}}.cfg` like any other. One kind of thing to edit,
+ * one path through the renderer, and no field on this tab that is really a
+ * file in disguise.
+ *
+ * Resources are those files, each its own page at &resource=<id>, because a
  * block of configuration text wants room and a monospace column. Devices is
  * who this is all for: the associations assigned to the profile, the same
  * table the module page draws, narrowed to this one.
+ *
+ * Profile stays the first tab even at one field. It is the bare ?profile=<id>
+ * URL the way every other editor's first tab is, it is where a profile is
+ * named and renamed, and it is the only tab a new profile can open on.
  *
  * Tabs rather than pages because they are one thing being edited. Resources
  * and Devices are both inert until the profile has been saved -- a resource
@@ -22,16 +32,14 @@
  * Save, Delete and Close are the action bar's, drawn by FreePBX from
  * getActionBar() and bound by views/partials/editor.php.
  *
- * @var array<string, mixed>                 $profile      id (0 when new), name, template
- * @var int                                  $assigned     Devices using it, for the tab's count
- * @var array<string, array<string, string>> $placeholders What a template can refer to
- * @var string                               $tab          Tab to open on: profile|resources|devices
- * @var int                                  $saved        Resource just written, highlighted here
+ * @var array<string, mixed> $profile  id (0 when new), name
+ * @var int                  $assigned Devices using it, for the tab's count
+ * @var string               $tab      Tab to open on: profile|resources|devices
+ * @var int                  $saved    Resource just written, highlighted here
  */
 
-$profile = $profile ?? ['id' => 0, 'name' => '', 'template' => ''];
+$profile = $profile ?? ['id' => 0, 'name' => ''];
 $assigned = (int) ($assigned ?? 0);
-$placeholders = $placeholders ?? [];
 $tab = in_array($tab ?? '', ['resources', 'devices'], true) ? $tab : 'profile';
 $saved = (int) ($saved ?? 0);
 
@@ -131,29 +139,6 @@ $tab = $isNew ? 'profile' : $tab;
 									<span class="help-block fpbx-help-block">
 										<?php echo _('How the profile is named in the device list. Must be unique.'); ?>
 									</span>
-								</div>
-							</div>
-						</div>
-
-						<div class="element-container">
-							<div class="row">
-								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label" for="profile_template"><?php echo _('Template'); ?></label>
-									</div>
-									<div class="col-md-8">
-										<textarea class="form-control oryk-template" id="profile_template"
-											rows="6" spellcheck="false" wrap="off">
-<?php echo $h($profile['template']); ?></textarea>
-									</div>
-								</div>
-							</div>
-							<div class="row">
-								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
-										<?php echo _('The main configuration file, served for [mac].cfg. Stored as typed. Names in double braces are replaced when a device asks for its configuration; a name nothing answers to is replaced with nothing.'); ?>
-									</span>
-									<?php include __DIR__ . '/partials/placeholders.php'; ?>
 								</div>
 							</div>
 						</div>
@@ -352,8 +337,7 @@ $tab = $isNew ? 'profile' : $tab;
 		values: function () {
 			return {
 				id: $('#profile_row_id').val(),
-				name: $('#profile_name').val(),
-				template: $('#profile_template').val()
+				name: $('#profile_name').val()
 			};
 		},
 		// The list is re-rendered on arrival, so the saved profile is in

@@ -25,7 +25,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private $profilesTable = 'oryk_provisioner_profiles';
 
 	/**
-	 * Table holding the extra files a profile serves besides its main config.
+	 * Table holding the files a profile serves, the main config included.
 	 *
 	 * @var string
 	 */
@@ -107,7 +107,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		$wanted = trim((string) $_REQUEST['profile']);
-		$profile = ['id' => 0, 'name' => '', 'template' => ''];
+		$profile = ['id' => 0, 'name' => ''];
 
 		if ($wanted !== '') {
 			$found = $this->profileRow($wanted);
@@ -127,8 +127,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// ?profile=<id>&resource=<id> is one of that profile's resources, and
 		// ?profile=<id>&resource= is a new one -- the same shape ?profile= has
 		// itself, one level down. A resource carries a block of configuration
-		// text for the same reason a profile does, so it gets a page too
-		// rather than a dialog on the profile's Resources tab.
+		// text that wants room and a monospace column, so it gets a page
+		// rather than a dialog on the profile's Resources tab. Since the
+		// profile stopped carrying text of its own, this is the only page in
+		// the module with a template box on it.
 		if ($profile['id'] && isset($_REQUEST['resource'])) {
 			$page = $this->showResource($profile, trim((string) $_REQUEST['resource']), $tab);
 
@@ -148,7 +150,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		return load_view(__DIR__ . '/views/profile.php', [
 			'profile' => $profile,
 			'assigned' => $profile['id'] ? $this->profileDeviceCount((int) $profile['id']) : 0,
-			'placeholders' => $this->templatePlaceholders(),
 			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
@@ -332,9 +333,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Install the module.
 	 *
-	 * Both tables are created if they are not already there, so installing
-	 * over an existing install leaves the data where it is, and the web-root
-	 * symlink that gives the device endpoint a short URL is put in place.
+	 * Every table is created if it is not already there, so installing over an
+	 * existing install leaves the data where it is; the one thing that is not
+	 * additive is dropProfileTemplate(), which takes a column away that no
+	 * longer has anything to hold. The web-root symlink that gives the device
+	 * endpoint a short URL is put in place last.
 	 *
 	 * @return bool True when installation completes.
 	 */
@@ -344,7 +347,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			"CREATE TABLE IF NOT EXISTS `{$this->profilesTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`name` VARCHAR(191) NOT NULL,
-				`template` LONGTEXT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -352,8 +354,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
-		// A resource is the same two columns a profile has -- a name and a
-		// block of text -- hanging off the profile that serves it. The name is
+		$this->dropProfileTemplate();
+
+		// A resource is a filename and a block of text hanging off the profile
+		// that serves it. Every file a profile serves is one of these, the
+		// main config included -- see dropProfileTemplate() above. The name is
 		// unique per profile rather than globally: two profiles both serving a
 		// `{{device.mac}}-phone.cfg` is the normal case, not a collision.
 		//
@@ -396,6 +401,51 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->linkEngine();
 
 		return true;
+	}
+
+	/**
+	 * Take the `template` column off the profiles table.
+	 *
+	 * A profile is a name, a set of resources and the devices assigned to it.
+	 * It no longer carries configuration text of its own: the main config is a
+	 * resource named `.cfg` (or `{{device.mac}}.cfg`) like every other file the
+	 * profile serves, so there is one kind of thing being edited and one path
+	 * through the renderer rather than a special case beside it.
+	 *
+	 * The column is dropped rather than migrated into a resource. What it held
+	 * was configuration text an operator wrote, and it is going: anyone
+	 * upgrading a site with profiles in use wants that text copied into a
+	 * resource *before* this runs, because afterwards it is not there to copy.
+	 *
+	 * Read from information_schema rather than attempted and caught, because a
+	 * failed DDL statement on some MySQL builds is not something a PDO
+	 * exception cleanly distinguishes from a connection that has gone. Not
+	 * guarded on dbversion either -- the question this asks is the one that
+	 * matters ("is the column there?"), and it answers it the same way whether
+	 * the module arrived at 1.0.4 by upgrade, by reinstall, or by a restore of
+	 * a backup taken before it.
+	 *
+	 * @return void
+	 */
+	private function dropProfileTemplate()
+	{
+		$stmt = $this->db->prepare(
+			"SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+				AND TABLE_NAME = :table
+				AND COLUMN_NAME = 'template'"
+		);
+		$stmt->execute([':table' => $this->profilesTable]);
+
+		if (!$stmt->fetchColumn()) {
+			return;
+		}
+
+		// Not a prepared statement: an identifier cannot be bound, and this
+		// one is a private property holding a literal, not anything a request
+		// supplied.
+		$this->db->exec("ALTER TABLE `{$this->profilesTable}` DROP COLUMN `template`");
 	}
 
 	/**
@@ -1067,7 +1117,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private function profileRow($id)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name, template
+			"SELECT id, name
 			FROM `{$this->profilesTable}`
 			WHERE id = :id"
 		);
@@ -1193,6 +1243,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Create or update a profile.
 	 *
+	 * A name and nothing else. What the profile serves is its resources, each
+	 * written on its own page, and who it serves is the associations assigned
+	 * to it -- neither is edited here.
+	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
@@ -1201,7 +1255,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$id = (int) ($request['id'] ?? 0);
 		$name = trim((string) ($request['name'] ?? ''));
-		$template = (string) ($request['template'] ?? '');
 
 		if ($name === '') {
 			return ['status' => false, 'message' => _('A profile needs a name.')];
@@ -1219,12 +1272,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		if ($id) {
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->profilesTable}`
-				SET name = :name, template = :template
+				SET name = :name
 				WHERE id = :id"
 			);
 			$stmt->execute([
 				':name' => $name,
-				':template' => $template,
 				':id' => $id,
 			]);
 
@@ -1232,12 +1284,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->profilesTable}` (name, template) VALUES (:name, :template)"
+			"INSERT INTO `{$this->profilesTable}` (name) VALUES (:name)"
 		);
-		$stmt->execute([
-			':name' => $name,
-			':template' => $template,
-		]);
+		$stmt->execute([':name' => $name]);
 
 		return ['status' => true, 'id' => (int) $this->db->lastInsertId(), 'name' => $name];
 	}
@@ -1547,10 +1596,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * What a template can refer to, as the editor lists it.
 	 *
 	 * Written out here rather than derived from a rendering, because the
-	 * editor has to be able to say what the names are with no device in hand
-	 * -- a new profile is not assigned to anything yet. The `sip.` names are
-	 * whatever the device carries in FreePBX, so the view names a few by way
-	 * of example instead of listing them.
+	 * resource editor has to be able to say what the names are with no device
+	 * in hand -- a new resource's profile may not be assigned to anything yet.
+	 * The `sip.` names are whatever the device carries in FreePBX, so the view
+	 * names a few by way of example instead of listing them.
 	 *
 	 * @return array<string, array<string, string>> Group heading to name and note.
 	 */
@@ -1588,8 +1637,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * reach: FreePBX's config.php sends every session-less request to the
 	 * login page long before a module's doConfigPageInit() runs.
 	 *
-	 *   serveConfig($mac)                          the profile's own template
-	 *   serveConfig($mac, '0004f282e824-web.cfg')  a resource of that profile
+	 *   serveConfig($mac)                          the main config, [mac].cfg
+	 *   serveConfig($mac, '0004f282e824-web.cfg')  any other file it serves
 	 *
 	 * The second argument is the filename as it was asked for, not a resource
 	 * id: which resource that names is the profile's business, and working it
@@ -1627,12 +1676,17 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * again: a preview, a console command, a test. Only the caller there ends
 	 * the request.
 	 *
-	 * With no filename this is the profile's own template -- the main config,
-	 * the one file every profile has. With one, it is whichever of the
-	 * profile's resources answers to that name; and the profile's template is
-	 * still the answer for [mac].cfg when no resource claims it, so a profile
-	 * that has never had a resource added renders exactly as it did before
-	 * there were any.
+	 * Every file is a resource, the main config included: a profile is a name,
+	 * a set of resources and the devices assigned to it, and carries no
+	 * configuration text of its own. So this is whichever of the profile's
+	 * resources answers to the name that was asked for, and there is no second
+	 * kind of thing to fall back to when none does.
+	 *
+	 * A request that names no file -- /provisioner/[mac], or an internal caller
+	 * with nothing to pass -- is a request for the main config, which is to
+	 * say [mac].cfg. It is filled in here rather than left empty and special-
+	 * cased further down, so exactly one string is matched against and the
+	 * message on a miss names the file the caller will recognise.
 	 *
 	 * @param mixed       $mac       MAC address, written however it was written.
 	 * @param string|null $requested Filename asked for, or null for the main config.
@@ -1676,25 +1730,31 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// endpoint, so the endpoint only has to report what was asked for.
 		$suffix = $requested === '' ? '' : $this->resourceSuffix($requested, $mac);
 
-		$match = $requested === ''
-			? null
-			: $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
+		// Two ways of asking for nothing in particular, and both are asking
+		// for the main config: no filename at all, and the device's own MAC
+		// with no filename after it (/provisioner/0004f282e824, which is what
+		// leaves nothing behind once the MAC is taken off the front). Both
+		// become [mac].cfg here rather than being carried down as an empty
+		// string and special-cased at the bottom, so there is exactly one
+		// name to match against and a miss names a file the caller will
+		// recognise.
+		if ($suffix === '') {
+			$requested = $mac . '.cfg';
+			$suffix = '.cfg';
+		}
+
+		$match = $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
 
 		if ($match === null) {
-			// Nothing the profile serves claims the name, so the profile's
-			// own template answers -- but only for the main config, which is
-			// [mac].cfg, a bare [mac], or no filename at all. Anything else
-			// is a file this profile does not have, and saying so beats
-			// handing a phone the main config under a name it never asked
-			// for and will not parse.
-			if ($requested !== '' && $suffix !== '' && strcasecmp($suffix, '.cfg') !== 0) {
-				return [
-					'status' => false,
-					'message' => sprintf(_('%s is not something this profile serves.'), $requested),
-				];
-			}
-
-			$match = ['name' => '', 'template' => (string) $row['template']];
+			// Nothing this profile serves answers to the name. That now
+			// includes [mac].cfg on a profile with no `.cfg` resource on it:
+			// there is no template behind the profile to fall back to, and a
+			// profile that serves nothing is a profile somebody has not
+			// finished writing rather than one with an implicit main config.
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is not something this profile serves.'), $requested),
+			];
 		}
 
 		$out = [
@@ -1706,11 +1766,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		];
 
 		// Metadata only. A rendered config carries device.secret whenever a
-		// template asks for it, and the log is not where that belongs.
+		// template asks for it, and the log is not where that belongs. The
+		// resource is always named now -- there is no unnamed main config for
+		// the line to have to describe.
 		$this->FreePBX->Logger->log(FPBX_LOG_INFO, sprintf(
 			'oryk_provisioner: %s served %s from profile %s',
 			$mac,
-			$out['resource'] !== '' ? $out['resource'] : 'the main config',
+			$out['resource'],
 			$out['profile']
 		));
 
@@ -1783,7 +1845,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * 0004f282e824-phone.cfg, 00:04:f2:82:e8:24-phone.cfg and
 	 * 0004f282e824.cfg are all one device asking. What is left is the part a
 	 * resource can be named after -- phone.cfg, and .cfg for the main config,
-	 * which is the one name the profile itself answers to.
+	 * which is a resource of the profile like any other file it serves.
 	 *
 	 * A filename that does not begin with this device's MAC comes back
 	 * unchanged: it is either meant literally or meant for somebody else, and
@@ -1849,7 +1911,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * unrecognised is plain text, which is what a configuration file is and
 	 * what every phone here expects.
 	 *
-	 * @param string $name Resource name, or '' for the main config.
+	 * @param string $name Resource name, which is the filename it is served as.
 	 *
 	 * @return string Content type, without the charset.
 	 */
@@ -1908,8 +1970,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				d.user AS extension,
 				d.description,
 				d.tech,
-				p.name AS profile_name,
-				p.template
+				p.name AS profile_name
 			FROM `{$this->devicesTable}` pd
 			LEFT JOIN devices d ON d.id = pd.device_id
 			LEFT JOIN `{$this->profilesTable}` p ON p.id = pd.profile_id

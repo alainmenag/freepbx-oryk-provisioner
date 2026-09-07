@@ -6,11 +6,12 @@
  * `resource` present and empty to write a new one -- the same shape the
  * profile editor has, one level down.
  *
- * A resource is a profile's other files: the phone asks for [mac]-phone.cfg
- * or [mac]-directory.xml alongside its main config, and this is what it gets.
- * Which makes it a profile minus the parts a profile has because devices are
- * assigned to it, which is why the two views share partials/editor.php and
- * differ in little more than their two fields.
+ * A resource is a file the profile serves: [mac].cfg, [mac]-phone.cfg,
+ * [mac]-directory.xml. Since 1.0.7 that is all of them -- the profile used to
+ * carry the main config as a template of its own and resources were the files
+ * beside it, and now the main config is a resource named `.cfg` or
+ * `{{device.mac}}.cfg` like the rest. So this page is where every byte a phone
+ * receives is written, and the profile editor has no template box left.
  *
  * Devices is who this file is served to: the profile's own device table,
  * asked for again with this resource's id, so each row can say which filename
@@ -127,7 +128,7 @@ $tab = $isNew ? 'resource' : $tab;
 										<?php echo _('The filename a phone asks for. It is a template like the body below, so <code>{{device.mac}}-phone.cfg</code> covers every device on this profile, and a vendor that names its files some other way can be matched exactly. A name with no placeholders in it -- <code>phone.cfg</code> -- is matched against the request with the device\'s MAC taken off the front, so either way of writing it works. Unique within this profile.'); ?>
 									</span>
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The main configuration file, <code>{{device.mac}}.cfg</code>, is the profile\'s own template -- unless a resource here claims that name, which then wins.'); ?>
+										<?php echo _('The main configuration file is a resource like any other. Name it <code>.cfg</code>: written that way it is matched against the request with the MAC taken off the front, so it answers whichever separator style the phone asks in. <code>{{device.mac}}.cfg</code> works too, but it renders without separators and so only answers a phone that asks that way. A profile with neither serves nothing for <code>[mac].cfg</code>.'); ?>
 									</span>
 									<?php if (!$isNew): ?>
 										<span class="help-block fpbx-help-block">
@@ -154,7 +155,7 @@ $tab = $isNew ? 'resource' : $tab;
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('What is served under that filename, stored as typed and rendered the same way the profile\'s template is. The content type is taken from the extension: .xml is served as XML, .json as JSON, anything else as plain text.'); ?>
+										<?php echo _('What is served under that filename, stored as typed. Names in double braces are replaced when a device asks for the file; a name nothing answers to is replaced with nothing. The content type is taken from the extension: .xml is served as XML, .json as JSON, anything else as plain text.'); ?>
 									</span>
 									<?php include __DIR__ . '/partials/placeholders.php'; ?>
 								</div>
