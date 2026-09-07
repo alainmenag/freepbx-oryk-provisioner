@@ -1,6 +1,6 @@
 <?php
 /**
- * views/device.php -- one device association, over one tab.
+ * views/device.php -- one device association, over two tabs.
  *
  * Reached at ?display=oryk_provisioner&device=<id> to edit an existing
  * association, or ?display=oryk_provisioner&device= (present, empty) to write
@@ -13,26 +13,28 @@
  * fields were two things to keep in step. A page is one way in, and every
  * other editor in the module is already one.
  *
- * One tab, and the fields are in it rather than loose under the section title,
- * because every page in the module is laid out the same way -- the list has
- * two tabs, the profile editor three -- and a page that is the exception has
- * to be read as one. Whatever an association grows next (a provisioning log,
- * per-device parameters) is then another <li> rather than a re-layout. The
- * bare ?device=<id> *is* this tab, so there is no &tab= to carry: a single tab
- * has nothing to keep in the URL, which is why there is no shown.bs.tab
- * handler here the way there is on the pages that have more than one.
+ * Device is the association itself. Resources is what it is served: the files
+ * its profile serves, each with the filename this client asks for and a link
+ * that fetches it as this client would -- the resource editor's Devices tab
+ * read from the other end, and the tab to open when a particular client is not
+ * getting what it should.
  *
- * Save, Delete and Close are the action bar's, drawn by FreePBX from
- * getActionBar() and bound by views/partials/editor.php.
+ * The bare ?device=<id> *is* the Device tab, the way ?profile=<id> is the
+ * profile editor's first tab; Resources names itself with &tab=resources, and
+ * the shown.bs.tab handler keeps the address in step.
  *
  * @var array<string, mixed>              $device         id (0 when new), mac, device_id, profile_id
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
+ * @var int                               $resources      Resources on its profile, for the tab's count
+ * @var string                            $tab            Tab to open on: device|resources
  */
 
 $device = $device ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
+$resources = (int) ($resources ?? 0);
+$tab = ($tab ?? '') === 'resources' ? 'resources' : 'device';
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -43,6 +45,11 @@ $isNew = $id === 0;
 $mac = (string) $device['mac'];
 $deviceId = (string) ($device['device_id'] ?? '');
 $profileId = (int) ($device['profile_id'] ?? 0);
+
+// Nothing is served to an association that has never been written, or to one
+// with no profile assigned, so its Resources tab is there but does not open.
+$served = !$isNew && $profileId;
+$tab = $served ? $tab : 'device';
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 
@@ -67,31 +74,31 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
 				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="active">
+					<li role="presentation" class="<?php echo $tab === 'device' ? 'active' : ''; ?>">
 						<a href="#oryk_device" aria-controls="oryk_device" role="tab" data-toggle="tab">
 							<?php echo _('Device'); ?>
 						</a>
+					</li>
+					<li role="presentation" class="<?php echo $tab === 'resources' ? 'active' : ($served ? '' : 'disabled'); ?>">
+						<?php if (!$served): ?>
+							<a href="#" onclick="return false;"
+								title="<?php echo $isNew
+									? _('Save the device first -- what it is served follows from the profile it is assigned to.')
+									: _('Assign a profile first -- nothing is served to a device without one.'); ?>">
+								<?php echo _('Resources'); ?>
+							</a>
+						<?php else: ?>
+							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
+								<?php echo _('Resources'); ?>
+								<span class="badge"><?php echo $resources; ?></span>
+							</a>
+						<?php endif; ?>
 					</li>
 				</ul>
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane oryk-tab-section active" id="oryk_device">
-
-						<?php if (!$isNew && $profileId): ?>
-							<div class="oryk-crumb">
-								<?php
-								// The URL a phone is given, opened in a tab rather than
-								// fetched back into this one: it is a page of plain
-								// text, not something this page has anywhere to put.
-								echo sprintf(
-									_('Provisioned at %s.'),
-									'<a href="/provisioner/' . $h(rawurlencode($mac)) . '.cfg" target="_blank"><code>/provisioner/'
-										. $h($mac) . '.cfg</code></a>'
-								);
-								?>
-							</div>
-						<?php endif; ?>
+					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'device' ? 'active' : ''; ?>" id="oryk_device">
 
 						<!-- Not a form: see the note in partials/editor.php. -->
 						<input type="hidden" id="device_row_id" value="<?php echo $id; ?>">
@@ -115,7 +122,7 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The address the phone provisions with. Stored as 12 lowercase hexadecimal characters; separators are removed. Unique -- a MAC is associated once.'); ?>
+										<?php echo _('The address the client provisions with. Stored as 12 lowercase hexadecimal characters; separators are removed. Unique -- a MAC is associated once.'); ?>
 									</span>
 								</div>
 							</div>
@@ -149,7 +156,7 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The extension this phone registers as. Optional: a profile of static configuration renders without one, with the device values left empty.'); ?>
+										<?php echo _('The extension this client registers as. Optional: a profile of static configuration renders without one, with the device values left empty.'); ?>
 									</span>
 								</div>
 							</div>
@@ -185,6 +192,40 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 
 					</div>
 
+					<?php if ($served): ?>
+						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resources' ? 'active' : ''; ?>" id="oryk_resources">
+
+							<div id="resource_toolbar" class="oryk-toolbar">
+								<a class="btn btn-default" href="?display=oryk_provisioner&amp;profile=<?php echo $profileId; ?>&amp;tab=resources">
+									<i class="fa fa-cog"></i> <?php echo _('Edit Profile'); ?>
+								</a>
+							</div>
+
+							<table
+								id="resource_table"
+								data-toggle="table"
+								data-url="ajax.php?module=oryk_provisioner&command=listResources&profile_id=<?php echo $profileId; ?>&device_id=<?php echo $id; ?>"
+								data-toolbar="#resource_toolbar"
+								class="table table-striped"
+								data-side-pagination="server"
+								data-pagination="true"
+								data-search="true"
+								data-unique-id="id"
+								data-sort-name="name"
+								data-sort-order="asc">
+								<thead>
+									<tr>
+										<th data-field="name" data-formatter="formatResourceName" data-sortable="true"><?php echo _('Resource'); ?></th>
+										<th data-field="filename" data-formatter="formatResourceFilename"><?php echo _('Asks For'); ?></th>
+										<th data-field="updated_at" data-formatter="formatResourceText" data-sortable="true"><?php echo _('Updated'); ?></th>
+										<th data-field="actions" data-formatter="formatResourceActions"><?php echo _('Actions'); ?></th>
+									</tr>
+								</thead>
+							</table>
+
+						</div>
+					<?php endif; ?>
+
 				</div>
 
 			</div>
@@ -194,7 +235,59 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 
 <script>
 
+	const orykDeviceId = <?php echo $id; ?>;
+	const orykDeviceProfileId = <?php echo $profileId; ?>;
 	const orykDevices = '?display=oryk_provisioner&tab=devices';
+
+	function formatResourceText(value) {
+		return value ? orykEscape(value) : '-';
+	}
+
+	// The resource as it is written on the profile: a filename template, which
+	// is why it is worth showing beside what it comes to here.
+	function formatResourceName(value) {
+		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	}
+
+	// What this client actually asks for, worked out server-side by the same
+	// code that matches an incoming request, so the column is what this device
+	// gets rather than a second guess at it.
+	function formatResourceFilename(value) {
+		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	}
+
+	// Edit is the resource's own page under its profile, the same link that
+	// profile's Resources tab draws -- a resource is edited in one place
+	// wherever it is reached from. Render is this file as this device receives
+	// it, absent when the rendered name carries somebody else's MAC
+	// (000000000000-directory.xml and the like), since the endpoint reads the
+	// device out of the path and such a URL would answer for another client.
+	function formatResourceActions(value, row) {
+		const actions = [
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykDeviceProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`
+		];
+
+		if (row.url) {
+			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this device receives it">Render</a>`);
+		}
+
+		return `<div class="flex gap-3">${actions.join('')}</div>`;
+	}
+
+	// A table drawn while its tab is hidden has no width to lay itself out
+	// against, so it is told to measure again once the tab is on screen. The
+	// URL is kept in step at the same time, so a reload or a bookmark comes
+	// back to the tab that is open.
+	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
+		const pane = $(this).attr('href');
+
+		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
+
+		if (window.history && window.history.replaceState) {
+			const tab = pane === '#oryk_resources' ? '&tab=resources' : '';
+			window.history.replaceState(null, '', `?display=oryk_provisioner&device=${orykDeviceId}${tab}`);
+		}
+	});
 
 	orykEditor({
 		save: 'saveDevice',

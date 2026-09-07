@@ -30,9 +30,6 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 	.gap-3 {
 		gap: 3px;
 	}
-	.oryk-toolbar {
-		padding-bottom: 5px;
-	}
 </style>
 
 <div class="container-fluid">

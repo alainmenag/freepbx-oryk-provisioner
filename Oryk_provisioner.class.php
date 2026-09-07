@@ -99,7 +99,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// other's key: an association names its profile in a select, not in
 		// the address.
 		if (isset($_REQUEST['device'])) {
-			return $this->showDevice(trim((string) $_REQUEST['device']));
+			return $this->showDevice(trim((string) $_REQUEST['device']), (string) ($_REQUEST['tab'] ?? ''));
 		}
 
 		if (!isset($_REQUEST['profile'])) {
@@ -161,11 +161,17 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * it is a list of FreePBX devices and a list of profiles, and the page is
 	 * already waiting on the module for the association itself.
 	 *
+	 * Resources is the other end of the resource editor's Devices tab: the
+	 * files this device's profile serves, each with the filename *this* phone
+	 * asks for. One association's provisioning, listed where the association
+	 * is -- which is where somebody debugging a phone is already looking.
+	 *
 	 * @param string $wanted Association id, or '' for a new one.
+	 * @param string $tab    Tab to open on: device|resources.
 	 *
 	 * @return string Rendered page output.
 	 */
-	private function showDevice($wanted)
+	private function showDevice($wanted, $tab = '')
 	{
 		$device = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
 
@@ -182,10 +188,17 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$device = $found;
 		}
 
+		$profileId = (int) ($device['profile_id'] ?? 0);
+
 		return load_view(__DIR__ . '/views/device.php', [
 			'device' => $device,
 			'freepbxDevices' => $this->freepbxDevices(),
 			'profiles' => $this->profileChoices(),
+			'resources' => $profileId ? $this->profileResourceCount($profileId) : 0,
+			// Nothing to list for an association that has never been written
+			// or has no profile to be served by, so Resources is there but
+			// does not open -- the way Resources is on a new profile.
+			'tab' => ($tab === 'resources' && $device['id'] && $profileId) ? 'resources' : 'device',
 		]);
 	}
 
@@ -1087,6 +1100,26 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * How many resources a profile serves.
+	 *
+	 * The rows are a tab's business and it pages through them itself over
+	 * listResources; this is the number alone, which labels the tab.
+	 *
+	 * @param int $profileId Profile id.
+	 *
+	 * @return int Resources belonging to the profile.
+	 */
+	private function profileResourceCount($profileId)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT COUNT(*) FROM `{$this->resourcesTable}` WHERE profile_id = :id"
+		);
+		$stmt->execute([':id' => (int) $profileId]);
+
+		return (int) $stmt->fetchColumn();
+	}
+
+	/**
 	 * Create or update a device association.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
@@ -1313,10 +1346,75 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 		$stmt->execute();
 
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+		// The device editor's Resources tab asks the same question of the
+		// same table, from the other side: these files, for that one phone.
+		if (isset($_REQUEST['device_id'])) {
+			$rows = $this->withDeviceFilenames($rows, $_REQUEST['device_id']);
+		}
+
 		return [
 			'total' => $total,
-			'rows' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+			'rows' => $rows,
 		];
+	}
+
+	/**
+	 * The filename one device asks each of these resources for, added to its row.
+	 *
+	 * withResourceFilenames() the other way round -- one resource over many
+	 * devices there, one device over many resources here -- so both go
+	 * through resourceRequest() and render against the values the endpoint
+	 * would use, rather than either tab having its own idea of what a phone
+	 * asks for.
+	 *
+	 * The device's values are read once and rendered against every row: it is
+	 * one phone here, where withResourceFilenames() has one name and a page
+	 * of phones.
+	 *
+	 * A resource whose profile is not the one this device is assigned to is
+	 * left undecorated -- it is not served to this phone, whatever its name
+	 * renders to.
+	 *
+	 * @param array<int, array<string, mixed>> $rows     Resource rows as read.
+	 * @param mixed                            $deviceId Association they are being asked about.
+	 *
+	 * @return array<int, array<string, mixed>> The same rows, decorated.
+	 */
+	private function withDeviceFilenames(array $rows, $deviceId)
+	{
+		if (!$rows) {
+			return $rows;
+		}
+
+		$device = $this->deviceRow($deviceId);
+
+		if (!$device || !$device['profile_id']) {
+			return $rows;
+		}
+
+		$mac = (string) $device['mac'];
+		$association = $this->associationByMac($mac);
+
+		if (!$association) {
+			return $rows;
+		}
+
+		$values = $this->provisioningValues($association);
+
+		foreach ($rows as $index => $row) {
+			if ((int) $row['profile_id'] !== (int) $device['profile_id']) {
+				continue;
+			}
+
+			$request = $this->resourceRequest((string) $row['name'], $values, $mac);
+
+			$rows[$index]['filename'] = $request['filename'];
+			$rows[$index]['url'] = $request['url'];
+		}
+
+		return $rows;
 	}
 
 	/**

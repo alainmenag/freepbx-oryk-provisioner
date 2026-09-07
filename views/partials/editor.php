@@ -60,14 +60,8 @@
 		white-space: nowrap;
 		pointer-events: none;
 	}
-	.oryk-toolbar {
-		padding-bottom: 5px;
-	}
 	.oryk-tab-section {
 		padding-top: 15px;
-	}
-	.oryk-crumb {
-		padding-bottom: 10px;
 	}
 	.flex {
 		display: flex;

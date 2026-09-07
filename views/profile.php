@@ -164,7 +164,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resources' ? 'active' : ''; ?>" id="oryk_resources">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg, a directory, anything the vendor fetches alongside/directly. ** Firmware is not yet supported.'); ?>
+								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg. ** Firmware is not yet supported.'); ?>
 							</p>
 
 							<div id="resource_toolbar" class="oryk-toolbar">
@@ -200,7 +200,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('Devices assigned to this profile. Whatever is saved on the Profile and Resources tabs is what they provision with.'); ?>
+								<?php echo _('Devices assigned to this profile.'); ?>
 							</p>
 
 							<table
