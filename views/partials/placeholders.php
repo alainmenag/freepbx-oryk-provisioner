@@ -3,7 +3,7 @@
  * views/partials/placeholders.php -- what a template can refer to.
  *
  * Listed rather than discovered from a rendering, because an editor has to be
- * able to say what the names are with no device in hand: a new profile is not
+ * able to say what the names are with no client in hand: a new profile is not
  * assigned to anything yet, and a resource never is directly. The `sip.` names
  * are whatever the device carries in FreePBX, so a few are named by way of
  * example instead of the lot being listed.

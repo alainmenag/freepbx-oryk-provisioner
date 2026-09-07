@@ -1,26 +1,26 @@
 <?php
 /**
- * The module page: a Devices tab and a Profiles tab.
+ * The module page: a Clients tab and a Profiles tab.
  *
  * Both tables are filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
  * which row was just written, so it can say so.
  *
- * Neither a device nor a profile is edited here. Both are pages of their own
- * -- views/device.php and views/profile.php -- which the Add and Edit buttons
+ * Neither a client nor a profile is edited here. Both are pages of their own
+ * -- views/client.php and views/profile.php -- which the Add and Edit buttons
  * link to. What is left on the list is deletion, which needs no page.
  *
- * @var string $tab   Tab to open on: devices|profiles
+ * @var string $tab   Tab to open on: clients|profiles
  * @var int    $saved Row just written on that tab, highlighted here
  */
 
-$tab = ($tab ?? '') === 'profiles' ? 'profiles' : 'devices';
+$tab = ($tab ?? '') === 'profiles' ? 'profiles' : 'clients';
 $saved = (int) ($saved ?? 0);
 
 // One `saved` in the URL, and the tab it arrives on says which table it means:
-// each editor comes back to its own tab, so there is never a saved device and
+// each editor comes back to its own tab, so there is never a saved client and
 // a saved profile to tell apart.
-$savedDevice = $tab === 'devices' ? $saved : 0;
+$savedClient = $tab === 'clients' ? $saved : 0;
 $savedProfile = $tab === 'profiles' ? $saved : 0;
 ?>
 <style>
@@ -49,9 +49,9 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
 				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="<?php echo $tab === 'devices' ? 'active' : ''; ?>">
-						<a href="#oryk_devices" aria-controls="oryk_devices" role="tab" data-toggle="tab">
-							<?php echo _('Devices'); ?>
+					<li role="presentation" class="<?php echo $tab === 'clients' ? 'active' : ''; ?>">
+						<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
+							<?php echo _('Clients'); ?>
 						</a>
 					</li>
 					<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
@@ -63,24 +63,24 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
-						<div id="device_toolbar" class="oryk-toolbar">
-							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;device=">
-								<i class="fa fa-plus"></i> <?php echo _('Add Device'); ?>
+					<div role="tabpanel" class="tab-pane <?php echo $tab === 'clients' ? 'active' : ''; ?>" id="oryk_clients">
+						<div id="client_toolbar" class="oryk-toolbar">
+							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;client=">
+								<i class="fa fa-plus"></i> <?php echo _('Add Client'); ?>
 							</a>
 						</div>
 
 						<table
-							id="device_table"
+							id="client_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listDevices"
-							data-toolbar="#device_toolbar"
+							data-url="ajax.php?module=oryk_provisioner&command=listClients"
+							data-toolbar="#client_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"
 							data-pagination="true"
 							data-search="true"
 							data-unique-id="id"
-							data-row-style="formatDeviceRow"
+							data-row-style="formatClientRow"
 							data-sort-name="mac"
 							data-sort-order="asc">
 							<thead>
@@ -89,8 +89,8 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 									<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 									<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 									<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
-									<th data-field="profile" data-formatter="formatDeviceProfile" data-sortable="true"><?php echo _('Device Profile'); ?></th>
-									<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
+									<th data-field="profile" data-formatter="formatClientProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
+									<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
@@ -123,7 +123,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 							<thead>
 								<tr>
 									<th data-field="name" data-formatter="formatProfileName" data-sortable="true" ><?php echo _('Name'); ?></th>
-									<th data-field="assigned" data-sortable="true"><?php echo _('Assigned Devices'); ?></th>
+									<th data-field="assigned" data-sortable="true"><?php echo _('Assigned Clients'); ?></th>
 									<th data-field="actions" data-formatter="formatProfileActions"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
@@ -144,7 +144,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 	// The row each editor has just written, so the one it landed on can say so
 	// rather than the page looking unchanged after coming back.
-	const orykSavedDevice = <?php echo $savedDevice; ?>;
+	const orykSavedClient = <?php echo $savedClient; ?>;
 	const orykSavedProfile = <?php echo $savedProfile; ?>;
 
 	// Every call to the module is a POST to ajax.php with the command in the
@@ -167,10 +167,10 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 	}
 
 	function formatMac(value, row) {
-		return value ? `<a href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
+		return value ? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
-	// The device column names the FreePBX device; the extension it is attached
+	// The Device column names the FreePBX device; the extension it is attached
 	// to is shown alongside it when there is one, and links to that extension.
 	function formatDevice(value, row) {
 		if (!value) {
@@ -192,7 +192,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
 	}
 
-	function formatDeviceProfile(value, row) {
+	function formatClientProfile(value, row) {
 		if (!value) {
 			return '-';
 		}
@@ -206,20 +206,20 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${value}</a>`;
 	}
 
-	// Editing an association is a page, not a dialog, so Edit is a link: the
+	// Editing a client is a page, not a dialog, so Edit is a link: the
 	// row's id is the whole of what the editor needs, and it reads the
-	// association back itself rather than being handed one.
+	// client back itself rather than being handed one.
 	//
 	// Config is a link for a different reason: the rendered configuration is a
 	// page of plain text at its own URL, the same one a phone will be given,
 	// so it opens in a tab instead of being fetched back into this one. A row
 	// with no profile has nothing to render, so it does not offer it.
-	function formatDeviceActions(value, row) {
+	function formatClientActions(value, row) {
 		const actions = [
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>`
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`
 		];
 
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
 
 		if (row.profile_id) {
 			const url = `/provisioner/${encodeURIComponent(row.mac)}.cfg`;
@@ -229,8 +229,8 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
 
-	function formatDeviceRow(row) {
-		return orykSavedDevice && Number(row.id) === orykSavedDevice ? { classes: 'success' } : {};
+	function formatClientRow(row) {
+		return orykSavedClient && Number(row.id) === orykSavedClient ? { classes: 'success' } : {};
 	}
 
 	// Editing a profile is a page too, and for the same reason.
@@ -254,32 +254,32 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 	// link back here all come back to the tab that was open. Both tabs name
 	// themselves rather than one of them being the bare URL: neither is the
 	// other's default, and `?display=oryk_provisioner` on its own still opens
-	// Devices.
+	// Clients.
 	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
 		const pane = $(this).attr('href');
 
 		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
 
 		if (window.history && window.history.replaceState) {
-			const tabs = { '#oryk_devices': 'devices', '#oryk_profiles': 'profiles' };
-			window.history.replaceState(null, '', `?display=oryk_provisioner&tab=${tabs[pane] || 'devices'}`);
+			const tabs = { '#oryk_clients': 'clients', '#oryk_profiles': 'profiles' };
+			window.history.replaceState(null, '', `?display=oryk_provisioner&tab=${tabs[pane] || 'clients'}`);
 		}
 	});
 
 	// Deleting is the one action on either tab that needs no page of its own.
 
-	$(document).on('click', '[name="device_delete"]', function () {
-		if (!window.confirm('Delete this device association?')) {
+	$(document).on('click', '[name="client_delete"]', function () {
+		if (!window.confirm('Delete this client?')) {
 			return;
 		}
 
-		orykPost('deleteDevice', { id: $(this).val() }).done(function (response) {
+		orykPost('deleteClient', { id: $(this).val() }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 				return;
 			}
 
-			$('#device_table').bootstrapTable('refresh');
+			$('#client_table').bootstrapTable('refresh');
 			$('#profile_table').bootstrapTable('refresh');
 			notie.alert(1, 'Deleted.', 2);
 		});

@@ -16,8 +16,8 @@
  * file in disguise.
  *
  * Resources are those files, each its own page at &resource=<id>, because a
- * block of configuration text wants room and a monospace column. Devices is
- * who this is all for: the associations assigned to the profile, the same
+ * block of configuration text wants room and a monospace column. Clients is
+ * who this is all for: the clients assigned to the profile, the same
  * table the module page draws, narrowed to this one.
  *
  * Profile stays the first tab even at one field. It is the bare ?profile=<id>
@@ -25,7 +25,7 @@
  * named and renamed, and it is the only tab a new profile can open on.
  *
  * Tabs rather than pages because they are one thing being edited. Resources
- * and Devices are both inert until the profile has been saved -- a resource
+ * and Clients are both inert until the profile has been saved -- a resource
  * hangs off a profile_id, and nothing can have been assigned to a profile
  * that has never been written.
  *
@@ -33,14 +33,14 @@
  * getActionBar() and bound by views/partials/editor.php.
  *
  * @var array<string, mixed> $profile  id (0 when new), name
- * @var int                  $assigned Devices using it, for the tab's count
- * @var string               $tab      Tab to open on: profile|resources|devices
+ * @var int                  $assigned Clients using it, for the tab's count
+ * @var string               $tab      Tab to open on: profile|resources|clients
  * @var int                  $saved    Resource just written, highlighted here
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => ''];
 $assigned = (int) ($assigned ?? 0);
-$tab = in_array($tab ?? '', ['resources', 'devices'], true) ? $tab : 'profile';
+$tab = in_array($tab ?? '', ['resources', 'clients'], true) ? $tab : 'profile';
 $saved = (int) ($saved ?? 0);
 
 $h = function ($value) {
@@ -96,15 +96,15 @@ $tab = $isNew ? 'profile' : $tab;
 							</a>
 						<?php endif; ?>
 					</li>
-					<li role="presentation" class="<?php echo $tab === 'devices' ? 'active' : ($isNew ? 'disabled' : ''); ?>">
+					<li role="presentation" class="<?php echo $tab === 'clients' ? 'active' : ($isNew ? 'disabled' : ''); ?>">
 						<?php if ($isNew): ?>
 							<a href="#" title="<?php echo _('Save the profile first -- nothing can be assigned to one that has not been written.'); ?>"
 								onclick="return false;">
-								<?php echo _('Devices'); ?>
+								<?php echo _('Clients'); ?>
 							</a>
 						<?php else: ?>
-							<a href="#oryk_devices" aria-controls="oryk_devices" role="tab" data-toggle="tab">
-								<?php echo _('Devices'); ?>
+							<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
+								<?php echo _('Clients'); ?>
 								<span class="badge"><?php echo $assigned; ?></span>
 							</a>
 						<?php endif; ?>
@@ -137,7 +137,7 @@ $tab = $isNew ? 'profile' : $tab;
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('How the profile is named in the device list. Must be unique.'); ?>
+										<?php echo _('How the profile is named in the client list. Must be unique.'); ?>
 									</span>
 								</div>
 							</div>
@@ -182,16 +182,16 @@ $tab = $isNew ? 'profile' : $tab;
 
 						</div>
 
-						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
+						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'clients' ? 'active' : ''; ?>" id="oryk_clients">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('Devices assigned to this profile.'); ?>
+								<?php echo _('Clients assigned to this profile.'); ?>
 							</p>
 
 							<table
-								id="device_table"
+								id="client_table"
 								data-toggle="table"
-								data-url="ajax.php?module=oryk_provisioner&command=listDevices&profile_id=<?php echo $id; ?>"
+								data-url="ajax.php?module=oryk_provisioner&command=listClients&profile_id=<?php echo $id; ?>"
 								class="table table-striped"
 								data-side-pagination="server"
 								data-pagination="true"
@@ -201,11 +201,11 @@ $tab = $isNew ? 'profile' : $tab;
 								data-sort-order="asc">
 								<thead>
 									<tr>
-										<th data-field="mac" data-formatter="formatDeviceMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
+										<th data-field="mac" data-formatter="formatClientMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
 										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 										<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
-										<th data-field="description" data-formatter="formatDeviceText" data-sortable="true"><?php echo _('Description'); ?></th>
-										<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
+										<th data-field="description" data-formatter="formatClientText" data-sortable="true"><?php echo _('Description'); ?></th>
+										<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
 							</table>
@@ -253,15 +253,15 @@ $tab = $isNew ? 'profile' : $tab;
 		return orykSavedResource && Number(row.id) === orykSavedResource ? { classes: 'success' } : {};
 	}
 
-	function formatDeviceText(value) {
+	function formatClientText(value) {
 		return value ? orykEscape(value) : '-';
 	}
 
-	function formatDeviceMac(value, row) {
-		return value ? `<a href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
+	function formatClientMac(value, row) {
+		return value ? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
-	// The device column names the FreePBX device; the extension it is attached
+	// The Device column names the FreePBX device; the extension it is attached
 	// to is shown alongside it when there is one, and links to that extension.
 	function formatDevice(value, row) {
 		if (!value) {
@@ -283,15 +283,15 @@ $tab = $isNew ? 'profile' : $tab;
 		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
 	}
 
-	// Edit is the association's own page, the same link the list draws: an
-	// association is one row with one editor, wherever it is reached from,
-	// and that editor is also where a device is moved to another profile and
+	// Edit is the client's own page, the same link the list draws: an
+	// client is one row with one editor, wherever it is reached from,
+	// and that editor is also where a client is moved to another profile and
 	// so off this tab. Config is the URL a phone is given; every row here has
 	// a profile by definition, so every row has one.
-	function formatDeviceActions(value, row) {
+	function formatClientActions(value, row) {
 		return [
 			`<div class="flex gap-3">`,
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`,
 			`<a class="btn btn-default btn-sm" href="/provisioner/${encodeURIComponent(row.mac)}.cfg" target="_blank" title="View the rendered configuration">Render</a>`,
 			`</div>`
 		].join('');
@@ -307,7 +307,7 @@ $tab = $isNew ? 'profile' : $tab;
 		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
 
 		if (window.history && window.history.replaceState) {
-			const tabs = { '#oryk_resources': '&tab=resources', '#oryk_devices': '&tab=devices' };
+			const tabs = { '#oryk_resources': '&tab=resources', '#oryk_clients': '&tab=clients' };
 			const tab = tabs[pane] || '';
 			window.history.replaceState(null, '', `?display=oryk_provisioner&profile=${orykProfileId}${tab}`);
 		}

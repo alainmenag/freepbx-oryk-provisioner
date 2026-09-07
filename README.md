@@ -2,7 +2,7 @@
 
 Oryk Provisioner is a template-driven VoIP endpoint provisioning module for FreePBX.
 
-The goal is to provide a vendor-neutral provisioning layer that separates **device data** from **device-specific configuration formats**.
+The goal is to provide a vendor-neutral provisioning layer that separates **client data** from **device-specific configuration formats**.
 
 Provisioning templates define how configuration files should look, while profiles provide the values inserted into those templates.
 
@@ -11,15 +11,15 @@ The initial implementation focuses on softphone provisioning, with support plann
 ## Goals
 
 * Provide a standardized provisioning model inside FreePBX.
-* Keep device configuration data separate from vendor-specific configuration syntax.
+* Keep client configuration data separate from vendor-specific configuration syntax.
 * Support reusable device templates.
-* Support one or more generated files per device.
+* Support one or more generated files per client.
 * Generate JSON, XML, key/value, CFG, INI, and arbitrary text-based configuration files.
-* Allow device-specific parameters to override template defaults.
+* Allow client-specific parameters to override template defaults.
 * Automatically consume FreePBX extension and SIP configuration where appropriate.
 * Provide provisioning URLs that endpoints can consume directly.
 * Support vendor-specific provisioning behavior without changing the core provisioning engine.
-* Provide both an administrative interface and API for managing devices and templates.
+* Provide both an administrative interface and API for managing clients and templates.
 
 ---
 
@@ -29,7 +29,7 @@ The provisioning model is inspired in part by BroadWorks device management.
 
 A **template** describes how a device or application should be provisioned.
 
-A **device** is an instance of that template and contains the parameters necessary to render the final configuration.
+A **client** is an instance of that template and contains the parameters necessary to render the final configuration.
 
 Conceptually:
 
@@ -38,7 +38,7 @@ FreePBX Extension Data
         +
 Template Defaults
         +
-Device Parameters
+Client Parameters
         ↓
    Parameter Context
         ↓
@@ -146,7 +146,7 @@ A Yealink-style template could define:
 }
 ```
 
-Templates are reusable across multiple devices.
+Templates are reusable across multiple clients.
 
 ---
 
@@ -284,13 +284,13 @@ allowed
 description
 ```
 
-The administrative interface can use this schema to automatically build device parameter forms.
+The administrative interface can use this schema to automatically build client parameter forms.
 
 ---
 
-# Devices
+# Clients
 
-A device represents a provisioned endpoint.
+A client represents a provisioned endpoint.
 
 Example:
 
@@ -307,7 +307,7 @@ Example:
 }
 ```
 
-A physical device may additionally contain:
+A client for a physical phone may additionally contain:
 
 ```json
 {
@@ -317,15 +317,15 @@ A physical device may additionally contain:
 }
 ```
 
-Values such as SIP username, password, display name, server address, and other FreePBX information may be resolved automatically from the extension associated with the device.
+Values such as SIP username, password, display name, server address, and other FreePBX information may be resolved automatically from the extension associated with the client.
 
-Device parameters may override those values when necessary.
+Client parameters may override those values when necessary.
 
 ---
 
-# Device State
+# Client State
 
-Devices may be enabled or disabled.
+Clients may be enabled or disabled.
 
 ```json
 {
@@ -333,11 +333,11 @@ Devices may be enabled or disabled.
 }
 ```
 
-An enabled device may retrieve its provisioning configuration.
+An enabled client may retrieve its provisioning configuration.
 
-A disabled device must not return configuration files even if its provisioning token is valid.
+A disabled client must not return configuration files even if its provisioning token is valid.
 
-This allows administrators to immediately stop provisioning without deleting the device.
+This allows administrators to immediately stop provisioning without deleting the client.
 
 ---
 
@@ -350,12 +350,12 @@ Template Defaults
       ↓
 FreePBX / Extension Values
       ↓
-Device Parameters
+Client Parameters
       ↓
 Resolved Parameter Context
 ```
 
-Device-level parameters have the highest priority.
+Client-level parameters have the highest priority.
 
 For example:
 
@@ -366,7 +366,7 @@ sip.transport = udp
 FreePBX:
 sip.transport = udp
 
-Device Override:
+Client Override:
 sip.transport = tls
 ```
 
@@ -380,7 +380,7 @@ sip.transport = tls
 
 # Provisioning API
 
-Oryk Provisioner separates the **management API** from the **device provisioning endpoint**.
+Oryk Provisioner separates the **management API** from the **client provisioning endpoint**.
 
 ---
 
@@ -400,11 +400,11 @@ The Provisioner module may expose queries such as:
 provisionerTemplates
 provisionerTemplate(id: ID!)
 
-provisionerDevices
-provisionerDevice(id: ID!)
+provisionerClients
+provisionerClient(id: ID!)
 
-provisionerRenderDevice(id: ID!)
-provisionerRenderFile(deviceId: ID!, filename: String!)
+provisionerRenderClient(id: ID!)
+provisionerRenderFile(clientId: ID!, filename: String!)
 ```
 
 and mutations such as:
@@ -414,12 +414,12 @@ provisionerCreateTemplate(...)
 provisionerUpdateTemplate(...)
 provisionerDeleteTemplate(...)
 
-provisionerCreateDevice(...)
-provisionerUpdateDevice(...)
-provisionerDeleteDevice(...)
+provisionerCreateClient(...)
+provisionerUpdateClient(...)
+provisionerDeleteClient(...)
 
-provisionerEnableDevice(id: ID!)
-provisionerDisableDevice(id: ID!)
+provisionerEnableClient(id: ID!)
+provisionerDisableClient(id: ID!)
 
 provisionerRegenerateToken(id: ID!)
 ```
@@ -457,9 +457,9 @@ When a valid provisioning token and filename are supplied, the module:
 ```text
 Validate Token
       ↓
-Resolve Device
+Resolve Client
       ↓
-Check Device Enabled
+Check Client Enabled
       ↓
 Resolve Template
       ↓
@@ -546,14 +546,14 @@ Requests without a provisioning token provide the normal FreePBX administrative 
 
 The administrative interface is used to manage:
 
-* Devices
+* Clients
 * Templates
 * Template outputs
-* Device parameters
+* Client parameters
 * Template defaults
 * Parameter schemas
 * Provisioning tokens
-* Device enable/disable state
+* Client enable/disable state
 * Generated configuration previews
 
 ---
@@ -565,7 +565,7 @@ Administrators should be able to render a configuration without making an actual
 The administrative interface may provide actions such as:
 
 ```text
-Preview Device
+Preview Client
 Preview Output
 View Resolved Parameters
 ```
@@ -573,7 +573,7 @@ View Resolved Parameters
 For example:
 
 ```text
-Device: Alain Softphone
+Client: Alain Softphone
 Template: Generic Softphone
 Output: config.json
 ```
@@ -590,18 +590,18 @@ and:
 Rendered Configuration
 ```
 
-This allows template problems to be identified before assigning them to production devices.
+This allows template problems to be identified before assigning them to production clients.
 
 ---
 
 # Provisioning Tokens
 
-Each device receives a random provisioning token.
+Each client receives a random provisioning token.
 
 Example:
 
 ```text
-Device ID:       42
+Client ID:       42
 MAC:             001565aabbcc
 Provision Token: 9f31d772d2d742c792b5c93fb1c52a51
 ```
@@ -618,9 +618,9 @@ or:
 https://pbx.example.com/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565aabbcc.cfg
 ```
 
-MAC addresses identify devices but should not be treated as authentication credentials.
+MAC addresses identify clients but should not be treated as authentication credentials.
 
-The provisioning token provides access to the device's generated configuration.
+The provisioning token provides access to the client's generated configuration.
 
 ---
 
@@ -636,12 +636,12 @@ Revoked
 
 Regenerating a token immediately invalidates the previous provisioning URL.
 
-Deleting or disabling a device also prevents the token from being used.
+Deleting or disabling a client also prevents the token from being used.
 
 Tokens should be generated using a cryptographically secure random value and should not contain predictable information such as:
 
 ```text
-device ID
+client ID
 extension
 MAC address
 username
@@ -668,9 +668,9 @@ or the content type defined by the template output.
 HTTP/1.1 404 Not Found
 ```
 
-The response should not reveal whether a device exists.
+The response should not reveal whether a client exists.
 
-## Disabled Device
+## Disabled Client
 
 ```http
 HTTP/1.1 404 Not Found
@@ -688,13 +688,13 @@ HTTP/1.1 404 Not Found
 HTTP/1.1 500 Internal Server Error
 ```
 
-Detailed rendering errors should be logged internally but should not expose sensitive device parameters to the endpoint.
+Detailed rendering errors should be logged internally but should not expose sensitive client parameters to the endpoint.
 
 ---
 
 # Example Provisioning Flow
 
-Given the device:
+Given the client:
 
 ```json
 {
@@ -729,7 +729,7 @@ The template provides:
 }
 ```
 
-The device overrides:
+The client overrides:
 
 ```json
 {
@@ -757,7 +757,7 @@ That context is then available to every output defined by the assigned template.
 
 # Multiple Output Example
 
-A Yealink device could use:
+A client for a Yealink phone could use:
 
 ```json
 {
@@ -787,7 +787,7 @@ The template may define:
 }
 ```
 
-The same device can then request:
+The same client can then request:
 
 ```text
 /provisioner/{token}/001565aabbcc.cfg
@@ -799,7 +799,7 @@ and:
 /provisioner/{token}/001565aabbcc-directory.xml
 ```
 
-Both files are generated from the same device and parameter context.
+Both files are generated from the same client and parameter context.
 
 ---
 
@@ -814,7 +814,7 @@ The provisioning system should therefore:
 * Never expose SIP credentials through management APIs without appropriate authorization.
 * Avoid logging rendered configuration contents containing secrets.
 * Allow tokens to be regenerated.
-* Allow devices to be disabled immediately.
+* Allow clients to be disabled immediately.
 * Return generic responses for invalid provisioning requests.
 * Support additional network restrictions where appropriate.
 
@@ -904,7 +904,7 @@ At a high level:
              ┌─────────────────┼─────────────────┐
              │                 │                 │
              ▼                 ▼                 ▼
-      Template Defaults   FreePBX Data    Device Overrides
+      Template Defaults   FreePBX Data    Client Overrides
              │                 │                 │
              └─────────────────┼─────────────────┘
                                │
