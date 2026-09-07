@@ -121,7 +121,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 							data-sort-order="asc">
 							<thead>
 								<tr>
-									<th data-field="name" data-formatter="formatText" data-sortable="true"><?php echo _('Name'); ?></th>
+									<th data-field="name" data-formatter="formatProfileName" data-sortable="true" ><?php echo _('Name'); ?></th>
 									<th data-field="assigned" data-sortable="true"><?php echo _('Assigned Devices'); ?></th>
 									<th data-field="actions" data-formatter="formatProfileActions"><?php echo _('Actions'); ?></th>
 								</tr>
@@ -195,8 +195,14 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		if (!value) {
 			return '-';
 		}
-		const extension = orykEscape(row.extension);
 		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.profile_id)}">${value}</a>`;
+	}
+
+	function formatProfileName(value, row) {
+		if (!value) {
+			return '-';
+		}
+		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${value}</a>`;
 	}
 
 	// Editing an association is a page, not a dialog, so Edit is a link: the
@@ -241,9 +247,22 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 	}
 
 	// A table drawn while its tab is hidden has no width to lay itself out
-	// against, so it is told to measure again once the tab is on screen.
+	// against, so it is told to measure again once the tab is on screen. The
+	// URL is kept in step at the same time -- the way the profile editor keeps
+	// `&tab=` in step with the tab it has open -- so a reload, a bookmark or a
+	// link back here all come back to the tab that was open. Both tabs name
+	// themselves rather than one of them being the bare URL: neither is the
+	// other's default, and `?display=oryk_provisioner` on its own still opens
+	// Devices.
 	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
-		$($(this).attr('href')).find('table[data-toggle="table"]').bootstrapTable('resetView');
+		const pane = $(this).attr('href');
+
+		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
+
+		if (window.history && window.history.replaceState) {
+			const tabs = { '#oryk_devices': 'devices', '#oryk_profiles': 'profiles' };
+			window.history.replaceState(null, '', `?display=oryk_provisioner&tab=${tabs[pane] || 'devices'}`);
+		}
 	});
 
 	// Deleting is the one action on either tab that needs no page of its own.
