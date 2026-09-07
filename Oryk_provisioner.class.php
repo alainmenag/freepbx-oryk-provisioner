@@ -130,7 +130,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// text for the same reason a profile does, so it gets a page too
 		// rather than a dialog on the profile's Resources tab.
 		if ($profile['id'] && isset($_REQUEST['resource'])) {
-			$page = $this->showResource($profile, trim((string) $_REQUEST['resource']));
+			$page = $this->showResource($profile, trim((string) $_REQUEST['resource']), $tab);
 
 			if ($page !== null) {
 				return $page;
@@ -196,12 +196,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * it is bound to, which is why both are one view apiece over a shared
 	 * partial rather than one view with a mode flag.
 	 *
+	 * Devices is the profile's own device list, narrowed no further and
+	 * widened by one column: which filename each of them asks *this* resource
+	 * for. A resource's name is a template, so that filename is a different
+	 * string per device -- which is exactly why there was no per-resource
+	 * preview until there was a per-device row to hang one on.
+	 *
 	 * @param array<string, mixed> $profile Profile the resource belongs to.
 	 * @param string               $wanted  Resource id, or '' for a new one.
+	 * @param string               $tab     Tab to open on: resource|devices.
 	 *
 	 * @return string|null Rendered page, or null when the id names nothing.
 	 */
-	private function showResource(array $profile, $wanted)
+	private function showResource(array $profile, $wanted, $tab = '')
 	{
 		$resource = ['id' => 0, 'profile_id' => (int) $profile['id'], 'name' => '', 'template' => ''];
 
@@ -219,6 +226,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'resource' => $resource,
 			'profile' => $profile,
 			'placeholders' => $this->templatePlaceholders(),
+			'assigned' => $this->profileDeviceCount((int) $profile['id']),
+			// A resource that has never been written has no name to render
+			// against a device, so Devices is there but does not open --
+			// the same way Resources is on a new profile.
+			'tab' => ($tab === 'devices' && $resource['id']) ? 'devices' : 'resource',
 		]);
 	}
 
@@ -685,6 +697,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * profile editor's Devices tab is filled: the same rows read the same
 	 * way, rather than a second statement that would drift from this one.
 	 *
+	 * The resource editor's Devices tab asks with resource_id alongside it
+	 * and gets the same rows again, each carrying the filename that device
+	 * asks that one resource for.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
 	private function listDevices()
@@ -765,10 +781,179 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 		$stmt->execute();
 
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+		// Only the page that was read, and only when a resource was asked
+		// about: rendering a name costs this device's values, and a device
+		// that is not on screen is not worth them.
+		if (isset($_REQUEST['resource_id'])) {
+			$rows = $this->withResourceFilenames($rows, $_REQUEST['resource_id']);
+		}
+
 		return [
 			'total' => $total,
-			'rows' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+			'rows' => $rows,
 		];
+	}
+
+	/**
+	 * The filename each device asks one resource for, added to its row.
+	 *
+	 * A resource's name is a template, so the file a phone actually asks for
+	 * is a different string per device -- which is why a resource has no one
+	 * URL to preview and why this belongs on a device row rather than on the
+	 * resource itself.
+	 *
+	 * Each row is rendered against the values the endpoint would render it
+	 * against, read the same way through associationByMac(), so what the tab
+	 * shows is what a phone gets rather than a second guess at it.
+	 *
+	 * A row whose association has since moved to another profile is left
+	 * undecorated rather than shown a filename this resource would not
+	 * answer to.
+	 *
+	 * @param array<int, array<string, mixed>> $rows       Device rows as read.
+	 * @param mixed                            $resourceId Resource they are being asked about.
+	 *
+	 * @return array<int, array<string, mixed>> The same rows, decorated.
+	 */
+	private function withResourceFilenames(array $rows, $resourceId)
+	{
+		if (!$rows) {
+			return $rows;
+		}
+
+		$stmt = $this->db->prepare(
+			"SELECT id, profile_id, name
+			FROM `{$this->resourcesTable}`
+			WHERE id = :id"
+		);
+		$stmt->execute([':id' => (int) $resourceId]);
+		$resource = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		if (!$resource) {
+			return $rows;
+		}
+
+		foreach ($rows as $index => $row) {
+			$mac = (string) $row['mac'];
+			$association = $this->associationByMac($mac);
+
+			if (!$association || (int) $association['profile_id'] !== (int) $resource['profile_id']) {
+				continue;
+			}
+
+			$request = $this->resourceRequest(
+				(string) $resource['name'],
+				$this->provisioningValues($association),
+				$mac
+			);
+
+			$rows[$index]['filename'] = $request['filename'];
+			$rows[$index]['url'] = $request['url'];
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * What one device asks for when it asks for one resource, and where.
+	 *
+	 * matchResource() read backwards. A name is matched either as it renders
+	 * or as the tail of a request with the MAC taken off the front, so the
+	 * request that reaches this resource is one of:
+	 *
+	 *   {{device.mac}}-phone.cfg  renders to 0004f282e824-phone.cfg, which is
+	 *                             asked for as it stands.
+	 *   phone.cfg                 has no MAC to render, so the phone asks for
+	 *                             0004f282e824-phone.cfg and resourceSuffix()
+	 *                             takes the MAC back off. Joined by nothing
+	 *                             when the name is an extension of its own
+	 *                             (.cfg), by a dash otherwise.
+	 *
+	 * Whether that request can be *linked* is a second question, because the
+	 * endpoint reads the MAC out of the path: a name that renders with this
+	 * device's MAC in it says who is asking, and one with no MAC at all can
+	 * say so with ?mac=. A name carrying somebody else's twelve hex digits --
+	 * 000000000000-directory.xml, which is a real filename a real phone asks
+	 * for -- cannot: the endpoint takes the MAC from the path over the query
+	 * string, so the link would render the wrong device. Those rows get the
+	 * filename and no link, which is the truth about them.
+	 *
+	 * @param string                $name   Resource name, as typed.
+	 * @param array<string, string> $values Placeholder name to value.
+	 * @param string                $mac    This device's normalised MAC.
+	 *
+	 * @return array{filename: string, url: string} What it asks for, and where -- '' when there is no such URL.
+	 */
+	private function resourceRequest($name, array $values, $mac)
+	{
+		$name = (string) $name;
+		$rendered = $this->renderTemplate($name, $values);
+		$carries = $this->macIn($rendered);
+
+		if ($carries === $mac) {
+			return ['filename' => $rendered, 'url' => $this->engineUrl($rendered)];
+		}
+
+		// Somebody else's twelve hex digits, written into the name and asked
+		// for exactly as they stand -- 000000000000-directory.xml is a phone
+		// asking every profile for the same file. It is served, and it is
+		// not linkable: the endpoint would read that MAC as the device.
+		if ($carries !== '') {
+			return ['filename' => $rendered, 'url' => ''];
+		}
+
+		// No placeholders and no MAC of its own, so the phone asks for the
+		// MAC and this name joined and the endpoint takes the MAC back off
+		// again.
+		if ($rendered === $name && $name !== '') {
+			$joined = $mac . ($name[0] === '.' ? '' : '-') . $name;
+
+			if ($this->macIn($joined) === $mac && strcasecmp($this->resourceSuffix($joined, $mac), $name) === 0) {
+				return ['filename' => $joined, 'url' => $this->engineUrl($joined)];
+			}
+		}
+
+		// Nothing in the name says which device is asking, so the request
+		// says it the endpoint's other way.
+		return ['filename' => $rendered, 'url' => $this->engineUrl($rendered) . '?mac=' . rawurlencode($mac)];
+	}
+
+	/**
+	 * The MAC a requested filename carries, if it carries one.
+	 *
+	 * The endpoint's own reading of a path, kept to the same pattern: twelve
+	 * hexadecimal characters, optionally paired off with colons or dashes,
+	 * not run up against more hex on either side.
+	 *
+	 * @param string $filename Filename as it would be asked for.
+	 *
+	 * @return string The normalised MAC, or '' when there is none.
+	 */
+	private function macIn($filename)
+	{
+		$pattern = '/(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]?){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])/';
+
+		return preg_match($pattern, (string) $filename, $match) ? $this->normalizeMac($match[0]) : '';
+	}
+
+	/**
+	 * The URL a phone is given for a filename.
+	 *
+	 * The web-root symlink rather than the module's own path, because that is
+	 * the URL a phone is provisioned with and so the one worth showing.
+	 *
+	 * @param string $filename Filename as it would be asked for.
+	 *
+	 * @return string Absolute path under the engine link.
+	 */
+	private function engineUrl($filename)
+	{
+		// A colon is legal in a path segment and is how half the vendors
+		// separate a MAC, so it is left as it is rather than escaped into
+		// something the endpoint's own reading of the path would miss.
+		return '/' . $this->engineLink . '/' . str_replace('%3A', ':', rawurlencode((string) $filename));
 	}
 
 	/**
