@@ -54,7 +54,7 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 				</h2>
 			</div>
 
-			<div class="section">
+			<div class="section" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 

@@ -37,87 +37,102 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 <div class="container-fluid">
 	<div class="fpbx-container">
-		<div class="display no-border">
+		<div class="display full-border">
 
-			<ul class="nav nav-tabs" role="tablist">
-				<li role="presentation" class="<?php echo $tab === 'devices' ? 'active' : ''; ?>">
-					<a href="#oryk_devices" aria-controls="oryk_devices" role="tab" data-toggle="tab">
-						<?php echo _('Devices'); ?>
-					</a>
-				</li>
-				<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
-					<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
-						<?php echo _('Profiles'); ?>
-					</a>
-				</li>
-			</ul>
+			<div class="section-title">
+				<h2>
+					<span class="title">
+						Provisioner
+					</span>
+				</h2>
+			</div>
 
-			<div class="tab-content">
+			<div class="section" style="padding: 0;">
 
-				<div role="tabpanel" class="tab-pane <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
-					<div id="device_toolbar" class="oryk-toolbar">
-						<a class="btn btn-primary" href="?display=oryk_provisioner&amp;device=">
-							<i class="fa fa-plus"></i> <?php echo _('Add Device'); ?>
+				<div class="alert alert-danger hidden" id="oryk_error"></div>
+
+				<ul class="nav nav-tabs" role="tablist">
+					<li role="presentation" class="<?php echo $tab === 'devices' ? 'active' : ''; ?>">
+						<a href="#oryk_devices" aria-controls="oryk_devices" role="tab" data-toggle="tab">
+							<?php echo _('Devices'); ?>
 						</a>
+					</li>
+					<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
+						<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
+							<?php echo _('Profiles'); ?>
+						</a>
+					</li>
+				</ul>
+
+				<div class="tab-content">
+
+					<div role="tabpanel" class="tab-pane <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
+						<div id="device_toolbar" class="oryk-toolbar">
+							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;device=">
+								<i class="fa fa-plus"></i> <?php echo _('Add Device'); ?>
+							</a>
+						</div>
+
+						<table
+							id="device_table"
+							data-toggle="table"
+							data-url="ajax.php?module=oryk_provisioner&command=listDevices"
+							data-toolbar="#device_toolbar"
+							class="table table-striped"
+							data-side-pagination="server"
+							data-pagination="true"
+							data-search="true"
+							data-unique-id="id"
+							data-row-style="formatDeviceRow"
+							data-sort-name="mac"
+							data-sort-order="asc">
+							<thead>
+								<tr>
+									<th data-field="mac" data-formatter="formatMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
+									<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
+									<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
+									<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
+									<th data-field="profile" data-formatter="formatDeviceProfile" data-sortable="true"><?php echo _('Device Profile'); ?></th>
+									<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
+								</tr>
+							</thead>
+						</table>
 					</div>
 
-					<table
-						id="device_table"
-						data-toggle="table"
-						data-url="ajax.php?module=oryk_provisioner&command=listDevices"
-						data-toolbar="#device_toolbar"
-						class="table table-striped"
-						data-side-pagination="server"
-						data-pagination="true"
-						data-search="true"
-						data-unique-id="id"
-						data-row-style="formatDeviceRow"
-						data-sort-name="mac"
-						data-sort-order="asc">
-						<thead>
-							<tr>
-								<th data-field="mac" data-formatter="formatMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
-								<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
-								<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
-								<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
-								<th data-field="profile" data-formatter="formatDeviceProfile" data-sortable="true"><?php echo _('Device Profile'); ?></th>
-								<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
-							</tr>
-						</thead>
-					</table>
-				</div>
+					<div role="tabpanel" class="tab-pane <?php echo $tab === 'profiles' ? 'active' : ''; ?>" id="oryk_profiles">
+						<div id="profile_toolbar" class="oryk-toolbar">
+							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=">
+								<i class="fa fa-plus"></i> <?php echo _('Add Profile'); ?>
+							</a>
+						</div>
 
-				<div role="tabpanel" class="tab-pane <?php echo $tab === 'profiles' ? 'active' : ''; ?>" id="oryk_profiles">
-					<div id="profile_toolbar" class="oryk-toolbar">
-						<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=">
-							<i class="fa fa-plus"></i> <?php echo _('Add Profile'); ?>
-						</a>
+						<table
+							id="profile_table"
+							data-toggle="table"
+							data-url="ajax.php?module=oryk_provisioner&command=listProfiles"
+							data-toolbar="#profile_toolbar"
+							class="table table-striped"
+							data-side-pagination="server"
+							data-pagination="true"
+							data-search="true"
+							data-unique-id="id"
+							data-row-style="formatProfileRow"
+							data-sort-name="name"
+							data-sort-order="asc">
+							<thead>
+								<tr>
+									<th data-field="name" data-formatter="formatText" data-sortable="true"><?php echo _('Name'); ?></th>
+									<th data-field="assigned" data-sortable="true"><?php echo _('Assigned Devices'); ?></th>
+									<th data-field="actions" data-formatter="formatProfileActions"><?php echo _('Actions'); ?></th>
+								</tr>
+							</thead>
+						</table>
 					</div>
 
-					<table
-						id="profile_table"
-						data-toggle="table"
-						data-url="ajax.php?module=oryk_provisioner&command=listProfiles"
-						data-toolbar="#profile_toolbar"
-						class="table table-striped"
-						data-side-pagination="server"
-						data-pagination="true"
-						data-search="true"
-						data-unique-id="id"
-						data-row-style="formatProfileRow"
-						data-sort-name="name"
-						data-sort-order="asc">
-						<thead>
-							<tr>
-								<th data-field="name" data-formatter="formatText" data-sortable="true"><?php echo _('Name'); ?></th>
-								<th data-field="assigned" data-sortable="true"><?php echo _('Assigned Devices'); ?></th>
-								<th data-field="actions" data-formatter="formatProfileActions"><?php echo _('Actions'); ?></th>
-							</tr>
-						</thead>
-					</table>
 				</div>
 
 			</div>
+
 		</div>
 	</div>
 </div>

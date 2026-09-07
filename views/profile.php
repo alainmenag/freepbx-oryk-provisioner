@@ -67,7 +67,7 @@ $tab = $isNew ? 'profile' : $tab;
 				</h2>
 			</div>
 
-			<div class="section">
+			<div class="section" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -218,7 +218,8 @@ $tab = $isNew ? 'profile' : $tab;
 								<thead>
 									<tr>
 										<th data-field="mac" data-formatter="formatDeviceMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
-										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('FreePBX Device / Extension'); ?></th>
+										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
+										<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 										<th data-field="description" data-formatter="formatDeviceText" data-sortable="true"><?php echo _('Description'); ?></th>
 										<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
 									</tr>
@@ -276,8 +277,8 @@ $tab = $isNew ? 'profile' : $tab;
 		return value ? `<code>${orykEscape(value)}</code>` : '-';
 	}
 
-	// The column the list draws, drawn the same way here: the FreePBX device,
-	// and the extension it is attached to alongside it when there is one.
+	// The device column names the FreePBX device; the extension it is attached
+	// to is shown alongside it when there is one, and links to that extension.
 	function formatDevice(value, row) {
 		if (!value) {
 			return '-';
@@ -285,11 +286,17 @@ $tab = $isNew ? 'profile' : $tab;
 
 		const device = orykEscape(value);
 
+		return `<a href="?display=devices&extdisplay=${encodeURIComponent(device)}">${device}</a>`;
+	}
+
+	function formatExtension(value, row) {
 		if (!row.extension) {
-			return device;
+			return '-';
 		}
 
-		return `${device} <a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">(${orykEscape(row.extension)})</a>`;
+		const extension = orykEscape(row.extension);
+
+		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
 	}
 
 	// Edit is the association's own page, the same link the list draws: an
