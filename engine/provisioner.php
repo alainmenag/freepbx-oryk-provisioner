@@ -127,7 +127,7 @@ if ($mac !== '') {
 // --------------------------------------------------------------------------
 
 if ($method === 'GET' && $resource === '.cfg') {
-		$provisioner->serveConfig($mac, $resource);
+		$provisioner->serveConfig($mac);
 		exit;
 }
 

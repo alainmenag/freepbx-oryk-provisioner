@@ -247,7 +247,7 @@ $saved = (int) ($saved ?? 0);
 			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Config</a>`);
 		}
 
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash"></i></button>`);
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
 
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
@@ -259,7 +259,7 @@ $saved = (int) ($saved ?? 0);
 		return [
 			`<div class="flex gap-3">`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
-			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}"><i class="fa fa-trash"></i></button>`,
+			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
 			`</div>`
 		].join('');
 	}

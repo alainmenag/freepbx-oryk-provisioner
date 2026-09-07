@@ -885,10 +885,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		return [
 			_('Device') => [
-				'device.mac' => _('00908F3BBCBA'),
-				'device.mac_lower' => _('00908f3bbcba'),
-				'device.mac_colon' => _('00:90:8F:3B:BC:BA'),
-				'device.mac_colon_lower' => _('00:90:8f:3b:bc:ba'),
+				'device.mac' => _('00908f3bbcba'),
+				'device.mac_upper' => _('00908F3BBCBA'),
+				'device.mac_colon' => _('00:90:8f:3b:bc:ba'),
+				'device.mac_colon_upper' => _('00:90:8F:3B:BC:BA'),
 				'device.id' => _('FreePBX device'),
 				'device.description' => _('Device description'),
 				'device.tech' => _('pjsip or sip'),
@@ -1077,9 +1077,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$values = [
 			'device.mac' => $mac,
-			'device.mac_lower' => strtolower($mac),
+			'device.mac_upper' => strtoupper($mac),
 			'device.mac_colon' => $colon,
-			'device.mac_colon_lower' => strtolower($colon),
+			'device.mac_colon_upper' => strtoupper($colon),
 			'device.id' => (string) ($row['device_id'] ?? ''),
 			'device.description' => (string) ($row['description'] ?? ''),
 			'device.tech' => (string) ($row['tech'] ?? ''),
