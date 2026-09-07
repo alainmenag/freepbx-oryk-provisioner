@@ -1,935 +1,367 @@
 # Oryk Provisioner
 
-Oryk Provisioner is a template-driven VoIP endpoint provisioning module for FreePBX.
+Template-driven endpoint provisioning for FreePBX 16 and 17.
 
-The goal is to provide a vendor-neutral provisioning layer that separates **device data** from **device-specific configuration formats**.
+A phone asks the PBX for a configuration file by its MAC address. The module
+works out which profile that MAC belongs to, finds the file of that profile the
+phone asked for, fills in its placeholders from FreePBX, and serves it.
 
-Provisioning templates define how configuration files should look, while device profiles provide the values inserted into those templates.
+Vendor-specific syntax stays in templates you write; the module holds the data
+and the rendering.
 
-The initial implementation focuses on softphone provisioning, with support planned for physical devices including Yealink, Poly, Grandstream, and other SIP endpoints.
-
-## Goals
-
-* Provide a standardized provisioning model inside FreePBX.
-* Keep device configuration data separate from vendor-specific configuration syntax.
-* Support reusable device templates.
-* Support one or more generated files per device.
-* Generate JSON, XML, key/value, CFG, INI, and arbitrary text-based configuration files.
-* Allow device-specific parameters to override template defaults.
-* Automatically consume FreePBX extension and SIP configuration where appropriate.
-* Provide provisioning URLs that endpoints can consume directly.
-* Support vendor-specific provisioning behavior without changing the core provisioning engine.
-* Provide both an administrative interface and API for managing devices and templates.
+> ### Status
+>
+> This is Stage 1 and it is deliberately smaller than the design it is working
+> towards. **The provisioning endpoint is unauthenticated and keyed on MAC
+> address**: anyone who can reach the URL and knows a MAC gets that phone's
+> configuration, SIP secret included. Read [Security](#security) before putting
+> it anywhere public. Provisioning tokens, a GraphQL API, per-client parameter
+> overrides and a bundled vendor template library are [not built
+> yet](#not-built-yet).
 
 ---
 
-# Concept
+## Getting Started
 
-The provisioning model is inspired in part by BroadWorks device management.
-
-A **template** describes how a device or application should be provisioned.
-
-A **device** is an instance of that template and contains the parameters necessary to render the final configuration.
-
-Conceptually:
-
-```text
-FreePBX Extension Data
-        +
-Template Defaults
-        +
-Device Parameters
-        ↓
-   Parameter Context
-        ↓
-   Template Engine
-        ↓
-Rendered Output Files
-        ↓
-JSON / XML / CFG / INI / TXT / Vendor Format
-```
-
-The provisioning engine works with normalized parameters such as:
-
-```text
-sip.username
-sip.password
-sip.domain
-sip.port
-sip.transport
-
-device.id
-device.mac
-device.model
-device.vendor
-
-user.extension
-user.display_name
-user.email
-
-server.address
-server.port
-```
-
-Each template decides how those parameters are represented in the final device configuration.
+`git clone git@github.com:alainmenag/freepbx-oryk-provisioner.git oryk_provisioner`
 
 ---
 
-# Templates
+## What it does today
 
-A template defines the provisioning behavior for a device family, softphone, or other SIP endpoint.
-
-A template may generate one or more output files.
-
-For example, a simple softphone template may generate only:
-
-```text
-config.json
-```
-
-A physical phone may require:
-
-```text
-001565AABBCC.cfg
-directory.xml
-favorites.xml
-```
-
-All generated files share the same resolved parameter context.
-
-## Template Example
-
-```json
-{
-    "name": "Generic Softphone",
-    "slug": "generic-softphone",
-    "vendor": "generic",
-    "family": "softphone",
-    "defaults": {
-        "sip.port": 5060,
-        "sip.transport": "udp"
-    },
-    "outputs": [
-        {
-            "filename": "config.json",
-            "contentType": "application/json",
-            "template": "{ ... }"
-        }
-    ]
-}
-```
-
-A Yealink-style template could define:
-
-```json
-{
-    "name": "Yealink T54W",
-    "slug": "yealink-t54w",
-    "vendor": "yealink",
-    "family": "T5",
-    "defaults": {
-        "sip.port": 5060,
-        "sip.transport": "udp"
-    },
-    "outputs": [
-        {
-            "filename": "{{device.mac}}.cfg",
-            "contentType": "text/plain",
-            "template": "..."
-        },
-        {
-            "filename": "directory.xml",
-            "contentType": "application/xml",
-            "template": "..."
-        }
-    ]
-}
-```
-
-Templates are reusable across multiple devices.
+- Associates a MAC address with a FreePBX device and a provisioning profile.
+- Serves every file a phone asks its profile for — the main config, phone,
+  web, directory — each one a filename and a template you write.
+- Fills `{{placeholder}}` names from the client, its FreePBX device, that
+  device's extension, and the device's own SIP settings.
+- Answers phones on an unauthenticated endpoint at `/provisioner/`, without an
+  admin session.
+- Gives you an admin page per client, profile and resource, and a per-row
+  Render link so you can see exactly what a given phone gets.
+- Logs metadata only — MAC, file, profile. Never the rendered body.
 
 ---
 
-# Template Outputs
+## The model
 
-Each template contains one or more outputs.
+```
+Client                    Profile              Resources
+------                    -------              ---------
+0004f282e824          ->  Polycom VVX 500  ->  .cfg
+device 1001 (ext 1001)                         phone.cfg
+                                               {{device.mac}}-directory.xml
 
-An output defines:
-
-```json
-{
-    "filename": "{{device.mac}}.cfg",
-    "contentType": "text/plain",
-    "template": "..."
-}
+00908f3bbcba          ->  Polycom VVX 500
+device 1002 (ext 1002)
 ```
 
-The filename itself may contain template variables.
+**Client** — a MAC address, optionally a FreePBX device, optionally a profile.
+The MAC is the only required field; it is unique, and stored as 12 lowercase
+hexadecimal characters with any separators stripped. The FreePBX `devices`
+table stays the source of truth for the device, its extension and its
+description, so a client carries none of its own.
 
-Examples:
+**Profile** — a name, and the files it serves. Nothing else: a profile holds no
+configuration text of its own.
 
-```text
-config.json
+**Resource** — one file. A filename and a template. The main configuration file
+is a resource like every other file, named `.cfg`.
 
-{{device.mac}}.cfg
-
-cfg{{device.mac}}.xml
-
-{{device.mac}}-directory.xml
-```
-
-This allows the provisioning engine to support vendor-specific filename requirements without hardcoding them into the core provisioning system.
+A client with no device still provisions — the device-derived placeholders are
+simply empty, which is what a profile of static configuration wants. A client
+with no profile is served nothing.
 
 ---
 
-# Template Variables
+## Quick start
 
-Templates use normalized variables.
+**1. Make a profile.** *Oryk → Provisioner → Profiles → Add Profile*. Give it a
+name (`Polycom VVX 500`) and save.
 
-Example JSON template:
+**2. Add the main config.** On the profile's **Resources** tab, *Add Resource*.
+Filename `.cfg`, and a template:
 
-```json
-{
-    "account": {
-        "username": "{{sip.username}}",
-        "password": "{{sip.password}}",
-        "domain": "{{sip.domain}}",
-        "port": "{{sip.port}}",
-        "transport": "{{sip.transport}}"
-    },
-    "user": {
-        "extension": "{{user.extension}}",
-        "displayName": "{{user.display_name}}"
-    }
-}
+```
+reg.1.address="{{extension.number}}"
+reg.1.auth.userId="{{device.username}}"
+reg.1.auth.password="{{device.secret}}"
+reg.1.label="{{extension.name}}"
+reg.1.server.1.address="{{server.host}}"
+reg.1.server.1.port="{{server.port}}"
+reg.1.server.1.transport="{{sip.transport}}"
 ```
 
-The same data could be rendered as key/value configuration:
+Add more resources for the other files the phone fetches — `phone.cfg`,
+`directory.xml`, and so on.
 
-```ini
-account.username={{sip.username}}
-account.password={{sip.password}}
-account.domain={{sip.domain}}
-account.port={{sip.port}}
-account.transport={{sip.transport}}
+**3. Add a client.** *Clients → Add Client*. Enter the MAC, pick the FreePBX
+device it stands for, pick the profile, save.
+
+**4. Check what it will get.** Open the client and look at its **Resources**
+tab: every file it asks for, under the filename it will ask for, with a
+**Render** link that fetches it exactly as the phone will.
+
+**5. Point the phone at it.**
+
+```
+http://<pbx>/provisioner/
 ```
 
-or XML:
-
-```xml
-<account>
-    <username>{{sip.username}}</username>
-    <password>{{sip.password}}</password>
-    <domain>{{sip.domain}}</domain>
-    <port>{{sip.port}}</port>
-    <transport>{{sip.transport}}</transport>
-</account>
-```
-
-The provisioning engine resolves the values.
-
-The template determines the final syntax.
+Most phones append their own MAC and filename to that. Nothing else to
+configure.
 
 ---
 
-# Parameter Schema
+## The provisioning endpoint
 
-Templates may declare the parameters they expect.
+`engine/provisioner.php`, reached through a symlink in the web root, is the
+only route a phone can use. It bootstraps FreePBX itself: FreePBX 16/17 sends
+every session-less `config.php` request to the login page before a module's
+`doConfigPageInit()` ever runs, so a public route cannot go through `config.php`
+at all — `requires_auth="false"` governs menu visibility, not anonymous access.
 
-This makes parameters discoverable by the administrative interface and allows validation before a configuration is rendered.
+| Request | Serves |
+| --- | --- |
+| `/provisioner/0004f282e824.cfg` | that profile's `.cfg` resource |
+| `/provisioner/0004f282e824` | the same |
+| `/provisioner/?mac=0004f282e824` | the same, for a caller with no filename to give |
+| `/provisioner/0004f282e824-phone.cfg` | its `phone.cfg` resource |
+| `/provisioner/0004f282e824-directory.xml` | its `directory.xml` resource |
 
-Example:
+**Who is asking** is read from the path, then the query string, then an
+AudioCodes `User-Agent`. **A MAC in the path always wins over `?mac=`** — which
+matters for a filename that carries somebody else's MAC, such as the
+`000000000000-directory.xml` a Polycom really does request: it resolves to
+`000000000000` and cannot be redirected with `?mac=`.
 
-```json
-{
-    "parameters": {
-        "sip.username": {
-            "type": "string",
-            "required": true
-        },
-        "sip.password": {
-            "type": "string",
-            "required": true,
-            "secret": true
-        },
-        "sip.port": {
-            "type": "integer",
-            "default": 5060
-        },
-        "sip.transport": {
-            "type": "string",
-            "default": "udp",
-            "allowed": [
-                "udp",
-                "tcp",
-                "tls"
-            ]
-        },
-        "device.mac": {
-            "type": "string",
-            "required": false
-        }
-    }
-}
-```
+**What they asked for** is the last segment of the path, verbatim. Which
+resource of which profile that names is worked out by the module.
 
-Possible parameter properties include:
+GET and HEAD are served. Anything else — including the boot and app logs a
+phone PUTs — is a 404 and a log line.
 
-```text
-type
-required
-default
-secret
-allowed
-description
-```
-
-The administrative interface can use this schema to automatically build device parameter forms.
+A MAC that is not associated, a client with no profile, and a filename the
+profile does not serve are all 404s.
 
 ---
 
-# Devices
+## How a filename is matched
 
-A device represents a provisioned endpoint.
+A resource's name is itself a template, and it matches a request two ways:
 
-Example:
+| Written as | Matches | Because |
+| --- | --- | --- |
+| `{{device.mac}}-phone.cfg` | `0004f282e824-phone.cfg` | the name is rendered with this client's values and compared to the request |
+| `phone.cfg` | `0004f282e824-phone.cfg` | the name is compared to the request with this client's MAC taken off the front |
 
-```json
-{
-    "name": "Alain Softphone",
-    "template": "generic-softphone",
-    "identifier": "alain-softphone",
-    "extension": "1001",
-    "enabled": true,
-    "parameters": {
-        "sip.transport": "tls"
-    }
-}
-```
+Both are the same string in the same column — the second is only what the first
+becomes when it has no placeholders in it. A name written out in full wins over
+one that matches only the tail. Matching ignores case throughout, and the MAC
+is stripped in whichever separator style the phone used (`0004f282e824`,
+`00:04:f2:82:e8:24`, `0004.f282.e824`).
 
-A physical device may additionally contain:
+**Name the main config `.cfg`.** Written that way it is matched with the MAC
+taken off the front, so it answers whichever separator style the phone asks in.
+`{{device.mac}}.cfg` works too, but it renders without separators and so only
+answers a phone that asks that way. A profile with neither serves nothing for
+`<mac>.cfg`.
 
-```json
-{
-    "mac": "001565AABBCC",
-    "vendor": "yealink",
-    "model": "T54W"
-}
-```
+Names are unique per profile, not globally — two profiles both serving a
+`{{device.mac}}-phone.cfg` is the normal case.
 
-Values such as SIP username, password, display name, server address, and other FreePBX information may be resolved automatically from the extension associated with the device.
-
-Device parameters may override those values when necessary.
+**Content type** is taken from the extension: `.xml` is served as `text/xml`,
+`.json` as `application/json`, everything else as `text/plain`.
 
 ---
 
-# Device State
+## Template placeholders
 
-Devices may be enabled or disabled.
+`{{name}}`, filled in when a client asks for the file. A name nothing answers to
+renders as nothing — a phone copes with an empty value, not with a literal
+`{{ }}` where a value belongs. Both editors list the names under the template
+box; click one to copy it.
 
-```json
-{
-    "enabled": true
-}
+| Placeholder | Value |
+| --- | --- |
+| `{{device.mac}}` | `0004f282e824` |
+| `{{device.mac_upper}}` | `0004F282E824` |
+| `{{device.mac_colon}}` | `00:04:f2:82:e8:24` |
+| `{{device.mac_colon_upper}}` | `00:04:F2:82:E8:24` |
+| `{{device.id}}` | the FreePBX device id |
+| `{{device.description}}` | its description |
+| `{{device.tech}}` | `pjsip` or `sip` |
+| `{{device.username}}` | SIP username |
+| `{{device.secret}}` | SIP secret |
+| `{{extension.number}}` | the extension the device is attached to |
+| `{{extension.name}}` | display name |
+| `{{extension.voicemail}}` | voicemail setting |
+| `{{profile.id}}`, `{{profile.name}}` | the profile serving the file |
+| `{{server.host}}` | the host the request arrived on, port stripped |
+| `{{server.port}}` | `5060` |
+
+Plus **everything else the device is configured with in FreePBX**, under a `sip.`
+prefix — one placeholder per row the device has in the `sip` table, so
+vendor-specific values stay in your templates rather than in the module:
+
+```
+{{sip.transport}}   {{sip.callerid}}   {{sip.dtmfmode}}   ...
 ```
 
-An enabled device may retrieve its provisioning configuration.
+Non-alphanumerics in a keyword fold to `_`, so `dtmf-mode` is `{{sip.dtmf_mode}}`.
 
-A disabled device must not return configuration files even if its provisioning token is valid.
+There are no filters, sections or escaping yet — but the delimiters and the
+dotted names are the ones the full engine will use, so templates written now
+keep rendering.
 
-This allows administrators to immediately stop provisioning without deleting the device.
+A site whose `sip` or `users` tables are missing a lookup degrades to empty
+values rather than a 500.
 
 ---
 
-# Parameter Resolution
+## The admin interface
 
-Configuration values are resolved in the following order:
+*Oryk → Provisioner*. A list and three editors, told apart by which key the URL
+carries. Every tab is in the address too, so a reload, a bookmark or a link from
+elsewhere in the module lands where you were.
 
-```text
-Template Defaults
-      ↓
-FreePBX / Extension Values
-      ↓
-Device Parameters
-      ↓
-Resolved Parameter Context
-```
+| URL | Page | Tabs |
+| --- | --- | --- |
+| `?display=oryk_provisioner` | the list | Clients, Profiles |
+| `&client=<id>` | one client (`&client=` for a new one) | Client, Resources |
+| `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
+| `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 
-Device-level parameters have the highest priority.
+Both list tabs are paginated, searchable and sortable server-side. Save, Delete
+and Close are in the FreePBX action bar on every editor.
 
-For example:
+**The two preview tabs** are one idea from both ends: the client editor's
+**Resources** tab is one phone over all the files it gets; the resource
+editor's **Clients** tab is one file over all the phones that get it. A
+resource's rendered filename depends on both, so the row where the two meet is
+the only place such a link can exist. Filenames shown there are produced by the
+same code the endpoint uses, so they are what a phone actually asks for. A file
+whose name carries another device's MAC gets its filename and no Render button
+— the link would answer for the wrong phone.
 
-```text
-Template Default:
-sip.transport = udp
-
-FreePBX:
-sip.transport = udp
-
-Device Override:
-sip.transport = tls
-```
-
-The rendered value becomes:
-
-```text
-sip.transport = tls
-```
+**Deleting a profile** that clients are still assigned to is refused rather than
+cascading; its resources do cascade, since a resource has no existence apart
+from the profile that serves it.
 
 ---
 
-# Provisioning API
+## Database
 
-Oryk Provisioner separates the **management API** from the **device provisioning endpoint**.
+Three tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
 
----
+**`oryk_provisioner_clients`** — `id`, `mac` (unique, 12 lowercase hex),
+`device_id`, `profile_id`, `created_at`, `updated_at`.
+`device_id` is a `VARCHAR(20)` because FreePBX `devices.id` is a string column,
+and it keeps that name deliberately: it holds a FreePBX device id, which is the
+one thing on the row that is still a device.
 
-# Management API
+**`oryk_provisioner_profiles`** — `id`, `name` (unique), `created_at`,
+`updated_at`.
 
-Management operations integrate with the FreePBX API.
+**`oryk_provisioner_resources`** — `id`, `profile_id`, `name`, `template`
+(LONGTEXT), `created_at`, `updated_at`. Unique on `(profile_id, name)`.
 
-FreePBX GraphQL requests use:
-
-```text
-POST /admin/api/api/gql
-```
-
-The Provisioner module may expose queries such as:
-
-```graphql
-provisionerTemplates
-provisionerTemplate(id: ID!)
-
-provisionerDevices
-provisionerDevice(id: ID!)
-
-provisionerRenderDevice(id: ID!)
-provisionerRenderFile(deviceId: ID!, filename: String!)
-```
-
-and mutations such as:
-
-```graphql
-provisionerCreateTemplate(...)
-provisionerUpdateTemplate(...)
-provisionerDeleteTemplate(...)
-
-provisionerCreateDevice(...)
-provisionerUpdateDevice(...)
-provisionerDeleteDevice(...)
-
-provisionerEnableDevice(id: ID!)
-provisionerDisableDevice(id: ID!)
-
-provisionerRegenerateToken(id: ID!)
-```
-
-The management API requires normal FreePBX API authentication and authorization.
+`uninstall()` leaves all three in place.
 
 ---
 
-# Provisioning Endpoints
+## Installing
 
-Oryk Provisioner supports provisioning through the FreePBX web interface as well as optional simplified provisioning URLs.
+Install the module as usual (`fwconsole ma install oryk_provisioner`, or upload
+it in Module Admin).
 
-## FreePBX Provisioning URL
+`install()` also symlinks the module's `engine/` directory into the web root:
 
-The canonical FreePBX provisioning endpoint is:
-
-```text
-/admin/config.php?display=oryk_provisioner&token={token}&filename={filename}
+```
+/var/www/html/provisioner -> .../admin/modules/oryk_provisioner/engine
 ```
 
-Example:
+which is what gives phones a short URL instead of a path under `/admin/` that a
+hardened site may not serve anonymously at all. Apache has to be willing to
+follow it — `Options FollowSymLinks` on the web root, the FreePBX default.
 
-```text
-/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=config.json
+Nothing about the link fails the install. If the web root is not writable, or
+something else already lives at `/provisioner`, you get a message on the console
+and the endpoint stays reachable at its real path:
+
+```
+http://<pbx>/provisioner/<mac>
 ```
 
-For a physical phone:
-
-```text
-/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=001565AABBCC.cfg
-```
-
-When a valid provisioning token and filename are supplied, the module:
-
-```text
-Validate Token
-      ↓
-Resolve Device
-      ↓
-Check Device Enabled
-      ↓
-Resolve Template
-      ↓
-Resolve Parameters
-      ↓
-Match Requested Output
-      ↓
-Render Template
-      ↓
-Return Raw Configuration
-```
-
-The response contains the raw configuration rather than the FreePBX administrative interface.
-
-Example:
-
-```http
-GET /admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=config.json
-```
-
-Response:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-```json
-{
-    "account": {
-        "username": "1001",
-        "password": "secret",
-        "domain": "pbx.example.com",
-        "transport": "tls"
-    }
-}
-```
+`engine/.htaccess` rewrites everything under the directory to `provisioner.php`,
+so the filename a phone asks for arrives as the request path. `uninstall()`
+removes the symlink — and only if it still resolves to this module's engine.
 
 ---
 
-# Friendly Provisioning URL
+## Security
 
-Where URL rewriting is available, the same configuration may optionally be exposed through a shorter device-friendly URL:
+Know what this is before you expose it:
 
-```text
-/provisioner/{token}/{filename}
-```
-
-Example:
-
-```text
-/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565AABBCC.cfg
-```
-
-The friendly URL resolves to the same provisioning engine as the FreePBX URL.
-
-It does not represent a separate provisioning implementation.
-
-Conceptually:
-
-```text
-/provisioner/{token}/{filename}
-                │
-                ▼
-        Provisioning Engine
-
-/admin/config.php?display=oryk_provisioner
-        &token={token}
-        &filename={filename}
-                │
-                ▼
-        Provisioning Engine
-```
+- **The endpoint is unauthenticated and keyed on MAC address.** Anyone who can
+  reach the URL and knows — or guesses — a MAC gets that client's rendered
+  configuration, including `device.secret` if the template emits it. This is
+  inherent to MAC-based provisioning and the reason the token scheme exists in
+  the design. Until it lands, restrict who can reach `/provisioner/` at the
+  network layer, and prefer HTTPS.
+- **Failures are not uniform.** A 404 says which kind of failure it was
+  ("… is not associated with anything", "… has no profile assigned"), so a
+  caller probing MACs can tell a known one from an unknown one.
+- **Secrets are not masked anywhere in the UI.** The Render links serve the real
+  rendered file, secret included.
+- The provisioning log records metadata only — MAC, file, profile — never the
+  rendered body or any parameter value.
+- Sortable columns are whitelisted and mapped to SQL names before being written
+  into a statement; everything else is bound.
 
 ---
 
-# Administrative Interface
+## Not built yet
 
-Requests without a provisioning token provide the normal FreePBX administrative interface:
+The larger design this is working towards, none of which exists in the code:
 
-```text
-/admin/config.php?display=oryk_provisioner
-```
-
-The administrative interface is used to manage:
-
-* Devices
-* Templates
-* Template outputs
-* Device parameters
-* Template defaults
-* Parameter schemas
-* Provisioning tokens
-* Device enable/disable state
-* Generated configuration previews
-
----
-
-# Configuration Preview
-
-Administrators should be able to render a configuration without making an actual provisioning request.
-
-The administrative interface may provide actions such as:
-
-```text
-Preview Device
-Preview Output
-View Resolved Parameters
-```
-
-For example:
-
-```text
-Device: Alain Softphone
-Template: Generic Softphone
-Output: config.json
-```
-
-The preview should show both:
-
-```text
-Resolved Parameters
-```
-
-and:
-
-```text
-Rendered Configuration
-```
-
-This allows template problems to be identified before assigning them to production devices.
+- **Provisioning tokens** — the `token=…&filename=…` URL scheme, per-client
+  enable/disable, and a uniform 404 for every kind of failure.
+- **Per-client parameters** and the resolution order (module settings → schema
+  defaults → template defaults → FreePBX/extension → client overrides). A client
+  today is a MAC, a device and a profile; nothing overrides anything.
+- **A bundled template library** for Yealink, Poly, Grandstream and a generic
+  softphone. Every template is one you write, and a profile is set up one file
+  at a time from empty — there is no seeding and no copying resources between
+  profiles.
+- **Static resources.** Everything renders; there is no verbatim type for
+  content with literal braces in it, and no firmware serving.
+- **A GraphQL API**, a `fwconsole` command, module settings, and a stored
+  provisioning log with a page to read it.
+- **Template filters, sections and content-type-aware escaping.**
+- **Somewhere for a phone's boot and app logs to go** — they are PUT, and PUT is
+  a 404.
+- Backup and restore hooks are stubs.
 
 ---
 
-# Provisioning Tokens
+## Code map
 
-Each device receives a random provisioning token.
-
-Example:
-
-```text
-Device ID:       42
-MAC:             001565AABBCC
-Provision Token: 9f31d772d2d742c792b5c93fb1c52a51
+```
+Oryk_provisioner.class.php   BMO: install/uninstall, page dispatch, AJAX
+                             commands, and the renderer (renderConfig,
+                             matchResource, provisioningValues, serveConfig)
+engine/provisioner.php       the unauthenticated endpoint: who is asking and
+                             what they asked for, and nothing else
+engine/.htaccess             rewrites the engine directory to provisioner.php
+page.oryk_provisioner.php    one line into showPage()
+views/admin.php              the list
+views/client.php             the client editor
+views/profile.php            the profile editor
+views/resource.php           the resource editor
+views/partials/editor.php    the CSS and JS all three editors share
+views/partials/placeholders.php   the placeholder reference
 ```
 
-A provisioning URL may therefore look like:
-
-```text
-https://pbx.example.com/admin/config.php?display=oryk_provisioner&token=9f31d772d2d742c792b5c93fb1c52a51&filename=001565AABBCC.cfg
-```
-
-or:
-
-```text
-https://pbx.example.com/provisioner/9f31d772d2d742c792b5c93fb1c52a51/001565AABBCC.cfg
-```
-
-MAC addresses identify devices but should not be treated as authentication credentials.
-
-The provisioning token provides access to the device's generated configuration.
-
----
-
-# Token Lifecycle
-
-Provisioning tokens may be:
-
-```text
-Created
-Regenerated
-Revoked
-```
-
-Regenerating a token immediately invalidates the previous provisioning URL.
-
-Deleting or disabling a device also prevents the token from being used.
-
-Tokens should be generated using a cryptographically secure random value and should not contain predictable information such as:
-
-```text
-device ID
-extension
-MAC address
-username
-```
-
----
-
-# Provisioning HTTP Behavior
-
-The provisioning endpoint should return predictable HTTP responses.
-
-## Successful Configuration
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-or the content type defined by the template output.
-
-## Invalid Token
-
-```http
-HTTP/1.1 404 Not Found
-```
-
-The response should not reveal whether a device exists.
-
-## Disabled Device
-
-```http
-HTTP/1.1 404 Not Found
-```
-
-## Unknown Filename
-
-```http
-HTTP/1.1 404 Not Found
-```
-
-## Template Rendering Failure
-
-```http
-HTTP/1.1 500 Internal Server Error
-```
-
-Detailed rendering errors should be logged internally but should not expose sensitive device parameters to the endpoint.
-
----
-
-# Example Provisioning Flow
-
-Given the device:
-
-```json
-{
-    "extension": "1001",
-    "template": "generic-softphone",
-    "enabled": true,
-    "parameters": {
-        "sip.transport": "tls"
-    }
-}
-```
-
-FreePBX may provide:
-
-```json
-{
-    "sip.username": "1001",
-    "sip.password": "A5f9bB2...",
-    "sip.domain": "pbx.example.com",
-    "sip.port": 5061,
-    "user.extension": "1001",
-    "user.display_name": "Alain"
-}
-```
-
-The template provides:
-
-```json
-{
-    "sip.port": 5060,
-    "sip.transport": "udp"
-}
-```
-
-The device overrides:
-
-```json
-{
-    "sip.transport": "tls"
-}
-```
-
-The resulting context becomes:
-
-```json
-{
-    "sip.username": "1001",
-    "sip.password": "A5f9bB2...",
-    "sip.domain": "pbx.example.com",
-    "sip.port": 5061,
-    "sip.transport": "tls",
-    "user.extension": "1001",
-    "user.display_name": "Alain"
-}
-```
-
-That context is then available to every output defined by the assigned template.
-
----
-
-# Multiple Output Example
-
-A Yealink device could use:
-
-```json
-{
-    "name": "Office T54W",
-    "template": "yealink-t54w",
-    "mac": "001565AABBCC",
-    "extension": "1001"
-}
-```
-
-The template may define:
-
-```json
-{
-    "outputs": [
-        {
-            "filename": "{{device.mac}}.cfg",
-            "contentType": "text/plain",
-            "template": "..."
-        },
-        {
-            "filename": "{{device.mac}}-directory.xml",
-            "contentType": "application/xml",
-            "template": "..."
-        }
-    ]
-}
-```
-
-The same device can then request:
-
-```text
-/provisioner/{token}/001565AABBCC.cfg
-```
-
-and:
-
-```text
-/provisioner/{token}/001565AABBCC-directory.xml
-```
-
-Both files are generated from the same device and parameter context.
-
----
-
-# Security
-
-Provisioning files may contain sensitive information including SIP credentials.
-
-The provisioning system should therefore:
-
-* Use HTTPS whenever possible.
-* Use random provisioning tokens.
-* Never expose SIP credentials through management APIs without appropriate authorization.
-* Avoid logging rendered configuration contents containing secrets.
-* Allow tokens to be regenerated.
-* Allow devices to be disabled immediately.
-* Return generic responses for invalid provisioning requests.
-* Support additional network restrictions where appropriate.
-
-Vendor-specific authentication methods may be added where supported.
-
----
-
-# Planned Device Support
-
-The initial focus is a generic softphone provisioning format.
-
-Planned device families include:
-
-* Generic SIP softphones
-* Yealink
-* Poly / Polycom
-* Grandstream
-
-The provisioning engine itself remains vendor-neutral.
-
-Vendor support should primarily consist of:
-
-```text
-Templates
-Parameter mappings
-Output definitions
-Filename rules
-Content types
-Vendor-specific behavior
-```
-
-rather than separate provisioning engines for every manufacturer.
-
----
-
-# Device Types
-
-As the module grows, templates may represent complete device types or device profiles.
-
-For example:
-
-```text
-Device Type
-└── Yealink T54W
-    ├── Parameters
-    ├── Defaults
-    └── Outputs
-        ├── {{device.mac}}.cfg
-        ├── directory.xml
-        └── favorites.xml
-```
-
-or:
-
-```text
-Device Type
-└── Poly Edge E450
-    ├── Parameters
-    ├── Defaults
-    └── Outputs
-        ├── {{device.mac}}.cfg
-        ├── phone.cfg
-        └── contacts.xml
-```
-
-A single physical device can therefore generate multiple provisioning files while sharing the same resolved parameter context.
-
-This provides a path toward a BroadWorks-style device management model without coupling the provisioning engine to any individual manufacturer.
-
----
-
-# Architecture
-
-At a high level:
-
-```text
-                    ┌─────────────────────┐
-                    │      FreePBX        │
-                    │ Extensions / PJSIP  │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ Parameter Resolver  │
-                    └──────────┬──────────┘
-                               │
-             ┌─────────────────┼─────────────────┐
-             │                 │                 │
-             ▼                 ▼                 ▼
-      Template Defaults   FreePBX Data    Device Overrides
-             │                 │                 │
-             └─────────────────┼─────────────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ Resolved Context    │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │  Template Renderer  │
-                    └──────────┬──────────┘
-                               │
-                     ┌─────────┴─────────┐
-                     ▼                   ▼
-              config.json        001565AABBCC.cfg
-```
-
-The same renderer should be used by:
-
-```text
-FreePBX Admin Preview
-GraphQL API
-FreePBX Provisioning URL
-Friendly Provisioning URL
-```
-
-This keeps provisioning behavior consistent regardless of how the configuration is requested.
+AJAX commands, all authenticated through `ajax.php`: `listClients`,
+`listProfiles`, `listResources`, `saveClient`, `saveProfile`, `saveResource`,
+`deleteClient`, `deleteProfile`, `deleteResource`.
