@@ -13,6 +13,9 @@
  * display=oryk_provisioner. Values are read by id and posted explicitly.
  *
  * Both views render an alert with id `oryk_error` for orykShowError() to fill.
+ *
+ * The placeholder chips below the template are copied by clicking one, which
+ * is wired here because both editors include the same list.
  */
 ?>
 <style>
@@ -44,8 +47,26 @@
 	}
 	.oryk-placeholder-group code {
 		display: inline-block;
+		position: relative;
 		margin: 2px 4px 0 0;
-		cursor: help;
+		cursor: pointer;
+	}
+	.oryk-placeholder-group code[data-oryk-copied]::after {
+		content: attr(data-oryk-copied);
+		position: absolute;
+		left: 50%;
+		bottom: 100%;
+		transform: translateX(-50%);
+		margin-bottom: 2px;
+		padding: 0 4px;
+		border-radius: 2px;
+		background: #333;
+		color: #fff;
+		font-family: sans-serif;
+		font-size: 11px;
+		line-height: 16px;
+		white-space: nowrap;
+		pointer-events: none;
 	}
 	.oryk-toolbar {
 		padding-bottom: 5px;
@@ -65,6 +86,11 @@
 </style>
 
 <script>
+
+	// Said by the copied-placeholder label, which CSS draws and so cannot
+	// translate itself.
+	var orykCopied = <?php echo json_encode(_('copied')); ?>;
+	var orykCopyFailed = <?php echo json_encode(_('could not copy')); ?>;
 
 	// Every call to the module is a POST to ajax.php with the command in the
 	// query string, which is what FreePBX dispatches on.
@@ -88,6 +114,62 @@
 	function orykEscape(value) {
 		return $('<div>').text(value === null || value === undefined ? '' : value).html();
 	}
+
+	/**
+	 * Put text on the clipboard, whichever way this browser allows.
+	 *
+	 * navigator.clipboard exists only in a secure context, and a FreePBX GUI
+	 * is as often reached over plain http on the LAN as over https, so the
+	 * old execCommand path is the one that usually runs and is not a
+	 * fallback for old browsers so much as for unencrypted ones.
+	 */
+	function orykCopy(text) {
+		var done = $.Deferred();
+
+		if (window.navigator && navigator.clipboard && window.isSecureContext) {
+			navigator.clipboard.writeText(text).then(function () {
+				done.resolve(true);
+			}, function () {
+				done.resolve(false);
+			});
+
+			return done.promise();
+		}
+
+		var field = $('<textarea>')
+			.val(text)
+			.css({ position: 'fixed', top: 0, left: 0, opacity: 0 })
+			.appendTo('body');
+
+		var copied = false;
+
+		try {
+			field[0].select();
+			field[0].setSelectionRange(0, text.length);
+			copied = document.execCommand('copy');
+		} catch (error) {
+			copied = false;
+		}
+
+		field.remove();
+
+		return done.resolve(copied).promise();
+	}
+
+	// A placeholder is only ever wanted in the template above it, so clicking
+	// one copies its name. The label is drawn by CSS off the attribute rather
+	// than by inserting anything, which would move the chips around.
+	$(document).on('click', '.oryk-placeholder-group code', function () {
+		var chip = $(this);
+
+		orykCopy(chip.text()).done(function (copied) {
+			chip.attr('data-oryk-copied', copied ? orykCopied : orykCopyFailed);
+
+			window.setTimeout(function () {
+				chip.removeAttr('data-oryk-copied');
+			}, 1000);
+		});
+	});
 
 	/**
 	 * Wire the action bar to one editor.
