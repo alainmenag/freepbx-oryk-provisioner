@@ -151,7 +151,7 @@ $tab = $isNew ? 'profile' : $tab;
 									</div>
 									<div class="col-md-8">
 										<textarea class="form-control oryk-template" id="profile_template"
-											rows="24" spellcheck="false" wrap="off">
+											rows="6" spellcheck="false" wrap="off">
 <?php echo $h($profile['template']); ?></textarea>
 									</div>
 								</div>
@@ -159,7 +159,7 @@ $tab = $isNew ? 'profile' : $tab;
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The main configuration file, served for <mac>.cfg. Stored as typed. Names in double braces are replaced when a device asks for its configuration; a name nothing answers to is replaced with nothing.'); ?>
+										<?php echo _('The main configuration file, served for [mac].cfg. Stored as typed. Names in double braces are replaced when a device asks for its configuration; a name nothing answers to is replaced with nothing.'); ?>
 									</span>
 									<?php include __DIR__ . '/partials/placeholders.php'; ?>
 								</div>
@@ -172,7 +172,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resources' ? 'active' : ''; ?>" id="oryk_resources">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('The other files a phone asks this profile for -- <mac>-phone.cfg, <mac>-web.cfg, a directory, anything the vendor fetches alongside the main config. Each is rendered the same way the template above is.'); ?>
+								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg, a directory, anything the vendor fetches alongside/directly.'); ?>
 							</p>
 
 							<div id="resource_toolbar" class="oryk-toolbar">

@@ -78,7 +78,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *   ?display=oryk_provisioner&profile=<id> the editor, bound to that profile
 	 *   ?display=oryk_provisioner&profile=     the editor, writing a new one
 	 *
-	 * A fourth URL, ?mac=<mac>&config=, never reaches here: it is
+	 * A fourth URL, ?mac=[mac]&config=, never reaches here: it is
 	 * configuration text rather than a page, and doConfigPageInit() has
 	 * already answered it and ended the request.
 	 *
@@ -1273,7 +1273,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * With no filename this is the profile's own template -- the main config,
 	 * the one file every profile has. With one, it is whichever of the
 	 * profile's resources answers to that name; and the profile's template is
-	 * still the answer for <mac>.cfg when no resource claims it, so a profile
+	 * still the answer for [mac].cfg when no resource claims it, so a profile
 	 * that has never had a resource added renders exactly as it did before
 	 * there were any.
 	 *
@@ -1326,7 +1326,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		if ($match === null) {
 			// Nothing the profile serves claims the name, so the profile's
 			// own template answers -- but only for the main config, which is
-			// <mac>.cfg, a bare <mac>, or no filename at all. Anything else
+			// [mac].cfg, a bare [mac], or no filename at all. Anything else
 			// is a file this profile does not have, and saying so beats
 			// handing a phone the main config under a name it never asked
 			// for and will not parse.
@@ -1434,7 +1434,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * Read a character at a time, stopping the moment twelve hex digits are
 	 * in hand, because a pattern that allows a dot between them will also
-	 * take the dot of the extension: <mac>.cfg has to come back as `.cfg`,
+	 * take the dot of the extension: [mac].cfg has to come back as `.cfg`,
 	 * not `cfg`. Stopping at the twelfth digit means nothing past the MAC is
 	 * ever looked at, and 0004.f282.e824 grouping costs nothing extra.
 	 *
@@ -1478,7 +1478,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$rest = substr($filename, $end);
 
 		// The dot of an extension belongs to the name that is left --
-		// <mac>.cfg is `.cfg` -- where a dash or an underscore is only the
+		// [mac].cfg is `.cfg` -- where a dash or an underscore is only the
 		// vendor's way of joining the two, and part of neither.
 		return ($rest !== '' && $rest[0] === '.') ? $rest : ltrim($rest, '-_');
 	}

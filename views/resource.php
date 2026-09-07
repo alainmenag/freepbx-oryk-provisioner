@@ -6,8 +6,8 @@
  * `resource` present and empty to write a new one -- the same shape the
  * profile editor has, one level down.
  *
- * A resource is a profile's other files: the phone asks for <mac>-phone.cfg
- * or <mac>-directory.xml alongside its main config, and this is what it gets.
+ * A resource is a profile's other files: the phone asks for [mac]-phone.cfg
+ * or [mac]-directory.xml alongside its main config, and this is what it gets.
  * Which makes it a profile minus the parts a profile has because devices are
  * assigned to it, which is why the two views share partials/editor.php and
  * differ in little more than their two fields.
