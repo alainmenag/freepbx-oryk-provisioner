@@ -117,7 +117,7 @@ $tab = $isNew ? 'resource' : $tab;
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="resource_name"
-											autocomplete="off" placeholder="{{device.mac}}-phone.cfg"
+											autocomplete="off" placeholder="phone.cfg"
 											value="<?php echo $h($resource['name']); ?>">
 									</div>
 								</div>
@@ -125,10 +125,10 @@ $tab = $isNew ? 'resource' : $tab;
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The filename a phone asks for. It is a template like the body below, so <code>{{device.mac}}-phone.cfg</code> covers every client on this profile, and a vendor that names its files some other way can be matched exactly. A name with no placeholders in it -- <code>phone.cfg</code> -- is matched against the request with the client\'s MAC taken off the front, so either way of writing it works. Unique within this profile.'); ?>
+										<?php echo _('The filename a phone asks for, with the client\'s own MAC left out of it. A phone writes its MAC into the name wherever its vendor puts it -- <code>[mac]-phone.cfg</code>, <code>cfg[mac].xml</code>, <code>[mac].cfg</code> -- and the MAC is taken back out before the name is matched, so <code>phone.cfg</code>, <code>cfg.xml</code> and <code>.cfg</code> each answer every client on this profile, in whichever separator style the phone asks. A filename carrying somebody else\'s MAC, or none at all, is matched exactly as it stands: name it <code>000000000000-directory.xml</code>. The name is also a template like the body below, for a file named after something other than the MAC -- <code>{{extension.number}}.xml</code>. Unique within this profile.'); ?>
 									</span>
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The main configuration file is a resource like any other. Name it <code>.cfg</code>: written that way it is matched against the request with the MAC taken off the front, so it answers whichever separator style the phone asks in. <code>{{device.mac}}.cfg</code> works too, but it renders without separators and so only answers a phone that asks that way. A profile with neither serves nothing for <code>[mac].cfg</code>.'); ?>
+										<?php echo _('The main configuration file is a resource like any other. Name it <code>.cfg</code>: the MAC comes out of the request before the name is matched, so <code>.cfg</code> is what <code>[mac].cfg</code> is asking for, in whichever separator style it asks. A profile without one serves nothing for <code>[mac].cfg</code>.'); ?>
 									</span>
 									<?php if (!$isNew): ?>
 										<span class="help-block fpbx-help-block">

@@ -872,15 +872,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * What one client asks for when it asks for one resource, and where.
 	 *
-	 * matchResource() read backwards. A name is matched either as it renders
-	 * or as the tail of a request with the MAC taken off the front, so the
-	 * request that reaches this resource is one of:
+	 * matchResource() read backwards. A name is matched either as it stands,
+	 * as it renders, or as what is left of a request with the MAC taken out
+	 * of it, so the request that reaches this resource is one of:
 	 *
 	 *   {{device.mac}}-phone.cfg  renders to 0004f282e824-phone.cfg, which is
 	 *                             asked for as it stands.
 	 *   phone.cfg                 has no MAC to render, so the phone asks for
-	 *                             0004f282e824-phone.cfg and resourceSuffix()
-	 *                             takes the MAC back off. Joined by nothing
+	 *                             0004f282e824-phone.cfg and resourceName()
+	 *                             takes the MAC back out. Joined by nothing
 	 *                             when the name is an extension of its own
 	 *                             (.cfg), by a dash otherwise.
 	 *
@@ -923,7 +923,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		if ($rendered === $name && $name !== '') {
 			$joined = $mac . ($name[0] === '.' ? '' : '-') . $name;
 
-			if ($this->macIn($joined) === $mac && strcasecmp($this->resourceSuffix($joined, $mac), $name) === 0) {
+			if ($this->macIn($joined) === $mac && strcasecmp($this->resourceName($joined, $mac), $name) === 0) {
 				return ['filename' => $joined, 'url' => $this->engineUrl($joined)];
 			}
 		}
@@ -936,19 +936,49 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * The MAC a requested filename carries, if it carries one.
 	 *
-	 * The endpoint's own reading of a path, kept to the same pattern: twelve
-	 * hexadecimal characters, optionally paired off with colons or dashes,
-	 * not run up against more hex on either side.
-	 *
 	 * @param string $filename Filename as it would be asked for.
 	 *
 	 * @return string The normalised MAC, or '' when there is none.
 	 */
 	private function macIn($filename)
 	{
-		$pattern = '/(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]?){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])/';
+		$found = $this->macAt($filename);
 
-		return preg_match($pattern, (string) $filename, $match) ? $this->normalizeMac($match[0]) : '';
+		return $found === null ? '' : $found['mac'];
+	}
+
+	/**
+	 * The MAC a filename carries, and whereabouts in it.
+	 *
+	 * The endpoint's own reading of a path, kept to the same pattern: twelve
+	 * hexadecimal characters, optionally paired off with colons, dashes or
+	 * dots, not run up against more hex on either side. Where it sits is
+	 * part of the answer because a vendor is as likely to write the MAC into
+	 * the middle of a name (cfg[mac].xml) as onto the front of one.
+	 *
+	 * Only the first is reported. A filename carrying two MACs is not
+	 * something any phone here asks for, and picking which of them addresses
+	 * the request would be guessing.
+	 *
+	 * @param string $filename Filename as it would be asked for.
+	 *
+	 * @return array{mac: string, offset: int, length: int}|null Where the MAC is, or null when there is none.
+	 */
+	private function macAt($filename)
+	{
+		$pattern = '/(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:.-]?){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])/';
+
+		if (!preg_match($pattern, (string) $filename, $match, PREG_OFFSET_CAPTURE)) {
+			return null;
+		}
+
+		$mac = $this->normalizeMac($match[0][0]);
+
+		return $mac === '' ? null : [
+			'mac' => $mac,
+			'offset' => $match[0][1],
+			'length' => strlen($match[0][0]),
+		];
 	}
 
 	/**
@@ -1607,7 +1637,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$result = $this->renderConfig($mac, $requested);
 
 		if (!$result['status']) {
-			$this->FreePBX->Logger->log(FPBX_LOG_WARNING, sprintf(
+			$this->FreePBX->Logger->log(FPBX_LOG_DEBUG, sprintf(
 				'oryk_provisioner: 404 for %s (%s)',
 				(string) $requested !== '' ? (string) $requested : (string) $mac,
 				$result['message']
@@ -1672,28 +1702,20 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		$values = $this->provisioningValues($row);
-		$requested = trim((string) $requested);
-
-		// What is left of the filename with this client's own MAC off the
-		// front: 0004f282e824-phone.cfg asked of that client is phone.cfg,
-		// and 0004f282e824.cfg is .cfg. Worked out here rather than in the
-		// endpoint, so the endpoint only has to report what was asked for.
-		$suffix = $requested === '' ? '' : $this->resourceSuffix($requested, $mac);
+		$file = trim((string) $requested);
 
 		// Two ways of asking for nothing in particular, and both are asking
 		// for the main config: no filename at all, and the client's own MAC
-		// with no filename after it (/provisioner/0004f282e824, which is what
-		// leaves nothing behind once the MAC is taken off the front). Both
-		// become [mac].cfg here rather than being carried down as an empty
-		// string and special-cased at the bottom, so there is exactly one
-		// name to match against and a miss names a file the caller will
-		// recognise.
-		if ($suffix === '') {
-			$requested = $mac . '.cfg';
-			$suffix = '.cfg';
+		// with nothing around it (/provisioner/0004f282e824, which is what is
+		// left of nothing once the MAC is taken out). Both become [mac].cfg
+		// here rather than being carried down as an empty string and
+		// special-cased at the bottom, so there is exactly one name to match
+		// against and a miss names a file the caller will recognise.
+		if ($file === '' || $this->resourceName($file, $mac) === '') {
+			$file = $mac . '.cfg';
 		}
 
-		$match = $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
+		$match = $this->matchResource((int) $row['profile_id'], $file, $mac, $values);
 
 		if ($match === null) {
 			// Nothing this profile serves answers to the name. That now
@@ -1703,7 +1725,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			// finished writing rather than one with an implicit main config.
 			return [
 				'status' => false,
-				'message' => sprintf(_('%s is not something this profile serves.'), $requested),
+				'message' => sprintf(_('%s is not something this profile serves.'), $file),
 			];
 		}
 
@@ -1719,7 +1741,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// template asks for it, and the log is not where that belongs. The
 		// resource is always named now -- there is no unnamed main config for
 		// the line to have to describe.
-		$this->FreePBX->Logger->log(FPBX_LOG_INFO, sprintf(
+		$this->FreePBX->Logger->log(FPBX_LOG_DEBUG, sprintf(
 			'oryk_provisioner: %s served %s from profile %s',
 			$mac,
 			$out['resource'],
@@ -1732,56 +1754,84 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Which of a profile's resources answers to a requested filename.
 	 *
-	 * Two ways, and a name written out in full wins:
+	 * A phone addresses a file to itself by writing its MAC into the name,
+	 * and every vendor puts it somewhere different:
 	 *
-	 *   {{device.mac}}-phone.cfg  rendered with this client's values and
-	 *                             compared to what was actually asked for, so
-	 *                             one resource covers every client on the
-	 *                             profile -- and a vendor that does not put
-	 *                             the MAC at the front, or anywhere, can
-	 *                             still be named exactly.
-	 *   phone.cfg                 compared against the request with the MAC
-	 *                             taken off the front, so the ordinary case
-	 *                             can be typed as the tail on its own.
+	 *   0004f282e824.cfg            the MAC and an extension, nothing else.
+	 *   0004f282e824-directory.xml  the MAC, a separator, the file.
+	 *   cfg0004f282e824.xml         the MAC in the middle of the name the
+	 *                               phone was always going to ask for.
 	 *
-	 * Both are the same string in the same column, which is the point: the
-	 * second is only what the first becomes when it has no placeholders in
-	 * it. There is nothing to declare and nothing to migrate later.
+	 * Take this client's MAC back out of any of those -- resourceName() --
+	 * and what is left is the file itself: `.cfg`, `directory.xml`,
+	 * `cfg.xml`. That is what a resource is named after, so matching is one
+	 * lookup on two strings: the filename as it was asked for, and the
+	 * filename with the MAC taken out of it.
+	 *
+	 * The name as asked for wins, so a request that this does not describe
+	 * -- 000000000000-directory.xml, a Polycom asking for the directory it
+	 * shares with every other phone -- can still be named exactly.
+	 *
+	 * A name with placeholders in it is rendered against this client and
+	 * compared the same way. It is the last arm rather than the first
+	 * because it is now the rare one: {{device.mac}}-phone.cfg is
+	 * `phone.cfg` written the long way, and only a name that varies by
+	 * something other than the MAC ({{extension.number}}.xml) still needs
+	 * writing that way.
 	 *
 	 * @param int                   $profileId Profile the resources belong to.
 	 * @param string                $requested Filename as it was asked for.
-	 * @param string                $suffix    The same, with this client's MAC removed.
+	 * @param string                $mac       This client's normalised MAC.
 	 * @param array<string, string> $values    Placeholder name to value.
 	 *
 	 * @return array<string, mixed>|null The resource, or null when none answers.
 	 */
-	private function matchResource($profileId, $requested, $suffix, array $values)
+	private function matchResource($profileId, $requested, $mac, array $values)
 	{
+		$clean = $this->resourceName($requested, $mac);
+
+		// Filenames are matched without regard to case throughout -- a phone
+		// asking for 0004F282E824.CFG and one asking for 0004f282e824.cfg are
+		// the same phone asking for the same file -- so the two names are
+		// compared lowercased rather than on the column's collation. The
+		// third clause reads the templated names, which are the only ones
+		// that cannot be compared until they have been rendered.
 		$stmt = $this->db->prepare(
 			"SELECT id, name, template
 			FROM `{$this->resourcesTable}`
 			WHERE profile_id = :profile_id
+			AND (LOWER(name) = :requested OR LOWER(name) = :clean OR name LIKE '%{{%')
 			ORDER BY name"
 		);
-		$stmt->execute([':profile_id' => (int) $profileId]);
+		$stmt->execute([
+			':profile_id' => (int) $profileId,
+			':requested' => strtolower($requested),
+			':clean' => strtolower($clean),
+		]);
 
+		$resources = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		$fallback = null;
 
-		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $resource) {
+		foreach ($resources as $resource) {
 			$name = (string) $resource['name'];
 
-			// Filenames are matched without regard to case throughout: a
-			// phone asking for 0004F282E824.cfg and one asking for
-			// 0004f282e824.cfg are the same phone asking for the same file.
-			if (strcasecmp($this->renderTemplate($name, $values), $requested) === 0) {
+			if (strcasecmp($name, $requested) === 0) {
 				return $resource;
 			}
 
-			// Held rather than returned. A rendered name is what its author
-			// wrote out in full, and it wins over one that only matches the
-			// tail of the request.
-			if ($fallback === null && $suffix !== '' && strcasecmp($name, $suffix) === 0) {
+			// Held rather than returned, so a name written out as the phone
+			// asks for it always beats one matched with the MAC taken out.
+			if ($fallback === null && $clean !== '' && strcasecmp($name, $clean) === 0) {
 				$fallback = $resource;
+			}
+		}
+
+		foreach ($resources as $resource) {
+			$name = (string) $resource['name'];
+
+			if (strpos($name, '{{') !== false
+				&& strcasecmp($this->renderTemplate($name, $values), $requested) === 0) {
+				return $resource;
 			}
 		}
 
@@ -1789,67 +1839,46 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * A requested filename with this client's own MAC taken off the front.
+	 * A requested filename with this client's own MAC taken out of it.
 	 *
-	 * Phones ask by MAC, in whatever separator style they favour:
-	 * 0004f282e824-phone.cfg, 00:04:f2:82:e8:24-phone.cfg and
-	 * 0004f282e824.cfg are all one client asking. What is left is the part a
-	 * resource can be named after -- phone.cfg, and .cfg for the main config,
-	 * which is a resource of the profile like any other file it serves.
+	 * Phones ask by MAC, in whatever separator style they favour and
+	 * wherever in the name they favour putting it: 0004f282e824-phone.cfg,
+	 * 00:04:f2:82:e8:24-phone.cfg, 0004.f282.e824.cfg and
+	 * cfg0004f282e824.xml are all one client asking. What is left once the
+	 * MAC is out is the file it is asking for -- phone.cfg, .cfg, cfg.xml --
+	 * and that is what a resource is named after.
 	 *
-	 * A filename that does not begin with this client's MAC comes back
-	 * unchanged: it is either meant literally or meant for somebody else, and
-	 * neither is helped by having something trimmed off it.
+	 * The separator that joined the two goes with the MAC, because joining
+	 * is addressing rather than name. A dot is the exception: it is the
+	 * extension of a file that has nothing else to its name, so [mac].cfg
+	 * comes back as `.cfg` and not `cfg`.
 	 *
-	 * Read a character at a time, stopping the moment twelve hex digits are
-	 * in hand, because a pattern that allows a dot between them will also
-	 * take the dot of the extension: [mac].cfg has to come back as `.cfg`,
-	 * not `cfg`. Stopping at the twelfth digit means nothing past the MAC is
-	 * ever looked at, and 0004.f282.e824 grouping costs nothing extra.
+	 * A filename with no MAC in it, or with somebody else's, comes back
+	 * unchanged: it is either meant literally or meant for another phone,
+	 * and neither is helped by having something trimmed off it.
 	 *
 	 * @param string $filename Last segment of the requested path.
 	 * @param string $mac      This client's normalised MAC.
 	 *
-	 * @return string The filename, or what is left of it.
+	 * @return string What it asks for, which is '' when the MAC was all there was.
 	 */
-	private function resourceSuffix($filename, $mac)
+	private function resourceName($filename, $mac)
 	{
-		$hex = '';
-		$end = 0;
+		$filename = (string) $filename;
+		$found = $this->macAt($filename);
 
-		for ($i = 0, $length = strlen($filename); $i < $length; $i++) {
-			$char = $filename[$i];
-
-			if (ctype_xdigit($char)) {
-				$hex .= $char;
-				$end = $i + 1;
-
-				if (strlen($hex) === 12) {
-					break;
-				}
-
-				continue;
-			}
-
-			// A separator, but only once there is something for it to
-			// separate: a name starting with one is not a MAC.
-			if ($hex !== '' && ($char === ':' || $char === '-' || $char === '.')) {
-				continue;
-			}
-
-			break;
-		}
-
-		if (strlen($hex) !== 12 || strtolower($hex) !== $mac) {
+		if ($found === null || $found['mac'] !== $mac) {
 			return $filename;
 		}
 
-		$rest = substr($filename, $end);
+		$head = rtrim(substr($filename, 0, $found['offset']), '-_:');
+		$tail = substr($filename, $found['offset'] + $found['length']);
 
-		// The dot of an extension belongs to the name that is left --
-		// [mac].cfg is `.cfg` -- where a dash or an underscore is only the
-		// vendor's way of joining the two, and part of neither.
-		return ($rest !== '' && $rest[0] === '.') ? $rest : ltrim($rest, '-_');
+		if ($tail !== '' && $tail[0] !== '.') {
+			$tail = ltrim($tail, '-_:');
+		}
+
+		return $head . $tail;
 	}
 
 	/**

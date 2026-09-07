@@ -3,7 +3,7 @@
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
 	<repo>commercial</repo>
-	<version>1.0.8</version>
+	<version>1.0.9</version>
 	<dbversion>1.0.4</dbversion>
 	<publisher>Oryk</publisher>
 	<type>setup</type>
@@ -14,6 +14,7 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
+		*1.0.9* A filename is matched by taking the client&apos;s own MAC out of it, wherever the vendor wrote it -- &lt;mac&gt;.cfg is `.cfg`, &lt;mac&gt;-directory.xml is `directory.xml`, cfg&lt;mac&gt;.xml is `cfg.xml` -- so a resource is named after the file itself and one name answers every client. A name is still matched as it stands, and still rendered as a template when it has placeholders in it
 		*1.0.8* A device is a &lt;strong&gt;client&lt;/strong&gt;: the row pairing a MAC with a FreePBX device and a profile is named that everywhere -- &amp;client=&lt;id&gt;, a Clients tab, listClients/saveClient/deleteClient -- so "device" now only ever means the FreePBX device it points at. The table is oryk_provisioner_clients; nothing renames it for you, so rename it before upgrading
 		*1.0.7* A profile no longer holds a template of its own: every file it serves is a resource, the main config included, named &lt;code&gt;.cfg&lt;/code&gt; like any other. The profiles table drops its `template` column on upgrade and the text in it is not migrated -- copy anything you still want into a resource first
 		*1.0.6* Adding and editing a device is a page of its own at &amp;device=&lt;id&gt;, the shape a profile already had, rather than a modal on the list

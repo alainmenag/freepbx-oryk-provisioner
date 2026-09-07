@@ -143,11 +143,12 @@ if ($method === 'GET' || $method === 'HEAD') {
 http_response_code(404);
 
 $freepbx->Logger->log(
-    FPBX_LOG_INFO,
+    FPBX_LOG_DEBUG,
     json_encode([
         'status' => 404,
         'method' => $method,
         'mac' => $mac,
         'file' => $filename,
+				'requestPath' => $requestPath,
     ])
 );
