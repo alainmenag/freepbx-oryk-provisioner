@@ -13,12 +13,20 @@
  *   http(s)://<pbx>/provisioner/00908F3BBCBA.cfg
  *   http(s)://<pbx>/provisioner/00908F3BBCBA
  *
- * and bootstraps FreePBX itself. It calls the same serveConfig() the admin
- * preview (config.php?...&config=) calls -- one engine, two ways in, and only
- * this one is reachable without a session.
+ * and bootstraps FreePBX itself. What it works out is who is asking -- the
+ * MAC -- and what they asked for -- the last segment of the path. Which file
+ * of which profile that names is the module's business: it knows the profile
+ * the MAC resolves to, what resources that profile serves, and how to take
+ * the MAC off the front of a filename to match them. None of that is here.
  *
- * GET or POST; the MAC is read from either. The reply is text/plain, and every
- * failure is a uniform 404 so a MAC cannot be probed for whether it is known.
+ *   /provisioner/0004f282e824.cfg            the profile's main config
+ *   /provisioner/?mac=0004f282e824           the same, for a caller with no
+ *                                            filename to give
+ *   /provisioner/0004f282e824-phone.cfg      a resource of that profile
+ *   /provisioner/0004f282e824-directory.xml  another
+ *
+ * GET or HEAD; the MAC is read from the path, the query string or the
+ * User-Agent. A file the profile does not serve is a 404.
  */
 
 /**
@@ -89,25 +97,15 @@ if (
 $mac = strtolower($mac ?? '');
 
 // --------------------------------------------------------------------------
-// RESOURCE
+// FILE
 // --------------------------------------------------------------------------
 
-$filename = basename($requestPath);
-$resource = $filename;
+// The last segment of the path, exactly as it was asked for and no more --
+// working out which resource of which profile that is belongs with the
+// profile, not here. A path ending in a slash asked for no file at all, which
+// is the /provisioner/?mac=... shape and means the main config.
 
-if ($mac !== '') {
-    // Compare without caring about MAC case.
-    if (strncasecmp($filename, $mac, strlen($mac)) === 0) {
-        $resource = substr($filename, strlen($mac));
-
-        // MAC.cfg => ".cfg"
-        // MAC-directory.xml => "directory.xml"
-        // MAC-phone.cfg => "phone.cfg"
-        if ($resource !== '' && $resource[0] !== '.') {
-            $resource = ltrim($resource, '-_');
-        }
-    }
-}
+$filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 
 // --------------------------------------------------------------------------
 // AUTHENTICATION
@@ -123,29 +121,33 @@ if ($mac !== '') {
 // }
 
 // --------------------------------------------------------------------------
-// RESOURCE - GET - .cfg
+// SERVE
 // --------------------------------------------------------------------------
 
-if ($method === 'GET' && $resource === '.cfg') {
-		$provisioner->serveConfig($mac);
-		exit;
+// serveConfig() ends the request either way -- with the rendered file, or
+// with a 404 when the MAC is unknown, has no profile, or that profile serves
+// nothing by that name. It logs the outcome itself.
+if ($method === 'GET' || $method === 'HEAD') {
+    $provisioner->serveConfig($mac, $filename);
+    exit;
 }
 
 // --------------------------------------------------------------------------
-// RESOURCE - 404
+// 404
 // --------------------------------------------------------------------------
 
-// to-do: handle other resources, like .log, .xml, etc. For now, just return 404 for anything else
-// from the profiles
+// to-do: a phone also PUTs its boot and app logs. Until there is somewhere
+// for those to go, anything that is not a fetch is not a request this
+// endpoint answers.
 
 http_response_code(404);
 
 $freepbx->Logger->log(
-	FPBX_LOG_INFO,
-	json_encode([
-			'status' => 404,
-			'method' => $method,
-			'mac' => $mac,
-			'resource' => $resource,
-	])
+    FPBX_LOG_INFO,
+    json_encode([
+        'status' => 404,
+        'method' => $method,
+        'mac' => $mac,
+        'file' => $filename,
+    ])
 );

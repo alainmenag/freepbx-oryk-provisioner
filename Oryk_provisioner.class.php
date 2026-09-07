@@ -25,6 +25,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private $profilesTable = 'oryk_provisioner_profiles';
 
 	/**
+	 * Table holding the extra files a profile serves besides its main config.
+	 *
+	 * @var string
+	 */
+	private $resourcesTable = 'oryk_provisioner_resources';
+
+	/**
 	 * Name of the web-root symlink that points at the engine directory.
 	 *
 	 * @var string
@@ -104,9 +111,63 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$profile = $found;
 		}
 
+		$tab = (string) ($_REQUEST['tab'] ?? '');
+
+		// ?profile=<id>&resource=<id> is one of that profile's resources, and
+		// ?profile=<id>&resource= is a new one -- the same shape ?profile= has
+		// itself, one level down. A resource carries a block of configuration
+		// text for the same reason a profile does, so it gets a page too
+		// rather than a dialog on the profile's Resources tab.
+		if ($profile['id'] && isset($_REQUEST['resource'])) {
+			$page = $this->showResource($profile, trim((string) $_REQUEST['resource']));
+
+			if ($page !== null) {
+				return $page;
+			}
+
+			// The resource went between doConfigPageInit()'s check and here.
+			// The profile it would have belonged to is where it is not.
+			$tab = 'resources';
+		}
+
 		return load_view(__DIR__ . '/views/profile.php', [
 			'profile' => $profile,
 			'assigned' => $profile['id'] ? $this->profileDevices((int) $profile['id']) : [],
+			'placeholders' => $this->templatePlaceholders(),
+			'tab' => ($tab === 'resources' && $profile['id']) ? 'resources' : 'profile',
+			'saved' => (int) ($_REQUEST['saved'] ?? 0),
+		]);
+	}
+
+	/**
+	 * Render the resource editor.
+	 *
+	 * The same page as the profile editor in everything but which two columns
+	 * it is bound to, which is why both are one view apiece over a shared
+	 * partial rather than one view with a mode flag.
+	 *
+	 * @param array<string, mixed> $profile Profile the resource belongs to.
+	 * @param string               $wanted  Resource id, or '' for a new one.
+	 *
+	 * @return string|null Rendered page, or null when the id names nothing.
+	 */
+	private function showResource(array $profile, $wanted)
+	{
+		$resource = ['id' => 0, 'profile_id' => (int) $profile['id'], 'name' => '', 'template' => ''];
+
+		if ($wanted !== '') {
+			$found = $this->resourceRow($wanted, (int) $profile['id']);
+
+			if (!$found) {
+				return null;
+			}
+
+			$resource = $found;
+		}
+
+		return load_view(__DIR__ . '/views/resource.php', [
+			'resource' => $resource,
+			'profile' => $profile,
 			'placeholders' => $this->templatePlaceholders(),
 		]);
 	}
@@ -155,6 +216,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			return [];
 		}
 
+		// On a resource page it is the resource that Save and Delete act on;
+		// the profile in the URL is only what it hangs off.
+		$row = isset($_REQUEST['resource'])
+			? trim((string) $_REQUEST['resource'])
+			: trim((string) $_REQUEST['profile']);
+
 		$bar = [
 			'oryksave' => [
 				'name' => 'oryksave',
@@ -163,9 +230,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			],
 		];
 
-		// Nothing to delete until there is a row: on a new profile the button
-		// would refer to something that has never been written.
-		if (trim((string) $_REQUEST['profile']) !== '') {
+		// Nothing to delete until there is a row: on a new profile, or a new
+		// resource, the button would refer to something never written.
+		if ($row !== '') {
 			$bar['orykdelete'] = [
 				'name' => 'orykdelete',
 				'id' => 'orykdelete',
@@ -202,6 +269,29 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
 				UNIQUE KEY `name` (`name`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
+		// A resource is the same two columns a profile has -- a name and a
+		// block of text -- hanging off the profile that serves it. The name is
+		// unique per profile rather than globally: two profiles both serving a
+		// `{{device.mac}}-phone.cfg` is the normal case, not a collision.
+		//
+		// 180 rather than the 191 a profile name gets, because this one is
+		// half of a composite index: 180 utf8mb4 characters plus the int is
+		// 724 bytes, inside the 767 an older MySQL allows per index. No
+		// filename a phone asks for comes close either way. There is no
+		// separate index on profile_id -- it is the left of the unique one.
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->resourcesTable}` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`profile_id` INT(11) NOT NULL,
+				`name` VARCHAR(180) NOT NULL,
+				`template` LONGTEXT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				PRIMARY KEY (`id`),
+				UNIQUE KEY `profile_name` (`profile_id`, `name`)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
@@ -420,13 +510,38 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$wanted = trim((string) $_REQUEST['profile']);
 
-		// Empty is the new-profile editor, not a lookup that failed.
+		// Empty is the new-profile editor, not a lookup that failed. A
+		// resource has nothing to hang off until the profile has been
+		// written, so ?profile=&resource= is sent back to the profile.
 		if ($wanted === '') {
+			if (isset($_REQUEST['resource'])) {
+				header('Location: config.php?display=oryk_provisioner&profile=');
+				exit;
+			}
+
 			return;
 		}
 
 		if (!ctype_digit($wanted) || !$this->profileExists((int) $wanted)) {
 			header('Location: config.php?display=oryk_provisioner&tab=profiles');
+			exit;
+		}
+
+		if (!isset($_REQUEST['resource'])) {
+			return;
+		}
+
+		$resource = trim((string) $_REQUEST['resource']);
+
+		// Empty is the new-resource editor. Anything else has to name a
+		// resource of this profile: an id belonging to some other profile is
+		// as much a stale link as one belonging to nothing at all.
+		if ($resource === '') {
+			return;
+		}
+
+		if (!ctype_digit($resource) || !$this->resourceRow($resource, (int) $wanted)) {
+			header('Location: config.php?display=oryk_provisioner&profile=' . (int) $wanted . '&tab=resources');
 			exit;
 		}
 	}
@@ -449,6 +564,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveProfile':
 			case 'deleteDevice':
 			case 'deleteProfile':
+			case 'listResources':
+			case 'saveResource':
+			case 'deleteResource':
 				return true;
 			default:
 				return false;
@@ -485,6 +603,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteProfile':
 				return $this->deleteProfile($_REQUEST['id'] ?? null);
+
+			case 'listResources':
+				return $this->listResources();
+
+			case 'saveResource':
+				return $this->saveResource($_REQUEST);
+
+			case 'deleteResource':
+				return $this->deleteResource($_REQUEST['id'] ?? null);
 
 			default:
 				return null;
@@ -864,8 +991,197 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			];
 		}
 
+		// Resources go with it. Unlike a device association, a resource has
+		// no existence apart from the profile that serves it -- there is
+		// nothing to reassign it to and nothing left for it to mean.
+		$resources = $this->db->prepare("DELETE FROM `{$this->resourcesTable}` WHERE profile_id = :id");
+		$resources->execute([':id' => $id]);
+
 		$stmt = $this->db->prepare("DELETE FROM `{$this->profilesTable}` WHERE id = :id");
 		$stmt->execute([':id' => $id]);
+
+		return ['status' => true];
+	}
+
+	/**
+	 * Rows for a profile's Resources table.
+	 *
+	 * @return array<string, mixed> Total row count and the page of rows.
+	 */
+	private function listResources()
+	{
+		$profileId = (int) ($_REQUEST['profile_id'] ?? 0);
+
+		$sortable = [
+			'name' => 'name',
+			'updated_at' => 'updated_at',
+		];
+
+		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['name'];
+		$order = strtolower((string) ($_REQUEST['order'] ?? '')) === 'desc' ? 'DESC' : 'ASC';
+
+		$limit = (int) ($_REQUEST['limit'] ?? 10);
+		$offset = (int) ($_REQUEST['offset'] ?? 0);
+		$search = (string) ($_REQUEST['search'] ?? '');
+
+		// Always narrowed to the one profile: the table is on that profile's
+		// page and a resource has no meaning away from it.
+		$where = 'WHERE profile_id = :profile_id';
+		$params = [':profile_id' => $profileId];
+
+		if ($search !== '') {
+			$where .= ' AND name LIKE :search';
+			$params[':search'] = '%' . $search . '%';
+		}
+
+		$countStmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->resourcesTable}` $where");
+		$countStmt->execute($params);
+		$total = (int) $countStmt->fetchColumn();
+
+		$sql = "
+			SELECT id, profile_id, name, updated_at
+			FROM `{$this->resourcesTable}`
+			$where
+			ORDER BY $sort $order
+			LIMIT :limit OFFSET :offset
+		";
+
+		$stmt = $this->db->prepare($sql);
+		foreach ($params as $key => $value) {
+			$stmt->bindValue($key, $value);
+		}
+		$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+		$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+		$stmt->execute();
+
+		return [
+			'total' => $total,
+			'rows' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+		];
+	}
+
+	/**
+	 * One resource of one profile, for the editor.
+	 *
+	 * Read on the way into the page rather than fetched by it, the same way
+	 * the profile editor reads its profile. The profile is part of the lookup
+	 * rather than checked after it: a resource id that belongs to a different
+	 * profile names nothing at this URL.
+	 *
+	 * @param mixed $id        Resource id.
+	 * @param int   $profileId Profile it has to belong to.
+	 *
+	 * @return array<string, mixed>|null The resource, or null when there is none.
+	 */
+	private function resourceRow($id, $profileId)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id, profile_id, name, template
+			FROM `{$this->resourcesTable}`
+			WHERE id = :id AND profile_id = :profile_id"
+		);
+		$stmt->execute([':id' => (int) $id, ':profile_id' => (int) $profileId]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		return $row ?: null;
+	}
+
+	/**
+	 * Create or update a resource.
+	 *
+	 * @param array<string, mixed> $request Submitted form values.
+	 *
+	 * @return array<string, mixed> Status, and a message when it was refused.
+	 */
+	private function saveResource($request)
+	{
+		$id = (int) ($request['id'] ?? 0);
+		$profileId = (int) ($request['profile_id'] ?? 0);
+		$name = trim((string) ($request['name'] ?? ''));
+		$template = (string) ($request['template'] ?? '');
+
+		if (!$this->profileExists($profileId)) {
+			return ['status' => false, 'message' => _('That profile no longer exists.')];
+		}
+
+		if ($name === '') {
+			return ['status' => false, 'message' => _('A resource needs the filename a phone asks for.')];
+		}
+
+		// The name is matched against the last segment of a request path, so
+		// a separator in it could never match anything. Better said here than
+		// found out as a phone quietly failing to provision.
+		if (strpbrk($name, '/\\') !== false) {
+			return ['status' => false, 'message' => _('A filename cannot contain a slash.')];
+		}
+
+		// Counted in characters, which is what the column holds, rather than
+		// in bytes: a name is almost always ASCII, where the two are the same.
+		if (mb_strlen($name) > 180) {
+			return ['status' => false, 'message' => _('That filename is too long.')];
+		}
+
+		$taken = $this->db->prepare(
+			"SELECT id FROM `{$this->resourcesTable}`
+			WHERE profile_id = :profile_id AND name = :name AND id != :id"
+		);
+		$taken->execute([':profile_id' => $profileId, ':name' => $name, ':id' => $id]);
+
+		if ($taken->fetchColumn()) {
+			return ['status' => false, 'message' => _('This profile already serves a file by that name.')];
+		}
+
+		if ($id) {
+			// The profile is in the WHERE rather than trusted from the form:
+			// a resource does not move between profiles, and an id from one
+			// profile posted at another is not an edit of anything.
+			$stmt = $this->db->prepare(
+				"UPDATE `{$this->resourcesTable}`
+				SET name = :name, template = :template
+				WHERE id = :id AND profile_id = :profile_id"
+			);
+			$stmt->execute([
+				':name' => $name,
+				':template' => $template,
+				':id' => $id,
+				':profile_id' => $profileId,
+			]);
+
+			return ['status' => true, 'id' => $id, 'profile_id' => $profileId, 'name' => $name];
+		}
+
+		$stmt = $this->db->prepare(
+			"INSERT INTO `{$this->resourcesTable}` (profile_id, name, template)
+			VALUES (:profile_id, :name, :template)"
+		);
+		$stmt->execute([
+			':profile_id' => $profileId,
+			':name' => $name,
+			':template' => $template,
+		]);
+
+		return [
+			'status' => true,
+			'id' => (int) $this->db->lastInsertId(),
+			'profile_id' => $profileId,
+			'name' => $name,
+		];
+	}
+
+	/**
+	 * Remove a resource.
+	 *
+	 * Nothing points at a resource the way a device association points at a
+	 * profile, so there is nothing to refuse this for.
+	 *
+	 * @param mixed $id Resource id.
+	 *
+	 * @return array<string, mixed> Status of the removal.
+	 */
+	private function deleteResource($id)
+	{
+		$stmt = $this->db->prepare("DELETE FROM `{$this->resourcesTable}` WHERE id = :id");
+		$stmt->execute([':id' => (int) $id]);
 
 		return ['status' => true];
 	}
@@ -909,56 +1225,67 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Answer ?config= with the configuration a MAC provisions with, and end
-	 * the request.
+	 * Answer a device's request for a file and end the request.
 	 *
-	 *   config.php?display=oryk_provisioner&mac=00908F3BBCBA&config=
+	 * Called by engine/provisioner.php, which is the only route a phone can
+	 * reach: FreePBX's config.php sends every session-less request to the
+	 * login page long before a module's doConfigPageInit() runs.
 	 *
-	 * `config` is present but empty, the same shape `profile` has on the
-	 * editor: a later stage gives it a filename, so a profile that renders
-	 * more than one file can say which one is being asked for.
+	 *   serveConfig($mac)                          the profile's own template
+	 *   serveConfig($mac, '0004f282e824-web.cfg')  a resource of that profile
 	 *
-	 * This is still config.php, so it is still behind an admin session --
-	 * the unauthenticated token endpoint the README describes is a later
-	 * stage, and no phone can reach this URL. That is also why a failure says
-	 * what went wrong here, rather than returning the endpoint's uniform 404:
-	 * the only reader is the administrator who typed the URL.
+	 * The second argument is the filename as it was asked for, not a resource
+	 * id: which resource that names is the profile's business, and working it
+	 * out is renderConfig()'s.
 	 *
-	 * @param mixed $mac MAC address from the request.
+	 * The outcome is logged here rather than by the endpoint, because this is
+	 * where the request ends and the endpoint never gets to see it.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param string|null $requested Filename asked for, or null for the main config.
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
-	public function serveConfig($mac)
+	public function serveConfig($mac, $requested = null)
 	{
-		$result = $this->renderConfig($mac);
+		$result = $this->renderConfig($mac, $requested);
 
 		if (!$result['status']) {
+			$this->FreePBX->Logger->log(FPBX_LOG_WARNING, sprintf(
+				'oryk_provisioner: 404 for %s (%s)',
+				(string) $requested !== '' ? (string) $requested : (string) $mac,
+				$result['message']
+			));
+
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
-		$this->sendText(200, $result['config']);
+		$this->sendText(200, $result['config'], $this->contentType((string) $result['resource']));
 	}
 
 	/**
 	 * The configuration text a MAC provisions with.
 	 *
 	 * Separate from serveConfig() because this is the part worth calling
-	 * again: a preview in the editor, a console command, the device endpoint
-	 * when there is one. Only the caller here ends the request.
+	 * again: a preview, a console command, a test. Only the caller there ends
+	 * the request.
 	 *
-	 * @param mixed $mac MAC address, written however it was written.
+	 * With no filename this is the profile's own template -- the main config,
+	 * the one file every profile has. With one, it is whichever of the
+	 * profile's resources answers to that name; and the profile's template is
+	 * still the answer for <mac>.cfg when no resource claims it, so a profile
+	 * that has never had a resource added renders exactly as it did before
+	 * there were any.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param string|null $requested Filename asked for, or null for the main config.
 	 *
 	 * @return array<string, mixed> Status, the rendered config when there is
 	 *                              one, and a message when there is not.
 	 */
-	public function renderConfig($mac)
+	public function renderConfig($mac, $requested = null)
 	{
 		$mac = $this->normalizeMac($mac);
-
-		$this->FreePBX->Logger->log(
-				FPBX_LOG_INFO,
-				'Rendering config for MAC: ' . $mac
-		);
 
 		if ($mac === '') {
 			return [
@@ -983,19 +1310,204 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			];
 		}
 
+		$values = $this->provisioningValues($row);
+		$requested = trim((string) $requested);
+
+		// What is left of the filename with this device's own MAC off the
+		// front: 0004f282e824-phone.cfg asked of that device is phone.cfg,
+		// and 0004f282e824.cfg is .cfg. Worked out here rather than in the
+		// endpoint, so the endpoint only has to report what was asked for.
+		$suffix = $requested === '' ? '' : $this->resourceSuffix($requested, $mac);
+
+		$match = $requested === ''
+			? null
+			: $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
+
+		if ($match === null) {
+			// Nothing the profile serves claims the name, so the profile's
+			// own template answers -- but only for the main config, which is
+			// <mac>.cfg, a bare <mac>, or no filename at all. Anything else
+			// is a file this profile does not have, and saying so beats
+			// handing a phone the main config under a name it never asked
+			// for and will not parse.
+			if ($requested !== '' && $suffix !== '' && strcasecmp($suffix, '.cfg') !== 0) {
+				return [
+					'status' => false,
+					'message' => sprintf(_('%s is not something this profile serves.'), $requested),
+				];
+			}
+
+			$match = ['name' => '', 'template' => (string) $row['template']];
+		}
+
 		$out = [
 			'status' => true,
 			'mac' => $mac,
 			'profile' => (string) $row['profile_name'],
-			'config' => $this->renderTemplate((string) $row['template'], $this->provisioningValues($row)),
+			'resource' => (string) $match['name'],
+			'config' => $this->renderTemplate((string) $match['template'], $values),
 		];
 
-		$this->FreePBX->Logger->log(
-				FPBX_LOG_INFO,
-				'Rendering: ' . $out['config']
-		);
+		// Metadata only. A rendered config carries device.secret whenever a
+		// template asks for it, and the log is not where that belongs.
+		$this->FreePBX->Logger->log(FPBX_LOG_INFO, sprintf(
+			'oryk_provisioner: %s served %s from profile %s',
+			$mac,
+			$out['resource'] !== '' ? $out['resource'] : 'the main config',
+			$out['profile']
+		));
 
 		return $out;
+	}
+
+	/**
+	 * Which of a profile's resources answers to a requested filename.
+	 *
+	 * Two ways, and a name written out in full wins:
+	 *
+	 *   {{device.mac}}-phone.cfg  rendered with this device's values and
+	 *                             compared to what was actually asked for, so
+	 *                             one resource covers every device on the
+	 *                             profile -- and a vendor that does not put
+	 *                             the MAC at the front, or anywhere, can
+	 *                             still be named exactly.
+	 *   phone.cfg                 compared against the request with the MAC
+	 *                             taken off the front, so the ordinary case
+	 *                             can be typed as the tail on its own.
+	 *
+	 * Both are the same string in the same column, which is the point: the
+	 * second is only what the first becomes when it has no placeholders in
+	 * it. There is nothing to declare and nothing to migrate later.
+	 *
+	 * @param int                   $profileId Profile the resources belong to.
+	 * @param string                $requested Filename as it was asked for.
+	 * @param string                $suffix    The same, with this device's MAC removed.
+	 * @param array<string, string> $values    Placeholder name to value.
+	 *
+	 * @return array<string, mixed>|null The resource, or null when none answers.
+	 */
+	private function matchResource($profileId, $requested, $suffix, array $values)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id, name, template
+			FROM `{$this->resourcesTable}`
+			WHERE profile_id = :profile_id
+			ORDER BY name"
+		);
+		$stmt->execute([':profile_id' => (int) $profileId]);
+
+		$fallback = null;
+
+		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $resource) {
+			$name = (string) $resource['name'];
+
+			// Filenames are matched without regard to case throughout: a
+			// phone asking for 0004F282E824.cfg and one asking for
+			// 0004f282e824.cfg are the same phone asking for the same file.
+			if (strcasecmp($this->renderTemplate($name, $values), $requested) === 0) {
+				return $resource;
+			}
+
+			// Held rather than returned. A rendered name is what its author
+			// wrote out in full, and it wins over one that only matches the
+			// tail of the request.
+			if ($fallback === null && $suffix !== '' && strcasecmp($name, $suffix) === 0) {
+				$fallback = $resource;
+			}
+		}
+
+		return $fallback;
+	}
+
+	/**
+	 * A requested filename with this device's own MAC taken off the front.
+	 *
+	 * Phones ask by MAC, in whatever separator style they favour:
+	 * 0004f282e824-phone.cfg, 00:04:f2:82:e8:24-phone.cfg and
+	 * 0004f282e824.cfg are all one device asking. What is left is the part a
+	 * resource can be named after -- phone.cfg, and .cfg for the main config,
+	 * which is the one name the profile itself answers to.
+	 *
+	 * A filename that does not begin with this device's MAC comes back
+	 * unchanged: it is either meant literally or meant for somebody else, and
+	 * neither is helped by having something trimmed off it.
+	 *
+	 * Read a character at a time, stopping the moment twelve hex digits are
+	 * in hand, because a pattern that allows a dot between them will also
+	 * take the dot of the extension: <mac>.cfg has to come back as `.cfg`,
+	 * not `cfg`. Stopping at the twelfth digit means nothing past the MAC is
+	 * ever looked at, and 0004.f282.e824 grouping costs nothing extra.
+	 *
+	 * @param string $filename Last segment of the requested path.
+	 * @param string $mac      This device's normalised MAC.
+	 *
+	 * @return string The filename, or what is left of it.
+	 */
+	private function resourceSuffix($filename, $mac)
+	{
+		$hex = '';
+		$end = 0;
+
+		for ($i = 0, $length = strlen($filename); $i < $length; $i++) {
+			$char = $filename[$i];
+
+			if (ctype_xdigit($char)) {
+				$hex .= $char;
+				$end = $i + 1;
+
+				if (strlen($hex) === 12) {
+					break;
+				}
+
+				continue;
+			}
+
+			// A separator, but only once there is something for it to
+			// separate: a name starting with one is not a MAC.
+			if ($hex !== '' && ($char === ':' || $char === '-' || $char === '.')) {
+				continue;
+			}
+
+			break;
+		}
+
+		if (strlen($hex) !== 12 || strtolower($hex) !== $mac) {
+			return $filename;
+		}
+
+		$rest = substr($filename, $end);
+
+		// The dot of an extension belongs to the name that is left --
+		// <mac>.cfg is `.cfg` -- where a dash or an underscore is only the
+		// vendor's way of joining the two, and part of neither.
+		return ($rest !== '' && $rest[0] === '.') ? $rest : ltrim($rest, '-_');
+	}
+
+	/**
+	 * What a rendered file is served as.
+	 *
+	 * Read off the name rather than stored against the resource: an author
+	 * who called a file directory.xml has already said what it is, and a
+	 * second field saying it again is a second field to get wrong. Anything
+	 * unrecognised is plain text, which is what a configuration file is and
+	 * what every phone here expects.
+	 *
+	 * @param string $name Resource name, or '' for the main config.
+	 *
+	 * @return string Content type, without the charset.
+	 */
+	private function contentType($name)
+	{
+		switch (strtolower((string) pathinfo($name, PATHINFO_EXTENSION))) {
+			case 'xml':
+				return 'text/xml';
+
+			case 'json':
+				return 'application/json';
+
+			default:
+				return 'text/plain';
+		}
 	}
 
 	/**
@@ -1003,13 +1515,14 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @param int    $code HTTP status code.
 	 * @param string $body Response body.
+	 * @param string $type Content type, without the charset.
 	 *
 	 * @return void Never returns.
 	 */
-	private function sendText($code, $body)
+	private function sendText($code, $body, $type = 'text/plain')
 	{
 		http_response_code($code);
-		header('Content-Type: text/plain; charset=utf-8');
+		header('Content-Type: ' . $type . '; charset=utf-8');
 		// A phone that re-reads its config expects what is stored now, not
 		// what a cache kept from the last time it asked.
 		header('Cache-Control: no-store');

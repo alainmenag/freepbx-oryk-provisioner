@@ -360,7 +360,7 @@ $saved = (int) ($saved ?? 0);
 	$(document).on('click', '[name="profile_delete"]', function () {
 		const id = $(this).val();
 
-		if (!window.confirm('Delete this profile?')) {
+		if (!window.confirm('Delete this profile? Its resources go with it.')) {
 			return;
 		}
 
