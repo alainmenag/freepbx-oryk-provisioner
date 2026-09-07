@@ -292,15 +292,15 @@ $tab = $isNew ? 'profile' : $tab;
 		return `${device} <a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">(${orykEscape(row.extension)})</a>`;
 	}
 
-	// An association is edited in the dialog on the list, so Edit links back
-	// to it naming this row rather than there being a second dialog here --
-	// which is also where a device is moved to another profile, and so off
-	// this tab. Config is the URL a phone is given; every row here has a
-	// profile by definition, so every row has one.
+	// Edit is the association's own page, the same link the list draws: an
+	// association is one row with one editor, wherever it is reached from,
+	// and that editor is also where a device is moved to another profile and
+	// so off this tab. Config is the URL a phone is given; every row here has
+	// a profile by definition, so every row has one.
 	function formatDeviceActions(value, row) {
 		return [
 			`<div class="flex gap-3">`,
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&tab=devices&device=${encodeURIComponent(row.id)}">Edit</a>`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>`,
 			`<a class="btn btn-default btn-sm" href="/provisioner/${encodeURIComponent(row.mac)}.cfg" target="_blank" title="View the rendered configuration">Config</a>`,
 			`</div>`
 		].join('');
@@ -350,9 +350,8 @@ $tab = $isNew ? 'profile' : $tab;
 				template: $('#profile_template').val()
 			};
 		},
-		// The list is re-rendered on arrival, so the saved profile is in its
-		// table and in the device dialog's dropdown without anything here
-		// having to put it there.
+		// The list is re-rendered on arrival, so the saved profile is in
+		// its table without anything here having to put it there.
 		saved: function (response) {
 			return orykList + '&saved=' + encodeURIComponent(response.id);
 		},

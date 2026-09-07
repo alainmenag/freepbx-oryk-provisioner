@@ -2,27 +2,26 @@
 /**
  * The module page: a Devices tab and a Profiles tab.
  *
- * Both tables are filled by the module's AJAX commands; the only thing
- * rendered here is what the device dialog offers as choices.
+ * Both tables are filled by the module's AJAX commands, so nothing on this
+ * page is rendered from data: what it is handed is which tab to open and
+ * which row was just written, so it can say so.
  *
- * A device association is small enough to stay in a dialog. A profile is not:
- * it carries a block of configuration text, so it has a page of its own,
- * views/profile.php, which the Add and Edit buttons here link to.
+ * Neither a device nor a profile is edited here. Both are pages of their own
+ * -- views/device.php and views/profile.php -- which the Add and Edit buttons
+ * link to. What is left on the list is deletion, which needs no page.
  *
- * @var array<int, array<string, mixed>> $freepbxDevices
- * @var array<int, array<string, mixed>> $profiles
- * @var string                           $tab    Tab to open on: devices|profiles
- * @var int                              $saved  Profile just written, highlighted here
- * @var int                              $openDevice Association to open the dialog on
+ * @var string $tab   Tab to open on: devices|profiles
+ * @var int    $saved Row just written on that tab, highlighted here
  */
 
-$freepbxDevices = $freepbxDevices ?? [];
-$profiles = $profiles ?? [];
 $tab = ($tab ?? '') === 'profiles' ? 'profiles' : 'devices';
 $saved = (int) ($saved ?? 0);
-// Not $device: the FreePBX device dropdown below loops over $freepbxDevices
-// as $device, and this is read after that loop has run.
-$openDevice = (int) ($openDevice ?? 0);
+
+// One `saved` in the URL, and the tab it arrives on says which table it means:
+// each editor comes back to its own tab, so there is never a saved device and
+// a saved profile to tell apart.
+$savedDevice = $tab === 'devices' ? $saved : 0;
+$savedProfile = $tab === 'profiles' ? $saved : 0;
 ?>
 <style>
 	.flex {
@@ -57,9 +56,9 @@ $openDevice = (int) ($openDevice ?? 0);
 
 				<div role="tabpanel" class="tab-pane <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
 					<div id="device_toolbar" class="oryk-toolbar">
-						<button type="button" class="btn btn-primary" id="device_add">
+						<a class="btn btn-primary" href="?display=oryk_provisioner&amp;device=">
 							<i class="fa fa-plus"></i> <?php echo _('Add Device'); ?>
-						</button>
+						</a>
 					</div>
 
 					<table
@@ -71,6 +70,8 @@ $openDevice = (int) ($openDevice ?? 0);
 						data-side-pagination="server"
 						data-pagination="true"
 						data-search="true"
+						data-unique-id="id"
+						data-row-style="formatDeviceRow"
 						data-sort-name="mac"
 						data-sort-order="asc">
 						<thead>
@@ -120,86 +121,14 @@ $openDevice = (int) ($openDevice ?? 0);
 	</div>
 </div>
 
-<div class="modal fade" id="device_modal" tabindex="-1" role="dialog">
-	<div class="modal-dialog" role="document">
-		<div class="modal-content">
-			<!-- Not a form: the module page is itself inside a FreePBX form, and a
-			     nested one is dropped by the browser, which leaves the fields
-			     submitting the page instead. The values are read by id and
-			     posted to ajax.php. -->
-			<div id="device_form">
-				<input type="hidden" id="device_row_id" value="">
-
-				<div class="modal-header">
-					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-					<h4 class="modal-title" id="device_modal_title"><?php echo _('Add Device'); ?></h4>
-				</div>
-
-				<div class="modal-body">
-					<div class="alert alert-danger hidden" id="device_error"></div>
-
-					<div class="form-group">
-						<label class="control-label" for="device_mac">
-							<?php echo _('MAC Address'); ?>
-							<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-						</label>
-						<input type="text" class="form-control" id="device_mac"
-							placeholder="001565aabbcc" autocomplete="off">
-						<span class="help-block"><?php echo _('Stored as 12 lowercase hexadecimal characters; separators are removed.'); ?></span>
-					</div>
-
-					<div class="form-group">
-						<label class="control-label" for="device_device_id"><?php echo _('FreePBX Device'); ?></label>
-						<select class="form-control" id="device_device_id">
-							<option value=""><?php echo _('None'); ?></option>
-							<?php foreach ($freepbxDevices as $device): ?>
-								<option value="<?php echo htmlspecialchars((string) $device['id']); ?>">
-									<?php
-									echo htmlspecialchars(trim(
-										$device['id']
-										. (($device['description'] ?? '') !== '' ? ' - ' . $device['description'] : '')
-										. (($device['tech'] ?? '') !== '' ? ' (' . $device['tech'] . ')' : '')
-									));
-									?>
-								</option>
-							<?php endforeach; ?>
-						</select>
-					</div>
-
-					<div class="form-group">
-						<label class="control-label" for="device_profile_id"><?php echo _('Device Profile'); ?></label>
-						<select class="form-control" id="device_profile_id">
-							<option value=""><?php echo _('None'); ?></option>
-							<?php foreach ($profiles as $profile): ?>
-								<option value="<?php echo (int) $profile['id']; ?>">
-									<?php echo htmlspecialchars((string) $profile['name']); ?>
-								</option>
-							<?php endforeach; ?>
-						</select>
-					</div>
-				</div>
-
-				<div class="modal-footer">
-					<button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _('Cancel'); ?></button>
-					<button type="button" class="btn btn-primary" id="device_save"><?php echo _('Save'); ?></button>
-				</div>
-			</div>
-		</div>
-	</div>
-</div>
-
 <script>
 
 	const orykAjax = 'ajax.php?module=oryk_provisioner&command=';
 
-	// The profile just written by the editor, so the row it landed on can say
-	// so rather than the page looking unchanged after coming back.
-	const orykSavedProfile = <?php echo $saved; ?>;
-
-	// An association linked to from a profile's Devices tab. Its dialog is
-	// here on the list rather than on that tab, so the link comes back here
-	// and says which row it meant.
-	const orykOpenDevice = <?php echo $openDevice; ?>;
+	// The row each editor has just written, so the one it landed on can say so
+	// rather than the page looking unchanged after coming back.
+	const orykSavedDevice = <?php echo $savedDevice; ?>;
+	const orykSavedProfile = <?php echo $savedProfile; ?>;
 
 	// Every call to the module is a POST to ajax.php with the command in the
 	// query string, which is what FreePBX dispatches on.
@@ -242,13 +171,17 @@ $openDevice = (int) ($openDevice ?? 0);
 		return `${device} <a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">(${extension})</a>`;
 	}
 
-	// Config is a link rather than a button: the rendered configuration is a
+	// Editing an association is a page, not a dialog, so Edit is a link: the
+	// row's id is the whole of what the editor needs, and it reads the
+	// association back itself rather than being handed one.
+	//
+	// Config is a link for a different reason: the rendered configuration is a
 	// page of plain text at its own URL, the same one a phone will be given,
 	// so it opens in a tab instead of being fetched back into this one. A row
 	// with no profile has nothing to render, so it does not offer it.
 	function formatDeviceActions(value, row) {
 		const actions = [
-			`<button type="button" class="btn btn-primary btn-sm" name="device_edit" value="${row.id}">Edit</button>`
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>`
 		];
 
 		if (row.profile_id) {
@@ -261,9 +194,11 @@ $openDevice = (int) ($openDevice ?? 0);
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
 
-	// Editing a profile is a page, not a dialog, so Edit is a link: the row's
-	// id is the whole of what the editor needs, and it reads the profile back
-	// itself rather than being handed one.
+	function formatDeviceRow(row) {
+		return orykSavedDevice && Number(row.id) === orykSavedDevice ? { classes: 'success' } : {};
+	}
+
+	// Editing a profile is a page too, and for the same reason.
 	function formatProfileActions(value, row) {
 		return [
 			`<div class="flex gap-3">`,
@@ -283,88 +218,7 @@ $openDevice = (int) ($openDevice ?? 0);
 		$($(this).attr('href')).find('table[data-toggle="table"]').bootstrapTable('resetView');
 	});
 
-	function orykShowError($box, message) {
-		$box.text(message || 'Something went wrong.').removeClass('hidden');
-	}
-
-	// The page is rendered inside the FreePBX page form. The dialog is moved
-	// out to the end of the document so nothing in it belongs to that form,
-	// and so the backdrop sits behind it.
-	$(function () {
-		$('#device_modal').appendTo('body');
-	});
-
-	// Devices
-
-	$(document).on('click', '#device_add', function () {
-		$('#device_error').addClass('hidden').text('');
-		$('#device_modal_title').text('Add Device');
-		$('#device_row_id').val('');
-		$('#device_mac').val('');
-		$('#device_device_id').val('');
-		$('#device_profile_id').val('');
-		$('#device_modal').modal('show');
-	});
-
-	// The row is read back rather than taken off the table, which is what
-	// lets a link open it: arriving from a profile's Devices tab, the table
-	// this row belongs to has not necessarily drawn the row yet.
-	function orykEditDevice(id) {
-		orykPost('getDevice', { id: id }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Device not found.', 4);
-				return;
-			}
-
-			$('#device_error').addClass('hidden').text('');
-			$('#device_modal_title').text('Edit Device');
-			$('#device_row_id').val(response.device.id);
-			$('#device_mac').val(response.device.mac);
-			$('#device_device_id').val(response.device.device_id || '');
-			$('#device_profile_id').val(response.device.profile_id || '');
-			$('#device_modal').modal('show');
-		});
-	}
-
-	$(document).on('click', '[name="device_edit"]', function () {
-		orykEditDevice($(this).val());
-	});
-
-	// Arriving with an association named in the URL opens its dialog. The id
-	// is taken back out of the address afterwards, so a reload is the list
-	// rather than the dialog a second time.
-	$(function () {
-		if (!orykOpenDevice) {
-			return;
-		}
-
-		orykEditDevice(orykOpenDevice);
-
-		if (window.history && window.history.replaceState) {
-			window.history.replaceState(null, '', '?display=oryk_provisioner&tab=devices');
-		}
-	});
-
-	$(document).on('click', '#device_save', function () {
-		orykPost('saveDevice', {
-			id: $('#device_row_id').val(),
-			mac: $('#device_mac').val(),
-			device_id: $('#device_device_id').val(),
-			profile_id: $('#device_profile_id').val()
-		}).done(function (response) {
-			if (!response || !response.status) {
-				orykShowError($('#device_error'), response && response.message);
-				return;
-			}
-
-			$('#device_modal').modal('hide');
-			$('#device_table').bootstrapTable('refresh');
-			$('#profile_table').bootstrapTable('refresh');
-			notie.alert(1, 'Saved.', 2);
-		}).fail(function () {
-			orykShowError($('#device_error'), 'The server could not be reached.');
-		});
-	});
+	// Deleting is the one action on either tab that needs no page of its own.
 
 	$(document).on('click', '[name="device_delete"]', function () {
 		if (!window.confirm('Delete this device association?')) {
@@ -383,25 +237,17 @@ $openDevice = (int) ($openDevice ?? 0);
 		});
 	});
 
-	// Profiles
-	//
-	// Adding and editing are views/profile.php; what is left here is the one
-	// action that needs no page of its own.
-
 	$(document).on('click', '[name="profile_delete"]', function () {
-		const id = $(this).val();
-
 		if (!window.confirm('Delete this profile? Its resources go with it.')) {
 			return;
 		}
 
-		orykPost('deleteProfile', { id: id }).done(function (response) {
+		orykPost('deleteProfile', { id: $(this).val() }).done(function (response) {
 			if (!response || !response.status) {
 				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 				return;
 			}
 
-			$('#device_profile_id').find(`option[value="${id}"]`).remove();
 			$('#profile_table').bootstrapTable('refresh');
 			notie.alert(1, 'Deleted.', 2);
 		});

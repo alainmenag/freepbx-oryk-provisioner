@@ -72,25 +72,36 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Render the requested module page.
 	 *
-	 * Two pages, told apart by ?profile=.
+	 * A list and three editors, told apart by which key the URL carries.
 	 *
-	 *   ?display=oryk_provisioner              the list: devices and profiles
-	 *   ?display=oryk_provisioner&profile=<id> the editor, bound to that profile
-	 *   ?display=oryk_provisioner&profile=     the editor, writing a new one
+	 *   ?display=oryk_provisioner                            the list
+	 *   ?display=oryk_provisioner&device=<id>                one association
+	 *   ?display=oryk_provisioner&device=                    a new one
+	 *   ?display=oryk_provisioner&profile=<id>               one profile
+	 *   ?display=oryk_provisioner&profile=                   a new one
+	 *   ?display=oryk_provisioner&profile=<id>&resource=<id> one of its files
+	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
 	 *
-	 * A fourth URL, ?mac=[mac]&config=, never reaches here: it is
-	 * configuration text rather than a page, and doConfigPageInit() has
-	 * already answered it and ended the request.
+	 * A key present but empty is deliberate rather than a degenerate case: it
+	 * is the same page doing the same thing, minus a row to replace.
 	 *
-	 * `profile` present but empty is deliberate rather than a degenerate case:
-	 * it is the same page doing the same thing, minus a row to replace. A
-	 * device association is small enough to stay in a dialog on the list; a
-	 * profile carries a block of configuration text, which wants a page.
+	 * Everything the module edits is a page. An association was a dialog on
+	 * the list until 1.0.6 -- three short fields do fit in one -- but a dialog
+	 * has no address, so nothing could link to a device, and the profile
+	 * editor's Devices tab had to send an id back to the list and have JS
+	 * re-open the dialog on arrival. One way in, addressable, like the rest.
 	 *
 	 * @return string Rendered page output.
 	 */
 	public function showPage()
 	{
+		// Checked before ?profile= only because neither URL carries the
+		// other's key: an association names its profile in a select, not in
+		// the address.
+		if (isset($_REQUEST['device'])) {
+			return $this->showDevice(trim((string) $_REQUEST['device']));
+		}
+
 		if (!isset($_REQUEST['profile'])) {
 			return $this->showList();
 		}
@@ -144,6 +155,41 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * Render the device editor.
+	 *
+	 * What both selects offer is rendered with the page rather than fetched:
+	 * it is a list of FreePBX devices and a list of profiles, and the page is
+	 * already waiting on the module for the association itself.
+	 *
+	 * @param string $wanted Association id, or '' for a new one.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showDevice($wanted)
+	{
+		$device = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
+
+		if ($wanted !== '') {
+			$found = $this->deviceRow($wanted);
+
+			// doConfigPageInit() has already sent an id that names nothing
+			// back to the list, so this is only reachable if the association
+			// went between that check and here; the list is where it is not.
+			if (!$found) {
+				return $this->showList('devices');
+			}
+
+			$device = $found;
+		}
+
+		return load_view(__DIR__ . '/views/device.php', [
+			'device' => $device,
+			'freepbxDevices' => $this->freepbxDevices(),
+			'profiles' => $this->profileChoices(),
+		]);
+	}
+
+	/**
 	 * Render the resource editor.
 	 *
 	 * The same page as the profile editor in everything but which two columns
@@ -179,11 +225,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Render the list page.
 	 *
-	 * The tables on it are filled over AJAX, so the only thing handed to the
-	 * view is what the device dialog needs to offer as choices, plus which tab
-	 * to open on, which profile the editor has just written, and which device
-	 * a link has asked to have opened -- the dialog for an association lives
-	 * here, so a link from anywhere else comes back to this page naming a row.
+	 * Both tables are filled over AJAX and neither row is edited here, so all
+	 * the view is handed is which tab to open on and which row the editor it
+	 * came back from has just written.
+	 *
+	 * One `saved` for both tables: each editor returns to its own tab, so the
+	 * tab it arrives on says which table the id belongs to.
 	 *
 	 * @param string|null $tab Tab to open on, or null to take it from the request.
 	 *
@@ -194,24 +241,21 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
 
 		return load_view(__DIR__ . '/views/admin.php', [
-			'freepbxDevices' => $this->freepbxDevices(),
-			'profiles' => $this->profileChoices(),
 			'tab' => $tab === 'profiles' ? 'profiles' : 'devices',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
-			'openDevice' => (int) ($_REQUEST['device'] ?? 0),
 		]);
 	}
 
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editor has any: the list's two tabs each carry their own Add,
+	 * Only the editors have any: the list's two tabs each carry their own Add,
 	 * and a single button in the header could not say which tab it meant.
 	 *
 	 * Deliberately not the usual submit/delete names -- those are wired by
-	 * core to a `form.fpbx-submit`, and this page has no form: a profile is
-	 * saved over AJAX, not posted. These are ours, and views/profile.php binds
-	 * them.
+	 * core to a `form.fpbx-submit`, and none of these pages has a form: a row
+	 * is saved over AJAX, not posted. These are ours, and
+	 * views/partials/editor.php binds them.
 	 *
 	 * @param string $request Current page request.
 	 *
@@ -219,15 +263,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function getActionBar($request)
 	{
-		if (!isset($_REQUEST['profile'])) {
+		// Which editor is open, and which of the URL's keys names the row its
+		// buttons act on.
+		if (isset($_REQUEST['device'])) {
+			$row = trim((string) $_REQUEST['device']);
+		} elseif (isset($_REQUEST['profile'])) {
+			// On a resource page it is the resource that Save and Delete act
+			// on; the profile in the URL is only what it hangs off.
+			$row = isset($_REQUEST['resource'])
+				? trim((string) $_REQUEST['resource'])
+				: trim((string) $_REQUEST['profile']);
+		} else {
 			return [];
 		}
-
-		// On a resource page it is the resource that Save and Delete act on;
-		// the profile in the URL is only what it hangs off.
-		$row = isset($_REQUEST['resource'])
-			? trim((string) $_REQUEST['resource'])
-			: trim((string) $_REQUEST['profile']);
 
 		$bar = [
 			'oryksave' => [
@@ -496,14 +544,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Initialise the module configuration page.
 	 *
-	 * An id that names no profile is a stale link or a hand-edited URL, not a
-	 * profile: opening the editor on it would bind the fields to something
-	 * that cannot be saved back. It is sent to the list instead, and it is
-	 * done here because this runs before any of the page has been written.
-	 *
-	 * ?config= is answered here too, and for the same reason: it is
-	 * configuration text rather than a page, so it has to be written before
-	 * FreePBX starts writing HTML around it. The request ends there.
+	 * An id that names no row is a stale link or a hand-edited URL: opening an
+	 * editor on it would bind the fields to something that cannot be saved
+	 * back. It is sent to the list instead, and it is done here because this
+	 * runs before any of the page has been written -- a redirect out of
+	 * showPage() would be too late to set a header.
 	 *
 	 * @param string $page Current configuration page.
 	 *
@@ -511,6 +556,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function doConfigPageInit($page)
 	{
+		// Empty is the new-association editor, not a lookup that failed.
+		if (isset($_REQUEST['device'])) {
+			$device = trim((string) $_REQUEST['device']);
+
+			if ($device !== '' && (!ctype_digit($device) || !$this->deviceRow($device))) {
+				header('Location: config.php?display=oryk_provisioner&tab=devices');
+				exit;
+			}
+
+			return;
+		}
+
 		if (!isset($_REQUEST['profile'])) {
 			return;
 		}
@@ -566,7 +623,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		switch ($req) {
 			case 'listDevices':
 			case 'listProfiles':
-			case 'getDevice':
 			case 'saveDevice':
 			case 'saveProfile':
 			case 'deleteDevice':
@@ -595,9 +651,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'listProfiles':
 				return $this->listProfiles();
-
-			case 'getDevice':
-				return $this->getDevice($_REQUEST['id'] ?? null);
 
 			case 'saveDevice':
 				return $this->saveDevice($_REQUEST);
@@ -779,13 +832,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * One device association, for the edit form.
+	 * One device association, for the editor.
+	 *
+	 * Read on the way into the page rather than fetched by it, the same way a
+	 * profile is: the editor is a page of its own, so there is nothing left
+	 * for it to wait on over AJAX. `getDevice` was that fetch, and went with
+	 * the dialog it filled.
 	 *
 	 * @param mixed $id Association id.
 	 *
-	 * @return array<string, mixed> Status and the association.
+	 * @return array<string, mixed>|null The association, or null when there is none.
 	 */
-	private function getDevice($id)
+	private function deviceRow($id)
 	{
 		$stmt = $this->db->prepare(
 			"SELECT id, mac, device_id, profile_id
@@ -795,11 +853,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$stmt->execute([':id' => (int) $id]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-		if (!$row) {
-			return ['status' => false, 'message' => _('Device not found.')];
-		}
-
-		return ['status' => true, 'device' => $row];
+		return $row ?: null;
 	}
 
 	/**
