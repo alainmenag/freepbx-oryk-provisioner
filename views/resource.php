@@ -35,7 +35,7 @@ $isNew = $id === 0;
 	<div class="fpbx-container">
 		<div class="display full-border">
 
-			<div class="section-title">
+			<!-- <div class="section-title">
 				<h2>
 					<span class="title">
 						<?php if ($isNew): ?>
@@ -46,21 +46,27 @@ $isNew = $id === 0;
 						<?php endif; ?>
 					</span>
 				</h2>
+			</div> -->
+
+			<div class="section-title">
+				<h2>
+					<span class="title">
+						<a class="title" href="?display=oryk_provisioner&tab=profiles">Provisioner</a>
+						<span>:: Profile</span>
+						<a class="title" href="?display=oryk_provisioner&profile=<?php echo $profileId; ?>&tab=resources">
+							<span><?php echo $h($profile['name']); ?></span>
+						</a>
+						<span>:: Resource</span>
+						<?php if (isset($resource['name'])): ?>
+							<code><?php echo $h($resource['name']); ?></code>
+						<?php endif; ?>
+					</span>
+				</h2>
 			</div>
 
 			<div class="section" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
-
-				<div class="oryk-crumb">
-					<?php
-					echo sprintf(
-						_('A file served by %s.'),
-						'<a href="?display=oryk_provisioner&amp;profile=' . $profileId . '">'
-							. $h($profile['name']) . '</a>'
-					);
-					?>
-				</div>
 
 				<!-- Not a form: see the note in partials/editor.php. -->
 				<input type="hidden" id="resource_row_id" value="<?php echo $id; ?>">

@@ -57,10 +57,9 @@ $tab = $isNew ? 'profile' : $tab;
 			<div class="section-title">
 				<h2>
 					<span class="title">
-						<?php if ($isNew): ?>
-							<?php echo _('New Profile'); ?>
-						<?php else: ?>
-							<?php echo _('Edit Profile'); ?>
+						<a class="title" href="?display=oryk_provisioner&tab=profiles">Provisioner</a>
+						<span>:: Profile</span>
+						<?php if (isset($profile['name'])): ?>
 							<code><?php echo $h($profile['name']); ?></code>
 						<?php endif; ?>
 					</span>

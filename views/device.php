@@ -44,11 +44,10 @@ $profileId = (int) ($device['profile_id'] ?? 0);
 			<div class="section-title">
 				<h2>
 					<span class="title">
-						<?php if ($isNew): ?>
-							<?php echo _('New Device'); ?>
-						<?php else: ?>
-							<?php echo _('Edit Device'); ?>
-							<code><?php echo $h($mac); ?></code>
+						<a class="title" href="?display=oryk_provisioner">Provisioner</a>
+						<span>:: Device</span>
+						<?php if (isset($device['mac'])): ?>
+							<code><?php echo $h($device['mac']); ?></code>
 						<?php endif; ?>
 					</span>
 				</h2>
