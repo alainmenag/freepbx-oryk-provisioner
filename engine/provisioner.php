@@ -1,12 +1,12 @@
 <?php
 
 /**
- * /engine/provisioner.php -- the unauthenticated device provisioning endpoint.
+ * /engine/provisioner.php -- the unauthenticated client provisioning endpoint.
  *
  * A phone has no admin login, and FreePBX's config.php forces every
  * session-less request to the login page before a module's doConfigPageInit()
  * ever runs -- a menu item's requires_auth flag governs menu visibility and
- * permissions, not anonymous access to a display page. So the device endpoint
+ * permissions, not anonymous access to a display page. So the client endpoint
  * does not go through config.php at all. This file is reached directly:
  *
  *   http(s)://<pbx>/provisioner/?mac=00908F3BBCBA

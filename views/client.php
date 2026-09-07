@@ -1,55 +1,56 @@
 <?php
 /**
- * views/device.php -- one device association, over two tabs.
+ * views/client.php -- one client, over two tabs.
  *
- * Reached at ?display=oryk_provisioner&device=<id> to edit an existing
- * association, or ?display=oryk_provisioner&device= (present, empty) to write
+ * Reached at ?display=oryk_provisioner&client=<id> to edit an existing
+ * client, or ?display=oryk_provisioner&client= (present, empty) to write
  * a new one -- the same shape ?profile= has, and for the same reasons.
  *
  * This was a modal on the list until 1.0.6. Three short fields did fit in one,
- * but a dialog has no address: nothing could link to an association, the
- * profile editor's Devices tab had to send a row id back to the list and have
+ * but a dialog has no address: nothing could link to a client, the
+ * profile editor's Clients tab had to send a row id back to the list and have
  * JS re-open the dialog on arrival, and the two ways into the same three
  * fields were two things to keep in step. A page is one way in, and every
  * other editor in the module is already one.
  *
- * Device is the association itself. Resources is what it is served: the files
- * its profile serves, each with the filename this client asks for and a link
- * that fetches it as this client would -- the resource editor's Devices tab
- * read from the other end, and the tab to open when a particular client is not
- * getting what it should.
+ * Client is the MAC, the FreePBX device behind it and the profile it is
+ * assigned. Resources is what that comes to: the files its profile serves,
+ * each with the filename this client asks for and a link that fetches it as
+ * this client would -- the resource editor's Clients tab read from the other
+ * end, and the tab to open when a particular client is not getting what it
+ * should.
  *
- * The bare ?device=<id> *is* the Device tab, the way ?profile=<id> is the
+ * The bare ?client=<id> *is* the Client tab, the way ?profile=<id> is the
  * profile editor's first tab; Resources names itself with &tab=resources, and
  * the shown.bs.tab handler keeps the address in step.
  *
- * @var array<string, mixed>              $device         id (0 when new), mac, device_id, profile_id
+ * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var int                               $resources      Resources on its profile, for the tab's count
- * @var string                            $tab            Tab to open on: device|resources
+ * @var string                            $tab            Tab to open on: client|resources
  */
 
-$device = $device ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
+$client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
 $resources = (int) ($resources ?? 0);
-$tab = ($tab ?? '') === 'resources' ? 'resources' : 'device';
+$tab = ($tab ?? '') === 'resources' ? 'resources' : 'client';
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 
-$id = (int) $device['id'];
+$id = (int) $client['id'];
 $isNew = $id === 0;
-$mac = (string) $device['mac'];
-$deviceId = (string) ($device['device_id'] ?? '');
-$profileId = (int) ($device['profile_id'] ?? 0);
+$mac = (string) $client['mac'];
+$deviceId = (string) ($client['device_id'] ?? '');
+$profileId = (int) ($client['profile_id'] ?? 0);
 
-// Nothing is served to an association that has never been written, or to one
+// Nothing is served to a client that has never been written, or to one
 // with no profile assigned, so its Resources tab is there but does not open.
 $served = !$isNew && $profileId;
-$tab = $served ? $tab : 'device';
+$tab = $served ? $tab : 'client';
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 
@@ -60,10 +61,10 @@ $tab = $served ? $tab : 'device';
 			<div class="section-title">
 				<h2>
 					<span class="title">
-						<a class="title" href="?display=oryk_provisioner&tab=devices">Provisioner</a>
-						<span>:: Device</span>
-						<?php if (isset($device['mac'])): ?>
-							<code><?php echo $h($device['mac']); ?></code>
+						<a class="title" href="?display=oryk_provisioner&tab=clients">Provisioner</a>
+						<span>:: Client</span>
+						<?php if (isset($client['mac'])): ?>
+							<code><?php echo $h($client['mac']); ?></code>
 						<?php endif; ?>
 					</span>
 				</h2>
@@ -74,17 +75,17 @@ $tab = $served ? $tab : 'device';
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
 				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="<?php echo $tab === 'device' ? 'active' : ''; ?>">
-						<a href="#oryk_device" aria-controls="oryk_device" role="tab" data-toggle="tab">
-							<?php echo _('Device'); ?>
+					<li role="presentation" class="<?php echo $tab === 'client' ? 'active' : ''; ?>">
+						<a href="#oryk_client" aria-controls="oryk_client" role="tab" data-toggle="tab">
+							<?php echo _('Client'); ?>
 						</a>
 					</li>
 					<li role="presentation" class="<?php echo $tab === 'resources' ? 'active' : ($served ? '' : 'disabled'); ?>">
 						<?php if (!$served): ?>
 							<a href="#" onclick="return false;"
 								title="<?php echo $isNew
-									? _('Save the device first -- what it is served follows from the profile it is assigned to.')
-									: _('Assign a profile first -- nothing is served to a device without one.'); ?>">
+									? _('Save the client first -- what it is served follows from the profile it is assigned to.')
+									: _('Assign a profile first -- nothing is served to a client without one.'); ?>">
 								<?php echo _('Resources'); ?>
 							</a>
 						<?php else: ?>
@@ -98,22 +99,22 @@ $tab = $served ? $tab : 'device';
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'device' ? 'active' : ''; ?>" id="oryk_device">
+					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'client' ? 'active' : ''; ?>" id="oryk_client">
 
 						<!-- Not a form: see the note in partials/editor.php. -->
-						<input type="hidden" id="device_row_id" value="<?php echo $id; ?>">
+						<input type="hidden" id="client_row_id" value="<?php echo $id; ?>">
 
 						<div class="element-container">
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="device_mac">
+										<label class="control-label" for="client_mac">
 											<?php echo _('MAC Address'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
 										</label>
 									</div>
 									<div class="col-md-8">
-										<input type="text" class="form-control oryk-name" id="device_mac"
+										<input type="text" class="form-control oryk-name" id="client_mac"
 											autocomplete="off" placeholder="001565aabbcc"
 											value="<?php echo $h($mac); ?>">
 									</div>
@@ -132,10 +133,10 @@ $tab = $served ? $tab : 'device';
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="device_device_id"><?php echo _('Device'); ?></label>
+										<label class="control-label" for="client_device_id"><?php echo _('Device'); ?></label>
 									</div>
 									<div class="col-md-8">
-										<select class="form-control" id="device_device_id">
+										<select class="form-control" id="client_device_id">
 											<option value=""><?php echo _('None'); ?></option>
 											<?php foreach ($freepbxDevices as $choice): ?>
 												<option value="<?php echo $h($choice['id']); ?>"
@@ -166,10 +167,10 @@ $tab = $served ? $tab : 'device';
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="device_profile_id"><?php echo _('Profile'); ?></label>
+										<label class="control-label" for="client_profile_id"><?php echo _('Profile'); ?></label>
 									</div>
 									<div class="col-md-8">
-										<select class="form-control" id="device_profile_id">
+										<select class="form-control" id="client_profile_id">
 											<option value=""><?php echo _('None'); ?></option>
 											<?php foreach ($profiles as $profile): ?>
 												<option value="<?php echo (int) $profile['id']; ?>"
@@ -184,7 +185,7 @@ $tab = $served ? $tab : 'device';
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('What this device is served. Until one is assigned there is nothing to provision, and the device is asked for a configuration it has none of.'); ?>
+										<?php echo _('What this client is served. Until one is assigned there is nothing to provision, and the client is asked for a configuration it has none of.'); ?>
 									</span>
 								</div>
 							</div>
@@ -204,7 +205,7 @@ $tab = $served ? $tab : 'device';
 							<table
 								id="resource_table"
 								data-toggle="table"
-								data-url="ajax.php?module=oryk_provisioner&command=listResources&profile_id=<?php echo $profileId; ?>&device_id=<?php echo $id; ?>"
+								data-url="ajax.php?module=oryk_provisioner&command=listResources&profile_id=<?php echo $profileId; ?>&client_id=<?php echo $id; ?>"
 								data-toolbar="#resource_toolbar"
 								class="table table-striped"
 								data-side-pagination="server"
@@ -234,9 +235,9 @@ $tab = $served ? $tab : 'device';
 
 <script>
 
-	const orykDeviceId = <?php echo $id; ?>;
-	const orykDeviceProfileId = <?php echo $profileId; ?>;
-	const orykDevices = '?display=oryk_provisioner&tab=devices';
+	const orykClientId = <?php echo $id; ?>;
+	const orykClientProfileId = <?php echo $profileId; ?>;
+	const orykClients = '?display=oryk_provisioner&tab=clients';
 
 	function formatResourceText(value) {
 		return value ? orykEscape(value) : '-';
@@ -245,22 +246,22 @@ $tab = $served ? $tab : 'device';
 	// The resource as it is written on the profile: a filename template, which
 	// is why it is worth showing beside what it comes to here.
 	function formatResourceName(value, row) {
-		return value ? `<a href="?display=oryk_provisioner&profile=${orykDeviceProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
+		return value ? `<a href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
 	// Edit is the resource's own page under its profile, the same link that
 	// profile's Resources tab draws -- a resource is edited in one place
-	// wherever it is reached from. Render is this file as this device receives
+	// wherever it is reached from. Render is this file as this client receives
 	// it, absent when the rendered name carries somebody else's MAC
 	// (000000000000-directory.xml and the like), since the endpoint reads the
-	// device out of the path and such a URL would answer for another client.
+	// client out of the path and such a URL would answer for another client.
 	function formatResourceActions(value, row) {
 		const actions = [
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykDeviceProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`
 		];
 
 		if (row.url) {
-			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this device receives it">Render</a>`);
+			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this client receives it">Render</a>`);
 		}
 
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
@@ -277,28 +278,28 @@ $tab = $served ? $tab : 'device';
 
 		if (window.history && window.history.replaceState) {
 			const tab = pane === '#oryk_resources' ? '&tab=resources' : '';
-			window.history.replaceState(null, '', `?display=oryk_provisioner&device=${orykDeviceId}${tab}`);
+			window.history.replaceState(null, '', `?display=oryk_provisioner&client=${orykClientId}${tab}`);
 		}
 	});
 
 	orykEditor({
-		save: 'saveDevice',
-		remove: 'deleteDevice',
-		confirm: 'Delete this device association?',
+		save: 'saveClient',
+		remove: 'deleteClient',
+		confirm: 'Delete this client?',
 		values: function () {
 			return {
-				id: $('#device_row_id').val(),
-				mac: $('#device_mac').val(),
-				device_id: $('#device_device_id').val(),
-				profile_id: $('#device_profile_id').val()
+				id: $('#client_row_id').val(),
+				mac: $('#client_mac').val(),
+				device_id: $('#client_device_id').val(),
+				profile_id: $('#client_profile_id').val()
 			};
 		},
-		// Back to the list on the Devices tab, with the row that was just
+		// Back to the list on the Clients tab, with the row that was just
 		// written picked out -- the same thing the profile editor does.
 		saved: function (response) {
-			return orykDevices + '&saved=' + encodeURIComponent(response.id);
+			return orykClients + '&saved=' + encodeURIComponent(response.id);
 		},
-		closed: orykDevices
+		closed: orykClients
 	});
 
 </script>

@@ -11,11 +11,12 @@ use FreePBX_Helpers;
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
 	/**
-	 * Table holding the MAC to FreePBX device to profile associations.
+	 * Table holding the clients: a MAC, the FreePBX device it stands for and
+	 * the profile it is served.
 	 *
 	 * @var string
 	 */
-	private $devicesTable = 'oryk_provisioner_devices';
+	private $clientsTable = 'oryk_provisioner_clients';
 
 	/**
 	 * Table holding the provisioning profiles.
@@ -75,8 +76,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * A list and three editors, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
-	 *   ?display=oryk_provisioner&device=<id>                one association
-	 *   ?display=oryk_provisioner&device=                    a new one
+	 *   ?display=oryk_provisioner&client=<id>                one client
+	 *   ?display=oryk_provisioner&client=                    a new one
 	 *   ?display=oryk_provisioner&profile=<id>               one profile
 	 *   ?display=oryk_provisioner&profile=                   a new one
 	 *   ?display=oryk_provisioner&profile=<id>&resource=<id> one of its files
@@ -85,10 +86,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * A key present but empty is deliberate rather than a degenerate case: it
 	 * is the same page doing the same thing, minus a row to replace.
 	 *
-	 * Everything the module edits is a page. An association was a dialog on
+	 * Everything the module edits is a page. A client was a dialog on
 	 * the list until 1.0.6 -- three short fields do fit in one -- but a dialog
-	 * has no address, so nothing could link to a device, and the profile
-	 * editor's Devices tab had to send an id back to the list and have JS
+	 * has no address, so nothing could link to a client, and the profile
+	 * editor's Clients tab had to send an id back to the list and have JS
 	 * re-open the dialog on arrival. One way in, addressable, like the rest.
 	 *
 	 * @return string Rendered page output.
@@ -96,10 +97,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function showPage()
 	{
 		// Checked before ?profile= only because neither URL carries the
-		// other's key: an association names its profile in a select, not in
+		// other's key: a client names its profile in a select, not in
 		// the address.
-		if (isset($_REQUEST['device'])) {
-			return $this->showDevice(trim((string) $_REQUEST['device']), (string) ($_REQUEST['tab'] ?? ''));
+		if (isset($_REQUEST['client'])) {
+			return $this->showClient(trim((string) $_REQUEST['client']), (string) ($_REQUEST['tab'] ?? ''));
 		}
 
 		if (!isset($_REQUEST['profile'])) {
@@ -143,63 +144,63 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$tab = 'resources';
 		}
 
-		// Resources and Devices both hang off a profile that has been
+		// Resources and Clients both hang off a profile that has been
 		// written, so a new one opens on Profile whichever tab is asked for.
-		$tabs = ['resources', 'devices'];
+		$tabs = ['resources', 'clients'];
 
 		return load_view(__DIR__ . '/views/profile.php', [
 			'profile' => $profile,
-			'assigned' => $profile['id'] ? $this->profileDeviceCount((int) $profile['id']) : 0,
+			'assigned' => $profile['id'] ? $this->profileClientCount((int) $profile['id']) : 0,
 			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
 	}
 
 	/**
-	 * Render the device editor.
+	 * Render the client editor.
 	 *
 	 * What both selects offer is rendered with the page rather than fetched:
 	 * it is a list of FreePBX devices and a list of profiles, and the page is
-	 * already waiting on the module for the association itself.
+	 * already waiting on the module for the client itself.
 	 *
-	 * Resources is the other end of the resource editor's Devices tab: the
-	 * files this device's profile serves, each with the filename *this* phone
-	 * asks for. One association's provisioning, listed where the association
+	 * Resources is the other end of the resource editor's Clients tab: the
+	 * files this client's profile serves, each with the filename *this* phone
+	 * asks for. One client's provisioning, listed where the client
 	 * is -- which is where somebody debugging a phone is already looking.
 	 *
-	 * @param string $wanted Association id, or '' for a new one.
-	 * @param string $tab    Tab to open on: device|resources.
+	 * @param string $wanted Client id, or '' for a new one.
+	 * @param string $tab    Tab to open on: client|resources.
 	 *
 	 * @return string Rendered page output.
 	 */
-	private function showDevice($wanted, $tab = '')
+	private function showClient($wanted, $tab = '')
 	{
-		$device = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
+		$client = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
 
 		if ($wanted !== '') {
-			$found = $this->deviceRow($wanted);
+			$found = $this->clientRow($wanted);
 
 			// doConfigPageInit() has already sent an id that names nothing
-			// back to the list, so this is only reachable if the association
+			// back to the list, so this is only reachable if the client
 			// went between that check and here; the list is where it is not.
 			if (!$found) {
-				return $this->showList('devices');
+				return $this->showList('clients');
 			}
 
-			$device = $found;
+			$client = $found;
 		}
 
-		$profileId = (int) ($device['profile_id'] ?? 0);
+		$profileId = (int) ($client['profile_id'] ?? 0);
 
-		return load_view(__DIR__ . '/views/device.php', [
-			'device' => $device,
+		return load_view(__DIR__ . '/views/client.php', [
+			'client' => $client,
 			'freepbxDevices' => $this->freepbxDevices(),
 			'profiles' => $this->profileChoices(),
 			'resources' => $profileId ? $this->profileResourceCount($profileId) : 0,
-			// Nothing to list for an association that has never been written
+			// Nothing to list for a client that has never been written
 			// or has no profile to be served by, so Resources is there but
 			// does not open -- the way Resources is on a new profile.
-			'tab' => ($tab === 'resources' && $device['id'] && $profileId) ? 'resources' : 'device',
+			'tab' => ($tab === 'resources' && $client['id'] && $profileId) ? 'resources' : 'client',
 		]);
 	}
 
@@ -210,15 +211,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * it is bound to, which is why both are one view apiece over a shared
 	 * partial rather than one view with a mode flag.
 	 *
-	 * Devices is the profile's own device list, narrowed no further and
+	 * Clients is the profile's own client list, narrowed no further and
 	 * widened by one column: which filename each of them asks *this* resource
 	 * for. A resource's name is a template, so that filename is a different
-	 * string per device -- which is exactly why there was no per-resource
-	 * preview until there was a per-device row to hang one on.
+	 * string per client -- which is exactly why there was no per-resource
+	 * preview until there was a per-client row to hang one on.
 	 *
 	 * @param array<string, mixed> $profile Profile the resource belongs to.
 	 * @param string               $wanted  Resource id, or '' for a new one.
-	 * @param string               $tab     Tab to open on: resource|devices.
+	 * @param string               $tab     Tab to open on: resource|clients.
 	 *
 	 * @return string|null Rendered page, or null when the id names nothing.
 	 */
@@ -240,11 +241,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'resource' => $resource,
 			'profile' => $profile,
 			'placeholders' => $this->templatePlaceholders(),
-			'assigned' => $this->profileDeviceCount((int) $profile['id']),
+			'assigned' => $this->profileClientCount((int) $profile['id']),
 			// A resource that has never been written has no name to render
-			// against a device, so Devices is there but does not open --
+			// against a client, so Clients is there but does not open --
 			// the same way Resources is on a new profile.
-			'tab' => ($tab === 'devices' && $resource['id']) ? 'devices' : 'resource',
+			'tab' => ($tab === 'clients' && $resource['id']) ? 'clients' : 'resource',
 		]);
 	}
 
@@ -267,7 +268,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
 
 		return load_view(__DIR__ . '/views/admin.php', [
-			'tab' => $tab === 'profiles' ? 'profiles' : 'devices',
+			'tab' => $tab === 'profiles' ? 'profiles' : 'clients',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
 	}
@@ -291,8 +292,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		// Which editor is open, and which of the URL's keys names the row its
 		// buttons act on.
-		if (isset($_REQUEST['device'])) {
-			$row = trim((string) $_REQUEST['device']);
+		if (isset($_REQUEST['client'])) {
+			$row = trim((string) $_REQUEST['client']);
 		} elseif (isset($_REQUEST['profile'])) {
 			// On a resource page it is the resource that Save and Delete act
 			// on; the profile in the URL is only what it hangs off.
@@ -378,7 +379,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// so it is a string here too rather than something that has to be cast
 		// on every join.
 		$this->db->exec(
-			"CREATE TABLE IF NOT EXISTS `{$this->devicesTable}` (
+			"CREATE TABLE IF NOT EXISTS `{$this->clientsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`mac` VARCHAR(12) NOT NULL,
 				`device_id` VARCHAR(20) NULL DEFAULT NULL,
@@ -413,7 +414,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Point a web-root symlink at the engine directory.
 	 *
-	 * The device endpoint lives in engine/, under the module, which puts it at
+	 * The client endpoint lives in engine/, under the module, which puts it at
 	 * /admin/modules/oryk_provisioner/engine/ -- a URL no phone should have to
 	 * be given, and a path under an /admin that a hardened site may well not
 	 * serve to an anonymous caller at all. The link gives it a short public one
@@ -580,12 +581,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function doConfigPageInit($page)
 	{
-		// Empty is the new-association editor, not a lookup that failed.
-		if (isset($_REQUEST['device'])) {
-			$device = trim((string) $_REQUEST['device']);
+		// Empty is the new-client editor, not a lookup that failed.
+		if (isset($_REQUEST['client'])) {
+			$client = trim((string) $_REQUEST['client']);
 
-			if ($device !== '' && (!ctype_digit($device) || !$this->deviceRow($device))) {
-				header('Location: config.php?display=oryk_provisioner&tab=devices');
+			if ($client !== '' && (!ctype_digit($client) || !$this->clientRow($client))) {
+				header('Location: config.php?display=oryk_provisioner&tab=clients');
 				exit;
 			}
 
@@ -645,11 +646,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function ajaxRequest($req, &$setting)
 	{
 		switch ($req) {
-			case 'listDevices':
+			case 'listClients':
 			case 'listProfiles':
-			case 'saveDevice':
+			case 'saveClient':
 			case 'saveProfile':
-			case 'deleteDevice':
+			case 'deleteClient':
 			case 'deleteProfile':
 			case 'listResources':
 			case 'saveResource':
@@ -670,20 +671,20 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
 
 		switch ($command) {
-			case 'listDevices':
-				return $this->listDevices();
+			case 'listClients':
+				return $this->listClients();
 
 			case 'listProfiles':
 				return $this->listProfiles();
 
-			case 'saveDevice':
-				return $this->saveDevice($_REQUEST);
+			case 'saveClient':
+				return $this->saveClient($_REQUEST);
 
 			case 'saveProfile':
 				return $this->saveProfile($_REQUEST);
 
-			case 'deleteDevice':
-				return $this->deleteDevice($_REQUEST['id'] ?? null);
+			case 'deleteClient':
+				return $this->deleteClient($_REQUEST['id'] ?? null);
 
 			case 'deleteProfile':
 				return $this->deleteProfile($_REQUEST['id'] ?? null);
@@ -703,27 +704,27 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Rows for the Devices table.
+	 * Rows for the Clients table.
 	 *
 	 * Narrowed to one profile when profile_id is passed, which is how the
-	 * profile editor's Devices tab is filled: the same rows read the same
+	 * profile editor's Clients tab is filled: the same rows read the same
 	 * way, rather than a second statement that would drift from this one.
 	 *
-	 * The resource editor's Devices tab asks with resource_id alongside it
-	 * and gets the same rows again, each carrying the filename that device
+	 * The resource editor's Clients tab asks with resource_id alongside it
+	 * and gets the same rows again, each carrying the filename that client
 	 * asks that one resource for.
 	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
-	private function listDevices()
+	private function listClients()
 	{
 		// The sort column and its direction are written into the statement
 		// rather than bound, so neither can be taken from the request as it
 		// stands. Only what the table offers as a sortable heading is
 		// accepted, and anything else sorts by MAC rather than being refused.
 		$sortable = [
-			'mac' => 'pd.mac',
-			'device_id' => 'pd.device_id',
+			'mac' => 'pc.mac',
+			'device_id' => 'pc.device_id',
 			'description' => 'd.description',
 			'profile' => 'p.name',
 		];
@@ -738,22 +739,22 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$params = [];
 		$clauses = [];
 
-		// The same rows twice: every association on the module page, and one
-		// profile's own on that profile's Devices tab, which asks with
+		// The same rows twice: every client on the module page, and one
+		// profile's own on that profile's Clients tab, which asks with
 		// profile_id. An id is honoured as given rather than falling back to
 		// everything, so a profile nothing points at comes back empty instead
 		// of coming back as the whole list.
 		if (isset($_REQUEST['profile_id'])) {
-			$clauses[] = 'pd.profile_id = :profile_id';
+			$clauses[] = 'pc.profile_id = :profile_id';
 			$params[':profile_id'] = (int) $_REQUEST['profile_id'];
 		}
 
 		// Bracketed, now that it is no longer the only thing in there: an
 		// unbracketed OR chain ANDed with the profile would match every
-		// association whose profile name contains the search.
+		// client whose profile name contains the search.
 		if ($search !== '') {
-			$clauses[] = "(pd.mac LIKE :search
-				OR pd.device_id LIKE :search
+			$clauses[] = "(pc.mac LIKE :search
+				OR pc.device_id LIKE :search
 				OR d.user LIKE :search
 				OR d.description LIKE :search
 				OR p.name LIKE :search)";
@@ -762,9 +763,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
 
-		$from = "FROM `{$this->devicesTable}` pd
-			LEFT JOIN devices d ON d.id = pd.device_id
-			LEFT JOIN `{$this->profilesTable}` p ON p.id = pd.profile_id";
+		$from = "FROM `{$this->clientsTable}` pc
+			LEFT JOIN devices d ON d.id = pc.device_id
+			LEFT JOIN `{$this->profilesTable}` p ON p.id = pc.profile_id";
 
 		$countStmt = $this->db->prepare("SELECT COUNT(*) $from $where");
 		$countStmt->execute($params);
@@ -772,10 +773,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$sql = "
 			SELECT
-				pd.id,
-				pd.mac,
-				pd.device_id,
-				pd.profile_id,
+				pc.id,
+				pc.mac,
+				pc.device_id,
+				pc.profile_id,
 				d.user AS extension,
 				d.description AS description,
 				p.name AS profile
@@ -796,7 +797,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 		// Only the page that was read, and only when a resource was asked
-		// about: rendering a name costs this device's values, and a device
+		// about: rendering a name costs this client's values, and a client
 		// that is not on screen is not worth them.
 		if (isset($_REQUEST['resource_id'])) {
 			$rows = $this->withResourceFilenames($rows, $_REQUEST['resource_id']);
@@ -809,22 +810,22 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * The filename each device asks one resource for, added to its row.
+	 * The filename each client asks one resource for, added to its row.
 	 *
 	 * A resource's name is a template, so the file a phone actually asks for
-	 * is a different string per device -- which is why a resource has no one
-	 * URL to preview and why this belongs on a device row rather than on the
+	 * is a different string per client -- which is why a resource has no one
+	 * URL to preview and why this belongs on a client row rather than on the
 	 * resource itself.
 	 *
 	 * Each row is rendered against the values the endpoint would render it
-	 * against, read the same way through associationByMac(), so what the tab
+	 * against, read the same way through clientByMac(), so what the tab
 	 * shows is what a phone gets rather than a second guess at it.
 	 *
-	 * A row whose association has since moved to another profile is left
+	 * A row whose client has since moved to another profile is left
 	 * undecorated rather than shown a filename this resource would not
 	 * answer to.
 	 *
-	 * @param array<int, array<string, mixed>> $rows       Device rows as read.
+	 * @param array<int, array<string, mixed>> $rows       Client rows as read.
 	 * @param mixed                            $resourceId Resource they are being asked about.
 	 *
 	 * @return array<int, array<string, mixed>> The same rows, decorated.
@@ -849,15 +850,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		foreach ($rows as $index => $row) {
 			$mac = (string) $row['mac'];
-			$association = $this->associationByMac($mac);
+			$provisioning = $this->clientByMac($mac);
 
-			if (!$association || (int) $association['profile_id'] !== (int) $resource['profile_id']) {
+			if (!$provisioning || (int) $provisioning['profile_id'] !== (int) $resource['profile_id']) {
 				continue;
 			}
 
 			$request = $this->resourceRequest(
 				(string) $resource['name'],
-				$this->provisioningValues($association),
+				$this->provisioningValues($provisioning),
 				$mac
 			);
 
@@ -869,7 +870,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * What one device asks for when it asks for one resource, and where.
+	 * What one client asks for when it asks for one resource, and where.
 	 *
 	 * matchResource() read backwards. A name is matched either as it renders
 	 * or as the tail of a request with the MAC taken off the front, so the
@@ -885,16 +886,16 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * Whether that request can be *linked* is a second question, because the
 	 * endpoint reads the MAC out of the path: a name that renders with this
-	 * device's MAC in it says who is asking, and one with no MAC at all can
+	 * client's MAC in it says who is asking, and one with no MAC at all can
 	 * say so with ?mac=. A name carrying somebody else's twelve hex digits --
 	 * 000000000000-directory.xml, which is a real filename a real phone asks
 	 * for -- cannot: the endpoint takes the MAC from the path over the query
-	 * string, so the link would render the wrong device. Those rows get the
+	 * string, so the link would render the wrong client. Those rows get the
 	 * filename and no link, which is the truth about them.
 	 *
 	 * @param string                $name   Resource name, as typed.
 	 * @param array<string, string> $values Placeholder name to value.
-	 * @param string                $mac    This device's normalised MAC.
+	 * @param string                $mac    This client's normalised MAC.
 	 *
 	 * @return array{filename: string, url: string} What it asks for, and where -- '' when there is no such URL.
 	 */
@@ -911,7 +912,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// Somebody else's twelve hex digits, written into the name and asked
 		// for exactly as they stand -- 000000000000-directory.xml is a phone
 		// asking every profile for the same file. It is served, and it is
-		// not linkable: the endpoint would read that MAC as the device.
+		// not linkable: the endpoint would read that MAC as the client.
 		if ($carries !== '') {
 			return ['filename' => $rendered, 'url' => ''];
 		}
@@ -927,7 +928,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			}
 		}
 
-		// Nothing in the name says which device is asking, so the request
+		// Nothing in the name says which client is asking, so the request
 		// says it the endpoint's other way.
 		return ['filename' => $rendered, 'url' => $this->engineUrl($rendered) . '?mac=' . rawurlencode($mac)];
 	}
@@ -1005,8 +1006,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				p.name,
 				(
 					SELECT COUNT(*)
-					FROM `{$this->devicesTable}` pd
-					WHERE pd.profile_id = p.id
+					FROM `{$this->clientsTable}` pc
+					WHERE pc.profile_id = p.id
 				) AS assigned
 			FROM `{$this->profilesTable}` p
 			$where
@@ -1029,22 +1030,22 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * One device association, for the editor.
+	 * One client, for the editor.
 	 *
 	 * Read on the way into the page rather than fetched by it, the same way a
 	 * profile is: the editor is a page of its own, so there is nothing left
 	 * for it to wait on over AJAX. `getDevice` was that fetch, and went with
 	 * the dialog it filled.
 	 *
-	 * @param mixed $id Association id.
+	 * @param mixed $id Client id.
 	 *
-	 * @return array<string, mixed>|null The association, or null when there is none.
+	 * @return array<string, mixed>|null The client, or null when there is none.
 	 */
-	private function deviceRow($id)
+	private function clientRow($id)
 	{
 		$stmt = $this->db->prepare(
 			"SELECT id, mac, device_id, profile_id
-			FROM `{$this->devicesTable}`
+			FROM `{$this->clientsTable}`
 			WHERE id = :id"
 		);
 		$stmt->execute([':id' => (int) $id]);
@@ -1077,21 +1078,21 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * How many device associations a profile is assigned to.
+	 * How many clients a profile is assigned to.
 	 *
-	 * Which devices they are is the editor's Devices tab, and that asks for
-	 * them itself over listDevices, a page at a time. This is the number
+	 * Which clients they are is the editor's Clients tab, and that asks for
+	 * them itself over listClients, a page at a time. This is the number
 	 * alone: what the tab is labelled with, and what a profile still in use
 	 * is refused deletion over.
 	 *
 	 * @param int $profileId Profile id.
 	 *
-	 * @return int Associations pointing at the profile.
+	 * @return int Clients pointing at the profile.
 	 */
-	private function profileDeviceCount($profileId)
+	private function profileClientCount($profileId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT COUNT(*) FROM `{$this->devicesTable}` WHERE profile_id = :id"
+			"SELECT COUNT(*) FROM `{$this->clientsTable}` WHERE profile_id = :id"
 		);
 		$stmt->execute([':id' => (int) $profileId]);
 
@@ -1119,13 +1120,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Create or update a device association.
+	 * Create or update a client.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
 	 */
-	private function saveDevice($request)
+	private function saveClient($request)
 	{
 		$id = (int) ($request['id'] ?? 0);
 		$mac = $this->normalizeMac($request['mac'] ?? '');
@@ -1148,11 +1149,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		if ($profileId !== null && !$this->profileExists($profileId)) {
-			return ['status' => false, 'message' => _('That device profile no longer exists.')];
+			return ['status' => false, 'message' => _('That profile no longer exists.')];
 		}
 
 		$taken = $this->db->prepare(
-			"SELECT id FROM `{$this->devicesTable}` WHERE mac = :mac AND id != :id"
+			"SELECT id FROM `{$this->clientsTable}` WHERE mac = :mac AND id != :id"
 		);
 		$taken->execute([':mac' => $mac, ':id' => $id]);
 
@@ -1162,7 +1163,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		if ($id) {
 			$stmt = $this->db->prepare(
-				"UPDATE `{$this->devicesTable}`
+				"UPDATE `{$this->clientsTable}`
 				SET mac = :mac, device_id = :device_id, profile_id = :profile_id
 				WHERE id = :id"
 			);
@@ -1177,7 +1178,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->devicesTable}` (mac, device_id, profile_id)
+			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id)
 			VALUES (:mac, :device_id, :profile_id)"
 		);
 		$stmt->execute([
@@ -1193,7 +1194,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * Create or update a profile.
 	 *
 	 * A name and nothing else. What the profile serves is its resources, each
-	 * written on its own page, and who it serves is the associations assigned
+	 * written on its own page, and who it serves is the clients assigned
 	 * to it -- neither is edited here.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
@@ -1241,15 +1242,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Remove a device association.
+	 * Remove a client.
 	 *
-	 * @param mixed $id Association id.
+	 * @param mixed $id Client id.
 	 *
 	 * @return array<string, mixed> Status of the removal.
 	 */
-	private function deleteDevice($id)
+	private function deleteClient($id)
 	{
-		$stmt = $this->db->prepare("DELETE FROM `{$this->devicesTable}` WHERE id = :id");
+		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");
 		$stmt->execute([':id' => (int) $id]);
 
 		return ['status' => true];
@@ -1258,7 +1259,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Remove a profile.
 	 *
-	 * A profile that devices still point at is kept, so an association never
+	 * A profile that clients still point at is kept, so a client never
 	 * ends up naming a profile that has gone.
 	 *
 	 * @param mixed $id Profile id.
@@ -1269,19 +1270,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$id = (int) $id;
 
-		$count = $this->profileDeviceCount($id);
+		$count = $this->profileClientCount($id);
 
 		if ($count) {
 			return [
 				'status' => false,
 				'message' => sprintf(
-					_('This profile is assigned to %s device(s). Reassign them first.'),
+					_('This profile is assigned to %s client(s). Reassign them first.'),
 					$count
 				),
 			];
 		}
 
-		// Resources go with it. Unlike a device association, a resource has
+		// Resources go with it. Unlike a client, a resource has
 		// no existence apart from the profile that serves it -- there is
 		// nothing to reassign it to and nothing left for it to mean.
 		$resources = $this->db->prepare("DELETE FROM `{$this->resourcesTable}` WHERE profile_id = :id");
@@ -1346,10 +1347,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-		// The device editor's Resources tab asks the same question of the
+		// The client editor's Resources tab asks the same question of the
 		// same table, from the other side: these files, for that one phone.
-		if (isset($_REQUEST['device_id'])) {
-			$rows = $this->withDeviceFilenames($rows, $_REQUEST['device_id']);
+		if (isset($_REQUEST['client_id'])) {
+			$rows = $this->withClientFilenames($rows, $_REQUEST['client_id']);
 		}
 
 		return [
@@ -1359,50 +1360,50 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * The filename one device asks each of these resources for, added to its row.
+	 * The filename one client asks each of these resources for, added to its row.
 	 *
 	 * withResourceFilenames() the other way round -- one resource over many
-	 * devices there, one device over many resources here -- so both go
+	 * clients there, one client over many resources here -- so both go
 	 * through resourceRequest() and render against the values the endpoint
 	 * would use, rather than either tab having its own idea of what a phone
 	 * asks for.
 	 *
-	 * The device's values are read once and rendered against every row: it is
+	 * The client's values are read once and rendered against every row: it is
 	 * one phone here, where withResourceFilenames() has one name and a page
 	 * of phones.
 	 *
-	 * A resource whose profile is not the one this device is assigned to is
+	 * A resource whose profile is not the one this client is assigned to is
 	 * left undecorated -- it is not served to this phone, whatever its name
 	 * renders to.
 	 *
 	 * @param array<int, array<string, mixed>> $rows     Resource rows as read.
-	 * @param mixed                            $deviceId Association they are being asked about.
+	 * @param mixed                            $clientId Client they are being asked about.
 	 *
 	 * @return array<int, array<string, mixed>> The same rows, decorated.
 	 */
-	private function withDeviceFilenames(array $rows, $deviceId)
+	private function withClientFilenames(array $rows, $clientId)
 	{
 		if (!$rows) {
 			return $rows;
 		}
 
-		$device = $this->deviceRow($deviceId);
+		$client = $this->clientRow($clientId);
 
-		if (!$device || !$device['profile_id']) {
+		if (!$client || !$client['profile_id']) {
 			return $rows;
 		}
 
-		$mac = (string) $device['mac'];
-		$association = $this->associationByMac($mac);
+		$mac = (string) $client['mac'];
+		$provisioning = $this->clientByMac($mac);
 
-		if (!$association) {
+		if (!$provisioning) {
 			return $rows;
 		}
 
-		$values = $this->provisioningValues($association);
+		$values = $this->provisioningValues($provisioning);
 
 		foreach ($rows as $index => $row) {
-			if ((int) $row['profile_id'] !== (int) $device['profile_id']) {
+			if ((int) $row['profile_id'] !== (int) $client['profile_id']) {
 				continue;
 			}
 
@@ -1526,7 +1527,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Remove a resource.
 	 *
-	 * Nothing points at a resource the way a device association points at a
+	 * Nothing points at a resource the way a client points at a
 	 * profile, so there is nothing to refuse this for.
 	 *
 	 * @param mixed $id Resource id.
@@ -1545,7 +1546,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * What a template can refer to, as the editor lists it.
 	 *
 	 * Written out here rather than derived from a rendering, because the
-	 * resource editor has to be able to say what the names are with no device
+	 * resource editor has to be able to say what the names are with no client
 	 * in hand -- a new resource's profile may not be assigned to anything yet.
 	 * The `sip.` names are whatever the device carries in FreePBX, so the view
 	 * names a few by way of example instead of listing them.
@@ -1580,7 +1581,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Answer a device's request for a file and end the request.
+	 * Answer a client's request for a file and end the request.
 	 *
 	 * Called by engine/provisioner.php, which is the only route a phone can
 	 * reach: FreePBX's config.php sends every session-less request to the
@@ -1626,7 +1627,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * the request.
 	 *
 	 * Every file is a resource, the main config included: a profile is a name,
-	 * a set of resources and the devices assigned to it, and carries no
+	 * a set of resources and the clients assigned to it, and carries no
 	 * configuration text of its own. So this is whichever of the profile's
 	 * resources answers to the name that was asked for, and there is no second
 	 * kind of thing to fall back to when none does.
@@ -1654,7 +1655,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			];
 		}
 
-		$row = $this->associationByMac($mac);
+		$row = $this->clientByMac($mac);
 
 		if (!$row) {
 			return [
@@ -1673,14 +1674,14 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$values = $this->provisioningValues($row);
 		$requested = trim((string) $requested);
 
-		// What is left of the filename with this device's own MAC off the
-		// front: 0004f282e824-phone.cfg asked of that device is phone.cfg,
+		// What is left of the filename with this client's own MAC off the
+		// front: 0004f282e824-phone.cfg asked of that client is phone.cfg,
 		// and 0004f282e824.cfg is .cfg. Worked out here rather than in the
 		// endpoint, so the endpoint only has to report what was asked for.
 		$suffix = $requested === '' ? '' : $this->resourceSuffix($requested, $mac);
 
 		// Two ways of asking for nothing in particular, and both are asking
-		// for the main config: no filename at all, and the device's own MAC
+		// for the main config: no filename at all, and the client's own MAC
 		// with no filename after it (/provisioner/0004f282e824, which is what
 		// leaves nothing behind once the MAC is taken off the front). Both
 		// become [mac].cfg here rather than being carried down as an empty
@@ -1733,9 +1734,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * Two ways, and a name written out in full wins:
 	 *
-	 *   {{device.mac}}-phone.cfg  rendered with this device's values and
+	 *   {{device.mac}}-phone.cfg  rendered with this client's values and
 	 *                             compared to what was actually asked for, so
-	 *                             one resource covers every device on the
+	 *                             one resource covers every client on the
 	 *                             profile -- and a vendor that does not put
 	 *                             the MAC at the front, or anywhere, can
 	 *                             still be named exactly.
@@ -1749,7 +1750,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @param int                   $profileId Profile the resources belong to.
 	 * @param string                $requested Filename as it was asked for.
-	 * @param string                $suffix    The same, with this device's MAC removed.
+	 * @param string                $suffix    The same, with this client's MAC removed.
 	 * @param array<string, string> $values    Placeholder name to value.
 	 *
 	 * @return array<string, mixed>|null The resource, or null when none answers.
@@ -1788,15 +1789,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * A requested filename with this device's own MAC taken off the front.
+	 * A requested filename with this client's own MAC taken off the front.
 	 *
 	 * Phones ask by MAC, in whatever separator style they favour:
 	 * 0004f282e824-phone.cfg, 00:04:f2:82:e8:24-phone.cfg and
-	 * 0004f282e824.cfg are all one device asking. What is left is the part a
+	 * 0004f282e824.cfg are all one client asking. What is left is the part a
 	 * resource can be named after -- phone.cfg, and .cfg for the main config,
 	 * which is a resource of the profile like any other file it serves.
 	 *
-	 * A filename that does not begin with this device's MAC comes back
+	 * A filename that does not begin with this client's MAC comes back
 	 * unchanged: it is either meant literally or meant for somebody else, and
 	 * neither is helped by having something trimmed off it.
 	 *
@@ -1807,7 +1808,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * ever looked at, and 0004.f282.e824 grouping costs nothing extra.
 	 *
 	 * @param string $filename Last segment of the requested path.
-	 * @param string $mac      This device's normalised MAC.
+	 * @param string $mac      This client's normalised MAC.
 	 *
 	 * @return string The filename, or what is left of it.
 	 */
@@ -1900,7 +1901,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * The association a MAC names, with the device and profile behind it.
+	 * The client a MAC names, with the FreePBX device and profile behind it.
 	 *
 	 * One statement rather than three lookups: the whole of what rendering
 	 * needs is one row wide.
@@ -1909,21 +1910,21 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @return array<string, mixed>|null The row, or null when the MAC is unknown.
 	 */
-	private function associationByMac($mac)
+	private function clientByMac($mac)
 	{
 		$stmt = $this->db->prepare(
 			"SELECT
-				pd.mac,
-				pd.device_id,
-				pd.profile_id,
+				pc.mac,
+				pc.device_id,
+				pc.profile_id,
 				d.user AS extension,
 				d.description,
 				d.tech,
 				p.name AS profile_name
-			FROM `{$this->devicesTable}` pd
-			LEFT JOIN devices d ON d.id = pd.device_id
-			LEFT JOIN `{$this->profilesTable}` p ON p.id = pd.profile_id
-			WHERE pd.mac = :mac"
+			FROM `{$this->clientsTable}` pc
+			LEFT JOIN devices d ON d.id = pc.device_id
+			LEFT JOIN `{$this->profilesTable}` p ON p.id = pc.profile_id
+			WHERE pc.mac = :mac"
 		);
 		$stmt->execute([':mac' => $mac]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1939,11 +1940,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * through arrays. The eventual resolver puts sources in precedence order
 	 * behind the same names.
 	 *
-	 * An association with no FreePBX device still renders -- everything the
-	 * device would have answered for is simply empty, which is what a profile
+	 * A client with no FreePBX device still renders -- everything the
+	 * client would have answered for is simply empty, which is what a profile
 	 * of pure static configuration wants anyway.
 	 *
-	 * @param array<string, mixed> $row Association row from associationByMac().
+	 * @param array<string, mixed> $row Client row from clientByMac().
 	 *
 	 * @return array<string, string> Placeholder name to value.
 	 */
@@ -2107,7 +2108,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * The FreePBX devices an association can point at.
+	 * The FreePBX devices a client can point at.
 	 *
 	 * @return array<int, array<string, mixed>> Device rows.
 	 */
@@ -2124,7 +2125,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * The profiles an association can point at.
+	 * The profiles a client can point at.
 	 *
 	 * @return array<int, array<string, mixed>> Profile rows, id and name.
 	 */
