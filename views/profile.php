@@ -248,8 +248,8 @@ $tab = $isNew ? 'profile' : $tab;
 		return value ? orykEscape(value) : '-';
 	}
 
-	function formatResourceName(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	function formatResourceName(value, row) {
+		return value ? `<a href="?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
 	// Editing a resource is a page, not a dialog, for the reason editing a
@@ -272,8 +272,8 @@ $tab = $isNew ? 'profile' : $tab;
 		return value ? orykEscape(value) : '-';
 	}
 
-	function formatDeviceMac(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	function formatDeviceMac(value, row) {
+		return value ? `<a href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
 	// The device column names the FreePBX device; the extension it is attached

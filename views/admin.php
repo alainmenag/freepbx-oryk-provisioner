@@ -103,6 +103,10 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 							</a>
 						</div>
 
+						<p class="help-block fpbx-help-block">
+							<?php echo _('** ATTENTION! Profiles are PUBLIC, authentication is not yet implemented.'); ?>
+						</p>
+
 						<table
 							id="profile_table"
 							data-toggle="table"
@@ -162,8 +166,8 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		return value ? orykEscape(value) : '-';
 	}
 
-	function formatMac(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	function formatMac(value, row) {
+		return value ? `<a href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
 	// The device column names the FreePBX device; the extension it is attached

@@ -167,7 +167,7 @@ $tab = $isNew ? 'resource' : $tab;
 						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'devices' ? 'active' : ''; ?>" id="oryk_devices">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('Devices assigned to this profile, and the filename each of them asks this resource for -- the name above, rendered against that device. Render fetches it as that phone would.'); ?>
+								<?php echo _('Devices assigned to the profile that owns this resource.'); ?>
 							</p>
 
 							<table
@@ -186,7 +186,6 @@ $tab = $isNew ? 'resource' : $tab;
 										<th data-field="mac" data-formatter="formatDeviceMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
 										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 										<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
-										<th data-field="filename" data-formatter="formatResourceFilename"><?php echo _('Asks For'); ?></th>
 										<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
@@ -208,8 +207,8 @@ $tab = $isNew ? 'resource' : $tab;
 	const orykResourceId = <?php echo $id; ?>;
 	const orykResources = '?display=oryk_provisioner&profile=<?php echo $profileId; ?>&tab=resources';
 
-	function formatDeviceMac(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	function formatDeviceMac(value, row) {
+		return value ? `<a href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
 	// The device column names the FreePBX device the association points at,
@@ -232,14 +231,6 @@ $tab = $isNew ? 'resource' : $tab;
 		const extension = orykEscape(row.extension);
 
 		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
-	}
-
-	// What this device actually asks for: the resource's name rendered with
-	// that device's values, worked out server-side by the same code that
-	// matches an incoming request, so the column is what a phone gets rather
-	// than a second guess at it.
-	function formatResourceFilename(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
 	}
 
 	// Edit is the association's own page, the same link the profile's Devices

@@ -132,7 +132,7 @@ $tab = $served ? $tab : 'device';
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="device_device_id"><?php echo _('FreePBX Device'); ?></label>
+										<label class="control-label" for="device_device_id"><?php echo _('Device'); ?></label>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="device_device_id">
@@ -166,7 +166,7 @@ $tab = $served ? $tab : 'device';
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="device_profile_id"><?php echo _('Device Profile'); ?></label>
+										<label class="control-label" for="device_profile_id"><?php echo _('Profile'); ?></label>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="device_profile_id">
@@ -216,7 +216,6 @@ $tab = $served ? $tab : 'device';
 								<thead>
 									<tr>
 										<th data-field="name" data-formatter="formatResourceName" data-sortable="true"><?php echo _('Resource'); ?></th>
-										<th data-field="filename" data-formatter="formatResourceFilename"><?php echo _('Asks For'); ?></th>
 										<th data-field="updated_at" data-formatter="formatResourceText" data-sortable="true"><?php echo _('Updated'); ?></th>
 										<th data-field="actions" data-formatter="formatResourceActions"><?php echo _('Actions'); ?></th>
 									</tr>
@@ -245,15 +244,8 @@ $tab = $served ? $tab : 'device';
 
 	// The resource as it is written on the profile: a filename template, which
 	// is why it is worth showing beside what it comes to here.
-	function formatResourceName(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
-	}
-
-	// What this client actually asks for, worked out server-side by the same
-	// code that matches an incoming request, so the column is what this device
-	// gets rather than a second guess at it.
-	function formatResourceFilename(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
+	function formatResourceName(value, row) {
+		return value ? `<a href="?display=oryk_provisioner&profile=${orykDeviceProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
 	// Edit is the resource's own page under its profile, the same link that
