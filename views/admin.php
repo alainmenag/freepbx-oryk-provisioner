@@ -218,12 +218,12 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>`
 		];
 
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
+
 		if (row.profile_id) {
 			const url = `/provisioner/${encodeURIComponent(row.mac)}.cfg`;
 			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Render</a>`);
 		}
-
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
 
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
