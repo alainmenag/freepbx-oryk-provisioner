@@ -63,19 +63,6 @@ $user = $_SERVER['PHP_AUTH_USER'] ?? null;
 $pass = $_SERVER['PHP_AUTH_PW'] ?? null;
 
 // --------------------------------------------------------------------------
-// AUTHENTICATION
-// --------------------------------------------------------------------------
-
-// to-do: on never-seen, create account to return config with that auth.
-// so it loops back around with new auth.
-
-// if ($user === null) {
-//     header('WWW-Authenticate: Basic realm="Provisioning"');
-//     http_response_code(401);
-//     exit;
-// }
-
-// --------------------------------------------------------------------------
 // MAC
 // --------------------------------------------------------------------------
 
@@ -121,6 +108,19 @@ if ($mac !== '') {
         }
     }
 }
+
+// --------------------------------------------------------------------------
+// AUTHENTICATION
+// --------------------------------------------------------------------------
+
+// to-do: on never-seen, create account to return config with that auth.
+// so it loops back around with new auth.
+
+// if ($user === null) {
+//     header('WWW-Authenticate: Basic realm="Provisioning"');
+//     http_response_code(401);
+//     exit;
+// }
 
 // --------------------------------------------------------------------------
 // RESOURCE - GET - .cfg
