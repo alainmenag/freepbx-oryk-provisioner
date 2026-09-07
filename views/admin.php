@@ -77,9 +77,10 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 						<thead>
 							<tr>
 								<th data-field="mac" data-formatter="formatMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
-								<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('FreePBX Device / Extension'); ?></th>
+								<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
+								<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 								<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
-								<th data-field="profile" data-formatter="formatText" data-sortable="true"><?php echo _('Device Profile'); ?></th>
+								<th data-field="profile" data-formatter="formatDeviceProfile" data-sortable="true"><?php echo _('Device Profile'); ?></th>
 								<th data-field="actions" data-formatter="formatDeviceActions"><?php echo _('Actions'); ?></th>
 							</tr>
 						</thead>
@@ -162,13 +163,25 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 		const device = orykEscape(value);
 
+		return `<a href="?display=devices&extdisplay=${encodeURIComponent(device)}">${device}</a>`;
+	}
+
+	function formatExtension(value, row) {
 		if (!row.extension) {
-			return device;
+			return '-';
 		}
 
 		const extension = orykEscape(row.extension);
 
-		return `${device} <a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">(${extension})</a>`;
+		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
+	}
+
+	function formatDeviceProfile(value, row) {
+		if (!value) {
+			return '-';
+		}
+		const extension = orykEscape(row.extension);
+		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.profile_id)}">${value}</a>`;
 	}
 
 	// Editing an association is a page, not a dialog, so Edit is a link: the
@@ -186,7 +199,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 		if (row.profile_id) {
 			const url = `/provisioner/${encodeURIComponent(row.mac)}.cfg`;
-			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Config</a>`);
+			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Render</a>`);
 		}
 
 		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="device_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);

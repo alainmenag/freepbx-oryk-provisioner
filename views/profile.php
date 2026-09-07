@@ -165,7 +165,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resources' ? 'active' : ''; ?>" id="oryk_resources">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg, a directory, anything the vendor fetches alongside/directly.'); ?>
+								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg, a directory, anything the vendor fetches alongside/directly. ** Firmware is not yet supported.'); ?>
 							</p>
 
 							<div id="resource_toolbar" class="oryk-toolbar">
@@ -301,7 +301,7 @@ $tab = $isNew ? 'profile' : $tab;
 		return [
 			`<div class="flex gap-3">`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>`,
-			`<a class="btn btn-default btn-sm" href="/provisioner/${encodeURIComponent(row.mac)}.cfg" target="_blank" title="View the rendered configuration">Config</a>`,
+			`<a class="btn btn-default btn-sm" href="/provisioner/${encodeURIComponent(row.mac)}.cfg" target="_blank" title="View the rendered configuration">Render</a>`,
 			`</div>`
 		].join('');
 	}
