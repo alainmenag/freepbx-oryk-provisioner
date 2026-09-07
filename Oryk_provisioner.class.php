@@ -932,7 +932,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
-	private function serveConfig($mac)
+	public function serveConfig($mac)
 	{
 		$result = $this->renderConfig($mac);
 
@@ -958,6 +958,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function renderConfig($mac)
 	{
 		$mac = $this->normalizeMac($mac);
+
+		$this->FreePBX->Logger->log(
+				FPBX_LOG_INFO,
+				'Rendering config for MAC: ' . $mac
+		);
 
 		if ($mac === '') {
 			return [
