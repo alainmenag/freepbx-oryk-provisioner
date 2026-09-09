@@ -101,6 +101,37 @@
 		return $('<div>').text(value === null || value === undefined ? '' : value).html();
 	}
 
+	// A byte count as somebody reads it. Firmware is why there is one: a
+	// resource's file is measured in tens of megabytes, and a column of raw
+	// byte counts is a column nobody reads.
+	function orykBytes(bytes) {
+		var size = Number(bytes);
+
+		if (!isFinite(size) || size < 0) {
+			return '';
+		}
+
+		var units = ['B', 'KB', 'MB', 'GB'];
+		var unit = 0;
+
+		while (size >= 1024 && unit < units.length - 1) {
+			size = size / 1024;
+			unit++;
+		}
+
+		return (unit === 0 ? size : size.toFixed(1)) + ' ' + units[unit];
+	}
+
+	// A resource is a template or an uploaded file, and no column says which:
+	// only an upload sets a size, so a size is what says it. Here rather than
+	// in the two pages with a resource table on them, which is the same reason
+	// orykBytes() is here.
+	function formatResourceKind(value) {
+		return value === null || value === undefined
+			? 'Template'
+			: `File <span class="text-muted">${orykEscape(orykBytes(value))}</span>`;
+	}
+
 	/**
 	 * Put text on the clipboard, whichever way this browser allows.
 	 *
