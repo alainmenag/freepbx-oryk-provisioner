@@ -1617,12 +1617,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * reach: FreePBX's config.php sends every session-less request to the
 	 * login page long before a module's doConfigPageInit() runs.
 	 *
-	 *   serveConfig($mac)                          the main config, [mac].cfg
-	 *   serveConfig($mac, '0004f282e824-web.cfg')  any other file it serves
+	 *   renderResource($mac)                          the main config, [mac].cfg
+	 *   renderResource($mac, '0004f282e824-web.cfg')  any other file it serves
 	 *
 	 * The second argument is the filename as it was asked for, not a resource
 	 * id: which resource that names is the profile's business, and working it
-	 * out is renderConfig()'s.
+	 * out is pullResource()'s.
 	 *
 	 * The outcome is logged here rather than by the endpoint, because this is
 	 * where the request ends and the endpoint never gets to see it.
@@ -1632,27 +1632,30 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
-	public function serveConfig($mac, $requested = null)
+	public function renderResource($mac, $requested = null)
 	{
-		$result = $this->renderConfig($mac, $requested);
+		$result = $this->pullResource($mac, $requested);
 
-		if (!$result['status']) {
-			$this->FreePBX->Logger->log(FPBX_LOG_DEBUG, sprintf(
-				'oryk_provisioner: 404 for %s (%s)',
-				(string) $requested !== '' ? (string) $requested : (string) $mac,
-				$result['message']
-			));
+		// $this->logLine(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
-			$this->sendText(404, $result['message'] . "\n");
+		// $this->logLine(sprintf(
+		// 	'oryk_provisioner: %s %s for %s',
+		// 	(string) ($result['config'] ? 200 : 404),
+		// 	(string) ($mac ?: '------------'),
+		// 	(string) $requested ?? '',
+		// ));
+
+		if ($result['config']) {
+			$this->sendText(200, $result['config'], $this->contentType((string) $result['resource']));
+		} else {
+			$this->sendText(404, ($result['message'] ?? 'Unknown error') . "\n");
 		}
-
-		$this->sendText(200, $result['config'], $this->contentType((string) $result['resource']));
 	}
 
 	/**
 	 * The configuration text a MAC provisions with.
 	 *
-	 * Separate from serveConfig() because this is the part worth calling
+	 * Separate from renderResource() because this is the part worth calling
 	 * again: a preview, a console command, a test. Only the caller there ends
 	 * the request.
 	 *
@@ -1674,81 +1677,40 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * @return array<string, mixed> Status, the rendered config when there is
 	 *                              one, and a message when there is not.
 	 */
-	public function renderConfig($mac, $requested = null)
+	public function pullResource($mac, $requested = null)
 	{
-		$mac = $this->normalizeMac($mac);
-
-		if ($mac === '') {
-			return [
-				'status' => false,
-				'message' => _('A MAC address is 12 hexadecimal characters, with or without separators.'),
-			];
-		}
-
-		$row = $this->clientByMac($mac);
-
-		if (!$row) {
-			return [
-				'status' => false,
-				'message' => sprintf(_('%s is not associated with anything.'), $mac),
-			];
-		}
-
-		if ($row['profile_id'] === null) {
-			return [
-				'status' => false,
-				'message' => sprintf(_('%s has no profile assigned.'), $mac),
-			];
-		}
-
-		$values = $this->provisioningValues($row);
-		$file = trim((string) $requested);
-
-		// Two ways of asking for nothing in particular, and both are asking
-		// for the main config: no filename at all, and the client's own MAC
-		// with nothing around it (/provisioner/0004f282e824, which is what is
-		// left of nothing once the MAC is taken out). Both become [mac].cfg
-		// here rather than being carried down as an empty string and
-		// special-cased at the bottom, so there is exactly one name to match
-		// against and a miss names a file the caller will recognise.
-		if ($file === '' || $this->resourceName($file, $mac) === '') {
-			$file = $mac . '.cfg';
-		}
-
-		$match = $this->matchResource((int) $row['profile_id'], $file, $mac, $values);
-
-		if ($match === null) {
-			// Nothing this profile serves answers to the name. That now
-			// includes [mac].cfg on a profile with no `.cfg` resource on it:
-			// there is no template behind the profile to fall back to, and a
-			// profile that serves nothing is a profile somebody has not
-			// finished writing rather than one with an implicit main config.
-			return [
-				'status' => false,
-				'message' => sprintf(_('%s is not something this profile serves.'), $file),
-			];
-		}
-
-		$out = [
-			'status' => true,
-			'mac' => $mac,
-			'profile' => (string) $row['profile_name'],
-			'resource' => (string) $match['name'],
-			'config' => $this->renderTemplate((string) $match['template'], $values),
+		$response = [
+			'mac' => $this->normalizeMac($mac),
+			'requested' => trim($requested),
+			'message' => null,
+			'config' => null,
 		];
+		
+		$client = $this->clientByMac($response['mac']);
 
-		// Metadata only. A rendered config carries device.secret whenever a
-		// template asks for it, and the log is not where that belongs. The
-		// resource is always named now -- there is no unnamed main config for
-		// the line to have to describe.
-		$this->FreePBX->Logger->log(FPBX_LOG_DEBUG, sprintf(
-			'oryk_provisioner: %s served %s from profile %s',
-			$mac,
-			$out['resource'],
-			$out['profile']
-		));
+		if (!$client) {
+			$response['message'] = sprintf(_('No client is associated with %s.'), $response['mac']);
+			return $response;
+		}
 
-		return $out;
+		if ($client['profile_id'] === null) {
+			$response['message'] = sprintf(_('No profile is assigned to %s.'), $response['mac']);
+			return $response;
+		}
+
+		$values = $this->provisioningValues($client);
+		$match = $this->matchResource((int) $client['profile_id'], $response['requested'], $response['mac'], $values);
+		
+		$template = $match['template'] ?? null;
+
+		if ($template === null) {
+			$response['message'] = sprintf(_('%s is not something this profile serves.'), $response['requested']);
+			return $response;
+		}
+
+		$response['config'] = $this->renderTemplate((string) $template, $values);
+
+		return $response;
 	}
 
 	/**
@@ -1788,14 +1750,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	private function matchResource($profileId, $requested, $mac, array $values)
 	{
-		$clean = $this->resourceName($requested, $mac);
-
-		// Filenames are matched without regard to case throughout -- a phone
-		// asking for 0004F282E824.CFG and one asking for 0004f282e824.cfg are
-		// the same phone asking for the same file -- so the two names are
-		// compared lowercased rather than on the column's collation. The
-		// third clause reads the templated names, which are the only ones
-		// that cannot be compared until they have been rendered.
+		$options = [
+			'profile_id' => (int) $profileId,
+			'requested' => strtolower($requested),
+			'clean' => strtolower($this->resourceName($requested, $mac) ?? ''),
+			'target' => null,
+			'resource' => null,
+		];
 		$stmt = $this->db->prepare(
 			"SELECT id, name, template
 			FROM `{$this->resourcesTable}`
@@ -1803,39 +1764,35 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			AND (LOWER(name) = :requested OR LOWER(name) = :clean OR name LIKE '%{{%')
 			ORDER BY name"
 		);
+
 		$stmt->execute([
-			':profile_id' => (int) $profileId,
-			':requested' => strtolower($requested),
-			':clean' => strtolower($clean),
+			':profile_id' => $options['profile_id'],
+			':requested' => $options['requested'],
+			':clean' => $options['clean'],
 		]);
 
 		$resources = $stmt->fetchAll(PDO::FETCH_ASSOC);
-		$fallback = null;
 
-		foreach ($resources as $resource) {
+		$mappings = [];
+
+		foreach ($resources as $index => $resource) {
 			$name = (string) $resource['name'];
-
-			if (strcasecmp($name, $requested) === 0) {
-				return $resource;
-			}
-
-			// Held rather than returned, so a name written out as the phone
-			// asks for it always beats one matched with the MAC taken out.
-			if ($fallback === null && $clean !== '' && strcasecmp($name, $clean) === 0) {
-				$fallback = $resource;
-			}
+			$renderedName = strpos($name, '{{') !== false ? $this->renderTemplate($name, $values) : $name;
+			$mappings[$renderedName] = $index;
 		}
 
-		foreach ($resources as $resource) {
-			$name = (string) $resource['name'];
+		$mappedIndex = $mappings[$options['requested']] ?? $mappings[$options['clean']] ?? null;
+		$mappedResource = $resources[$mappedIndex] ?? null;
 
-			if (strpos($name, '{{') !== false
-				&& strcasecmp($this->renderTemplate($name, $values), $requested) === 0) {
-				return $resource;
-			}
-		}
+		$this->logLine(json_encode([
+			'mappings' => $mappings,
+			'requested' => $options['requested'],
+			'clean' => $options['clean'],
+			'mapped_index' => $mappedIndex,
+			'mapped_resource' => $mappedResource,
+		], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
-		return $fallback;
+		return $mappedResource;
 	}
 
 	/**
@@ -1905,6 +1862,39 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			default:
 				return 'text/plain';
+		}
+	}
+
+	/**
+	 * Write one line to the FreePBX log.
+	 *
+	 * The FPBX_LOG_* constants are defined by the admin bootstrap, and the
+	 * device endpoint deliberately does not run it -- no admin session,
+	 * $restrict_mods on -- so in a request from a phone they do not exist.
+	 * This class is in a namespace, where an unqualified constant that is
+	 * not defined is a fatal error rather than a notice, so a log line
+	 * written the usual way takes the whole response down. Each level's
+	 * value is its own name, which is what is used when the constant is not
+	 * there to say so.
+	 *
+	 * Nothing here is worth failing a phone's provisioning over: a line that
+	 * cannot be written is dropped rather than thrown. The endpoint runs a
+	 * deliberately thin FreePBX and the Logger is one of the things that may
+	 * not have come up with it.
+	 *
+	 * @param string $message What to log.
+	 * @param string $level   Level name, without the FPBX_LOG_ prefix.
+	 *
+	 * @return void
+	 */
+	private function logLine($message, $level = 'DEBUG')
+	{
+		$constant = 'FPBX_LOG_' . $level;
+
+		try {
+			$this->FreePBX->Logger->log(defined($constant) ? constant($constant) : $level, $message);
+		} catch (\Throwable $e) {
+			// Nowhere to report it that is not the thing that just failed.
 		}
 	}
 

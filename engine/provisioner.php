@@ -107,6 +107,11 @@ $mac = strtolower($mac ?? '');
 
 $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 
+// $provisioner->logLine(json_encode([
+// 	'mac' => $mac,
+// 	'filename' => $filename,
+// ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
 // --------------------------------------------------------------------------
 // AUTHENTICATION
 // --------------------------------------------------------------------------
@@ -124,12 +129,12 @@ $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 // SERVE
 // --------------------------------------------------------------------------
 
-// serveConfig() ends the request either way -- with the rendered file, or
+// renderResource() ends the request either way -- with the rendered file, or
 // with a 404 when the MAC is unknown, has no profile, or that profile serves
 // nothing by that name. It logs the outcome itself.
-if ($method === 'GET' || $method === 'HEAD') {
-    $provisioner->serveConfig($mac, $filename);
-    exit;
+if ($mac && $method === 'GET') {
+	$provisioner->renderResource($mac, $filename);
+	exit;
 }
 
 // --------------------------------------------------------------------------
@@ -142,13 +147,8 @@ if ($method === 'GET' || $method === 'HEAD') {
 
 http_response_code(404);
 
-$freepbx->Logger->log(
-    FPBX_LOG_DEBUG,
-    json_encode([
-        'status' => 404,
-        'method' => $method,
-        'mac' => $mac,
-        'file' => $filename,
-				'requestPath' => $requestPath,
-    ])
-);
+$provisioner->logLine(sprintf(
+	'oryk_provisioner: 404 %s for %s',
+	(string) ($mac ?: '------------'),
+	(string) $filename ?? '',
+));

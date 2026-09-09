@@ -348,8 +348,8 @@ The larger design this is working towards, none of which exists in the code:
 
 ```
 Oryk_provisioner.class.php   BMO: install/uninstall, page dispatch, AJAX
-                             commands, and the renderer (renderConfig,
-                             matchResource, provisioningValues, serveConfig)
+                             commands, and the renderer (pullResource,
+                             matchResource, provisioningValues, renderResource)
 engine/provisioner.php       the unauthenticated endpoint: who is asking and
                              what they asked for, and nothing else
 engine/.htaccess             rewrites the engine directory to provisioner.php
