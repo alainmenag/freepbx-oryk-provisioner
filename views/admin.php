@@ -10,11 +10,11 @@
  * -- views/client.php and views/profile.php -- which the Add and Edit buttons
  * link to. What is left on the list is deletion, which needs no page.
  *
- * @var string $tab   Tab to open on: clients|profiles
+ * @var string $tab   Tab to open on: clients|profiles|logs
  * @var int    $saved Row just written on that tab, highlighted here
  */
 
-$tab = ($tab ?? '') === 'profiles' ? 'profiles' : 'clients';
+$tab = in_array($tab ?? '', ['profiles', 'logs'], true) ? $tab : 'clients';
 $saved = (int) ($saved ?? 0);
 
 // One `saved` in the URL, and the tab it arrives on says which table it means:
@@ -57,6 +57,11 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 					<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
 						<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
 							<?php echo _('Profiles'); ?>
+						</a>
+					</li>
+					<li role="presentation" class="<?php echo $tab === 'logs' ? 'active' : ''; ?>">
+						<a href="#oryk_logs" aria-controls="oryk_logs" role="tab" data-toggle="tab">
+							<?php echo _('Logs'); ?>
 						</a>
 					</li>
 				</ul>
@@ -128,6 +133,15 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 								</tr>
 							</thead>
 						</table>
+					</div>
+
+					<div role="tabpanel" class="tab-pane <?php echo $tab === 'logs' ? 'active' : ''; ?>" id="oryk_logs">
+						<?php
+						// Every request, not just the ones a client was found
+						// for -- see the note at the top of the partial.
+						$logMac = '';
+						include __DIR__ . '/partials/logs.php';
+						?>
 					</div>
 
 				</div>
@@ -261,7 +275,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
 
 		if (window.history && window.history.replaceState) {
-			const tabs = { '#oryk_clients': 'clients', '#oryk_profiles': 'profiles' };
+			const tabs = { '#oryk_clients': 'clients', '#oryk_profiles': 'profiles', '#oryk_logs': 'logs' };
 			window.history.replaceState(null, '', `?display=oryk_provisioner&tab=${tabs[pane] || 'clients'}`);
 		}
 	});

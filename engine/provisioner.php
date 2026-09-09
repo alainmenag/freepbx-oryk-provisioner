@@ -142,9 +142,20 @@ if ($mac && ($method === 'GET' || $method === 'HEAD')) {
 
 http_response_code(404);
 
+// Why, in the words the provisioning log will show: a phone PUTting a boot
+// log and a request with no MAC anywhere in it are two different faults, and
+// a log that says 'Not Found' to both is a log that says nothing. These are
+// the requests serveConfig() never sees, so this is the only place they can
+// be recorded at all.
+$reason = ($method === 'GET' || $method === 'HEAD')
+	? 'No MAC address in the request.'
+	: sprintf('%s is not a request this endpoint answers.', $method);
+
 $provisioner->log(sprintf(
 	'oryk_provisioner: %s for %s (%s)',
 	(string) '404',
 	(string) $filename,
-	'Not Found',
+	$reason,
 ), null, 'DEBUG');
+
+$provisioner->logRequest($mac, $filename, 404, ['message' => $reason]);
