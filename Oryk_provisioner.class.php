@@ -70,6 +70,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->db = $freepbx->Database;
 	}
 
+	public function log(mixed $message = '', mixed $data = '', $level = 'DEBUG')
+	{
+		$constant = 'FPBX_LOG_' . $level;
+		$data = is_string($data) ? $data : ($data ? json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '');
+		try {
+			$l = defined($constant) ? constant($constant) : $level;
+			$this->FreePBX->Logger->log($l, trim($message . ' ' . $data));
+		} catch (\Throwable $e) {
+			// Nowhere to report it that is not the thing that just failed.
+			error_log($e->getMessage());
+		}
+	}
+
 	/**
 	 * Render the requested module page.
 	 *
@@ -543,7 +556,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			return;
 		}
 
-		error_log($message);
+		$this->log($message, null, 'INFO');
 	}
 
 	/**
@@ -1606,13 +1619,14 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$result = $this->renderConfig($mac, $requested);
 
-		if (!$result['status']) {
-			$this->FreePBX->Logger->log(FPBX_LOG_WARNING, sprintf(
-				'oryk_provisioner: 404 for %s (%s)',
-				(string) $requested !== '' ? (string) $requested : (string) $mac,
-				$result['message']
-			));
+		$this->log(sprintf(
+			'oryk_provisioner: %s for %s (%s)',
+			(string) $result['status'] ? 200 : 404,
+			(string) $requested !== '' ? (string) $requested : (string) $mac,
+			$result['message'] ?? 'OK',
+		), null, $result['status'] ? 'INFO' : 'DEBUG');
 
+		if (!$result['status']) {
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
@@ -1714,17 +1728,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'resource' => (string) $match['name'],
 			'config' => $this->renderTemplate((string) $match['template'], $values),
 		];
-
-		// Metadata only. A rendered config carries device.secret whenever a
-		// template asks for it, and the log is not where that belongs. The
-		// resource is always named now -- there is no unnamed main config for
-		// the line to have to describe.
-		$this->FreePBX->Logger->log(FPBX_LOG_INFO, sprintf(
-			'oryk_provisioner: %s served %s from profile %s',
-			$mac,
-			$out['resource'],
-			$out['profile']
-		));
 
 		return $out;
 	}

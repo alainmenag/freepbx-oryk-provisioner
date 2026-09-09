@@ -127,13 +127,13 @@ $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 // serveConfig() ends the request either way -- with the rendered file, or
 // with a 404 when the MAC is unknown, has no profile, or that profile serves
 // nothing by that name. It logs the outcome itself.
-if ($method === 'GET' || $method === 'HEAD') {
+if ($mac && ($method === 'GET' || $method === 'HEAD')) {
     $provisioner->serveConfig($mac, $filename);
     exit;
 }
 
 // --------------------------------------------------------------------------
-// 404
+// 501
 // --------------------------------------------------------------------------
 
 // to-do: a phone also PUTs its boot and app logs. Until there is somewhere
@@ -142,12 +142,9 @@ if ($method === 'GET' || $method === 'HEAD') {
 
 http_response_code(404);
 
-$freepbx->Logger->log(
-    FPBX_LOG_INFO,
-    json_encode([
-        'status' => 404,
-        'method' => $method,
-        'mac' => $mac,
-        'file' => $filename,
-    ])
-);
+$provisioner->log(sprintf(
+	'oryk_provisioner: %s for %s (%s)',
+	(string) '404',
+	(string) $filename,
+	'Not Found',
+), null, 'DEBUG');
