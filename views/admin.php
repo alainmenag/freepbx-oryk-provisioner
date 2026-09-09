@@ -128,7 +128,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 							<thead>
 								<tr>
 									<th data-field="name" data-formatter="formatProfileName" data-sortable="true" ><?php echo _('Name'); ?></th>
-									<th data-field="assigned" data-sortable="true"><?php echo _('Assigned Clients'); ?></th>
+									<th data-field="assigned" data-formatter="formatAssignedClients" data-sortable="true"><?php echo _('Clients'); ?></th>
 									<th data-field="actions" data-formatter="formatProfileActions"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
@@ -220,6 +220,13 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${value}</a>`;
 	}
 
+	function formatAssignedClients(value, row) {
+		if (!value) {
+			return '0';
+		}
+		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}&tab=clients">${orykEscape(value)}</a>`;
+	}
+
 	// Editing a client is a page, not a dialog, so Edit is a link: the
 	// row's id is the whole of what the editor needs, and it reads the
 	// client back itself rather than being handed one.
@@ -234,11 +241,6 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		];
 
 		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
-
-		if (row.profile_id) {
-			const url = `/provisioner/${encodeURIComponent(row.mac)}.cfg`;
-			actions.push(`<a class="btn btn-default btn-sm" href="${url}" target="_blank" title="View the rendered configuration">Render</a>`);
-		}
 
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}

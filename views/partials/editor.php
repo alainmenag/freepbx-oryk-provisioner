@@ -122,6 +122,16 @@
 		return (unit === 0 ? size : size.toFixed(1)) + ' ' + units[unit];
 	}
 
+	// A resource is a template or an uploaded file, and no column says which:
+	// only an upload sets a size, so a size is what says it. Here rather than
+	// in the two pages with a resource table on them, which is the same reason
+	// orykBytes() is here.
+	function formatResourceKind(value) {
+		return value === null || value === undefined
+			? 'Template'
+			: `File <span class="text-muted">${orykEscape(orykBytes(value))}</span>`;
+	}
+
 	/**
 	 * Put text on the clipboard, whichever way this browser allows.
 	 *

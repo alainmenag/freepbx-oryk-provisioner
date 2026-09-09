@@ -273,9 +273,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'profile' => $profile,
 			'placeholders' => $this->templatePlaceholders(),
 			'assigned' => $this->profileClientCount((int) $profile['id']),
-			// So the upload control can say what it will accept before
-			// somebody finds out at the end of a forty-megabyte upload.
-			'uploadLimit' => $this->uploadLimit(),
 			// A resource that has never been written has no name to render
 			// against a client, so Clients is there but does not open --
 			// the same way Resources is on a new profile.
@@ -516,61 +513,43 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		];
 
 		foreach ($columns as $column => $clause) {
-			if (!$this->hasColumn($this->resourcesTable, $column)) {
+			if (!$this->schemaHas($this->resourcesTable, 'column', $column)) {
 				$this->db->exec("ALTER TABLE `{$this->resourcesTable}` $clause");
 			}
 		}
 
-		if (!$this->hasIndex($this->resourcesTable, 'name')) {
+		if (!$this->schemaHas($this->resourcesTable, 'index', 'name')) {
 			$this->db->exec("ALTER TABLE `{$this->resourcesTable}` ADD KEY `name` (`name`)");
 		}
 	}
 
 	/**
-	 * Whether a table already has a column.
+	 * Whether a table already has a column, or an index, by that name.
 	 *
-	 * A question that cannot be answered is answered yes, because the only
-	 * thing the answer is used for is deciding whether to ALTER: not knowing
-	 * is a reason to leave the table alone, not to change it blind.
-	 *
-	 * @param string $table  Table name.
-	 * @param string $column Column name.
-	 *
-	 * @return bool True when it is there, or when it could not be asked.
-	 */
-	private function hasColumn($table, $column)
-	{
-		try {
-			$stmt = $this->db->prepare(
-				'SELECT COUNT(*) FROM information_schema.COLUMNS
-				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
-			);
-			$stmt->execute([':table' => $table, ':column' => $column]);
-
-			return (bool) $stmt->fetchColumn();
-		} catch (\Exception $e) {
-			$this->log('oryk_provisioner: could not read information_schema', $e->getMessage(), 'WARNING');
-
-			return true;
-		}
-	}
-
-	/**
-	 * Whether a table already has an index by that name.
+	 * One question of two catalogues, because there is one thing the answer
+	 * is for: whether to ALTER. A question that cannot be asked is answered
+	 * yes -- not knowing is a reason to leave the table alone rather than to
+	 * change it blind.
 	 *
 	 * @param string $table Table name.
-	 * @param string $index Index name.
+	 * @param string $kind  'column' or 'index'.
+	 * @param string $name  Name to look for.
 	 *
 	 * @return bool True when it is there, or when it could not be asked.
 	 */
-	private function hasIndex($table, $index)
+	private function schemaHas($table, $kind, $name)
 	{
+		// Chosen here rather than passed through, so nothing that reaches
+		// this method can reach the two names written into the statement.
+		$catalogue = $kind === 'index' ? 'STATISTICS' : 'COLUMNS';
+		$field = $kind === 'index' ? 'INDEX_NAME' : 'COLUMN_NAME';
+
 		try {
 			$stmt = $this->db->prepare(
-				'SELECT COUNT(*) FROM information_schema.STATISTICS
-				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND INDEX_NAME = :index'
+				"SELECT COUNT(*) FROM information_schema.$catalogue
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND $field = :name"
 			);
-			$stmt->execute([':table' => $table, ':index' => $index]);
+			$stmt->execute([':table' => $table, ':name' => $name]);
 
 			return (bool) $stmt->fetchColumn();
 		} catch (\Exception $e) {
@@ -1825,24 +1804,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$path = $this->repoPath();
 
-		if (!is_dir($path) && !@mkdir($path, 0750, true) && !is_dir($path)) {
-			$this->log(sprintf('oryk_provisioner: could not create %s', $path), null, 'WARNING');
+		if (!is_dir($path)) {
+			if (!@mkdir($path, 0750, true) && !is_dir($path)) {
+				$this->log(sprintf('oryk_provisioner: could not create %s', $path), null, 'WARNING');
 
-			return false;
-		}
+				return false;
+			}
 
-		// The web user is the one that writes here, and Asterisk is the group
-		// the rest of the spool belongs to. Neither is fatal: a directory
-		// somebody else made with workable permissions is workable.
-		$user = (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER');
-		$group = (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP');
-
-		if ($user !== '') {
-			@chown($path, $user);
-		}
-
-		if ($group !== '') {
-			@chgrp($path, $group);
+			// Only for a directory this just made, and neither is fatal: the web
+			// user is the one that writes here and Asterisk owns the rest of the
+			// spool, but a directory somebody else made with workable permissions
+			// is workable, and by an upload it is far too late to be asking.
+			@chown($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER'));
+			@chgrp($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP'));
 		}
 
 		return is_writable($path);
@@ -1869,48 +1843,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		return true;
-	}
-
-	/**
-	 * The largest upload this server accepts, in bytes.
-	 *
-	 * The smaller of upload_max_filesize and post_max_size, because a
-	 * multipart body is a little larger than the file inside it and either
-	 * limit refuses the request on its own. Shown in the editor: a firmware
-	 * image is tens of megabytes and PHP's default is not, and finding that
-	 * out at the end of a long upload is the worst time to find it out.
-	 *
-	 * @return int Bytes, or 0 when neither limit is set.
-	 */
-	private function uploadLimit()
-	{
-		$bytes = function ($value) {
-			$value = trim((string) $value);
-
-			if ($value === '') {
-				return 0;
-			}
-
-			$number = (int) $value;
-
-			switch (strtolower(substr($value, -1))) {
-				case 'g':
-					return $number * 1024 * 1024 * 1024;
-
-				case 'm':
-					return $number * 1024 * 1024;
-
-				case 'k':
-					return $number * 1024;
-
-				default:
-					return $number;
-			}
-		};
-
-		$limits = array_filter([$bytes(ini_get('upload_max_filesize')), $bytes(ini_get('post_max_size'))]);
-
-		return $limits ? (int) min($limits) : 0;
 	}
 
 	/**
@@ -1958,24 +1890,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			return ['status' => false, 'message' => _('That resource no longer exists.')];
 		}
 
-		// The filename is saved with the file. Somebody who renamed the resource
-		// and then chose a file meant both of those, and storing the bytes
-		// against the old name would be a save that half happened. It goes first
-		// so a name that cannot be saved -- blank, or one this profile already
-		// serves -- refuses the whole action before anything is written.
-		if (array_key_exists('name', $request)) {
-			$saved = $this->saveResource([
-				'id' => $id,
-				'profile_id' => $profileId,
-				'name' => $request['name'],
-			]);
+		// The filename is saved with the file, and first: a name that cannot be
+		// saved refuses the whole action before anything is written.
+		$saved = $this->saveResourceName($request, $id, $profileId);
 
-			if (!$saved['status']) {
-				return $saved;
-			}
-
-			$resource['name'] = $saved['name'];
+		if ($saved && !$saved['status']) {
+			return $saved;
 		}
+
+		$name = $saved['name'] ?? (string) $resource['name'];
 
 		$file = $_FILES['file'] ?? null;
 
@@ -2028,13 +1951,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'oryk_provisioner: stored %s bytes for resource %s (%s)',
 			$size,
 			$id,
-			(string) $resource['name']
+			$name
 		), null, 'INFO');
 
 		return [
 			'status' => true,
 			'id' => $id,
-			'name' => (string) $resource['name'],
+			'name' => $name,
 			'file_size' => $size,
 			'file_uploaded_at' => date('Y-m-d H:i:s'),
 		];
@@ -2061,21 +1984,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			return ['status' => false, 'message' => _('That resource no longer exists.')];
 		}
 
-		// Saved for the same reason an upload is: the button was pressed on a
-		// page that may have a renamed resource on it, and it means the page.
-		if (array_key_exists('name', $request)) {
-			$saved = $this->saveResource([
-				'id' => $id,
-				'profile_id' => $profileId,
-				'name' => $request['name'],
-			]);
+		$saved = $this->saveResourceName($request, $id, $profileId);
 
-			if (!$saved['status']) {
-				return $saved;
-			}
-
-			$resource['name'] = $saved['name'];
+		if ($saved && !$saved['status']) {
+			return $saved;
 		}
+
+		$name = $saved['name'] ?? (string) $resource['name'];
 
 		$this->removeRepoFile($id);
 
@@ -2086,7 +2001,36 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		);
 		$stmt->execute([':id' => $id, ':profile_id' => $profileId]);
 
-		return ['status' => true, 'id' => $id, 'name' => (string) $resource['name']];
+		return ['status' => true, 'id' => $id, 'name' => $name];
+	}
+
+	/**
+	 * Save the resource's name, when a file action was given one.
+	 *
+	 * Uploading and removing a file both save the resource they act on: the
+	 * button was pressed on a page that may be carrying a renamed resource,
+	 * and it means the page. Neither has an opinion about what a name may be
+	 * -- saveResource() already knows, and a second opinion is a second thing
+	 * to keep in step with the first.
+	 *
+	 * @param array<string, mixed> $request   Submitted form values.
+	 * @param int                  $id        Resource id.
+	 * @param int                  $profileId Profile it belongs to.
+	 *
+	 * @return array<string, mixed>|null saveResource()'s answer, or null when no
+	 *                                   name was sent and nothing was saved.
+	 */
+	private function saveResourceName($request, $id, $profileId)
+	{
+		if (!array_key_exists('name', $request)) {
+			return null;
+		}
+
+		return $this->saveResource([
+			'id' => $id,
+			'profile_id' => $profileId,
+			'name' => $request['name'],
+		]);
 	}
 
 	/**
@@ -2098,30 +2042,22 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	private function uploadErrorMessage($code)
 	{
-		switch ($code) {
-			case UPLOAD_ERR_INI_SIZE:
-			case UPLOAD_ERR_FORM_SIZE:
-				return sprintf(
-					_('That file is larger than this server accepts (%s).'),
-					ini_get('upload_max_filesize')
-				);
-
-			case UPLOAD_ERR_PARTIAL:
-				return _('The upload did not finish.');
-
-			case UPLOAD_ERR_NO_FILE:
-				return _('No file was uploaded.');
-
-			case UPLOAD_ERR_NO_TMP_DIR:
-			case UPLOAD_ERR_CANT_WRITE:
-				return _('This server has nowhere to put the upload.');
-
-			case UPLOAD_ERR_EXTENSION:
-				return _('A PHP extension refused the upload.');
-
-			default:
-				return _('The upload failed.');
+		if ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE) {
+			return sprintf(
+				_('That file is larger than this server accepts (%s).'),
+				ini_get('upload_max_filesize')
+			);
 		}
+
+		$messages = [
+			UPLOAD_ERR_PARTIAL => _('The upload did not finish.'),
+			UPLOAD_ERR_NO_FILE => _('No file was uploaded.'),
+			UPLOAD_ERR_NO_TMP_DIR => _('This server has nowhere to put the upload.'),
+			UPLOAD_ERR_CANT_WRITE => _('This server has nowhere to put the upload.'),
+			UPLOAD_ERR_EXTENSION => _('A PHP extension refused the upload.'),
+		];
+
+		return $messages[$code] ?? _('The upload failed.');
 	}
 
 	/**
@@ -2681,7 +2617,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * Two profiles carrying the same firmware is the ordinary case rather than
 	 * an ambiguity worth refusing -- they hold the same bytes -- so the lowest
-	 * id wins and the rest are noted in the log.
+	 * id wins rather than the request failing over which of them it meant.
 	 *
 	 * @param string $requested Filename as it was asked for.
 	 *
@@ -2690,29 +2626,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private function fileByName($requested)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name, template, file_size
+			"SELECT id, profile_id, name, file_size
 			FROM `{$this->resourcesTable}`
 			WHERE name = :name AND file_size IS NOT NULL
-			ORDER BY id"
+			ORDER BY id
+			LIMIT 1"
 		);
 		$stmt->execute([':name' => (string) $requested]);
 
-		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-		if (!$rows) {
-			return null;
-		}
-
-		if (count($rows) > 1) {
-			$this->log(sprintf(
-				'oryk_provisioner: %s is uploaded to %s profiles; serving resource %s',
-				(string) $requested,
-				count($rows),
-				$rows[0]['id']
-			), null, 'DEBUG');
-		}
-
-		return $rows[0];
+		return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 	}
 
 	/**

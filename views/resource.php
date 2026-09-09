@@ -41,7 +41,6 @@
  * @var array<string, array<string, string>> $placeholders What a template can refer to
  * @var int                                  $assigned     Clients on the profile, for the tab's count
  * @var string                               $tab          Tab to open on: resource|clients
- * @var int                                  $uploadLimit  Largest upload this server accepts, in bytes
  */
 
 $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template' => ''];
@@ -49,22 +48,6 @@ $resource += ['file_size' => null, 'file_uploaded_at' => null];
 $profile = $profile ?? ['id' => 0, 'name' => ''];
 $placeholders = $placeholders ?? [];
 $assigned = (int) ($assigned ?? 0);
-$uploadLimit = (int) ($uploadLimit ?? 0);
-
-// The same reading orykBytes() gives in the tables, for the one label that is
-// drawn here rather than by the script.
-$bytes = function ($size) {
-	$units = ['B', 'KB', 'MB', 'GB'];
-	$unit = 0;
-	$size = (float) $size;
-
-	while ($size >= 1024 && $unit < count($units) - 1) {
-		$size /= 1024;
-		$unit++;
-	}
-
-	return ($unit === 0 ? (string) (int) $size : number_format($size, 1)) . ' ' . $units[$unit];
-};
 $tab = ($tab ?? '') === 'clients' ? 'clients' : 'resource';
 
 $h = function ($value) {
@@ -202,11 +185,9 @@ $tab = $isNew ? 'resource' : $tab;
 									<div class="col-md-8">
 										<div id="resource_file_present" class="<?php echo $hasFile ? '' : 'hidden'; ?>">
 											<p class="form-control-static">
-												<span id="resource_file_meta"><?php
-													echo $hasFile
-														? $h($bytes((int) $resource['file_size']) . ', uploaded ' . $resource['file_uploaded_at'])
-														: '';
-												?></span>
+												<span id="resource_file_meta"
+													data-size="<?php echo $hasFile ? (int) $resource['file_size'] : ''; ?>"
+													data-uploaded="<?php echo $h((string) $resource['file_uploaded_at']); ?>"></span>
 												<button type="button" class="btn btn-default btn-sm" id="resource_file_remove">
 													<?php echo _('Remove'); ?>
 												</button>
@@ -229,11 +210,13 @@ $tab = $isNew ? 'resource' : $tab;
 									<span class="help-block fpbx-help-block">
 										<?php echo _('A phone fetching firmware sends no MAC address at all, so an uploaded file is also found by its name alone, across every profile. Name it exactly what the vendor asks for -- <code>3111-44500-001.sip.ld</code> -- and it will be served to a request that says nothing about who is asking, which also means to anyone who can reach the provisioning URL and knows that name.'); ?>
 									</span>
-									<?php if ($uploadLimit): ?>
-										<span class="help-block fpbx-help-block">
-											<?php echo sprintf(_('This server accepts uploads up to %s.'), $bytes($uploadLimit)); ?>
-										</span>
-									<?php endif; ?>
+									<span class="help-block fpbx-help-block">
+										<?php echo sprintf(
+											_('This server takes a file of up to %1$s, in a request body of up to %2$s -- <code>upload_max_filesize</code> and <code>post_max_size</code> in its php.ini, which have to be raised together. A firmware image is larger than either default.'),
+											$h(ini_get('upload_max_filesize')),
+											$h(ini_get('post_max_size'))
+										); ?>
+									</span>
 								</div>
 							</div>
 						</div>
@@ -408,6 +391,15 @@ $tab = $isNew ? 'resource' : $tab;
 
 	$('#resource_template').on('input', orykShowKind);
 
+	// The label beside Remove, written in one place: the page renders the size
+	// and the date as data and this says them, so a file that has just been
+	// uploaded and one that was there when the page loaded read the same.
+	function orykFileMeta(size, uploaded) {
+		$('#resource_file_meta').text(size ? `${orykBytes(size)}, uploaded ${uploaded}` : '');
+	}
+
+	orykFileMeta($('#resource_file_meta').data('size'), $('#resource_file_meta').data('uploaded'));
+
 	// Both file actions save the resource, so the heading has to follow a
 	// rename that has already been written without a page load behind it.
 	function orykSaved(response) {
@@ -474,7 +466,7 @@ $tab = $isNew ? 'resource' : $tab;
 			}
 
 			orykHasFile = true;
-			$('#resource_file_meta').text(orykBytes(response.file_size) + ', uploaded ' + response.file_uploaded_at);
+			orykFileMeta(response.file_size, response.file_uploaded_at);
 			orykSaved(response);
 		}).fail(function () {
 			orykShowError('The upload did not reach the server.');
@@ -506,7 +498,7 @@ $tab = $isNew ? 'resource' : $tab;
 			}
 
 			orykHasFile = false;
-			$('#resource_file_meta').text('');
+			orykFileMeta(0, '');
 			orykShowKind();
 			orykSaved(response);
 		}).fail(function () {

@@ -289,14 +289,6 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 
 	// The resource as it is written on the profile: a filename template, which
 	// is why it is worth showing beside what it comes to here.
-	// A resource is a template or an uploaded file, and no column says
-	// which: only an upload sets a size, so a size is what says it.
-	function formatResourceKind(value) {
-		return value === null || value === undefined
-			? 'Template'
-			: `File <span class="text-muted">${orykEscape(orykBytes(value))}</span>`;
-	}
-
 	function formatResourceName(value, row) {
 		return value ? `<a href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
