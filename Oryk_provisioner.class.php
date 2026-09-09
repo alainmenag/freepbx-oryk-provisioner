@@ -33,6 +33,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private $resourcesTable = 'oryk_provisioner_resources';
 
 	/**
+	 * Table holding one row per request the provisioning endpoint answered.
+	 *
+	 * @var string
+	 */
+	private $logsTable = 'oryk_provisioner_logs';
+
+	/**
 	 * Name of the web-root symlink that points at the engine directory.
 	 *
 	 * @var string
@@ -68,6 +75,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$this->FreePBX = $freepbx;
 		$this->db = $freepbx->Database;
+	}
+
+	public function log(mixed $message = '', mixed $data = '', $level = 'DEBUG')
+	{
+		$constant = 'FPBX_LOG_' . $level;
+		$data = is_string($data) ? $data : ($data ? json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '');
+		try {
+			$l = defined($constant) ? constant($constant) : $level;
+			$this->FreePBX->Logger->log($l, trim($message . ' ' . $data));
+		} catch (\Throwable $e) {
+			// Nowhere to report it that is not the thing that just failed.
+			error_log($e->getMessage());
+		}
 	}
 
 	/**
@@ -191,16 +211,27 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		$profileId = (int) ($client['profile_id'] ?? 0);
+		$mac = (string) ($client['mac'] ?? '');
+
+		// What each tab needs before it has anything on it. Resources needs a
+		// profile behind it -- nothing is served to a client without one. Logs
+		// needs only a MAC to have been asked about, and deliberately does not
+		// need the profile: a client with no profile is exactly the one whose
+		// phone is being refused, and those refusals are what its log is made
+		// of.
+		$available = [
+			'resources' => (bool) ($client['id'] && $profileId),
+			'logs' => (bool) ($client['id'] && $mac !== ''),
+		];
 
 		return load_view(__DIR__ . '/views/client.php', [
 			'client' => $client,
 			'freepbxDevices' => $this->freepbxDevices(),
 			'profiles' => $this->profileChoices(),
 			'resources' => $profileId ? $this->profileResourceCount($profileId) : 0,
-			// Nothing to list for a client that has never been written
-			// or has no profile to be served by, so Resources is there but
-			// does not open -- the way Resources is on a new profile.
-			'tab' => ($tab === 'resources' && $client['id'] && $profileId) ? 'resources' : 'client',
+			'logs' => $mac !== '' ? $this->macLogCount($mac) : 0,
+			'available' => $available,
+			'tab' => !empty($available[$tab]) ? $tab : 'client',
 		]);
 	}
 
@@ -268,7 +299,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
 
 		return load_view(__DIR__ . '/views/admin.php', [
-			'tab' => $tab === 'profiles' ? 'profiles' : 'clients',
+			'tab' => in_array($tab, ['profiles', 'logs'], true) ? $tab : 'clients',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
 	}
@@ -390,6 +421,40 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				UNIQUE KEY `mac` (`mac`),
 				KEY `device_id` (`device_id`),
 				KEY `profile_id` (`profile_id`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
+		// One row per request the endpoint answered, written whether or not
+		// the MAC is one this module knows. There is no client_id on it and
+		// no foreign key: a log row outlives the client it was about and
+		// predates the one it was not, so which client a MAC belongs to is a
+		// question asked when the log is read rather than answered once here.
+		//
+		// Metadata only, and less of it than a log of this kind usually keeps.
+		// The rendered body carries device.secret whenever a template asks for
+		// it, and a log is not where that belongs. Nor is which resource
+		// answered: the filename as the phone spelled it is the fact of the
+		// request, and which file of which profile that reached is a question
+		// the profile answers and can go on answering differently.
+		//
+		// `mac` is 64 rather than the clients table's 12 because this column
+		// also has to hold what was asked with when what was asked with is not
+		// a MAC at all -- on a row like that, "what did this thing send us" is
+		// the whole question.
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->logsTable}` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`mac` VARCHAR(64) NOT NULL DEFAULT '',
+				`filename` VARCHAR(255) NOT NULL DEFAULT '',
+				`status` SMALLINT(5) NOT NULL DEFAULT 0,
+				`message` VARCHAR(255) NULL DEFAULT NULL,
+				`method` VARCHAR(10) NOT NULL DEFAULT '',
+				`ip` VARCHAR(45) NULL DEFAULT NULL,
+				`user_agent` VARCHAR(255) NULL DEFAULT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (`id`),
+				KEY `mac` (`mac`, `id`),
+				KEY `created_at` (`created_at`)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
@@ -543,7 +608,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			return;
 		}
 
-		error_log($message);
+		$this->log($message, null, 'INFO');
 	}
 
 	/**
@@ -655,6 +720,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listResources':
 			case 'saveResource':
 			case 'deleteResource':
+			case 'listLogs':
+			case 'clearLogs':
 				return true;
 			default:
 				return false;
@@ -697,6 +764,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteResource':
 				return $this->deleteResource($_REQUEST['id'] ?? null);
+
+			case 'listLogs':
+				return $this->listLogs();
+
+			case 'clearLogs':
+				return $this->clearLogs($_REQUEST);
 
 			default:
 				return null;
@@ -1543,6 +1616,205 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * Rows for a Logs table.
+	 *
+	 * One statement asked two ways, the way listClients is: every request the
+	 * endpoint has answered on the module page, and one client's own on the
+	 * client editor's Logs tab, which asks with `mac`.
+	 *
+	 * It asks with a MAC rather than a client id, and that is the point. A row
+	 * is written for a MAC whether or not anything is associated with it, so
+	 * the requests a phone made before somebody wrote its client are on that
+	 * client's tab the moment it exists -- which is the run of 404s that says
+	 * what the phone has been asking for all along.
+	 *
+	 * Newest first unless asked otherwise, and the id breaks the tie: a phone
+	 * that has just booted asks for six files inside one second, and a log
+	 * that shuffles them is a log that cannot be read.
+	 *
+	 * @return array<string, mixed> Total row count and the page of rows.
+	 */
+	private function listLogs()
+	{
+		$sortable = [
+			'created_at' => 'l.created_at',
+			'mac' => 'l.mac',
+			'filename' => 'l.filename',
+			'status' => 'l.status',
+			'ip' => 'l.ip',
+		];
+
+		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['created_at'];
+
+		// The other way round from every other table here: a log is read from
+		// the end, so anything that is not explicitly ascending is descending.
+		$order = strtolower((string) ($_REQUEST['order'] ?? '')) === 'asc' ? 'ASC' : 'DESC';
+
+		$limit = (int) ($_REQUEST['limit'] ?? 10);
+		$offset = (int) ($_REQUEST['offset'] ?? 0);
+		$search = (string) ($_REQUEST['search'] ?? '');
+
+		$params = [];
+		$clauses = [];
+
+		if (isset($_REQUEST['mac'])) {
+			$clauses[] = 'l.mac = :mac';
+			$params[':mac'] = $this->logMac($_REQUEST['mac']);
+		}
+
+		if ($search !== '') {
+			$clauses[] = "(l.mac LIKE :search
+				OR l.filename LIKE :search
+				OR l.message LIKE :search
+				OR l.ip LIKE :search
+				OR l.user_agent LIKE :search)";
+			$params[':search'] = '%' . $search . '%';
+		}
+
+		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
+
+		// Joined on the MAC rather than on an id stored in the row, for the
+		// reason there is no such id: which client a MAC belongs to is a
+		// question about now, not about when the request came in.
+		$from = "FROM `{$this->logsTable}` l
+			LEFT JOIN `{$this->clientsTable}` pc ON pc.mac = l.mac
+			LEFT JOIN devices d ON d.id = pc.device_id";
+
+		try {
+			$countStmt = $this->db->prepare("SELECT COUNT(*) $from $where");
+			$countStmt->execute($params);
+			$total = (int) $countStmt->fetchColumn();
+
+			$sql = "
+				SELECT
+					l.id,
+					l.mac,
+					l.filename,
+					l.status,
+					l.message,
+					l.method,
+					l.ip,
+					l.user_agent,
+					l.created_at,
+					pc.id AS client_id,
+					d.description AS description
+				$from
+				$where
+				ORDER BY $sort $order, l.id DESC
+				LIMIT :limit OFFSET :offset
+			";
+
+			$stmt = $this->db->prepare($sql);
+			foreach ($params as $key => $value) {
+				$stmt->bindValue($key, $value);
+			}
+			$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+			$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+			$stmt->execute();
+
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			// The table arrives with install(); a module upgraded without it
+			// is a module whose log is empty, not one whose pages are broken.
+			$this->log('oryk_provisioner: could not read the provisioning log', $e->getMessage(), 'WARNING');
+
+			return ['total' => 0, 'rows' => []];
+		}
+
+		return [
+			'total' => $total,
+			'rows' => $rows,
+		];
+	}
+
+	/**
+	 * Empty the log, or one client's part of it.
+	 *
+	 * Narrowed the same way the table is: the client editor's tab clears the
+	 * one phone's rows, the module page's clears the lot. A provisioning log
+	 * grows by a row per file per boot per phone and nothing prunes it, so
+	 * this is the only thing standing between a busy site and a table larger
+	 * than everything else the module has.
+	 *
+	 * @param array<string, mixed> $request Submitted values; `mac` narrows it.
+	 *
+	 * @return array<string, mixed> Status of the removal.
+	 */
+	private function clearLogs($request)
+	{
+		try {
+			if (isset($request['mac'])) {
+				$mac = $this->logMac($request['mac']);
+
+				if ($mac === '') {
+					return ['status' => false, 'message' => _('No MAC address to clear the log for.')];
+				}
+
+				$stmt = $this->db->prepare("DELETE FROM `{$this->logsTable}` WHERE mac = :mac");
+				$stmt->execute([':mac' => $mac]);
+
+				return ['status' => true];
+			}
+
+			// A DELETE rather than the TRUNCATE that would be quicker: TRUNCATE
+			// is DDL, it commits whatever transaction it lands in, and this is
+			// a button on a page rather than a maintenance job.
+			$this->db->exec("DELETE FROM `{$this->logsTable}`");
+		} catch (\Exception $e) {
+			return ['status' => false, 'message' => _('The provisioning log could not be cleared.')];
+		}
+
+		return ['status' => true];
+	}
+
+	/**
+	 * How many requests one MAC has made.
+	 *
+	 * What the client editor's Logs tab is labelled with. Zero is worth
+	 * reading rather than hiding: a phone that has never asked for anything is
+	 * a phone that is not reaching this PBX at all, which is a different fault
+	 * from the ones the rows themselves describe.
+	 *
+	 * @param string $mac Normalised MAC address.
+	 *
+	 * @return int Rows logged against it.
+	 */
+	private function macLogCount($mac)
+	{
+		try {
+			$stmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->logsTable}` WHERE mac = :mac");
+			$stmt->execute([':mac' => (string) $mac]);
+
+			return (int) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			// Rendered on the way into the page, so it may not throw: a
+			// missing log table is a badge that reads zero, not a 500 on the
+			// client editor.
+			return 0;
+		}
+	}
+
+	/**
+	 * A MAC as the log stores it.
+	 *
+	 * Normalised when it is a MAC, so a row can be read back by the client
+	 * editor's tab, and kept as it was sent when it is not -- on a row like
+	 * that, what the thing at the other end actually sent is the whole of what
+	 * the row is worth having.
+	 *
+	 * @param mixed $mac MAC address as it was written.
+	 *
+	 * @return string The normalised MAC, or what was asked with.
+	 */
+	private function logMac($mac)
+	{
+		$normalised = $this->normalizeMac($mac);
+
+		return $normalised !== '' ? $normalised : trim((string) $mac);
+	}
+
+
+	/**
 	 * What a template can refer to, as the editor lists it.
 	 *
 	 * Written out here rather than derived from a rendering, because the
@@ -1605,19 +1877,100 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function serveConfig($mac, $requested = null)
 	{
 		$result = $this->renderConfig($mac, $requested);
+		$status = $result['status'] ? 200 : 404;
+
+		$this->log(sprintf(
+			'oryk_provisioner: %s for %s (%s)',
+			(string) $status,
+			(string) $requested !== '' ? (string) $requested : (string) $mac,
+			$result['message'] ?? 'OK',
+		), null, $result['status'] ? 'INFO' : 'DEBUG');
+
+		// Both outcomes, and a MAC nothing is associated with as readily as one
+		// that renders: a phone asking for a file nobody has written a client
+		// for is the request an operator most needs to see, and it is the one
+		// that leaves no other trace.
+		$this->logRequest($mac, $requested, $status, $result['status'] ? null : ($result['message'] ?? null));
 
 		if (!$result['status']) {
-			$this->FreePBX->Logger->log(FPBX_LOG_WARNING, sprintf(
-				'oryk_provisioner: 404 for %s (%s)',
-				(string) $requested !== '' ? (string) $requested : (string) $mac,
-				$result['message']
-			));
-
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
 		$this->sendText(200, $result['config'], $this->contentType((string) $result['resource']));
 	}
+
+	/**
+	 * Record one provisioning request.
+	 *
+	 * Written on the way out of serveConfig(), whichever way that went, and by
+	 * the endpoint itself for the requests that never reach serveConfig() at
+	 * all -- a PUT of a phone's boot log, or a path with no MAC anywhere in
+	 * it. A request nobody can answer is the one worth having a record of.
+	 *
+	 * Metadata only, which is the rule the README sets and the reason there is
+	 * no column for the rendered body: it carries device.secret whenever a
+	 * template asks for it, and a log is not where that belongs. What is kept
+	 * is who asked, what for, and how it went -- not which resource answered,
+	 * because the filename as the phone spelled it is the fact of the request,
+	 * and which file of which profile it reached is the profile's answer and
+	 * may not be the same answer tomorrow.
+	 *
+	 * Nothing in here may fail a request. A phone whose configuration is ready
+	 * does not go without it because the log table is missing, which is
+	 * exactly the state a module upgraded without its install step is in.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param string|null $requested Filename asked for, '' when none was.
+	 * @param int         $status    HTTP status the request was answered with.
+	 * @param string|null $message   Why, when it was not answered with a file.
+	 *
+	 * @return void
+	 */
+	public function logRequest($mac, $requested, $status, $message = null)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"INSERT INTO `{$this->logsTable}`
+					(mac, filename, status, message, method, ip, user_agent)
+				VALUES (:mac, :filename, :status, :message, :method, :ip, :user_agent)"
+			);
+			$stmt->execute([
+				':mac' => $this->clip($this->logMac($mac), 64),
+				':filename' => $this->clip($requested, 255),
+				':status' => (int) $status,
+				':message' => $message === null ? null : $this->clip($message, 255),
+				':method' => $this->clip($_SERVER['REQUEST_METHOD'] ?? '', 10),
+				':ip' => $this->clip($_SERVER['REMOTE_ADDR'] ?? '', 45) ?: null,
+				':user_agent' => $this->clip($_SERVER['HTTP_USER_AGENT'] ?? '', 255) ?: null,
+			]);
+		} catch (\Exception $e) {
+			// The log is the one thing here that is allowed to go missing.
+			$this->log('oryk_provisioner: could not write the provisioning log', $e->getMessage(), 'WARNING');
+		}
+	}
+
+	/**
+	 * A value cut to what its column holds.
+	 *
+	 * Everything logged comes off the wire -- a filename, a User-Agent, a
+	 * message with a filename in it -- so none of it has a length anyone here
+	 * decided. Cut rather than refused: a truncated User-Agent still says
+	 * which phone asked, and a row that failed to insert says nothing at all.
+	 *
+	 * Counted in characters, which is what the column holds.
+	 *
+	 * @param mixed $value  Value as it arrived.
+	 * @param int   $length Characters the column takes.
+	 *
+	 * @return string The value, or as much of it as fits.
+	 */
+	private function clip($value, $length)
+	{
+		$value = (string) $value;
+
+		return mb_strlen($value) > $length ? mb_substr($value, 0, $length) : $value;
+	}
+
 
 	/**
 	 * The configuration text a MAC provisions with.
@@ -1714,17 +2067,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'resource' => (string) $match['name'],
 			'config' => $this->renderTemplate((string) $match['template'], $values),
 		];
-
-		// Metadata only. A rendered config carries device.secret whenever a
-		// template asks for it, and the log is not where that belongs. The
-		// resource is always named now -- there is no unnamed main config for
-		// the line to have to describe.
-		$this->FreePBX->Logger->log(FPBX_LOG_INFO, sprintf(
-			'oryk_provisioner: %s served %s from profile %s',
-			$mac,
-			$out['resource'],
-			$out['profile']
-		));
 
 		return $out;
 	}

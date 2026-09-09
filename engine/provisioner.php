@@ -127,7 +127,7 @@ $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 // serveConfig() ends the request either way -- with the rendered file, or
 // with a 404 when the MAC is unknown, has no profile, or that profile serves
 // nothing by that name. It logs the outcome itself.
-if ($method === 'GET' || $method === 'HEAD') {
+if ($mac && ($method === 'GET' || $method === 'HEAD')) {
     $provisioner->serveConfig($mac, $filename);
     exit;
 }
@@ -142,12 +142,20 @@ if ($method === 'GET' || $method === 'HEAD') {
 
 http_response_code(404);
 
-$freepbx->Logger->log(
-    FPBX_LOG_INFO,
-    json_encode([
-        'status' => 404,
-        'method' => $method,
-        'mac' => $mac,
-        'file' => $filename,
-    ])
-);
+// Why, in the words the provisioning log will show: a phone PUTting a boot
+// log and a request with no MAC anywhere in it are two different faults, and
+// a log that says 'Not Found' to both is a log that says nothing. These are
+// the requests serveConfig() never sees, so this is the only place they can
+// be recorded at all.
+$reason = ($method === 'GET' || $method === 'HEAD')
+	? 'No MAC address in the request.'
+	: sprintf('%s is not a request this endpoint answers.', $method);
+
+$provisioner->log(sprintf(
+	'oryk_provisioner: %s for %s (%s)',
+	(string) '404',
+	(string) $filename,
+	$reason,
+), null, 'DEBUG');
+
+$provisioner->logRequest($mac, $filename, 404, $reason);

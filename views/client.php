@@ -20,6 +20,13 @@
  * end, and the tab to open when a particular client is not getting what it
  * should.
  *
+ * Logs is what actually happened: every file this phone has asked the
+ * endpoint for and how each one went. It is narrowed by MAC rather than by
+ * this row's id, so requests logged before anybody wrote this client are on
+ * it too -- which is usually the run of 404s that says what the phone has
+ * been asking for all along. It needs no profile assigned for the same
+ * reason: a client with nothing to serve it is the one being refused.
+ *
  * The bare ?client=<id> *is* the Client tab, the way ?profile=<id> is the
  * profile editor's first tab; Resources names itself with &tab=resources, and
  * the shown.bs.tab handler keeps the address in step.
@@ -28,14 +35,18 @@
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var int                               $resources      Resources on its profile, for the tab's count
- * @var string                            $tab            Tab to open on: client|resources
+ * @var int                               $logs           Requests logged against its MAC, for the tab's count
+ * @var array<string, bool>               $available      Which of the other tabs have anything on them
+ * @var string                            $tab            Tab to open on: client|resources|logs
  */
 
 $client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
 $resources = (int) ($resources ?? 0);
-$tab = ($tab ?? '') === 'resources' ? 'resources' : 'client';
+$logs = (int) ($logs ?? 0);
+$available = $available ?? [];
+$tab = in_array($tab ?? '', ['resources', 'logs'], true) ? $tab : 'client';
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -49,8 +60,16 @@ $profileId = (int) ($client['profile_id'] ?? 0);
 
 // Nothing is served to a client that has never been written, or to one
 // with no profile assigned, so its Resources tab is there but does not open.
-$served = !$isNew && $profileId;
-$tab = $served ? $tab : 'client';
+//
+// Logs asks less of it: a MAC that has been written is enough, because the
+// log is of what was asked rather than of what was served, and a client with
+// no profile is precisely the one whose refusals are worth reading.
+$served = (bool) ($available['resources'] ?? (!$isNew && $profileId));
+$logged = (bool) ($available['logs'] ?? (!$isNew && $mac !== ''));
+
+if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
+	$tab = 'client';
+}
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 
@@ -92,6 +111,19 @@ $tab = $served ? $tab : 'client';
 							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
 								<?php echo _('Resources'); ?>
 								<span class="badge"><?php echo $resources; ?></span>
+							</a>
+						<?php endif; ?>
+					</li>
+					<li role="presentation" class="<?php echo $tab === 'logs' ? 'active' : ($logged ? '' : 'disabled'); ?>">
+						<?php if (!$logged): ?>
+							<a href="#" onclick="return false;"
+								title="<?php echo _('Save the client first -- the log is kept by MAC address.'); ?>">
+								<?php echo _('Logs'); ?>
+							</a>
+						<?php else: ?>
+							<a href="#oryk_logs" aria-controls="oryk_logs" role="tab" data-toggle="tab">
+								<?php echo _('Logs'); ?>
+								<span class="badge"><?php echo $logs; ?></span>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -226,6 +258,17 @@ $tab = $served ? $tab : 'client';
 						</div>
 					<?php endif; ?>
 
+					<?php if ($logged): ?>
+						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'logs' ? 'active' : ''; ?>" id="oryk_logs">
+							<?php
+							// By MAC, not by this row's id: see the note at the
+							// top of the partial, and the one above $logged.
+							$logMac = $mac;
+							include __DIR__ . '/partials/logs.php';
+							?>
+						</div>
+					<?php endif; ?>
+
 				</div>
 
 			</div>
@@ -277,7 +320,8 @@ $tab = $served ? $tab : 'client';
 		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
 
 		if (window.history && window.history.replaceState) {
-			const tab = pane === '#oryk_resources' ? '&tab=resources' : '';
+			const tabs = { '#oryk_resources': '&tab=resources', '#oryk_logs': '&tab=logs' };
+			const tab = tabs[pane] || '';
 			window.history.replaceState(null, '', `?display=oryk_provisioner&client=${orykClientId}${tab}`);
 		}
 	});
