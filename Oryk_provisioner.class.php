@@ -273,6 +273,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'profile' => $profile,
 			'placeholders' => $this->templatePlaceholders(),
 			'assigned' => $this->profileClientCount((int) $profile['id']),
+			// So the upload control can say what it will accept before
+			// somebody finds out at the end of a forty-megabyte upload.
+			'uploadLimit' => $this->uploadLimit(),
 			// A resource that has never been written has no name to render
 			// against a client, so Clients is there but does not open --
 			// the same way Resources is on a new profile.
@@ -393,16 +396,30 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// 724 bytes, inside the 767 an older MySQL allows per index. No
 		// filename a phone asks for comes close either way. There is no
 		// separate index on profile_id -- it is the left of the unique one.
+		//
+		// file_size is the whole of what says a resource is an uploaded file
+		// rather than a template. There is no `type` column: only an upload can
+		// set the size, and a column that says the same thing twice is a column
+		// that can disagree with itself. The template stays underneath a file
+		// rather than being cleared by it, so removing the file leaves the
+		// resource the template it was.
+		//
+		// The index on `name` alone is for the lookup a request with no client
+		// behind it makes -- firmware, asked for by the name the vendor fixed.
+		// The unique key cannot serve it: profile_id is its leftmost column.
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->resourcesTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`profile_id` INT(11) NOT NULL,
 				`name` VARCHAR(180) NOT NULL,
 				`template` LONGTEXT NULL,
+				`file_size` INT(10) UNSIGNED NULL DEFAULT NULL,
+				`file_uploaded_at` DATETIME NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
-				UNIQUE KEY `profile_name` (`profile_id`, `name`)
+				UNIQUE KEY `profile_name` (`profile_id`, `name`),
+				KEY `name` (`name`)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
@@ -458,9 +475,109 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
+		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already
+		// there, so a site upgrading to 1.0.6 gets the two file columns and the
+		// name index from here instead.
+		$this->addResourceFileColumns();
+
 		$this->linkEngine();
 
+		// Uploads have nowhere to go without it. Like linkEngine(), it fails
+		// nothing: a module that could not write to the spool is a working
+		// module minus uploads, and the directory is made again on the first
+		// one that is attempted.
+		if (!$this->ensureRepo()) {
+			$this->installMessage(sprintf(
+				'Provisioner: could not create %s; resource uploads will not work until it exists.',
+				$this->repoPath()
+			));
+		}
+
 		return true;
+	}
+
+	/**
+	 * Bring a resources table written before 1.0.6 up to date.
+	 *
+	 * Asked of information_schema rather than tried and caught: a failed DDL
+	 * statement is not something a PDO exception cleanly tells apart from a
+	 * connection that has gone, on every MySQL build this has to run on. Not
+	 * gated on dbversion either -- the question that matters is whether the
+	 * column is there, and asking it directly answers the same whether the
+	 * module arrived here by upgrade, by reinstall or by a restore.
+	 *
+	 * @return void
+	 */
+	private function addResourceFileColumns()
+	{
+		$columns = [
+			'file_size' => 'ADD COLUMN `file_size` INT(10) UNSIGNED NULL DEFAULT NULL AFTER `template`',
+			'file_uploaded_at' => 'ADD COLUMN `file_uploaded_at` DATETIME NULL DEFAULT NULL AFTER `file_size`',
+		];
+
+		foreach ($columns as $column => $clause) {
+			if (!$this->hasColumn($this->resourcesTable, $column)) {
+				$this->db->exec("ALTER TABLE `{$this->resourcesTable}` $clause");
+			}
+		}
+
+		if (!$this->hasIndex($this->resourcesTable, 'name')) {
+			$this->db->exec("ALTER TABLE `{$this->resourcesTable}` ADD KEY `name` (`name`)");
+		}
+	}
+
+	/**
+	 * Whether a table already has a column.
+	 *
+	 * A question that cannot be answered is answered yes, because the only
+	 * thing the answer is used for is deciding whether to ALTER: not knowing
+	 * is a reason to leave the table alone, not to change it blind.
+	 *
+	 * @param string $table  Table name.
+	 * @param string $column Column name.
+	 *
+	 * @return bool True when it is there, or when it could not be asked.
+	 */
+	private function hasColumn($table, $column)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				'SELECT COUNT(*) FROM information_schema.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
+			);
+			$stmt->execute([':table' => $table, ':column' => $column]);
+
+			return (bool) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: could not read information_schema', $e->getMessage(), 'WARNING');
+
+			return true;
+		}
+	}
+
+	/**
+	 * Whether a table already has an index by that name.
+	 *
+	 * @param string $table Table name.
+	 * @param string $index Index name.
+	 *
+	 * @return bool True when it is there, or when it could not be asked.
+	 */
+	private function hasIndex($table, $index)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				'SELECT COUNT(*) FROM information_schema.STATISTICS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND INDEX_NAME = :index'
+			);
+			$stmt->execute([':table' => $table, ':index' => $index]);
+
+			return (bool) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: could not read information_schema', $e->getMessage(), 'WARNING');
+
+			return true;
+		}
 	}
 
 	/**
@@ -720,6 +837,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listResources':
 			case 'saveResource':
 			case 'deleteResource':
+			case 'uploadResourceFile':
+			case 'deleteResourceFile':
 			case 'listLogs':
 			case 'clearLogs':
 				return true;
@@ -764,6 +883,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteResource':
 				return $this->deleteResource($_REQUEST['id'] ?? null);
+
+			case 'uploadResourceFile':
+				return $this->uploadResourceFile($_REQUEST);
+
+			case 'deleteResourceFile':
+				return $this->deleteResourceFile($_REQUEST);
 
 			case 'listLogs':
 				return $this->listLogs();
@@ -1358,6 +1483,17 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// Resources go with it. Unlike a client, a resource has
 		// no existence apart from the profile that serves it -- there is
 		// nothing to reassign it to and nothing left for it to mean.
+		//
+		// Their ids are read first because an uploaded file is named after
+		// the resource it belongs to: once the rows are gone there is
+		// nothing left to say which files in the repository were theirs.
+		$owned = $this->db->prepare("SELECT id FROM `{$this->resourcesTable}` WHERE profile_id = :id");
+		$owned->execute([':id' => $id]);
+
+		foreach ($owned->fetchAll(PDO::FETCH_COLUMN) as $resourceId) {
+			$this->removeRepoFile($resourceId);
+		}
+
 		$resources = $this->db->prepare("DELETE FROM `{$this->resourcesTable}` WHERE profile_id = :id");
 		$resources->execute([':id' => $id]);
 
@@ -1378,6 +1514,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$sortable = [
 			'name' => 'name',
+			'file_size' => 'file_size',
 			'updated_at' => 'updated_at',
 		];
 
@@ -1403,7 +1540,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$total = (int) $countStmt->fetchColumn();
 
 		$sql = "
-			SELECT id, profile_id, name, updated_at
+			SELECT id, profile_id, name, file_size, file_uploaded_at, updated_at
 			FROM `{$this->resourcesTable}`
 			$where
 			ORDER BY $sort $order
@@ -1505,7 +1642,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private function resourceRow($id, $profileId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name, template
+			"SELECT id, profile_id, name, template, file_size, file_uploaded_at
 			FROM `{$this->resourcesTable}`
 			WHERE id = :id AND profile_id = :profile_id"
 		);
@@ -1561,20 +1698,38 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		if ($id) {
+			$existing = $this->resourceRow($id, $profileId);
+
+			if (!$existing) {
+				return ['status' => false, 'message' => _('That resource no longer exists.')];
+			}
+
+			// Two reasons the template may not be written, and they are the
+			// same reason twice: this only writes what it was actually given.
+			//
+			// A resource serving an uploaded file is not showing a template box
+			// at all, so its text stays underneath the file rather than being
+			// destroyed by it -- remove the file and the resource is the
+			// template it was. And a caller that sent no template did not mean
+			// an empty one: uploading a file saves the resource's name along
+			// with it, and that is a save of the name and nothing else.
+			$set = 'name = :name';
+			$params = [':name' => $name, ':id' => $id, ':profile_id' => $profileId];
+
+			if (array_key_exists('template', $request) && $existing['file_size'] === null) {
+				$set .= ', template = :template';
+				$params[':template'] = $template;
+			}
+
 			// The profile is in the WHERE rather than trusted from the form:
 			// a resource does not move between profiles, and an id from one
 			// profile posted at another is not an edit of anything.
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->resourcesTable}`
-				SET name = :name, template = :template
+				SET $set
 				WHERE id = :id AND profile_id = :profile_id"
 			);
-			$stmt->execute([
-				':name' => $name,
-				':template' => $template,
-				':id' => $id,
-				':profile_id' => $profileId,
-			]);
+			$stmt->execute($params);
 
 			return ['status' => true, 'id' => $id, 'profile_id' => $profileId, 'name' => $name];
 		}
@@ -1603,16 +1758,370 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * Nothing points at a resource the way a client points at a
 	 * profile, so there is nothing to refuse this for.
 	 *
+	 * Its uploaded file goes first, while there is still a row to say the
+	 * id: the file is named after the resource and nothing else, so a row
+	 * deleted without it would leave a number in the repository that
+	 * nothing on the system can account for.
+	 *
 	 * @param mixed $id Resource id.
 	 *
 	 * @return array<string, mixed> Status of the removal.
 	 */
 	private function deleteResource($id)
 	{
+		$this->removeRepoFile($id);
+
 		$stmt = $this->db->prepare("DELETE FROM `{$this->resourcesTable}` WHERE id = :id");
 		$stmt->execute([':id' => (int) $id]);
 
 		return ['status' => true];
+	}
+
+	/**
+	 * The directory uploaded resource files are kept in.
+	 *
+	 * Under the Asterisk spool rather than anywhere beneath the web root:
+	 * these are handed out by the endpoint reading them, never by Apache
+	 * finding them, and a firmware image has no business being reachable at
+	 * its path on disk as well as by the name a phone asks for.
+	 *
+	 * @return string Absolute path, without a trailing slash.
+	 */
+	private function repoPath()
+	{
+		$spool = trim((string) $this->FreePBX->Config->get('ASTSPOOLDIR'));
+
+		return ($spool !== '' ? rtrim($spool, '/') : '/var/spool/asterisk') . '/repo';
+	}
+
+	/**
+	 * Where one resource's uploaded file is kept.
+	 *
+	 * Named after the resource id and nothing else -- not the filename it is
+	 * served under, which can be renamed and repeats across profiles, and
+	 * nothing the uploader sent. An integer cast is a path that cannot climb
+	 * out of the directory it is in, and it means a file can still be found
+	 * and removed by id alone when the row it belonged to is being deleted.
+	 *
+	 * @param mixed $id Resource id.
+	 *
+	 * @return string Absolute path to the file, whether or not it is there.
+	 */
+	private function repoFile($id)
+	{
+		return $this->repoPath() . '/' . (int) $id;
+	}
+
+	/**
+	 * Make the repository directory if it is not there.
+	 *
+	 * Called at install and again before every upload, because the spool is
+	 * not a place the module is the only writer of and a directory that was
+	 * there in the morning may not be by the afternoon.
+	 *
+	 * @return bool True when the directory exists and is writable.
+	 */
+	private function ensureRepo()
+	{
+		$path = $this->repoPath();
+
+		if (!is_dir($path) && !@mkdir($path, 0750, true) && !is_dir($path)) {
+			$this->log(sprintf('oryk_provisioner: could not create %s', $path), null, 'WARNING');
+
+			return false;
+		}
+
+		// The web user is the one that writes here, and Asterisk is the group
+		// the rest of the spool belongs to. Neither is fatal: a directory
+		// somebody else made with workable permissions is workable.
+		$user = (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER');
+		$group = (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP');
+
+		if ($user !== '') {
+			@chown($path, $user);
+		}
+
+		if ($group !== '') {
+			@chgrp($path, $group);
+		}
+
+		return is_writable($path);
+	}
+
+	/**
+	 * Remove one resource's uploaded file.
+	 *
+	 * A file that is not there is not a failure: it is the state this was
+	 * asked to reach.
+	 *
+	 * @param mixed $id Resource id.
+	 *
+	 * @return bool True when nothing is left at that path.
+	 */
+	private function removeRepoFile($id)
+	{
+		$path = $this->repoFile($id);
+
+		if (is_file($path) && !@unlink($path)) {
+			$this->log(sprintf('oryk_provisioner: could not remove %s', $path), null, 'WARNING');
+
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * The largest upload this server accepts, in bytes.
+	 *
+	 * The smaller of upload_max_filesize and post_max_size, because a
+	 * multipart body is a little larger than the file inside it and either
+	 * limit refuses the request on its own. Shown in the editor: a firmware
+	 * image is tens of megabytes and PHP's default is not, and finding that
+	 * out at the end of a long upload is the worst time to find it out.
+	 *
+	 * @return int Bytes, or 0 when neither limit is set.
+	 */
+	private function uploadLimit()
+	{
+		$bytes = function ($value) {
+			$value = trim((string) $value);
+
+			if ($value === '') {
+				return 0;
+			}
+
+			$number = (int) $value;
+
+			switch (strtolower(substr($value, -1))) {
+				case 'g':
+					return $number * 1024 * 1024 * 1024;
+
+				case 'm':
+					return $number * 1024 * 1024;
+
+				case 'k':
+					return $number * 1024;
+
+				default:
+					return $number;
+			}
+		};
+
+		$limits = array_filter([$bytes(ini_get('upload_max_filesize')), $bytes(ini_get('post_max_size'))]);
+
+		return $limits ? (int) min($limits) : 0;
+	}
+
+	/**
+	 * Store an uploaded file against a resource.
+	 *
+	 * The file is what the resource serves from now on, and the template it
+	 * had is left in the column underneath -- there is no second thing to
+	 * set and nothing to undo but removing the file again.
+	 *
+	 * The resource is saved as part of it, so choosing a file is the whole of
+	 * what has to be done: a filename edited on the way to the upload is
+	 * written with it rather than sitting unsaved behind a file that is
+	 * already stored.
+	 *
+	 * The resource has to have been written first, because the file is named
+	 * after its id and a resource that has never been saved has not got one.
+	 * That is why the control is inert on a new resource rather than absent.
+	 *
+	 * @param array<string, mixed> $request Submitted form values.
+	 *
+	 * @return array<string, mixed> Status, the size stored, and a message when refused.
+	 */
+	private function uploadResourceFile($request)
+	{
+		// A body over post_max_size arrives with $_POST and $_FILES both
+		// empty and no error set anywhere -- PHP discards it before any of
+		// this runs. The only trace is a Content-Length with nothing behind
+		// it, and without this the answer would be 'no file was uploaded',
+		// which is true and useless.
+		if (!$_POST && !$_FILES && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+			return [
+				'status' => false,
+				'message' => sprintf(
+					_('That file is larger than this server accepts (%s).'),
+					ini_get('post_max_size')
+				),
+			];
+		}
+
+		$id = (int) ($request['id'] ?? 0);
+		$profileId = (int) ($request['profile_id'] ?? 0);
+		$resource = $this->resourceRow($id, $profileId);
+
+		if (!$resource) {
+			return ['status' => false, 'message' => _('That resource no longer exists.')];
+		}
+
+		// The filename is saved with the file. Somebody who renamed the resource
+		// and then chose a file meant both of those, and storing the bytes
+		// against the old name would be a save that half happened. It goes first
+		// so a name that cannot be saved -- blank, or one this profile already
+		// serves -- refuses the whole action before anything is written.
+		if (array_key_exists('name', $request)) {
+			$saved = $this->saveResource([
+				'id' => $id,
+				'profile_id' => $profileId,
+				'name' => $request['name'],
+			]);
+
+			if (!$saved['status']) {
+				return $saved;
+			}
+
+			$resource['name'] = $saved['name'];
+		}
+
+		$file = $_FILES['file'] ?? null;
+
+		if (!is_array($file) || !isset($file['error'])) {
+			return ['status' => false, 'message' => _('No file was uploaded.')];
+		}
+
+		if ($file['error'] !== UPLOAD_ERR_OK) {
+			return ['status' => false, 'message' => $this->uploadErrorMessage((int) $file['error'])];
+		}
+
+		// Nothing else in here reads the name the browser sent, and this is
+		// why: the only thing it could be used for is a path.
+		if (!is_uploaded_file((string) $file['tmp_name'])) {
+			return ['status' => false, 'message' => _('That was not an uploaded file.')];
+		}
+
+		if (!$this->ensureRepo()) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s cannot be written to.'), $this->repoPath()),
+			];
+		}
+
+		$target = $this->repoFile($id);
+
+		if (!@move_uploaded_file((string) $file['tmp_name'], $target)) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('The file could not be stored at %s.'), $target),
+			];
+		}
+
+		@chmod($target, 0640);
+		clearstatcache(true, $target);
+
+		// Read back off the file rather than taken from the upload: the size
+		// is the column that says this resource is a file at all, so it says
+		// what is on the disk and not what was meant to be.
+		$size = (int) filesize($target);
+
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->resourcesTable}`
+			SET file_size = :size, file_uploaded_at = NOW()
+			WHERE id = :id AND profile_id = :profile_id"
+		);
+		$stmt->execute([':size' => $size, ':id' => $id, ':profile_id' => $profileId]);
+
+		$this->log(sprintf(
+			'oryk_provisioner: stored %s bytes for resource %s (%s)',
+			$size,
+			$id,
+			(string) $resource['name']
+		), null, 'INFO');
+
+		return [
+			'status' => true,
+			'id' => $id,
+			'name' => (string) $resource['name'],
+			'file_size' => $size,
+			'file_uploaded_at' => date('Y-m-d H:i:s'),
+		];
+	}
+
+	/**
+	 * Take the uploaded file off a resource.
+	 *
+	 * What is left is the resource it was before the upload, template and
+	 * all: the file never touched that column, so there is nothing to put
+	 * back. The resource is saved on the way through, as it is for an upload.
+	 *
+	 * @param array<string, mixed> $request Submitted form values.
+	 *
+	 * @return array<string, mixed> Status, and a message when refused.
+	 */
+	private function deleteResourceFile($request)
+	{
+		$id = (int) ($request['id'] ?? 0);
+		$profileId = (int) ($request['profile_id'] ?? 0);
+		$resource = $this->resourceRow($id, $profileId);
+
+		if (!$resource) {
+			return ['status' => false, 'message' => _('That resource no longer exists.')];
+		}
+
+		// Saved for the same reason an upload is: the button was pressed on a
+		// page that may have a renamed resource on it, and it means the page.
+		if (array_key_exists('name', $request)) {
+			$saved = $this->saveResource([
+				'id' => $id,
+				'profile_id' => $profileId,
+				'name' => $request['name'],
+			]);
+
+			if (!$saved['status']) {
+				return $saved;
+			}
+
+			$resource['name'] = $saved['name'];
+		}
+
+		$this->removeRepoFile($id);
+
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->resourcesTable}`
+			SET file_size = NULL, file_uploaded_at = NULL
+			WHERE id = :id AND profile_id = :profile_id"
+		);
+		$stmt->execute([':id' => $id, ':profile_id' => $profileId]);
+
+		return ['status' => true, 'id' => $id, 'name' => (string) $resource['name']];
+	}
+
+	/**
+	 * What one of PHP's upload error codes means, in words.
+	 *
+	 * @param int $code UPLOAD_ERR_* constant.
+	 *
+	 * @return string Message for the editor.
+	 */
+	private function uploadErrorMessage($code)
+	{
+		switch ($code) {
+			case UPLOAD_ERR_INI_SIZE:
+			case UPLOAD_ERR_FORM_SIZE:
+				return sprintf(
+					_('That file is larger than this server accepts (%s).'),
+					ini_get('upload_max_filesize')
+				);
+
+			case UPLOAD_ERR_PARTIAL:
+				return _('The upload did not finish.');
+
+			case UPLOAD_ERR_NO_FILE:
+				return _('No file was uploaded.');
+
+			case UPLOAD_ERR_NO_TMP_DIR:
+			case UPLOAD_ERR_CANT_WRITE:
+				return _('This server has nowhere to put the upload.');
+
+			case UPLOAD_ERR_EXTENSION:
+				return _('A PHP extension refused the upload.');
+
+			default:
+				return _('The upload failed.');
+		}
 	}
 
 	/**
@@ -1853,30 +2362,40 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Answer a client's request for a file and end the request.
+	 * Answer a request for a file and end the request.
 	 *
 	 * Called by engine/provisioner.php, which is the only route a phone can
 	 * reach: FreePBX's config.php sends every session-less request to the
 	 * login page long before a module's doConfigPageInit() runs.
 	 *
-	 *   serveConfig($mac)                          the main config, [mac].cfg
-	 *   serveConfig($mac, '0004f282e824-web.cfg')  any other file it serves
+	 *   serve($mac)                          the main config, [mac].cfg
+	 *   serve($mac, '0004f282e824-web.cfg')  any other file that profile serves
+	 *   serve('', '3111-44500-001.sip.ld')   a file, asked for by name alone
+	 *
+	 * It is serve() rather than serveConfig() because what a resource holds is
+	 * no longer always configuration: one with an uploaded file behind it is
+	 * sent as it was stored, and firmware is why the upload exists.
+	 *
+	 * The MAC may be empty, which is the other half of the same change. A
+	 * phone fetching firmware does not put its MAC anywhere in the request --
+	 * a Polycom asks for /3111-44500-001.sip.ld and nothing else -- so a
+	 * request that reaches no profile is answered from the resources that are
+	 * the same for every caller, which is to say the ones with a file.
 	 *
 	 * The second argument is the filename as it was asked for, not a resource
-	 * id: which resource that names is the profile's business, and working it
-	 * out is renderConfig()'s.
+	 * id: which resource that names is resolveRequest()'s business.
 	 *
 	 * The outcome is logged here rather than by the endpoint, because this is
 	 * where the request ends and the endpoint never gets to see it.
 	 *
-	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param mixed       $mac       MAC address, written however it was written, or ''.
 	 * @param string|null $requested Filename asked for, or null for the main config.
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
-	public function serveConfig($mac, $requested = null)
+	public function serve($mac, $requested = null)
 	{
-		$result = $this->renderConfig($mac, $requested);
+		$result = $this->resolveRequest($mac, $requested);
 		$status = $result['status'] ? 200 : 404;
 
 		$this->log(sprintf(
@@ -1896,14 +2415,20 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
+		// An uploaded file never becomes a string on the way out: a firmware
+		// image is tens of megabytes and the rendered text of a config is not.
+		if (($result['kind'] ?? '') === 'file') {
+			$this->sendFile((string) $result['path'], (string) $result['resource']);
+		}
+
 		$this->sendText(200, $result['config'], $this->contentType((string) $result['resource']));
 	}
 
 	/**
 	 * Record one provisioning request.
 	 *
-	 * Written on the way out of serveConfig(), whichever way that went, and by
-	 * the endpoint itself for the requests that never reach serveConfig() at
+	 * Written on the way out of serve(), whichever way that went, and by the
+	 * endpoint itself for the requests that never reach serve() at
 	 * all -- a PUT of a phone's boot log, or a path with no MAC anywhere in
 	 * it. A request nobody can answer is the one worth having a record of.
 	 *
@@ -1973,42 +2498,110 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 
 	/**
-	 * The configuration text a MAC provisions with.
+	 * Which file answers a request, and what it is.
 	 *
-	 * Separate from serveConfig() because this is the part worth calling
-	 * again: a preview, a console command, a test. Only the caller there ends
-	 * the request.
+	 * Separate from serve() because this is the part worth calling again: a
+	 * preview, a console command, a test. Only the caller there ends the
+	 * request. It is resolveRequest() rather than renderConfig() because what
+	 * comes back is not always rendered text -- a resource with an uploaded
+	 * file behind it comes back as a path on disk.
 	 *
-	 * Every file is a resource, the main config included: a profile is a name,
-	 * a set of resources and the clients assigned to it, and carries no
-	 * configuration text of its own. So this is whichever of the profile's
-	 * resources answers to the name that was asked for, and there is no second
-	 * kind of thing to fall back to when none does.
+	 * Three steps, and the first that answers wins:
 	 *
-	 * A request that names no file -- /provisioner/[mac], or an internal caller
-	 * with nothing to pass -- is a request for the main config, which is to
-	 * say [mac].cfg. It is filled in here rather than left empty and special-
-	 * cased further down, so exactly one string is matched against and the
-	 * message on a miss names the file the caller will recognise.
+	 *   1. A MAC naming a client with a profile: that profile's resources,
+	 *      matched by name. The profile is the authority -- a name it does not
+	 *      serve is refused here rather than looked for elsewhere, or a
+	 *      profile could never withhold a file.
+	 *   2. No MAC, a MAC naming no client, or a client with no profile: the
+	 *      resources that carry an uploaded file, matched by name exactly.
+	 *   3. Nothing.
 	 *
-	 * @param mixed       $mac       MAC address, written however it was written.
+	 * Step 2 is files only, and deliberately so. A template matched with no
+	 * client behind it has no values to render against, so every placeholder
+	 * in it would come out empty and the phone would receive a configuration
+	 * that parses and is wrong -- which is worse than the 404 it gets instead.
+	 * A file has no rendering at all, and that is exactly why it is the same
+	 * bytes for every caller and can be handed out by name. The consequence is
+	 * worth saying plainly: an uploaded file can be fetched by anyone who
+	 * reaches the endpoint and knows what it is called.
+	 *
+	 * A request that names no file -- /provisioner/[mac], or an internal
+	 * caller with nothing to pass -- is a request for the main config, which
+	 * is to say [mac].cfg. It is filled in inside step 1 rather than left
+	 * empty and special-cased further down, so exactly one string is matched
+	 * against and the message on a miss names the file the caller will
+	 * recognise. There is nothing to fill it in from without a client, so a
+	 * caller with neither a MAC nor a filename has asked for nothing.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written, or ''.
 	 * @param string|null $requested Filename asked for, or null for the main config.
 	 *
-	 * @return array<string, mixed> Status, the rendered config when there is
-	 *                              one, and a message when there is not.
+	 * @return array<string, mixed> Status, what answers when something does,
+	 *                              and a message when nothing did.
 	 */
-	public function renderConfig($mac, $requested = null)
+	public function resolveRequest($mac, $requested = null)
 	{
 		$mac = $this->normalizeMac($mac);
+		$requested = trim((string) $requested);
+
+		$row = $mac === '' ? null : $this->clientByMac($mac);
+
+		if ($row && $row['profile_id'] !== null) {
+			$values = $this->provisioningValues($row);
+
+			// What is left of the filename with this client's own MAC off the
+			// front: 0004f282e824-phone.cfg asked of that client is phone.cfg,
+			// and 0004f282e824.cfg is .cfg. Worked out here rather than in the
+			// endpoint, so the endpoint only has to report what was asked for.
+			$suffix = $requested === '' ? '' : $this->resourceSuffix($requested, $mac);
+
+			// Two ways of asking for nothing in particular, and both are asking
+			// for the main config: no filename at all, and the client's own MAC
+			// with no filename after it (/provisioner/0004f282e824, which is
+			// what leaves nothing behind once the MAC is taken off the front).
+			if ($suffix === '') {
+				$requested = $mac . '.cfg';
+				$suffix = '.cfg';
+			}
+
+			$match = $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
+
+			if ($match !== null) {
+				return $this->resourceResult($match, $values) + [
+					'mac' => $mac,
+					'profile' => (string) $row['profile_name'],
+				];
+			}
+
+			// Nothing this profile serves answers to the name. That includes
+			// [mac].cfg on a profile with no `.cfg` resource on it: there is no
+			// template behind the profile to fall back to, and a profile that
+			// serves nothing is one somebody has not finished writing rather
+			// than one with an implicit main config.
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is not something this profile serves.'), $requested),
+			];
+		}
+
+		// No profile behind the request, which is the firmware case: a name and
+		// nothing else to say who is asking.
+		if ($requested !== '') {
+			$file = $this->fileByName($requested);
+
+			if ($file !== null) {
+				return $this->resourceResult($file, []);
+			}
+		}
 
 		if ($mac === '') {
 			return [
 				'status' => false,
-				'message' => _('A MAC address is 12 hexadecimal characters, with or without separators.'),
+				'message' => $requested === ''
+					? _('No MAC address and no filename: nothing was asked for.')
+					: sprintf(_('%s is not a file this server serves.'), $requested),
 			];
 		}
-
-		$row = $this->clientByMac($mac);
 
 		if (!$row) {
 			return [
@@ -2017,58 +2610,109 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			];
 		}
 
-		if ($row['profile_id'] === null) {
-			return [
-				'status' => false,
-				'message' => sprintf(_('%s has no profile assigned.'), $mac),
-			];
-		}
-
-		$values = $this->provisioningValues($row);
-		$requested = trim((string) $requested);
-
-		// What is left of the filename with this client's own MAC off the
-		// front: 0004f282e824-phone.cfg asked of that client is phone.cfg,
-		// and 0004f282e824.cfg is .cfg. Worked out here rather than in the
-		// endpoint, so the endpoint only has to report what was asked for.
-		$suffix = $requested === '' ? '' : $this->resourceSuffix($requested, $mac);
-
-		// Two ways of asking for nothing in particular, and both are asking
-		// for the main config: no filename at all, and the client's own MAC
-		// with no filename after it (/provisioner/0004f282e824, which is what
-		// leaves nothing behind once the MAC is taken off the front). Both
-		// become [mac].cfg here rather than being carried down as an empty
-		// string and special-cased at the bottom, so there is exactly one
-		// name to match against and a miss names a file the caller will
-		// recognise.
-		if ($suffix === '') {
-			$requested = $mac . '.cfg';
-			$suffix = '.cfg';
-		}
-
-		$match = $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
-
-		if ($match === null) {
-			// Nothing this profile serves answers to the name. That now
-			// includes [mac].cfg on a profile with no `.cfg` resource on it:
-			// there is no template behind the profile to fall back to, and a
-			// profile that serves nothing is a profile somebody has not
-			// finished writing rather than one with an implicit main config.
-			return [
-				'status' => false,
-				'message' => sprintf(_('%s is not something this profile serves.'), $requested),
-			];
-		}
-
-		$out = [
-			'status' => true,
-			'mac' => $mac,
-			'profile' => (string) $row['profile_name'],
-			'resource' => (string) $match['name'],
-			'config' => $this->renderTemplate((string) $match['template'], $values),
+		return [
+			'status' => false,
+			'message' => sprintf(_('%s has no profile assigned.'), $mac),
 		];
+	}
 
-		return $out;
+	/**
+	 * A matched resource as the thing that answers a request.
+	 *
+	 * The one place that knows there are two kinds of resource, and the only
+	 * place that needs to: one with a file size on it was uploaded and is sent
+	 * as it was stored, one without is a template and is rendered. There is no
+	 * column declaring which -- the size is the answer, because only an upload
+	 * can set it and removing the file clears it again.
+	 *
+	 * A row that says it has a file and a repository that has not got it is a
+	 * refusal rather than a quiet fall back to the template underneath. A
+	 * phone handed an empty config where it expected firmware fails in a way
+	 * nobody can see; a 404 naming the file says what happened.
+	 *
+	 * @param array<string, mixed>  $resource The resource row.
+	 * @param array<string, string> $values   Placeholder name to value, empty for a file.
+	 *
+	 * @return array<string, mixed> What serve() sends, or a refusal.
+	 */
+	private function resourceResult(array $resource, array $values)
+	{
+		$name = (string) $resource['name'];
+
+		if ($resource['file_size'] === null) {
+			return [
+				'status' => true,
+				'kind' => 'template',
+				'resource' => $name,
+				'config' => $this->renderTemplate((string) $resource['template'], $values),
+			];
+		}
+
+		$path = $this->repoFile($resource['id']);
+
+		if (!is_file($path)) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('The uploaded file for %s is missing.'), $name),
+			];
+		}
+
+		return [
+			'status' => true,
+			'kind' => 'file',
+			'resource' => $name,
+			'path' => $path,
+		];
+	}
+
+	/**
+	 * A resource with an uploaded file, by the name it is asked for.
+	 *
+	 * The lookup behind a request that reaches no profile. Matched exactly,
+	 * and only against the name as it was typed: with no client there is no
+	 * MAC to take out of the request and nothing to render a templated name
+	 * against, so a file meant to be fetched this way is named exactly what
+	 * the vendor asks for -- 3111-44500-001.sip.ld.
+	 *
+	 * Case is the collation's business rather than LOWER()'s. The column is
+	 * utf8mb4 case-insensitive, so a plain comparison already ignores case and
+	 * can use the index on `name`, where wrapping the column in a function
+	 * would be just as correct and would guarantee a scan.
+	 *
+	 * Two profiles carrying the same firmware is the ordinary case rather than
+	 * an ambiguity worth refusing -- they hold the same bytes -- so the lowest
+	 * id wins and the rest are noted in the log.
+	 *
+	 * @param string $requested Filename as it was asked for.
+	 *
+	 * @return array<string, mixed>|null The resource, or null when none answers.
+	 */
+	private function fileByName($requested)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id, profile_id, name, template, file_size
+			FROM `{$this->resourcesTable}`
+			WHERE name = :name AND file_size IS NOT NULL
+			ORDER BY id"
+		);
+		$stmt->execute([':name' => (string) $requested]);
+
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+		if (!$rows) {
+			return null;
+		}
+
+		if (count($rows) > 1) {
+			$this->log(sprintf(
+				'oryk_provisioner: %s is uploaded to %s profiles; serving resource %s',
+				(string) $requested,
+				count($rows),
+				$rows[0]['id']
+			), null, 'DEBUG');
+		}
+
+		return $rows[0];
 	}
 
 	/**
@@ -2100,7 +2744,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	private function matchResource($profileId, $requested, $suffix, array $values)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name, template
+			"SELECT id, name, template, file_size
 			FROM `{$this->resourcesTable}`
 			WHERE profile_id = :profile_id
 			ORDER BY name"
@@ -2195,19 +2839,25 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * What a rendered file is served as.
+	 * What a file is served as.
 	 *
 	 * Read off the name rather than stored against the resource: an author
 	 * who called a file directory.xml has already said what it is, and a
-	 * second field saying it again is a second field to get wrong. Anything
-	 * unrecognised is plain text, which is what a configuration file is and
-	 * what every phone here expects.
+	 * second field saying it again is a second field to get wrong.
+	 *
+	 * The two kinds of resource want different answers to an extension
+	 * nothing here recognises, so the kind is the second argument rather than
+	 * another list of extensions to keep up with. A template with an odd
+	 * extension is still configuration text, which is what .cfg is and what
+	 * every phone here expects; an uploaded file is bytes somebody chose, and
+	 * sending a firmware image as text is how it arrives corrupted.
 	 *
 	 * @param string $name Resource name, which is the filename it is served as.
+	 * @param string $kind 'template' or 'file'.
 	 *
 	 * @return string Content type, without the charset.
 	 */
-	private function contentType($name)
+	private function contentType($name, $kind = 'template')
 	{
 		switch (strtolower((string) pathinfo($name, PATHINFO_EXTENSION))) {
 			case 'xml':
@@ -2216,13 +2866,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'json':
 				return 'application/json';
 
-			default:
+			case 'cfg':
+			case 'conf':
+			case 'ini':
+			case 'txt':
 				return 'text/plain';
+
+			default:
+				return $kind === 'file' ? 'application/octet-stream' : 'text/plain';
 		}
 	}
 
 	/**
-	 * Write a plain-text response and end the request.
+	 * Write a text response and end the request.
 	 *
 	 * @param int    $code HTTP status code.
 	 * @param string $body Response body.
@@ -2232,13 +2888,124 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	private function sendText($code, $body, $type = 'text/plain')
 	{
+		$body = (string) $body;
+
 		http_response_code($code);
 		header('Content-Type: ' . $type . '; charset=utf-8');
+		header('Content-Length: ' . strlen($body));
 		// A phone that re-reads its config expects what is stored now, not
 		// what a cache kept from the last time it asked.
 		header('Cache-Control: no-store');
 
-		echo $body;
+		// A phone HEADs before it GETs. The length is what it asked for; the
+		// body is not.
+		if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
+			echo $body;
+		}
+
+		exit;
+	}
+
+	/**
+	 * A filename as Content-Disposition spells it.
+	 *
+	 * Two spellings of the one name, which is what RFC 6266 asks for: a bare
+	 * `filename` every client understands, with anything outside printable
+	 * ASCII -- and the quotes and backslashes that would end the header
+	 * early -- folded to underscores, and a `filename*` carrying the name as
+	 * it really is for the clients that read it.
+	 *
+	 * basename() because a name is a name. Saving a resource already refuses
+	 * a slash; a response header is not where that should be found out.
+	 *
+	 * @param string $name Resource name, which is the filename it is served as.
+	 *
+	 * @return string The filename and filename* parameters.
+	 */
+	private function filenameParameter($name)
+	{
+		$name = basename((string) $name);
+		$ascii = str_replace(['\\', '"'], '_', preg_replace('/[^\x20-\x7E]/', '_', $name));
+
+		return sprintf('filename="%s"; filename*=UTF-8\'\'%s', $ascii, rawurlencode($name));
+	}
+
+	/**
+	 * Send an uploaded file and end the request.
+	 *
+	 * What sendText() does not have to think about, because a config is a few
+	 * kilobytes and a firmware image is forty megabytes:
+	 *
+	 *  - the body is never a string. Output buffering is dropped and the file
+	 *    is read straight out to the client.
+	 *  - a conditional request is answered with 304. Polycom sends
+	 *    If-Modified-Since for firmware, and on a fleet that re-provisions
+	 *    nightly that is the difference between a handful of empty replies and
+	 *    tens of gigabytes of the same image over and over.
+	 *
+	 * Cache-Control is no-cache rather than the no-store a config gets: ask
+	 * every time, and be told when nothing has changed. The validators are the
+	 * file's own size and modification time, so a re-upload invalidates them
+	 * without anything having to remember to.
+	 *
+	 * Ranges are declined rather than half-implemented. No phone here asks for
+	 * one, and saying so is better than a client believing 206 is available.
+	 *
+	 * @param string $path Absolute path to the stored file.
+	 * @param string $name Resource name, which is the filename it is served as.
+	 *
+	 * @return void Never returns.
+	 */
+	private function sendFile($path, $name)
+	{
+		$size = (int) @filesize($path);
+		$modified = (int) @filemtime($path);
+		$etag = sprintf('"%x-%x"', $modified, $size);
+
+		header('Content-Type: ' . $this->contentType($name, 'file'));
+		// The name it is saved under. Without this a fetch through a client's
+		// own URL -- /provisioner/0004f282e824-3111-44500-001.sip.ld -- lands
+		// on disk under that whole path segment, MAC and all, when what it is
+		// is 3111-44500-001.sip.ld. The resource's name is the answer because
+		// the resource's name is what the file is; the MAC in front of it is
+		// addressing, and belongs to the request rather than to the file.
+		//
+		// A phone ignores this header and writes the file wherever it decided
+		// to ask for it, so it costs nothing there and is the whole of the
+		// difference in a browser. inline rather than attachment: something
+		// displayable should still display, and the name is taken from here
+		// either way.
+		header('Content-Disposition: inline; ' . $this->filenameParameter($name));
+		header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $modified) . ' GMT');
+		header('ETag: ' . $etag);
+		header('Cache-Control: no-cache');
+		header('Accept-Ranges: none');
+
+		$tag = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+		$since = (int) strtotime((string) ($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? ''));
+
+		// The tag is the stronger of the two and is checked alone when it is
+		// there: a client that sent both means the tag.
+		if ($tag !== '' ? $tag === $etag : ($since > 0 && $modified > 0 && $since >= $modified)) {
+			http_response_code(304);
+			exit;
+		}
+
+		http_response_code(200);
+		header('Content-Length: ' . $size);
+
+		if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
+			exit;
+		}
+
+		// Nothing between the file and the client: a readfile() into an output
+		// buffer is the string this whole path exists to avoid.
+		while (ob_get_level()) {
+			ob_end_clean();
+		}
+
+		@set_time_limit(0);
+		readfile($path);
 		exit;
 	}
 

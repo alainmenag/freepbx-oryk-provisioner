@@ -249,6 +249,7 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 								<thead>
 									<tr>
 										<th data-field="name" data-formatter="formatResourceName" data-sortable="true"><?php echo _('Resource'); ?></th>
+										<th data-field="file_size" data-formatter="formatResourceKind" data-sortable="true"><?php echo _('Type'); ?></th>
 										<th data-field="updated_at" data-formatter="formatResourceText" data-sortable="true"><?php echo _('Updated'); ?></th>
 										<th data-field="actions" data-formatter="formatResourceActions"><?php echo _('Actions'); ?></th>
 									</tr>
@@ -288,6 +289,14 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 
 	// The resource as it is written on the profile: a filename template, which
 	// is why it is worth showing beside what it comes to here.
+	// A resource is a template or an uploaded file, and no column says
+	// which: only an upload sets a size, so a size is what says it.
+	function formatResourceKind(value) {
+		return value === null || value === undefined
+			? 'Template'
+			: `File <span class="text-muted">${orykEscape(orykBytes(value))}</span>`;
+	}
+
 	function formatResourceName(value, row) {
 		return value ? `<a href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}

@@ -14,19 +14,25 @@
  *   http(s)://<pbx>/provisioner/00908F3BBCBA
  *
  * and bootstraps FreePBX itself. What it works out is who is asking -- the
- * MAC -- and what they asked for -- the last segment of the path. Which file
- * of which profile that names is the module's business: it knows the profile
- * the MAC resolves to, what resources that profile serves, and how to take
- * the MAC off the front of a filename to match them. None of that is here.
+ * MAC, when there is one -- and what they asked for -- the last segment of
+ * the path. Which file of which profile that names is the module's business:
+ * it knows the profile the MAC resolves to, what resources that profile
+ * serves, and how to take the MAC off the front of a filename to match them.
+ * None of that is here.
  *
  *   /provisioner/0004f282e824.cfg            the profile's main config
  *   /provisioner/?mac=0004f282e824           the same, for a caller with no
  *                                            filename to give
  *   /provisioner/0004f282e824-phone.cfg      a resource of that profile
  *   /provisioner/0004f282e824-directory.xml  another
+ *   /provisioner/3111-44500-001.sip.ld       an uploaded file, asked for by
+ *                                            name alone -- a phone fetching
+ *                                            firmware sends no MAC at all
  *
  * GET or HEAD; the MAC is read from the path, the query string or the
- * User-Agent. A file the profile does not serve is a 404.
+ * User-Agent, and may be missing altogether. A request that names neither a
+ * MAC nor a file is a 404 here; anything else is the module's to answer or
+ * refuse.
  */
 
 /**
@@ -124,11 +130,17 @@ $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 // SERVE
 // --------------------------------------------------------------------------
 
-// serveConfig() ends the request either way -- with the rendered file, or
-// with a 404 when the MAC is unknown, has no profile, or that profile serves
-// nothing by that name. It logs the outcome itself.
-if ($mac && ($method === 'GET' || $method === 'HEAD')) {
-    $provisioner->serveConfig($mac, $filename);
+// serve() ends the request either way -- with the file, rendered or stored,
+// or with a 404 when nothing answers to what was asked for. It logs the
+// outcome itself.
+//
+// The MAC may be empty, and that is not this file's business to refuse. A
+// phone fetching firmware puts no MAC anywhere in the request --
+// /3111-44500-001.sip.ld is the whole of what a Polycom sends -- so a
+// request that names a file is a request, and whether anything answers to it
+// is a question for the module rather than an assumption here.
+if (($method === 'GET' || $method === 'HEAD') && ($mac !== '' || $filename !== '')) {
+    $provisioner->serve($mac, $filename);
     exit;
 }
 
@@ -145,10 +157,10 @@ http_response_code(404);
 // Why, in the words the provisioning log will show: a phone PUTting a boot
 // log and a request with no MAC anywhere in it are two different faults, and
 // a log that says 'Not Found' to both is a log that says nothing. These are
-// the requests serveConfig() never sees, so this is the only place they can
+// the requests serve() never sees, so this is the only place they can
 // be recorded at all.
 $reason = ($method === 'GET' || $method === 'HEAD')
-	? 'No MAC address in the request.'
+	? 'Neither a MAC address nor a filename in the request.'
 	: sprintf('%s is not a request this endpoint answers.', $method);
 
 $provisioner->log(sprintf(

@@ -6,6 +6,18 @@
  * `resource` present and empty to write a new one -- the same shape the
  * profile editor has, one level down.
  *
+ * A new resource is its name and nothing else. What it serves -- an uploaded
+ * file, or a template -- is on the page once it has been saved, because a file
+ * is stored under the resource's id and an unsaved resource has not got one.
+ * Rather than one control explaining its own absence while the other works,
+ * both arrive together: name it, save it, then say what it serves. Only one of
+ * the two is ever on the page after that -- a file hides the template and a
+ * written template hides the file, because a resource serves one thing.
+ *
+ * The placeholder list is under both of them and outlives either being hidden:
+ * a filename is a template as much as the body is, and on a new resource the
+ * filename is the only field there is.
+ *
  * A resource is a file the profile serves: [mac].cfg, [mac]-phone.cfg,
  * [mac]-directory.xml. Since 1.0.7 that is all of them -- the profile used to
  * carry the main config as a template of its own and resources were the files
@@ -24,17 +36,35 @@
  * ?profile=<id> is the profile editor's first tab; Clients names itself with
  * &tab=clients, and the shown.bs.tab handler keeps the address in step.
  *
- * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, template
+ * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, template, file_size, file_uploaded_at
  * @var array<string, mixed>                 $profile      The profile it belongs to
  * @var array<string, array<string, string>> $placeholders What a template can refer to
  * @var int                                  $assigned     Clients on the profile, for the tab's count
  * @var string                               $tab          Tab to open on: resource|clients
+ * @var int                                  $uploadLimit  Largest upload this server accepts, in bytes
  */
 
 $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template' => ''];
+$resource += ['file_size' => null, 'file_uploaded_at' => null];
 $profile = $profile ?? ['id' => 0, 'name' => ''];
 $placeholders = $placeholders ?? [];
 $assigned = (int) ($assigned ?? 0);
+$uploadLimit = (int) ($uploadLimit ?? 0);
+
+// The same reading orykBytes() gives in the tables, for the one label that is
+// drawn here rather than by the script.
+$bytes = function ($size) {
+	$units = ['B', 'KB', 'MB', 'GB'];
+	$unit = 0;
+	$size = (float) $size;
+
+	while ($size >= 1024 && $unit < count($units) - 1) {
+		$size /= 1024;
+		$unit++;
+	}
+
+	return ($unit === 0 ? (string) (int) $size : number_format($size, 1)) . ' ' . $units[$unit];
+};
 $tab = ($tab ?? '') === 'clients' ? 'clients' : 'resource';
 
 $h = function ($value) {
@@ -44,6 +74,24 @@ $h = function ($value) {
 $id = (int) $resource['id'];
 $profileId = (int) $profile['id'];
 $isNew = $id === 0;
+
+// There is no column saying which kind of resource this is. An upload is the
+// only thing that sets a size, so a size is what says one happened -- and
+// removing the file clears it again and leaves the template underneath, which
+// was never touched.
+$hasFile = $resource['file_size'] !== null;
+
+// And a resource serves one thing, so the page offers one. A file puts the
+// template away and a template puts the file away -- written here as well as
+// in the script, so the page arrives in the state it would settle into rather
+// than showing both for as long as it takes the script to run.
+//
+// The template is kept underneath a file rather than cleared by it, so a
+// resource can have both stored while only one of them is what it serves. That
+// is why the file wins: it is the thing being served.
+$hasTemplate = trim((string) $resource['template']) !== '';
+$showFile = $hasFile || !$hasTemplate;
+$showTemplate = !$hasFile;
 
 // A resource that has never been written has no name to render against a
 // client, so its Clients tab is there but does not open -- hidden, it would
@@ -67,7 +115,7 @@ $tab = $isNew ? 'resource' : $tab;
 						</a>
 						<span>:: Resource</span>
 						<?php if (isset($resource['name'])): ?>
-							<code><?php echo $h($resource['name']); ?></code>
+							<code id="resource_crumb"><?php echo $h($resource['name']); ?></code>
 						<?php endif; ?>
 					</span>
 				</h2>
@@ -130,7 +178,11 @@ $tab = $isNew ? 'resource' : $tab;
 									<span class="help-block fpbx-help-block">
 										<?php echo _('The main configuration file is a resource like any other. Name it <code>.cfg</code>: written that way it is matched against the request with the MAC taken off the front, so it answers whichever separator style the phone asks in. <code>{{device.mac}}.cfg</code> works too, but it renders without separators and so only answers a phone that asks that way. A profile with neither serves nothing for <code>[mac].cfg</code>.'); ?>
 									</span>
-									<?php if (!$isNew): ?>
+									<?php if ($isNew): ?>
+										<span class="help-block fpbx-help-block">
+											<?php echo _('Save it, and this page will then take what it serves: an uploaded file, or a template.'); ?>
+										</span>
+									<?php else: ?>
 										<span class="help-block fpbx-help-block">
 											<?php echo _('What that comes to for each client on this profile is on the Clients tab.'); ?>
 										</span>
@@ -139,7 +191,54 @@ $tab = $isNew ? 'resource' : $tab;
 							</div>
 						</div>
 
-						<div class="element-container">
+						<?php if (!$isNew): ?>
+
+						<div class="element-container<?php echo $showFile ? '' : ' hidden'; ?>" id="resource_file_container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="resource_file"><?php echo _('File'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<div id="resource_file_present" class="<?php echo $hasFile ? '' : 'hidden'; ?>">
+											<p class="form-control-static">
+												<span id="resource_file_meta"><?php
+													echo $hasFile
+														? $h($bytes((int) $resource['file_size']) . ', uploaded ' . $resource['file_uploaded_at'])
+														: '';
+												?></span>
+												<button type="button" class="btn btn-default btn-sm" id="resource_file_remove">
+													<?php echo _('Remove'); ?>
+												</button>
+											</p>
+										</div>
+										<div id="resource_file_absent" class="<?php echo $hasFile ? 'hidden' : ''; ?>">
+											<input type="file" id="resource_file">
+											<div class="progress hidden" id="resource_file_progress" style="margin-top: 8px;">
+												<div class="progress-bar" role="progressbar" style="width: 0%;"></div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('A resource can serve an uploaded file instead of a template -- firmware, a ringtone, anything a phone fetches that nothing here should be rewriting. It is sent exactly as it was stored, under the filename above. There is nothing else to set: a resource with a file serves the file, and one without serves its template.'); ?>
+									</span>
+									<span class="help-block fpbx-help-block">
+										<?php echo _('A phone fetching firmware sends no MAC address at all, so an uploaded file is also found by its name alone, across every profile. Name it exactly what the vendor asks for -- <code>3111-44500-001.sip.ld</code> -- and it will be served to a request that says nothing about who is asking, which also means to anyone who can reach the provisioning URL and knows that name.'); ?>
+									</span>
+									<?php if ($uploadLimit): ?>
+										<span class="help-block fpbx-help-block">
+											<?php echo sprintf(_('This server accepts uploads up to %s.'), $bytes($uploadLimit)); ?>
+										</span>
+									<?php endif; ?>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container<?php echo $showTemplate ? '' : ' hidden'; ?>" id="resource_template_container">
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
@@ -157,7 +256,24 @@ $tab = $isNew ? 'resource' : $tab;
 									<span class="help-block fpbx-help-block">
 										<?php echo _('What is served under that filename, stored as typed. Names in double braces are replaced when a client asks for the file; a name nothing answers to is replaced with nothing. The content type is taken from the extension: .xml is served as XML, .json as JSON, anything else as plain text.'); ?>
 									</span>
-									<?php include __DIR__ . '/partials/placeholders.php'; ?>
+								</div>
+							</div>
+						</div>
+
+						<?php endif; ?>
+
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label"><?php echo _('Placeholders'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<span class="help-block fpbx-help-block">
+											<?php echo _('Filled in when a client asks for the file -- in the filename above as much as in a template, which is how one resource covers every client on the profile. Click one to copy it.'); ?>
+										</span>
+										<?php include __DIR__ . '/partials/placeholders.php'; ?>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -267,6 +383,137 @@ $tab = $isNew ? 'resource' : $tab;
 		}
 	});
 
+	// Uploading and removing the file are requests of their own rather than
+	// part of Save. The file is stored under the resource's id, so there has
+	// to be a resource before there is anywhere to put one -- and a
+	// forty-megabyte upload wants a progress bar rather than a Save button
+	// that appears to have hung.
+	let orykHasFile = <?php echo $hasFile ? 'true' : 'false'; ?>;
+
+	// A resource serves one thing, so only one of the two is on the page: a
+	// file hides the template, and text in the template hides the file. Which
+	// also says how to change your mind -- empty the box, or remove the file.
+	//
+	// Read off the two states rather than toggled from each event, so every
+	// path through here agrees and a reload lands on the same page the last
+	// keystroke did.
+	function orykShowKind() {
+		const written = ($('#resource_template').val() ?? '').trim() !== '';
+
+		$('#resource_file_present').toggleClass('hidden', !orykHasFile);
+		$('#resource_file_absent').toggleClass('hidden', orykHasFile);
+		$('#resource_file_container').toggleClass('hidden', !orykHasFile && written);
+		$('#resource_template_container').toggleClass('hidden', orykHasFile);
+	}
+
+	$('#resource_template').on('input', orykShowKind);
+
+	// Both file actions save the resource, so the heading has to follow a
+	// rename that has already been written without a page load behind it.
+	function orykSaved(response) {
+		if (response && response.name) {
+			$('#resource_crumb').text(response.name);
+		}
+	}
+
+	$('#resource_file').on('change', function () {
+		const input = this;
+
+		if (!input.files || !input.files.length) {
+			return;
+		}
+
+		// The name goes with it: uploading saves the resource, so a filename
+		// typed on the way to choosing a file is written with the file rather
+		// than left behind unsaved. The template is deliberately not sent --
+		// what is not posted is not written, and the text under a file stays
+		// as it was.
+		const form = new FormData();
+		form.append('id', orykResourceId);
+		form.append('profile_id', orykProfileId);
+		form.append('name', $('#resource_name').val());
+		form.append('file', input.files[0]);
+
+		const progress = $('#resource_file_progress');
+
+		// Straight away, not when the upload lands: the answer to what this
+		// resource serves was given by choosing the file, and a template box
+		// sitting there through a forty-megabyte upload invites typing into
+		// something that is on its way out.
+		$('#resource_template_container').addClass('hidden');
+
+		progress.removeClass('hidden').find('.progress-bar').css('width', '0%');
+		$(input).prop('disabled', true);
+
+		$.ajax({
+			url: 'ajax.php?module=oryk_provisioner&command=uploadResourceFile',
+			type: 'POST',
+			data: form,
+			// FormData writes its own multipart boundary, so jQuery must be told
+			// not to serialise the body or set a content type over the top of it.
+			processData: false,
+			contentType: false,
+			dataType: 'json',
+			xhr: function () {
+				const request = $.ajaxSettings.xhr();
+
+				if (request.upload) {
+					request.upload.addEventListener('progress', function (event) {
+						if (event.lengthComputable) {
+							progress.find('.progress-bar').css('width', Math.round((event.loaded / event.total) * 100) + '%');
+						}
+					});
+				}
+
+				return request;
+			}
+		}).done(function (response) {
+			if (!response || !response.status) {
+				orykShowError(response && response.message);
+				return;
+			}
+
+			orykHasFile = true;
+			$('#resource_file_meta').text(orykBytes(response.file_size) + ', uploaded ' + response.file_uploaded_at);
+			orykSaved(response);
+		}).fail(function () {
+			orykShowError('The upload did not reach the server.');
+		}).always(function () {
+			// Whatever happened, the page goes back to describing what is
+			// actually there -- an upload that failed leaves no file, so the
+			// template comes back.
+			orykShowKind();
+			progress.addClass('hidden');
+			$(input).prop('disabled', false).val('');
+		});
+	});
+
+	$('#resource_file_remove').on('click', function (event) {
+		event.preventDefault();
+
+		if (!window.confirm('Remove the uploaded file? This resource goes back to serving its template.')) {
+			return;
+		}
+
+		orykPost('deleteResourceFile', {
+			id: orykResourceId,
+			profile_id: orykProfileId,
+			name: $('#resource_name').val()
+		}).done(function (response) {
+			if (!response || !response.status) {
+				orykShowError(response && response.message);
+				return;
+			}
+
+			orykHasFile = false;
+			$('#resource_file_meta').text('');
+			orykShowKind();
+			orykSaved(response);
+		}).fail(function () {
+			orykShowError('The server could not be reached.');
+		});
+	});
+
 	orykEditor({
 		save: 'saveResource',
 		remove: 'deleteResource',
@@ -276,12 +523,25 @@ $tab = $isNew ? 'resource' : $tab;
 				id: $('#resource_row_id').val(),
 				profile_id: $('#resource_profile_id').val(),
 				name: $('#resource_name').val(),
-				template: $('#resource_template').val()
+				// A new resource is only its name: the box is not on the page yet,
+				// and val() of nothing is undefined, which jQuery would post as the
+				// six letters of it.
+				template: $('#resource_template').val() ?? ''
 			};
 		},
 		// Back to the profile's Resources tab, which is re-rendered on
 		// arrival, with the row that was just written picked out.
+		//
+		// Except for the first save of a new resource, which lands on the
+		// resource's own page instead. A new one is its name and nothing else,
+		// and saving it is what brings the file and the template on to the page
+		// -- going back to the list here would mean saving, arriving somewhere
+		// else, and clicking Edit to reach the half of the page the save was for.
 		saved: function (response) {
+			if (!orykResourceId) {
+				return `?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(response.id)}`;
+			}
+
 			return orykResources + '&saved=' + encodeURIComponent(response.id);
 		},
 		closed: orykResources
