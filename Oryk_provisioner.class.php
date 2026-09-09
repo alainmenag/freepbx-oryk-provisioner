@@ -430,8 +430,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// predates the one it was not, so which client a MAC belongs to is a
 		// question asked when the log is read rather than answered once here.
 		//
-		// Metadata only. The rendered body carries device.secret whenever a
-		// template asks for it, and a log is not where that belongs.
+		// Metadata only, and less of it than a log of this kind usually keeps.
+		// The rendered body carries device.secret whenever a template asks for
+		// it, and a log is not where that belongs. Nor is which resource
+		// answered: the filename as the phone spelled it is the fact of the
+		// request, and which file of which profile that reached is a question
+		// the profile answers and can go on answering differently.
 		//
 		// `mac` is 64 rather than the clients table's 12 because this column
 		// also has to hold what was asked with when what was asked with is not
@@ -442,7 +446,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`mac` VARCHAR(64) NOT NULL DEFAULT '',
 				`filename` VARCHAR(255) NOT NULL DEFAULT '',
-				`resource` VARCHAR(180) NULL DEFAULT NULL,
 				`status` SMALLINT(5) NOT NULL DEFAULT 0,
 				`message` VARCHAR(255) NULL DEFAULT NULL,
 				`method` VARCHAR(10) NOT NULL DEFAULT '',
@@ -1637,7 +1640,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			'created_at' => 'l.created_at',
 			'mac' => 'l.mac',
 			'filename' => 'l.filename',
-			'resource' => 'l.resource',
 			'status' => 'l.status',
 			'ip' => 'l.ip',
 		];
@@ -1663,7 +1665,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		if ($search !== '') {
 			$clauses[] = "(l.mac LIKE :search
 				OR l.filename LIKE :search
-				OR l.resource LIKE :search
 				OR l.message LIKE :search
 				OR l.ip LIKE :search
 				OR l.user_agent LIKE :search)";
@@ -1689,7 +1690,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 					l.id,
 					l.mac,
 					l.filename,
-					l.resource,
 					l.status,
 					l.message,
 					l.method,
@@ -1890,10 +1890,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// that renders: a phone asking for a file nobody has written a client
 		// for is the request an operator most needs to see, and it is the one
 		// that leaves no other trace.
-		$this->logRequest($mac, $requested, $status, [
-			'resource' => $result['resource'] ?? null,
-			'message' => $result['status'] ? null : ($result['message'] ?? null),
-		]);
+		$this->logRequest($mac, $requested, $status, $result['status'] ? null : ($result['message'] ?? null));
 
 		if (!$result['status']) {
 			$this->sendText(404, $result['message'] . "\n");
@@ -1913,34 +1910,33 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * Metadata only, which is the rule the README sets and the reason there is
 	 * no column for the rendered body: it carries device.secret whenever a
 	 * template asks for it, and a log is not where that belongs. What is kept
-	 * is who asked, what for, and what they got.
+	 * is who asked, what for, and how it went -- not which resource answered,
+	 * because the filename as the phone spelled it is the fact of the request,
+	 * and which file of which profile it reached is the profile's answer and
+	 * may not be the same answer tomorrow.
 	 *
 	 * Nothing in here may fail a request. A phone whose configuration is ready
 	 * does not go without it because the log table is missing, which is
 	 * exactly the state a module upgraded without its install step is in.
 	 *
-	 * @param mixed                $mac       MAC address, written however it was written.
-	 * @param string|null          $requested Filename asked for, '' when none was.
-	 * @param int                  $status    HTTP status the request was answered with.
-	 * @param array<string, mixed> $detail    `resource` served, and `message` when it was not.
+	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param string|null $requested Filename asked for, '' when none was.
+	 * @param int         $status    HTTP status the request was answered with.
+	 * @param string|null $message   Why, when it was not answered with a file.
 	 *
 	 * @return void
 	 */
-	public function logRequest($mac, $requested, $status, array $detail = [])
+	public function logRequest($mac, $requested, $status, $message = null)
 	{
-		$resource = $detail['resource'] ?? null;
-		$message = $detail['message'] ?? null;
-
 		try {
 			$stmt = $this->db->prepare(
 				"INSERT INTO `{$this->logsTable}`
-					(mac, filename, resource, status, message, method, ip, user_agent)
-				VALUES (:mac, :filename, :resource, :status, :message, :method, :ip, :user_agent)"
+					(mac, filename, status, message, method, ip, user_agent)
+				VALUES (:mac, :filename, :status, :message, :method, :ip, :user_agent)"
 			);
 			$stmt->execute([
 				':mac' => $this->clip($this->logMac($mac), 64),
 				':filename' => $this->clip($requested, 255),
-				':resource' => $resource === null ? null : $this->clip($resource, 180),
 				':status' => (int) $status,
 				':message' => $message === null ? null : $this->clip($message, 255),
 				':method' => $this->clip($_SERVER['REQUEST_METHOD'] ?? '', 10),

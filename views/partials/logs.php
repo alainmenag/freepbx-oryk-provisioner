@@ -83,7 +83,6 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 			<?php endif; ?>
 			<th data-field="filename" data-formatter="formatLogFilename" data-sortable="true"><?php echo _('Requested'); ?></th>
 			<th data-field="status" data-formatter="formatLogStatus" data-sortable="true"><?php echo _('Status'); ?></th>
-			<th data-field="resource" data-formatter="formatLogResource" data-sortable="true"><?php echo _('Served'); ?></th>
 			<th data-field="ip" data-formatter="formatLogSource" data-sortable="true"><?php echo _('From'); ?></th>
 		</tr>
 	</thead>
@@ -152,10 +151,6 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 		const method = row.method ? orykEscape(row.method) : '';
 
 		return `<span class="label ${style}" title="${method}">${code || '-'}</span>`;
-	}
-
-	function formatLogResource(value) {
-		return value ? `<code>${orykEscape(value)}</code>` : '-';
 	}
 
 	// Which phone, in the two ways a phone says so without being asked: the

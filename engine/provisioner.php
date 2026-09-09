@@ -133,7 +133,7 @@ if ($mac && ($method === 'GET' || $method === 'HEAD')) {
 }
 
 // --------------------------------------------------------------------------
-// 501
+// 404
 // --------------------------------------------------------------------------
 
 // to-do: a phone also PUTs its boot and app logs. Until there is somewhere
@@ -158,4 +158,4 @@ $provisioner->log(sprintf(
 	$reason,
 ), null, 'DEBUG');
 
-$provisioner->logRequest($mac, $filename, 404, ['message' => $reason]);
+$provisioner->logRequest($mac, $filename, 404, $reason);
