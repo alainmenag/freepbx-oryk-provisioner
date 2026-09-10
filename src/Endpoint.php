@@ -1,0 +1,444 @@
+<?php
+
+// src/Endpoint.php
+
+namespace FreePBX\Modules\Oryk_Provisioner;
+
+/**
+ * Answering a provisioning request, and ending it.
+ *
+ * resolveRequest() works out what the answer is and returns it;
+ * serve() is the only thing that ends the request. Anything that wants an
+ * answer without the exit -- a preview, a console command -- calls the
+ * former.
+ */
+class Endpoint extends Service
+{
+	/**
+	 * @var Clients
+	 */
+	private $clients;
+
+	/**
+	 * @var Matcher
+	 */
+	private $matcher;
+
+	/**
+	 * @var Template
+	 */
+	private $template;
+
+	/**
+	 * @var FileRepo
+	 */
+	private $files;
+
+	/**
+	 * @var ProvisioningLog
+	 */
+	private $requestLog;
+
+	/**
+	 * @param object $freepbx FreePBX application instance.
+	 */
+	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, ProvisioningLog $requestLog)
+	{
+		parent::__construct($freepbx);
+
+		$this->clients = $clients;
+		$this->matcher = $matcher;
+		$this->template = $template;
+		$this->files = $files;
+		$this->requestLog = $requestLog;
+	}
+
+	/**
+	 * Answer a request for a file and end the request.
+	 *
+	 * Called by engine/provisioner.php, which is the only route a phone can
+	 * reach: FreePBX's config.php sends every session-less request to the
+	 * login page long before a module's doConfigPageInit() runs.
+	 *
+	 *   serve($mac)                          the main config, [mac].cfg
+	 *   serve($mac, '0004f282e824-web.cfg')  any other file that profile serves
+	 *   serve('', '3111-44500-001.sip.ld')   a file, asked for by name alone
+	 *
+	 * It is serve() rather than serveConfig() because what a resource holds is
+	 * no longer always configuration: one with an uploaded file behind it is
+	 * sent as it was stored, and firmware is why the upload exists.
+	 *
+	 * The MAC may be empty, which is the other half of the same change. A
+	 * phone fetching firmware does not put its MAC anywhere in the request --
+	 * a Polycom asks for /3111-44500-001.sip.ld and nothing else -- so a
+	 * request that reaches no profile is answered from the resources that are
+	 * the same for every caller, which is to say the ones with a file.
+	 *
+	 * The second argument is the filename as it was asked for, not a resource
+	 * id: which resource that names is resolveRequest()'s business.
+	 *
+	 * The outcome is logged here rather than by the endpoint, because this is
+	 * where the request ends and the endpoint never gets to see it.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written, or ''.
+	 * @param string|null $requested Filename asked for, or null for the main config.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	public function serve($mac, $requested = null, $token = null)
+	{
+		$result = $this->resolveRequest($mac, $requested, $token);
+		$status = $result['code'] ?? ($result['status'] ? 200 : 404);
+
+		$this->log(sprintf(
+			'oryk_provisioner: %s for %s (%s)',
+			(string) $status,
+			(string) $requested !== '' ? (string) $requested : (string) $mac,
+			$result['message'] ?? 'OK',
+		), null, $result['status'] ? 'INFO' : 'DEBUG');
+
+		// Handle HTTP 401 Unauthorized by sending the appropriate headers and exiting.
+		if ($status === 401) {
+			header('WWW-Authenticate: Basic realm="Provisioning"');
+			http_response_code(401);
+			exit;
+		}
+
+		// Both outcomes, and a MAC nothing is associated with as readily as one
+		// that renders: a phone asking for a file nobody has written a client
+		// for is the request an operator most needs to see, and it is the one
+		// that leaves no other trace.
+		$this->requestLog->logRequest($mac, $requested, $status, $result['status'] ? null : ($result['message'] ?? null));
+
+		if (!$result['status']) {
+			$this->sendText(404, $result['message'] . "\n");
+		}
+
+		// An uploaded file never becomes a string on the way out: a firmware
+		// image is tens of megabytes and the rendered text of a config is not.
+		if (($result['kind'] ?? '') === 'file') {
+			$this->sendFile((string) $result['path'], (string) $result['resource']);
+		}
+
+		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource']));
+	}
+
+	/**
+	 * Which file answers a request, and what it is.
+	 *
+	 * Separate from serve() because this is the part worth calling again: a
+	 * preview, a console command, a test. Only the caller there ends the
+	 * request. It is resolveRequest() rather than renderConfig() because what
+	 * comes back is not always rendered text -- a resource with an uploaded
+	 * file behind it comes back as a path on disk.
+	 *
+	 * Three steps, and the first that answers wins:
+	 *
+	 *   1. A MAC naming a client with a profile: that profile's resources,
+	 *      matched by name. The profile is the authority -- a name it does not
+	 *      serve is refused here rather than looked for elsewhere, or a
+	 *      profile could never withhold a file.
+	 *   2. No MAC, a MAC naming no client, or a client with no profile: the
+	 *      resources that carry an uploaded file, matched by name exactly.
+	 *   3. Nothing.
+	 *
+	 * Step 2 is files only, and deliberately so. A template matched with no
+	 * client behind it has no values to render against, so every placeholder
+	 * in it would come out empty and the phone would receive a configuration
+	 * that parses and is wrong -- which is worse than the 404 it gets instead.
+	 * A file has no rendering at all, and that is exactly why it is the same
+	 * bytes for every caller and can be handed out by name. The consequence is
+	 * worth saying plainly: an uploaded file can be fetched by anyone who
+	 * reaches the endpoint and knows what it is called.
+	 *
+	 * A request that names no file -- /provisioner/[mac], or an internal
+	 * caller with nothing to pass -- is a request for the main config, which
+	 * is to say [mac].cfg. It is filled in inside step 1 rather than left
+	 * empty and special-cased further down, so exactly one string is matched
+	 * against and the message on a miss names the file the caller will
+	 * recognise. There is nothing to fill it in from without a client, so a
+	 * caller with neither a MAC nor a filename has asked for nothing.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written, or ''.
+	 * @param string|null $requested Filename asked for, or null for the main config.
+	 *
+	 * @return array<string, mixed> Status, what answers when something does,
+	 *                              and a message when nothing did.
+	 */
+	public function resolveRequest($mac, $requested = null, $token = null)
+	{
+		$mac = Mac::normalize($mac);
+		$requested = trim((string) $requested);
+
+		$client = $mac === '' ? null : $this->clients->clientByMac($mac);
+
+		if ($client && $client['profile_id'] !== null) {
+			$values = $this->template->provisioningValues($client);
+
+			// What is left of the filename with this client's own MAC off the
+			// front: 0004f282e824-phone.cfg asked of that client is phone.cfg,
+			// and 0004f282e824.cfg is .cfg. Worked out here rather than in the
+			// endpoint, so the endpoint only has to report what was asked for.
+			$suffix = $requested === '' ? '' : $this->matcher->resourceSuffix($requested, $mac);
+
+			// Two ways of asking for nothing in particular, and both are asking
+			// for the main config: no filename at all, and the client's own MAC
+			// with no filename after it (/provisioner/0004f282e824, which is
+			// what leaves nothing behind once the MAC is taken off the front).
+			if ($suffix === '') {
+				$requested = $mac . '.cfg';
+				$suffix = '.cfg';
+			}
+
+			$match = $this->matcher->matchResource((int) $client['profile_id'], $requested, $suffix, $values);
+			$template = $match['template'] ?? null;
+
+			// If the client has a token but no token was provided in the request, return a 401 error.
+			if ($template && $client['token'] && !$token) {
+				return [
+					'status' => false,
+					'message' => _('A token is required for this client.'),
+					'code' => 401,
+				];
+			}
+
+			// Compare hashes to protect templates.
+			if ($template && $client['token'] && $token && !password_verify($token, $client['token'])) {
+				return [
+					'status' => false,
+					'message' => _('Invalid authentication provided for this client.'),
+					'code' => 401,
+				];
+			}
+
+			if ($match !== null) {
+				return $this->resourceResult($match, $values) + [
+					'mac' => $mac,
+					'profile' => (string) $client['profile_name'],
+				];
+			}
+
+			// Nothing this profile serves answers to the name. That includes
+			// [mac].cfg on a profile with no `.cfg` resource on it: there is no
+			// template behind the profile to fall back to, and a profile that
+			// serves nothing is one somebody has not finished writing rather
+			// than one with an implicit main config.
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is not something this profile serves.'), $requested),
+			];
+		}
+
+		// No profile behind the request, which is the firmware case: a name and
+		// nothing else to say who is asking.
+		if ($requested !== '') {
+			$file = $this->matcher->fileByName($requested);
+
+			if ($file !== null) {
+				return $this->resourceResult($file, []);
+			}
+		}
+
+		if ($mac === '') {
+			return [
+				'status' => false,
+				'message' => $requested === ''
+					? _('No MAC address and no filename: nothing was asked for.')
+					: sprintf(_('%s is not a file this server serves.'), $requested),
+			];
+		}
+
+		if (!$client) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is not associated with anything.'), $mac),
+			];
+		}
+
+		return [
+			'status' => false,
+			'message' => sprintf(_('%s has no profile assigned.'), $mac),
+		];
+	}
+
+	/**
+	 * A matched resource as the thing that answers a request.
+	 *
+	 * The one place that knows there are two kinds of resource, and the only
+	 * place that needs to: one with a file size on it was uploaded and is sent
+	 * as it was stored, one without is a template and is rendered. There is no
+	 * column declaring which -- the size is the answer, because only an upload
+	 * can set it and removing the file clears it again.
+	 *
+	 * A row that says it has a file and a repository that has not got it is a
+	 * refusal rather than a quiet fall back to the template underneath. A
+	 * phone handed an empty config where it expected firmware fails in a way
+	 * nobody can see; a 404 naming the file says what happened.
+	 *
+	 * @param array<string, mixed>  $resource The resource row.
+	 * @param array<string, string> $values   Placeholder name to value, empty for a file.
+	 *
+	 * @return array<string, mixed> What serve() sends, or a refusal.
+	 */
+	private function resourceResult(array $resource, array $values)
+	{
+		$name = (string) $resource['name'];
+
+		if ($resource['file_size'] === null) {
+			return [
+				'status' => true,
+				'kind' => 'template',
+				'resource' => $name,
+				'config' => $this->template->renderTemplate((string) $resource['template'], $values),
+			];
+		}
+
+		$path = $this->files->repoFile($resource['id']);
+
+		if (!is_file($path)) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('The uploaded file for %s is missing.'), $name),
+			];
+		}
+
+		return [
+			'status' => true,
+			'kind' => 'file',
+			'resource' => $name,
+			'path' => $path,
+		];
+	}
+
+	/**
+	 * Write a text response and end the request.
+	 *
+	 * @param int    $code HTTP status code.
+	 * @param string $body Response body.
+	 * @param string $type Content type, without the charset.
+	 *
+	 * @return void Never returns.
+	 */
+	private function sendText($code, $body, $type = 'text/plain')
+	{
+		$body = (string) $body;
+
+		http_response_code($code);
+		header('Content-Type: ' . $type . '; charset=utf-8');
+		header('Content-Length: ' . strlen($body));
+		// A phone that re-reads its config expects what is stored now, not
+		// what a cache kept from the last time it asked.
+		header('Cache-Control: no-store');
+
+		// A phone HEADs before it GETs. The length is what it asked for; the
+		// body is not.
+		if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
+			echo $body;
+		}
+
+		exit;
+	}
+
+	/**
+	 * Send an uploaded file and end the request.
+	 *
+	 * What sendText() does not have to think about, because a config is a few
+	 * kilobytes and a firmware image is forty megabytes:
+	 *
+	 *  - the body is never a string. Output buffering is dropped and the file
+	 *    is read straight out to the client.
+	 *  - a conditional request is answered with 304. Polycom sends
+	 *    If-Modified-Since for firmware, and on a fleet that re-provisions
+	 *    nightly that is the difference between a handful of empty replies and
+	 *    tens of gigabytes of the same image over and over.
+	 *
+	 * Cache-Control is no-cache rather than the no-store a config gets: ask
+	 * every time, and be told when nothing has changed. The validators are the
+	 * file's own size and modification time, so a re-upload invalidates them
+	 * without anything having to remember to.
+	 *
+	 * Ranges are declined rather than half-implemented. No phone here asks for
+	 * one, and saying so is better than a client believing 206 is available.
+	 *
+	 * @param string $path Absolute path to the stored file.
+	 * @param string $name Resource name, which is the filename it is served as.
+	 *
+	 * @return void Never returns.
+	 */
+	private function sendFile($path, $name)
+	{
+		$size = (int) @filesize($path);
+		$modified = (int) @filemtime($path);
+		$etag = sprintf('"%x-%x"', $modified, $size);
+
+		header('Content-Type: ' . $this->matcher->contentType($name, 'file'));
+		// The name it is saved under. Without this a fetch through a client's
+		// own URL -- /provisioner/0004f282e824-3111-44500-001.sip.ld -- lands
+		// on disk under that whole path segment, MAC and all, when what it is
+		// is 3111-44500-001.sip.ld. The resource's name is the answer because
+		// the resource's name is what the file is; the MAC in front of it is
+		// addressing, and belongs to the request rather than to the file.
+		//
+		// A phone ignores this header and writes the file wherever it decided
+		// to ask for it, so it costs nothing there and is the whole of the
+		// difference in a browser. inline rather than attachment: something
+		// displayable should still display, and the name is taken from here
+		// either way.
+		header('Content-Disposition: inline; ' . $this->filenameParameter($name));
+		header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $modified) . ' GMT');
+		header('ETag: ' . $etag);
+		header('Cache-Control: no-cache');
+		header('Accept-Ranges: none');
+
+		$tag = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+		$since = (int) strtotime((string) ($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? ''));
+
+		// The tag is the stronger of the two and is checked alone when it is
+		// there: a client that sent both means the tag.
+		if ($tag !== '' ? $tag === $etag : ($since > 0 && $modified > 0 && $since >= $modified)) {
+			http_response_code(304);
+			exit;
+		}
+
+		http_response_code(200);
+		header('Content-Length: ' . $size);
+
+		if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
+			exit;
+		}
+
+		// Nothing between the file and the client: a readfile() into an output
+		// buffer is the string this whole path exists to avoid.
+		while (ob_get_level()) {
+			ob_end_clean();
+		}
+
+		@set_time_limit(0);
+		readfile($path);
+		exit;
+	}
+
+	/**
+	 * A filename as Content-Disposition spells it.
+	 *
+	 * Two spellings of the one name, which is what RFC 6266 asks for: a bare
+	 * `filename` every client understands, with anything outside printable
+	 * ASCII -- and the quotes and backslashes that would end the header
+	 * early -- folded to underscores, and a `filename*` carrying the name as
+	 * it really is for the clients that read it.
+	 *
+	 * basename() because a name is a name. Saving a resource already refuses
+	 * a slash; a response header is not where that should be found out.
+	 *
+	 * @param string $name Resource name, which is the filename it is served as.
+	 *
+	 * @return string The filename and filename* parameters.
+	 */
+	private function filenameParameter($name)
+	{
+		$name = basename((string) $name);
+		$ascii = str_replace(['\\', '"'], '_', preg_replace('/[^\x20-\x7E]/', '_', $name));
+
+		return sprintf('filename="%s"; filename*=UTF-8\'\'%s', $ascii, rawurlencode($name));
+	}
+}
