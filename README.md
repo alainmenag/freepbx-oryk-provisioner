@@ -61,6 +61,15 @@ hexadecimal characters with any separators stripped. The FreePBX `devices`
 table stays the source of truth for the device, its extension and its
 description, so a client carries none of its own.
 
+A client can also be given a **token**: a secret typed as `user:password` —
+`username:password` — and hashed with `password_hash()` when you save. The
+Token box holds that hash from then on, so leaving it alone leaves the token
+alone, typing a new `user:password` over it replaces it, and emptying it takes
+it away. **A colon is what marks a value as a token still to be hashed**; a
+value without one is stored as it was typed and verifies against nothing.
+`verifyToken($mac, $token)` is the other half. Nothing is authenticated against
+it yet — the endpoint is still keyed on MAC address alone.
+
 **Profile** — a name, and the files it serves. Nothing else: a profile holds no
 configuration text of its own.
 
@@ -254,7 +263,10 @@ from the profile that serves it.
 Three tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
 
 **`oryk_provisioner_clients`** — `id`, `mac` (unique, 12 lowercase hex),
-`device_id`, `profile_id`, `created_at`, `updated_at`.
+`device_id`, `profile_id`, `token`, `created_at`, `updated_at`.
+`token` is a `password_hash()` of the client's token, shown as it stands
+in the client editor and deliberately not indexed: it is verified against,
+never looked up by, since a request already says who is asking.
 `device_id` is a `VARCHAR(20)` because FreePBX `devices.id` is a string column,
 and it keeps that name deliberately: it holds a FreePBX device id, which is the
 one thing on the row that is still a device.
@@ -306,8 +318,10 @@ Know what this is before you expose it:
   reach the URL and knows — or guesses — a MAC gets that client's rendered
   configuration, including `device.secret` if the template emits it. This is
   inherent to MAC-based provisioning and the reason the token scheme exists in
-  the design. Until it lands, restrict who can reach `/provisioner/` at the
-  network layer, and prefer HTTPS.
+  the design. A client's token is stored, hashed, and can be verified — but
+  nothing checks it yet, so setting one changes nothing about who is served.
+  Until it does, restrict who can reach `/provisioner/` at the network layer,
+  and prefer HTTPS.
 - **Failures are not uniform.** A 404 says which kind of failure it was
   ("… is not associated with anything", "… has no profile assigned"), so a
   caller probing MACs can tell a known one from an unknown one.
@@ -324,8 +338,13 @@ Know what this is before you expose it:
 
 The larger design this is working towards, none of which exists in the code:
 
-- **Provisioning tokens** — the `token=…&filename=…` URL scheme, per-client
-  enable/disable, and a uniform 404 for every kind of failure.
+- **Provisioning tokens** — the storage is there (a hashed per-client token and
+  `verifyToken()`), and nothing calls it: the endpoint checks no token,
+  there is no per-client enable/disable, and a 404 still says which kind of
+  failure it was. A token that has to *identify* a client, the way
+  `/provisioner/{token}/{file}` would, needs a lookup a `password_hash()`
+  column cannot serve, so that scheme wants a second, digest-based column
+  rather than this one.
 - **Per-client parameters** and the resolution order (module settings → schema
   defaults → template defaults → FreePBX/extension → client overrides). A client
   today is a MAC, a device and a profile; nothing overrides anything.
