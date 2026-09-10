@@ -122,7 +122,7 @@ $pass = $_SERVER['PHP_AUTH_PW'] ?? null;
 $token = null;
 
 if ($user !== null && $pass !== null) {
-	$token = $provisioner->hashToken($user . ':' . $pass);
+	$token = $user . ':' . $pass;
 }
 
 // --------------------------------------------------------------------------
