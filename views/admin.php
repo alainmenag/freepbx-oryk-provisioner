@@ -108,10 +108,6 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 							</a>
 						</div>
 
-						<p class="help-block fpbx-help-block">
-							<?php echo _('** ATTENTION! Profiles are PUBLIC, authentication is not yet implemented.'); ?>
-						</p>
-
 						<table
 							id="profile_table"
 							data-toggle="table"

@@ -3,8 +3,8 @@
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
 	<repo>commercial</repo>
-	<version>1.0.11</version>
-	<dbversion>1.0.6</dbversion>
+	<version>1.0.12</version>
+	<dbversion>1.0.7</dbversion>
 	<publisher>Oryk</publisher>
 	<type>setup</type>
 	<class>Oryk_provisioner</class>
@@ -14,6 +14,7 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
+		*1.0.12* A client can be given a token. Type it as -- username:password -- and it is hashed with password_hash() when you save; the Token box holds that hash from then on, so leaving it alone leaves the token alone, typing a new user:password over it replaces it, and emptying it takes it away. A colon is what marks a value as a token still to be hashed. verifyToken() is the other half of the mechanism;
 		*1.0.11* A resource can serve an uploaded file instead of a template -- firmware above all. Upload one on the resource and it is served exactly as stored, under the resource's filename; remove it and the resource is the template it was, text and all. There is no type to set: the file is the difference. Files are kept in ASTSPOOLDIR/repo, named after the resource id, and go when the resource or its profile does. serveConfig() is now serve(), and it answers a request with no MAC address in it -- a phone fetching firmware sends none -- from the uploaded files, matched by name across every profile
 		*1.0.10* A provisioning log: one row per request the endpoint answered -- MAC, the file asked for, the status it was answered with and when -- written whether or not a client exists for the MAC. Read it at &amp;tab=logs on the module page, or on a client's own Logs tab, which is narrowed by MAC and so shows what a phone was asking for before anybody wrote its client. Metadata only; the rendered configuration is never stored
 		*1.0.8* A device is a &lt;strong&gt;client&lt;/strong&gt;: the row pairing a MAC with a FreePBX device and a profile is named that everywhere -- &amp;client=&lt;id&gt;, a Clients tab, listClients/saveClient/deleteClient -- so "device" now only ever means the FreePBX device it points at. The table is oryk_provisioner_clients; nothing renames it for you, so rename it before upgrading

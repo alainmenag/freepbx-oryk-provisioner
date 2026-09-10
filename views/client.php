@@ -31,7 +31,7 @@
  * profile editor's first tab; Resources names itself with &tab=resources, and
  * the shown.bs.tab handler keeps the address in step.
  *
- * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id
+ * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var int                               $resources      Resources on its profile, for the tab's count
@@ -57,6 +57,11 @@ $isNew = $id === 0;
 $mac = (string) $client['mac'];
 $deviceId = (string) ($client['device_id'] ?? '');
 $profileId = (int) ($client['profile_id'] ?? 0);
+
+// The stored hash, shown as it stands. A save writes back whatever is in the
+// field, so leaving it alone leaves the token alone and emptying it takes the
+// token away -- and a value with a colon in it is a new token to hash.
+$token = (string) ($client['token'] ?? '');
 
 // Nothing is served to a client that has never been written, or to one
 // with no profile assigned, so its Resources tab is there but does not open.
@@ -132,6 +137,10 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 				<div class="tab-content">
 
 					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'client' ? 'active' : ''; ?>" id="oryk_client">
+
+						<p class="help-block fpbx-help-block">
+							<?php echo _('ATTENTION! Client resources are public by default. To restrict access, assign a custom token or use <code>username:password</code> to generate a hashed token.'); ?>
+						</p>
 
 						<!-- Not a form: see the note in partials/editor.php. -->
 						<input type="hidden" id="client_row_id" value="<?php echo $id; ?>">
@@ -218,6 +227,29 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
 										<?php echo _('What this client is served. Until one is assigned there is nothing to provision, and the client is asked for a configuration it has none of.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="client_token"><?php echo _('Token'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<input type="text" class="form-control oryk-token" id="client_token"
+											autocomplete="off" spellcheck="false"
+											placeholder="<?php echo $h(_('username:password')); ?>"
+											value="<?php echo $h($token); ?>">
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. Empty the box to take the token away. Nothing is authenticated against it yet.'); ?>
 									</span>
 								</div>
 							</div>
@@ -336,7 +368,10 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 				id: $('#client_row_id').val(),
 				mac: $('#client_mac').val(),
 				device_id: $('#client_device_id').val(),
-				profile_id: $('#client_profile_id').val()
+				profile_id: $('#client_profile_id').val(),
+				// Sent as it stands, hash or typed token: which one it is, is
+				// saveClient()'s question, and a colon is how it answers it.
+				token: $('#client_token').val()
 			};
 		},
 		// Back to the list on the Clients tab, with the row that was just

@@ -71,10 +71,8 @@ $provisioner = \FreePBX::Oryk_provisioner();
 $headers = getallheaders();
 $requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); // /provisioner/00908f3bbcba.cfg
 $requestAgent = $_SERVER['HTTP_USER_AGENT'] ?? ''; // AUDC-IPPhone/2.0.0_build_15 (420HD; 00908F3BBCBA)
-
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$user = $_SERVER['PHP_AUTH_USER'] ?? null;
-$pass = $_SERVER['PHP_AUTH_PW'] ?? null;
+
 
 // --------------------------------------------------------------------------
 // MAC
@@ -117,14 +115,15 @@ $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 // AUTHENTICATION
 // --------------------------------------------------------------------------
 
-// to-do: on never-seen, create account to return config with that auth.
-// so it loops back around with new auth.
+$user = $_SERVER['PHP_AUTH_USER'] ?? null;
+$pass = $_SERVER['PHP_AUTH_PW'] ?? null;
 
-// if ($user === null) {
-//     header('WWW-Authenticate: Basic realm="Provisioning"');
-//     http_response_code(401);
-//     exit;
-// }
+// Create token to compare against the stored token for authentication
+$token = null;
+
+if ($user !== null && $pass !== null) {
+	$token = $user . ':' . $pass;
+}
 
 // --------------------------------------------------------------------------
 // SERVE
@@ -140,7 +139,7 @@ $filename = substr($requestPath, -1) === '/' ? '' : basename($requestPath);
 // request that names a file is a request, and whether anything answers to it
 // is a question for the module rather than an assumption here.
 if (($method === 'GET' || $method === 'HEAD') && ($mac !== '' || $filename !== '')) {
-    $provisioner->serve($mac, $filename);
+    $provisioner->serve($mac, $filename, $token);
     exit;
 }
 

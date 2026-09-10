@@ -423,12 +423,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// device_id is the FreePBX devices.id, which is a string column there,
 		// so it is a string here too rather than something that has to be cast
 		// on every join.
+		//
+		// token is a password_hash() of the token the client was given,
+		// wide enough for the longest hash that function has ever produced
+		// rather than for the one it produces today. There is no plaintext
+		// column beside it and no index on it: it is verified against, never
+		// looked up by, and hashToken() says why.
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->clientsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`mac` VARCHAR(12) NOT NULL,
 				`device_id` VARCHAR(20) NULL DEFAULT NULL,
 				`profile_id` INT(11) NULL DEFAULT NULL,
+				`token` VARCHAR(255) NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -476,6 +483,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// there, so a site upgrading to 1.0.6 gets the two file columns and the
 		// name index from here instead.
 		$this->addResourceFileColumns();
+		$this->addClientTokenColumn();
 
 		$this->linkEngine();
 
@@ -520,6 +528,26 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		if (!$this->schemaHas($this->resourcesTable, 'index', 'name')) {
 			$this->db->exec("ALTER TABLE `{$this->resourcesTable}` ADD KEY `name` (`name`)");
+		}
+	}
+
+	/**
+	 * Bring a clients table written before 1.0.12 up to date.
+	 *
+	 * Asked of information_schema rather than tried and caught, for the reason
+	 * addResourceFileColumns() gives, and additive in the same way: a client
+	 * with no token is a client with nothing to check, which is every client
+	 * on a site upgrading into this.
+	 *
+	 * @return void
+	 */
+	private function addClientTokenColumn()
+	{
+		if (!$this->schemaHas($this->clientsTable, 'column', 'token')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->clientsTable}`
+				ADD COLUMN `token` VARCHAR(255) NULL DEFAULT NULL AFTER `profile_id`"
+			);
 		}
 	}
 
@@ -1220,8 +1248,14 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	private function clientRow($id)
 	{
+		// The hash included: the editor shows it, so that a save which leaves
+		// the field alone writes back what was already there, and so that
+		// emptying the field is the one unambiguous way to take a token away.
+		// It is a hash rather than the secret, which is what makes showing it
+		// tolerable -- but it is on an admin page, and a weak token behind it
+		// is a weak token in front of anyone who can open that page.
 		$stmt = $this->db->prepare(
-			"SELECT id, mac, device_id, profile_id
+			"SELECT id, mac, device_id, profile_id, token
 			FROM `{$this->clientsTable}`
 			WHERE id = :id"
 		);
@@ -1299,6 +1333,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Create or update a client.
 	 *
+	 * `token` is the one field here that is not simply written: what arrives
+	 * is either a token to hash or the hash of one, told apart by the colon.
+	 * See the note above it, and hashToken().
+	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
@@ -1338,16 +1376,52 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			return ['status' => false, 'message' => _('That MAC address is already associated.')];
 		}
 
+		// The Token field round-trips: the editor is filled in with what is
+		// stored, so what comes back is either the hash it was shown -- left
+		// alone, and to be written back as it stands -- or something typed
+		// over it. **A colon is what tells the two apart**: `username:password`
+		// is a token being set, and a password_hash() carries no colon
+		// anywhere in it, so a value with one has not been through this yet.
+		//
+		// The corollary, and it is a real one: a token typed without a colon
+		// is stored as it was typed and verifies against nothing, because
+		// verifyToken() hashes what the phone presents and compares. Whatever
+		// eventually issues tokens should give out ones with a colon in them.
+		//
+		// An empty box is therefore the token being taken away, and the only
+		// way it is -- there is nothing else an emptied box can mean once the
+		// box is filled in from the row.
+		//
+		// Trimmed because a token is usually pasted, and a trailing newline is
+		// not part of what the phone will send.
+		$token = trim((string) ($request['token'] ?? ''));
+		$tokenHash = null;
+
+		if ($token !== '' && strpos($token, ':') !== false) {
+			$tokenHash = $this->hashToken($token);
+
+			// password_hash() has no failure a caller can act on -- there is
+			// no weaker hash to fall back to -- so this is refused rather than
+			// stored as something that would never verify.
+			if ($tokenHash === null) {
+				return ['status' => false, 'message' => _('That token could not be hashed.')];
+			}
+		} elseif ($token !== '') {
+			$tokenHash = $token;
+		}
+
 		if ($id) {
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->clientsTable}`
-				SET mac = :mac, device_id = :device_id, profile_id = :profile_id
+				SET mac = :mac, device_id = :device_id, profile_id = :profile_id,
+					token = :token
 				WHERE id = :id"
 			);
 			$stmt->execute([
 				':mac' => $mac,
 				':device_id' => $deviceId,
 				':profile_id' => $profileId,
+				':token' => $tokenHash,
 				':id' => $id,
 			]);
 
@@ -1355,16 +1429,108 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		}
 
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id)
-			VALUES (:mac, :device_id, :profile_id)"
+			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token)
+			VALUES (:mac, :device_id, :profile_id, :token)"
 		);
 		$stmt->execute([
 			':mac' => $mac,
 			':device_id' => $deviceId,
 			':profile_id' => $profileId,
+			':token' => $tokenHash,
 		]);
 
 		return ['status' => true, 'id' => (int) $this->db->lastInsertId()];
+	}
+
+	/**
+	 * Hash a token for storage.
+	 *
+	 * password_hash() rather than a digest of the string, because a token is a
+	 * secret somebody chose -- `username:password` is the shape this field
+	 * invites -- and a fast digest of a chosen secret is a wordlist away from
+	 * the secret. The algorithm, the cost and the salt travel inside the hash,
+	 * so the column holds everything verifying needs and the module has no
+	 * second thing to keep in step.
+	 *
+	 * What it costs is that the column cannot be looked up: the same token
+	 * hashed twice gives two different strings, so there is no SELECT that
+	 * finds a client by the token it presented. That is the right trade here
+	 * because a request already says who is asking -- the MAC address is in
+	 * the path -- and the token only has to say whether it is really them. A
+	 * token meant to *identify* a client instead, the way the README's
+	 * /provisioner/{token}/{file} would, has to be a digest of something
+	 * random enough that a digest is safe, and would be a second column rather
+	 * than a different meaning for this one.
+	 *
+	 * @param string $token Token as typed.
+	 *
+	 * @return string|null The hash, or null when one could not be made.
+	 */
+	public function hashToken($token)
+	{
+		$hash = password_hash((string) $token, PASSWORD_DEFAULT);
+
+		return is_string($hash) && $hash !== '' ? $hash : null;
+	}
+
+	/**
+	 * Whether a client's token is the one presented.
+	 *
+	 * Nothing calls this yet -- the endpoint is still keyed on MAC address
+	 * alone and authenticates nothing. It is here because a stored hash that
+	 * nothing can check is not a mechanism, and it is public because what will
+	 * eventually call it is engine/provisioner.php rather than a page of this
+	 * module.
+	 *
+	 * A client with no token set is false rather than true. The question this
+	 * answers is "is this the client's token", and a client that has none has
+	 * no token that this is. Whether a request with nothing to check should be
+	 * let through is a policy question, and it belongs to whatever asks.
+	 *
+	 * @param string $mac   MAC address of the client, in any separator style.
+	 * @param string $token Token as presented.
+	 *
+	 * @return bool True when the client has a token and this is it.
+	 */
+	public function verifyToken($mac, $token)
+	{
+		$token = (string) $token;
+		$hash = $this->clientTokenHash($mac);
+
+		if ($hash === null || $token === '') {
+			return false;
+		}
+
+		return password_verify($token, $hash);
+	}
+
+	/**
+	 * The stored token hash for a MAC address, if there is one.
+	 *
+	 * Private, and returning the hash rather than the row, because the hash
+	 * has exactly one use and no reason to travel further than the method that
+	 * verifies against it. It is deliberately not part of clientRow(), so no
+	 * page of this module is ever handed it.
+	 *
+	 * @param string $mac MAC address, in any separator style.
+	 *
+	 * @return string|null The hash, or null when the client or the token is not there.
+	 */
+	private function clientTokenHash($mac)
+	{
+		$mac = $this->normalizeMac($mac);
+
+		if ($mac === '') {
+			return null;
+		}
+
+		$stmt = $this->db->prepare(
+			"SELECT token FROM `{$this->clientsTable}` WHERE mac = :mac"
+		);
+		$stmt->execute([':mac' => $mac]);
+		$hash = (string) $stmt->fetchColumn();
+
+		return $hash === '' ? null : $hash;
 	}
 
 	/**
@@ -2329,10 +2495,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
-	public function serve($mac, $requested = null)
+	public function serve($mac, $requested = null, $token = null)
 	{
-		$result = $this->resolveRequest($mac, $requested);
-		$status = $result['status'] ? 200 : 404;
+		$result = $this->resolveRequest($mac, $requested, $token);
+		$status = $result['code'] ?? ($result['status'] ? 200 : 404);
 
 		$this->log(sprintf(
 			'oryk_provisioner: %s for %s (%s)',
@@ -2340,6 +2506,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			(string) $requested !== '' ? (string) $requested : (string) $mac,
 			$result['message'] ?? 'OK',
 		), null, $result['status'] ? 'INFO' : 'DEBUG');
+
+		// Handle HTTP 401 Unauthorized by sending the appropriate headers and exiting.
+		if ($status === 401) {
+			header('WWW-Authenticate: Basic realm="Provisioning"');
+			http_response_code(401);
+			exit;
+		}
 
 		// Both outcomes, and a MAC nothing is associated with as readily as one
 		// that renders: a phone asking for a file nobody has written a client
@@ -2475,15 +2648,15 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * @return array<string, mixed> Status, what answers when something does,
 	 *                              and a message when nothing did.
 	 */
-	public function resolveRequest($mac, $requested = null)
+	public function resolveRequest($mac, $requested = null, $token = null)
 	{
 		$mac = $this->normalizeMac($mac);
 		$requested = trim((string) $requested);
 
-		$row = $mac === '' ? null : $this->clientByMac($mac);
+		$client = $mac === '' ? null : $this->clientByMac($mac);
 
-		if ($row && $row['profile_id'] !== null) {
-			$values = $this->provisioningValues($row);
+		if ($client && $client['profile_id'] !== null) {
+			$values = $this->provisioningValues($client);
 
 			// What is left of the filename with this client's own MAC off the
 			// front: 0004f282e824-phone.cfg asked of that client is phone.cfg,
@@ -2500,12 +2673,31 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				$suffix = '.cfg';
 			}
 
-			$match = $this->matchResource((int) $row['profile_id'], $requested, $suffix, $values);
+			$match = $this->matchResource((int) $client['profile_id'], $requested, $suffix, $values);
+			$template = $match['template'] ?? null;
+
+			// If the client has a token but no token was provided in the request, return a 401 error.
+			if ($template && $client['token'] && !$token) {
+				return [
+					'status' => false,
+					'message' => _('A token is required for this client.'),
+					'code' => 401,
+				];
+			}
+
+			// Compare hashes to protect templates.
+			if ($template && $client['token'] && $token && !password_verify($token, $client['token'])) {
+				return [
+					'status' => false,
+					'message' => _('Invalid authentication provided for this client.'),
+					'code' => 401,
+				];
+			}
 
 			if ($match !== null) {
 				return $this->resourceResult($match, $values) + [
 					'mac' => $mac,
-					'profile' => (string) $row['profile_name'],
+					'profile' => (string) $client['profile_name'],
 				];
 			}
 
@@ -2539,7 +2731,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			];
 		}
 
-		if (!$row) {
+		if (!$client) {
 			return [
 				'status' => false,
 				'message' => sprintf(_('%s is not associated with anything.'), $mac),
@@ -2946,6 +3138,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$stmt = $this->db->prepare(
 			"SELECT
 				pc.mac,
+				pc.token,
 				pc.device_id,
 				pc.profile_id,
 				d.user AS extension,
