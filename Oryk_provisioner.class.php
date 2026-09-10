@@ -2655,24 +2655,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$client = $mac === '' ? null : $this->clientByMac($mac);
 
-		// If the client has a token but no token was provided in the request, return a 401 error.
-		if ($client['token'] && !$token) {
-			return [
-				'status' => false,
-				'message' => _('A token is required for this client.'),
-				'code' => 401,
-			];
-		}
-
-		// Compare hashes
-		if ($client['token'] && $token && !password_verify($token, $client['token'])) {
-			return [
-				'status' => false,
-				'message' => _('Invalid authentication provided for this client.'),
-				'code' => 401,
-			];
-		}
-
 		if ($client && $client['profile_id'] !== null) {
 			$values = $this->provisioningValues($client);
 
@@ -2692,6 +2674,25 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			}
 
 			$match = $this->matchResource((int) $client['profile_id'], $requested, $suffix, $values);
+			$template = $match['template'] ?? null;
+
+			// If the client has a token but no token was provided in the request, return a 401 error.
+			if ($template && $client['token'] && !$token) {
+				return [
+					'status' => false,
+					'message' => _('A token is required for this client.'),
+					'code' => 401,
+				];
+			}
+
+			// Compare hashes to protect templates.
+			if ($template && $client['token'] && $token && !password_verify($token, $client['token'])) {
+				return [
+					'status' => false,
+					'message' => _('Invalid authentication provided for this client.'),
+					'code' => 401,
+				];
+			}
 
 			if ($match !== null) {
 				return $this->resourceResult($match, $values) + [
