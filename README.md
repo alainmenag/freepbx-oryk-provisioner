@@ -67,8 +67,7 @@ Token box holds that hash from then on, so leaving it alone leaves the token
 alone, typing a new `user:password` over it replaces it, and emptying it takes
 it away. **A colon is what marks a value as a token still to be hashed**; a
 value without one is stored as it was typed and verifies against nothing.
-`verifyToken($mac, $token)` is the other half. Nothing is authenticated against
-it yet — the endpoint is still keyed on MAC address alone.
+`verifyToken($mac, $token)` is the other half.
 
 **Profile** — a name, and the files it serves. Nothing else: a profile holds no
 configuration text of its own.

@@ -138,6 +138,10 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 
 					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'client' ? 'active' : ''; ?>" id="oryk_client">
 
+						<p class="help-block fpbx-help-block">
+							<?php echo _('ATTENTION! Client resources are public by default. To restrict access, assign a custom token or use <code>username:password</code> to generate a hashed token.'); ?>
+						</p>
+
 						<!-- Not a form: see the note in partials/editor.php. -->
 						<input type="hidden" id="client_row_id" value="<?php echo $id; ?>">
 
