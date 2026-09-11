@@ -28,8 +28,9 @@
  * reason: a client with nothing to serve it is the one being refused.
  *
  * The bare ?client=<id> *is* the Client tab, the way ?profile=<id> is the
- * profile editor's first tab; Resources names itself with &tab=resources, and
- * the shown.bs.tab handler keeps the address in step.
+ * profile editor's first tab; Resources and Logs name themselves with &tab=.
+ * Each tab is a link and only the tab asked for is rendered -- see
+ * partials/tabs.php.
  *
  * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
@@ -77,6 +78,35 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 // Two scopes on one page: what is served comes from the profile this client
 // is assigned to, what was asked for is kept against its MAC.
 $countScope = ['profile_id' => $profileId, 'mac' => $mac];
+
+// The strip, as links. The first tab is the bare ?client=<id>, the way every
+// other editor's first tab is the bare URL of the row it edits -- and on a
+// client that has not been written it is the key present and empty, since
+// `client=0` names a row that does not exist and is bounced to the list.
+$clientUrl = '?display=oryk_provisioner&client=' . ($isNew ? '' : $id);
+
+$tabs = [
+	'client' => [
+		'label' => _('Client'),
+		'href' => $clientUrl,
+	],
+	'resources' => [
+		'label' => _('Resources'),
+		'href' => $clientUrl . '&tab=resources',
+		'count' => 'resources',
+		'disabled' => !$served,
+		'title' => $served ? '' : ($isNew
+			? _('Save the client first -- what it is served follows from the profile it is assigned to.')
+			: _('Assign a profile first -- nothing is served to a client without one.')),
+	],
+	'logs' => [
+		'label' => _('Logs'),
+		'href' => $clientUrl . '&tab=logs',
+		'count' => 'logs',
+		'disabled' => !$logged,
+		'title' => $logged ? '' : _('Save the client first -- the log is kept by MAC address.'),
+	],
+];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 <?php include __DIR__ . '/partials/counts.php'; ?>
@@ -91,52 +121,16 @@ $countScope = ['profile_id' => $profileId, 'mac' => $mac];
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
-				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="<?php echo $tab === 'client' ? 'active' : ''; ?>">
-						<a href="#oryk_client" aria-controls="oryk_client" role="tab" data-toggle="tab">
-							<?php echo _('Client'); ?>
-						</a>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'resources' ? 'active' : ($served ? '' : 'disabled'); ?>">
-						<?php if (!$served): ?>
-							<a href="#" onclick="return false;"
-								title="<?php echo $isNew
-									? _('Save the client first -- what it is served follows from the profile it is assigned to.')
-									: _('Assign a profile first -- nothing is served to a client without one.'); ?>">
-								<?php echo _('Resources'); ?>
-							</a>
-						<?php else: ?>
-							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
-								<?php echo _('Resources'); ?>
-								<?php $countBadge('resources'); ?>
-							</a>
-						<?php endif; ?>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'logs' ? 'active' : ($logged ? '' : 'disabled'); ?>">
-						<?php if (!$logged): ?>
-							<a href="#" onclick="return false;"
-								title="<?php echo _('Save the client first -- the log is kept by MAC address.'); ?>">
-								<?php echo _('Logs'); ?>
-							</a>
-						<?php else: ?>
-							<a href="#oryk_logs" aria-controls="oryk_logs" role="tab" data-toggle="tab">
-								<?php echo _('Logs'); ?>
-								<?php $countBadge('logs'); ?>
-							</a>
-						<?php endif; ?>
-					</li>
-				</ul>
+				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'client' ? 'active' : ''; ?>" id="oryk_client">
+					<?php if ($tab === 'client'): ?>
+					<div class="tab-pane oryk-tab-section active" id="oryk_client">
 
 						<p class="help-block fpbx-help-block">
 							<?php echo _('ATTENTION! Client resources are public by default. To restrict access, assign a custom token or use <code>username:password</code> to generate a hashed token.'); ?>
 						</p>
-
-						<!-- Not a form: see the note in partials/editor.php. -->
-						<input type="hidden" id="client_row_id" value="<?php echo $id; ?>">
 
 						<div class="element-container">
 							<div class="row">
@@ -250,8 +244,10 @@ $countScope = ['profile_id' => $profileId, 'mac' => $mac];
 
 					</div>
 
-					<?php if ($served): ?>
-						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resources' ? 'active' : ''; ?>" id="oryk_resources">
+					<?php endif; ?>
+
+					<?php if ($tab === 'resources'): ?>
+						<div class="tab-pane oryk-tab-section active" id="oryk_resources">
 
 							<div id="resource_toolbar" class="oryk-toolbar">
 								<a class="btn btn-default" href="?display=oryk_provisioner&amp;profile=<?php echo $profileId; ?>&amp;tab=resources">
@@ -285,8 +281,8 @@ $countScope = ['profile_id' => $profileId, 'mac' => $mac];
 						</div>
 					<?php endif; ?>
 
-					<?php if ($logged): ?>
-						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'logs' ? 'active' : ''; ?>" id="oryk_logs">
+					<?php if ($tab === 'logs'): ?>
+						<div class="tab-pane oryk-tab-section active" id="oryk_logs">
 							<?php
 							// By MAC, not by this row's id: see the note at the
 							// top of the partial, and the one above $logged.
@@ -337,29 +333,13 @@ $countScope = ['profile_id' => $profileId, 'mac' => $mac];
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
 
-	// A table drawn while its tab is hidden has no width to lay itself out
-	// against, so it is told to measure again once the tab is on screen. The
-	// URL is kept in step at the same time, so a reload or a bookmark comes
-	// back to the tab that is open.
-	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
-		const pane = $(this).attr('href');
-
-		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
-
-		if (window.history && window.history.replaceState) {
-			const tabs = { '#oryk_resources': '&tab=resources', '#oryk_logs': '&tab=logs' };
-			const tab = tabs[pane] || '';
-			window.history.replaceState(null, '', `?display=oryk_provisioner&client=${orykClientId}${tab}`);
-		}
-	});
-
 	orykEditor({
 		save: 'saveClient',
 		remove: 'deleteClient',
 		confirm: 'Delete this client?',
 		values: function () {
 			return {
-				id: $('#client_row_id').val(),
+				id: orykClientId,
 				mac: $('#client_mac').val(),
 				device_id: $('#client_device_id').val(),
 				profile_id: $('#client_profile_id').val(),

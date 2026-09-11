@@ -12,6 +12,16 @@
  * left the Save button submitting the page as a GET to config.php and losing
  * display=oryk_provisioner. Values are read by id and posted explicitly.
  *
+ * Which is why a tab being a link matters here. Only the pane that was asked
+ * for is rendered, so on any tab but the editor's own the fields Save posts
+ * are not on the page -- and $('#client_mac').val() of nothing is undefined,
+ * which jQuery posts as the nine letters of it. Pages::getActionBar() draws
+ * Save only on the editor's own tab, so the binding below has nothing to
+ * bind to on the others. Delete and Close stay: both act on the row rather
+ * than on the fields, and the row's id is printed into every one of its
+ * tabs as a constant rather than read out of a hidden input in the first
+ * pane.
+ *
  * Both views render an alert with id `oryk_error` for orykShowError() to fill.
  *
  * The placeholder chips below the template are copied by clicking one, which
@@ -194,6 +204,10 @@
 	 * The buttons are ours rather than the submit/delete names core wires to
 	 * a `form.fpbx-submit`: this page has no form, and a save here is an AJAX
 	 * post, not a page submit.
+	 *
+	 * Each handler is delegated off the document, so a button the action bar
+	 * did not draw -- Save on a tab that has no fields, Delete on a row that
+	 * has never been written -- is simply one that never fires.
 	 *
 	 * editor.values()  what to post, including the row id
 	 * editor.save      command that writes it

@@ -9,9 +9,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * Everything the module edits is a page, told apart by which key the URL
  * carries, and every page is a tab strip over a tab content with its tab
- * in the address. doConfigPageInit() is where an id that names no row is
- * sent back to the list -- before any markup, because a redirect out of
- * showPage() would be too late to set a header.
+ * in the address. A tab is a link, so a tab is a page too: only the pane
+ * that was asked for is rendered, and the strip above it is links to the
+ * rest -- see views/partials/tabs.php. doConfigPageInit() is where an id
+ * that names no row is sent back to the list -- before any markup, because
+ * a redirect out of showPage() would be too late to set a header.
  */
 class Pages extends Service
 {
@@ -203,17 +205,7 @@ class Pages extends Service
 
 		$profileId = (int) ($client['profile_id'] ?? 0);
 		$mac = (string) ($client['mac'] ?? '');
-
-		// What each tab needs before it has anything on it. Resources needs a
-		// profile behind it -- nothing is served to a client without one. Logs
-		// needs only a MAC to have been asked about, and deliberately does not
-		// need the profile: a client with no profile is exactly the one whose
-		// phone is being refused, and those refusals are what its log is made
-		// of.
-		$available = [
-			'resources' => (bool) ($client['id'] && $profileId),
-			'logs' => (bool) ($client['id'] && $mac !== ''),
-		];
+		$available = $this->clientTabs($client);
 
 		return load_view(dirname(__DIR__) . '/views/client.php', [
 			'client' => $client,
@@ -230,6 +222,75 @@ class Pages extends Service
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'client',
 		]);
+	}
+
+	/**
+	 * Which of a client's tabs have anything behind them.
+	 *
+	 * Resources needs a profile behind it -- nothing is served to a client
+	 * without one. Logs needs only a MAC to have been asked about, and
+	 * deliberately does not need the profile: a client with no profile is
+	 * exactly the one whose phone is being refused, and those refusals are
+	 * what its log is made of.
+	 *
+	 * Here rather than in showClient() because getActionBar() asks the same
+	 * question -- a tab that cannot open is a tab the page falls back from,
+	 * and the buttons have to agree with the pane that was rendered.
+	 *
+	 * @param array<string, mixed> $client The client row.
+	 *
+	 * @return array<string, bool> Keyed by tab.
+	 */
+	private function clientTabs(array $client)
+	{
+		return [
+			'resources' => (bool) ($client['id'] && (int) ($client['profile_id'] ?? 0)),
+			'logs' => (bool) ($client['id'] && (string) ($client['mac'] ?? '') !== ''),
+		];
+	}
+
+	/**
+	 * Which tab the request actually opens on.
+	 *
+	 * `?tab=` is what was asked for; this is what the page will render, which
+	 * is not the same thing -- every editor falls back to its first tab when
+	 * the one asked for has nothing behind it yet. An empty string is that
+	 * first tab, which is the bare URL of the row being edited and the only
+	 * tab with fields on it.
+	 *
+	 * @return string Tab the page opens on, or '' for the editor's own.
+	 */
+	private function openTab()
+	{
+		$tab = trim((string) ($_REQUEST['tab'] ?? ''));
+
+		if ($tab === '') {
+			return '';
+		}
+
+		if (isset($_REQUEST['client'])) {
+			$wanted = trim((string) $_REQUEST['client']);
+			$client = $wanted === '' ? null : $this->clients->clientRow($wanted);
+			$available = $client ? $this->clientTabs($client) : [];
+
+			return !empty($available[$tab]) ? $tab : '';
+		}
+
+		if (!isset($_REQUEST['profile'])) {
+			return $tab;
+		}
+
+		// Both of a profile's other tabs, and a resource's one, hang off a
+		// row that has been written; on a new one the editor opens on itself.
+		if (trim((string) $_REQUEST['profile']) === '') {
+			return '';
+		}
+
+		if (isset($_REQUEST['resource'])) {
+			return ($tab === 'clients' && trim((string) $_REQUEST['resource']) !== '') ? $tab : '';
+		}
+
+		return in_array($tab, ['resources', 'clients'], true) ? $tab : '';
 	}
 
 	/**
@@ -329,6 +390,13 @@ class Pages extends Service
 	 * is saved over AJAX, not posted. These are ours, and
 	 * views/partials/editor.php binds them.
 	 *
+	 * Save is drawn only on the editor's own tab. Since a tab is a link, only
+	 * the pane that was asked for is rendered, so on any other tab the fields
+	 * Save posts are not on the page at all -- and a Save that quietly posts
+	 * a form that is not there would write empty strings over the row. Delete
+	 * and Close stay: both act on the row rather than on the fields, and the
+	 * row's id is printed into every one of its tabs.
+	 *
 	 * @param string $request Current page request.
 	 *
 	 * @return array<string, array<string, string>> Action bar buttons.
@@ -349,13 +417,15 @@ class Pages extends Service
 			return [];
 		}
 
-		$bar = [
-			'oryksave' => [
+		$bar = [];
+
+		if ($this->openTab() === '') {
+			$bar['oryksave'] = [
 				'name' => 'oryksave',
 				'id' => 'oryksave',
 				'value' => _('Save'),
-			],
-		];
+			];
+		}
 
 		// Nothing to delete until there is a row: on a new profile, or a new
 		// resource, the button would refer to something never written.
