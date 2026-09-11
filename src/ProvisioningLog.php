@@ -60,7 +60,7 @@ class ProvisioningLog extends Service
 
 		if (isset($_REQUEST['mac'])) {
 			$clauses[] = 'l.mac = :mac';
-			$params[':mac'] = $this->logMac($_REQUEST['mac']);
+			$params[':mac'] = Mac::stored($_REQUEST['mac']);
 		}
 
 		if ($search !== '') {
@@ -145,7 +145,7 @@ class ProvisioningLog extends Service
 	{
 		try {
 			if (isset($request['mac'])) {
-				$mac = $this->logMac($request['mac']);
+				$mac = Mac::stored($request['mac']);
 
 				if ($mac === '') {
 					return ['status' => false, 'message' => _('No MAC address to clear the log for.')];
@@ -166,52 +166,6 @@ class ProvisioningLog extends Service
 		}
 
 		return ['status' => true];
-	}
-
-	/**
-	 * How many requests one MAC has made.
-	 *
-	 * What the client editor's Logs tab is labelled with. Zero is worth
-	 * reading rather than hiding: a phone that has never asked for anything is
-	 * a phone that is not reaching this PBX at all, which is a different fault
-	 * from the ones the rows themselves describe.
-	 *
-	 * @param string $mac Normalised MAC address.
-	 *
-	 * @return int Rows logged against it.
-	 */
-	public function macLogCount($mac)
-	{
-		try {
-			$stmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->logsTable}` WHERE mac = :mac");
-			$stmt->execute([':mac' => (string) $mac]);
-
-			return (int) $stmt->fetchColumn();
-		} catch (\Exception $e) {
-			// Rendered on the way into the page, so it may not throw: a
-			// missing log table is a badge that reads zero, not a 500 on the
-			// client editor.
-			return 0;
-		}
-	}
-
-	/**
-	 * A MAC as the log stores it.
-	 *
-	 * Normalised when it is a MAC, so a row can be read back by the client
-	 * editor's tab, and kept as it was sent when it is not -- on a row like
-	 * that, what the thing at the other end actually sent is the whole of what
-	 * the row is worth having.
-	 *
-	 * @param mixed $mac MAC address as it was written.
-	 *
-	 * @return string The normalised MAC, or what was asked with.
-	 */
-	private function logMac($mac)
-	{
-		$normalised = Mac::normalize($mac);
-
-		return $normalised !== '' ? $normalised : trim((string) $mac);
 	}
 
 	/**
@@ -250,7 +204,7 @@ class ProvisioningLog extends Service
 				VALUES (:mac, :filename, :status, :message, :method, :ip, :user_agent)"
 			);
 			$stmt->execute([
-				':mac' => $this->clip($this->logMac($mac), 64),
+				':mac' => $this->clip(Mac::stored($mac), 64),
 				':filename' => $this->clip($requested, 255),
 				':status' => (int) $status,
 				':message' => $message === null ? null : $this->clip($message, 255),

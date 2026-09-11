@@ -84,4 +84,42 @@ abstract class Service
 		$this->FreePBX = $freepbx;
 		$this->db = $freepbx->Database;
 	}
+
+	/**
+	 * How many rows a table holds, or how many of them a column names.
+	 *
+	 * Here for the same reason the table names are: it is the statement every
+	 * count in this module is, written once. A table is counted whole when no
+	 * value narrows it, and a value of null is no narrowing rather than a row
+	 * whose column is NULL -- nothing in this module counts those.
+	 *
+	 * The table and column are interpolated, so neither may come from a
+	 * request: both are named by the caller, from the properties above.
+	 *
+	 * It answers zero rather than throwing. Counts are read on the way into a
+	 * page and label a tab beside the table they count; a table that is not
+	 * there -- a module upgraded from before it existed, an install part way
+	 * through -- is a badge reading zero, not a 500 on the page.
+	 *
+	 * @param string      $table  Table to count, from this class's properties.
+	 * @param string|null $column Column to narrow by, or null for the lot.
+	 * @param mixed       $value  Value it has to hold, or null for the lot.
+	 *
+	 * @return int Rows counted.
+	 */
+	protected function rowCount($table, $column = null, $value = null)
+	{
+		$narrowed = $column !== null && $value !== null;
+
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT COUNT(*) FROM `$table`" . ($narrowed ? " WHERE `$column` = :value" : '')
+			);
+			$stmt->execute($narrowed ? [':value' => $value] : []);
+
+			return (int) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			return 0;
+		}
+	}
 }

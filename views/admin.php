@@ -10,12 +10,17 @@
  * -- views/client.php and views/profile.php -- which the Add and Edit buttons
  * link to. What is left on the list is deletion, which needs no page.
  *
- * @var string $tab   Tab to open on: clients|profiles|logs
- * @var int    $saved Row just written on that tab, highlighted here
+ * @var string             $tab    Tab to open on: clients|profiles|logs
+ * @var int                $saved  Row just written on that tab, highlighted here
+ * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
  */
 
 $tab = in_array($tab ?? '', ['profiles', 'logs'], true) ? $tab : 'clients';
 $saved = (int) ($saved ?? 0);
+
+// Nothing above this page narrows them: every client, every profile, every
+// request the endpoint has answered.
+$countScope = [];
 
 // One `saved` in the URL, and the tab it arrives on says which table it means:
 // each editor comes back to its own tab, so there is never a saved client and
@@ -23,6 +28,7 @@ $saved = (int) ($saved ?? 0);
 $savedClient = $tab === 'clients' ? $saved : 0;
 $savedProfile = $tab === 'profiles' ? $saved : 0;
 ?>
+<?php include __DIR__ . '/partials/counts.php'; ?>
 <style>
 	.flex {
 		display: flex;
@@ -52,16 +58,19 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 					<li role="presentation" class="<?php echo $tab === 'clients' ? 'active' : ''; ?>">
 						<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
 							<?php echo _('Clients'); ?>
+							<?php $countBadge('clients'); ?>
 						</a>
 					</li>
 					<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
 						<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
 							<?php echo _('Profiles'); ?>
+							<?php $countBadge('profiles'); ?>
 						</a>
 					</li>
 					<li role="presentation" class="<?php echo $tab === 'logs' ? 'active' : ''; ?>">
 						<a href="#oryk_logs" aria-controls="oryk_logs" role="tab" data-toggle="tab">
 							<?php echo _('Logs'); ?>
+							<?php $countBadge('logs'); ?>
 						</a>
 					</li>
 				</ul>
@@ -295,6 +304,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 			$('#client_table').bootstrapTable('refresh');
 			$('#profile_table').bootstrapTable('refresh');
+			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});
@@ -311,6 +321,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 			}
 
 			$('#profile_table').bootstrapTable('refresh');
+			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});
