@@ -16,6 +16,18 @@ use PDO;
 class Clients extends Service
 {
 	/**
+	 * Whether a client has a token, as a column.
+	 *
+	 * The table wants to show whether a client is authenticated, and the one
+	 * thing it must not be shown to do that is the token itself -- so the
+	 * question is answered in SQL and only the answer travels. It is a
+	 * constant because the same expression is both selected and sorted on,
+	 * and the two drifting apart would sort the column by something other
+	 * than what it displays.
+	 */
+	const SECURE_EXPR = "(pc.token IS NOT NULL AND pc.token <> '')";
+
+	/**
 	 * @var Freepbx
 	 */
 	private $pbx;
@@ -72,6 +84,7 @@ class Clients extends Service
 			'device_id' => 'pc.device_id',
 			'description' => 'd.description',
 			'profile' => 'p.name',
+			'secure' => self::SECURE_EXPR,
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['mac'];
@@ -124,7 +137,8 @@ class Clients extends Service
 				pc.profile_id,
 				d.user AS extension,
 				d.description AS description,
-				p.name AS profile
+				p.name AS profile,
+				" . self::SECURE_EXPR . " AS secure
 			$from
 			$where
 			ORDER BY $sort $order

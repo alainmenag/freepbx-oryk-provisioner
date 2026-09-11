@@ -103,10 +103,11 @@ $tabs = [
 							<thead>
 								<tr>
 									<th data-field="mac" data-formatter="formatMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
+									<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
 									<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 									<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
-									<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
 									<th data-field="profile" data-formatter="formatClientProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
+									<th data-field="secure" data-formatter="formatClientSecure" data-sortable="true"><?php echo _('Secure'); ?></th>
 									<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
@@ -227,6 +228,14 @@ $tabs = [
 			return '-';
 		}
 		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.profile_id)}">${value}</a>`;
+	}
+
+	// Whether the client has a token, which the row is told as a flag rather
+	// than by being handed the hash. MySQL answers the comparison with 1 or 0
+	// and PDO brings it back as a string, so the truthiness test is on the
+	// number rather than on the value as it arrives -- '0' is true.
+	function formatClientSecure(value, row) {
+		return Number(value) ? 'Yes' : 'No';
 	}
 
 	function formatProfileName(value, row) {
