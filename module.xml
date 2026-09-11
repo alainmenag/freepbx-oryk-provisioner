@@ -3,8 +3,8 @@
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
 	<repo>commercial</repo>
-	<version>1.0.13</version>
-	<dbversion>1.0.7</dbversion>
+	<version>1.0.14</version>
+	<dbversion>1.0.8</dbversion>
 	<publisher>Oryk</publisher>
 	<type>setup</type>
 	<class>Oryk_provisioner</class>
@@ -14,6 +14,7 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
+		*1.0.14* A resource has a &lt;strong&gt;type&lt;/strong&gt;: Template, File or Log. It used to be inferred -- an uploaded file meant a file and no file meant a template -- so a resource could not be a file until a file was on it, and could not be a log at all. The type is now the only thing that says which, set on the resource editor, and it decides what a phone asking for that filename gets. Log is the new one and the reason for the rest: a phone PUTs its boot and app logs back when it finishes starting up, and a resource of type Log is what says this profile takes one -- what arrives is written to ASTLOGDIR/provisioner/&lt;mac&gt;/ under the resource's own name rendered for that client, a directory per client, so everything one phone has sent is in one place. A PUT to anything else is still refused. Existing resources are migrated on upgrade: anything with a file uploaded to it becomes File, everything else Template. Also fixed: a client with a token could fetch a resource whose template column was empty -- an uploaded file, usually -- without presenting the token
 		*1.0.13* The module class is a thin adapter over src/. What was one 3,400-line file is sixteen classes in a namespace of its own -- Clients, Profiles, Resources, Matcher, Previews, Template, Endpoint, Pages, Installer, Schema, FileRepo, Tokens, ProvisioningLog, Freepbx, Mac -- loaded by an autoloader the module registers for itself, since BMO autoloads the module class and nothing else. Every method moved verbatim; not one column changed and nothing behaves differently
 		*1.0.12* A client can be given a token. Type it as -- username:password -- and it is hashed with password_hash() when you save; the Token box holds that hash from then on, so leaving it alone leaves the token alone, typing a new user:password over it replaces it, and emptying it takes it away. A colon is what marks a value as a token still to be hashed. verifyToken() is the other half of the mechanism;
 		*1.0.11* A resource can serve an uploaded file instead of a template -- firmware above all. Upload one on the resource and it is served exactly as stored, under the resource's filename; remove it and the resource is the template it was, text and all. There is no type to set: the file is the difference. Files are kept in ASTSPOOLDIR/repo, named after the resource id, and go when the resource or its profile does. serveConfig() is now serve(), and it answers a request with no MAC address in it -- a phone fetching firmware sends none -- from the uploaded files, matched by name across every profile

@@ -7,16 +7,30 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 use PDO;
 
 /**
- * The resources table: the files a profile serves.
+ * The resources table: the files a profile serves, and the ones it takes.
  *
- * A resource is a filename and either a template or an uploaded file.
- * Uploading and removing that file live here rather than in FileRepo,
- * because both are operations on a resource that happen to write a
- * file -- the file is what makes the resource static, so the row and the
- * file are saved together or not at all.
+ * A resource is a filename and a type, and the type says what the filename
+ * gets: a template is rendered for the client that asked, a file is handed
+ * over as it was stored, a log is received from the phone rather than
+ * served to it.
+ *
+ * Uploading and removing a file live here rather than in FileRepo, because
+ * both are operations on a resource that happen to write a file -- the row
+ * and the file are saved together or not at all.
  */
 class Resources extends Service
 {
+	/**
+	 * What a resource can be.
+	 *
+	 * The first is the default, here and in the column: a resource somebody
+	 * has written a filename for and said nothing else about is a template,
+	 * which is what every resource written before 1.0.14 was.
+	 *
+	 * @var array<int, string>
+	 */
+	const TYPES = ['template', 'file', 'log'];
+
 	/**
 	 * @var Profiles
 	 */
@@ -49,6 +63,7 @@ class Resources extends Service
 
 		$sortable = [
 			'name' => 'name',
+			'type' => 'type',
 			'file_size' => 'file_size',
 			'updated_at' => 'updated_at',
 		];
@@ -75,7 +90,7 @@ class Resources extends Service
 		$total = (int) $countStmt->fetchColumn();
 
 		$sql = "
-			SELECT id, profile_id, name, file_size, file_uploaded_at, updated_at
+			SELECT id, profile_id, name, type, file_size, file_uploaded_at, updated_at
 			FROM `{$this->resourcesTable}`
 			$where
 			ORDER BY $sort $order
@@ -114,7 +129,7 @@ class Resources extends Service
 	public function resourceRow($id, $profileId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name, template, file_size, file_uploaded_at
+			"SELECT id, profile_id, name, type, template, file_size, file_uploaded_at
 			FROM `{$this->resourcesTable}`
 			WHERE id = :id AND profile_id = :profile_id"
 		);
@@ -137,6 +152,16 @@ class Resources extends Service
 		$profileId = (int) ($request['profile_id'] ?? 0);
 		$name = trim((string) ($request['name'] ?? ''));
 		$template = (string) ($request['template'] ?? '');
+
+		// null when the caller said nothing about the type, which is not the
+		// same as saying 'template': a save that carries only a filename --
+		// the one an upload does on its way past -- leaves the type where it
+		// was rather than quietly putting it back to the default.
+		$type = $this->resourceType($request);
+
+		if ($type === '') {
+			return ['status' => false, 'message' => _('That is not a kind of resource.')];
+		}
 
 		if (!$this->profiles->profileExists($profileId)) {
 			return ['status' => false, 'message' => _('That profile no longer exists.')];
@@ -176,21 +201,40 @@ class Resources extends Service
 				return ['status' => false, 'message' => _('That resource no longer exists.')];
 			}
 
+			$type = $type ?? (string) ($existing['type'] ?? self::TYPES[0]);
+
+			$set = 'name = :name, type = :type';
+			$params = [
+				':name' => $name,
+				':type' => $type,
+				':id' => $id,
+				':profile_id' => $profileId,
+			];
+
 			// Two reasons the template may not be written, and they are the
 			// same reason twice: this only writes what it was actually given.
 			//
-			// A resource serving an uploaded file is not showing a template box
-			// at all, so its text stays underneath the file rather than being
-			// destroyed by it -- remove the file and the resource is the
-			// template it was. And a caller that sent no template did not mean
-			// an empty one: uploading a file saves the resource's name along
-			// with it, and that is a save of the name and nothing else.
-			$set = 'name = :name';
-			$params = [':name' => $name, ':id' => $id, ':profile_id' => $profileId];
-
-			if (array_key_exists('template', $request) && $existing['file_size'] === null) {
+			// A resource that is not a template is not showing a template box
+			// at all, so its text stays underneath whatever it is now rather
+			// than being destroyed by it -- put it back to a template and the
+			// text is where it was. And a caller that sent no template did not
+			// mean an empty one: uploading a file saves the resource's name
+			// along with it, and that is a save of the name and nothing else.
+			if (array_key_exists('template', $request) && $type === 'template') {
 				$set .= ', template = :template';
 				$params[':template'] = $template;
+			}
+
+			// A resource that is no longer a file has no uploaded file, and
+			// the file goes with the saying so. This is the one thing the type
+			// being the authority costs: before it, a file was removed by
+			// pressing Remove and there was nothing else that could mean it.
+			// Now changing the type means it too, so the row cannot claim to
+			// be a template while a file sits in the repository under its id
+			// waiting to be served by a type it no longer has.
+			if ($type !== 'file' && $existing['file_size'] !== null) {
+				$this->files->removeRepoFile($id);
+				$set .= ', file_size = NULL, file_uploaded_at = NULL';
 			}
 
 			// The profile is in the WHERE rather than trusted from the form:
@@ -203,16 +247,25 @@ class Resources extends Service
 			);
 			$stmt->execute($params);
 
-			return ['status' => true, 'id' => $id, 'profile_id' => $profileId, 'name' => $name];
+			return [
+				'status' => true,
+				'id' => $id,
+				'profile_id' => $profileId,
+				'name' => $name,
+				'type' => $type,
+			];
 		}
 
+		$type = $type ?? self::TYPES[0];
+
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->resourcesTable}` (profile_id, name, template)
-			VALUES (:profile_id, :name, :template)"
+			"INSERT INTO `{$this->resourcesTable}` (profile_id, name, type, template)
+			VALUES (:profile_id, :name, :type, :template)"
 		);
 		$stmt->execute([
 			':profile_id' => $profileId,
 			':name' => $name,
+			':type' => $type,
 			':template' => $template,
 		]);
 
@@ -221,7 +274,34 @@ class Resources extends Service
 			'id' => (int) $this->db->lastInsertId(),
 			'profile_id' => $profileId,
 			'name' => $name,
+			'type' => $type,
 		];
+	}
+
+	/**
+	 * The type a request is asking for, if it is asking for one at all.
+	 *
+	 * Three answers rather than two, because there are three things a caller
+	 * can mean: a type it named, nothing (leave the type where it is -- the
+	 * filename-only save an upload makes on its way past), and a type that is
+	 * not one of ours, which is a refusal and not a fall back to the default.
+	 * A select on a page can only ever send one of the three, which is the
+	 * reason to be strict about the fourth: anything else reaching here came
+	 * from something other than the editor.
+	 *
+	 * @param array<string, mixed> $request Submitted form values.
+	 *
+	 * @return string|null The type, '' when it is not one, null when unsaid.
+	 */
+	private function resourceType($request)
+	{
+		if (!array_key_exists('type', $request)) {
+			return null;
+		}
+
+		$type = strtolower(trim((string) $request['type']));
+
+		return in_array($type, self::TYPES, true) ? $type : '';
 	}
 
 	/**
@@ -274,13 +354,17 @@ class Resources extends Service
 	}
 
 	/**
-	 * Save the resource's name, when a file action was given one.
+	 * Save the resource's name and type, when a file action was given them.
 	 *
 	 * Uploading and removing a file both save the resource they act on: the
-	 * button was pressed on a page that may be carrying a renamed resource,
-	 * and it means the page. Neither has an opinion about what a name may be
-	 * -- saveResource() already knows, and a second opinion is a second thing
-	 * to keep in step with the first.
+	 * button was pressed on a page that may be carrying a renamed resource or
+	 * one whose type has just been changed to File, and it means the page.
+	 * Neither has an opinion about what a name or a type may be --
+	 * saveResource() already knows, and a second opinion is a second thing to
+	 * keep in step with the first.
+	 *
+	 * The template is deliberately not among them: what is not passed is not
+	 * written, and the text under a file stays as it was.
 	 *
 	 * @param array<string, mixed> $request   Submitted form values.
 	 * @param int                  $id        Resource id.
@@ -295,19 +379,25 @@ class Resources extends Service
 			return null;
 		}
 
-		return $this->saveResource([
+		$values = [
 			'id' => $id,
 			'profile_id' => $profileId,
 			'name' => $request['name'],
-		]);
+		];
+
+		if (array_key_exists('type', $request)) {
+			$values['type'] = $request['type'];
+		}
+
+		return $this->saveResource($values);
 	}
 
 	/**
 	 * Store an uploaded file against a resource.
 	 *
-	 * The file is what the resource serves from now on, and the template it
-	 * had is left in the column underneath -- there is no second thing to
-	 * set and nothing to undo but removing the file again.
+	 * The file is what a resource of type File serves, and the template it
+	 * had is left in the column underneath -- put the type back to Template
+	 * and the text is where it was.
 	 *
 	 * The resource is saved as part of it, so choosing a file is the whole of
 	 * what has to be done: a filename edited on the way to the upload is
@@ -356,6 +446,19 @@ class Resources extends Service
 		}
 
 		$name = $saved['name'] ?? (string) $resource['name'];
+		$type = $saved['type'] ?? (string) $resource['type'];
+
+		// The type is what says a resource serves a file, so it is what says
+		// a resource may be given one. Refused rather than set from here: an
+		// upload arriving at a resource that has not been declared a file is
+		// a page out of step with the row, and silently making the row agree
+		// is how a template with text in it stops being served.
+		if ($type !== 'file') {
+			return [
+				'status' => false,
+				'message' => _('Only a resource whose type is File takes an uploaded file.'),
+			];
+		}
 
 		$file = $_FILES['file'] ?? null;
 
@@ -423,9 +526,11 @@ class Resources extends Service
 	/**
 	 * Take the uploaded file off a resource.
 	 *
-	 * What is left is the resource it was before the upload, template and
-	 * all: the file never touched that column, so there is nothing to put
-	 * back. The resource is saved on the way through, as it is for an upload.
+	 * What is left is a resource of type File with nothing uploaded to it,
+	 * which is an unfinished resource and is answered as one -- not a
+	 * template, which it only becomes by being said to be one. The text it
+	 * had is still in the column underneath, untouched. The resource is saved
+	 * on the way through, as it is for an upload.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *

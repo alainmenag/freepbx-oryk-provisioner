@@ -25,14 +25,20 @@ class Installer extends Service
 	private $files;
 
 	/**
+	 * @var LogRepo
+	 */
+	private $logs;
+
+	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs)
 	{
 		parent::__construct($freepbx);
 
 		$this->schema = $schema;
 		$this->files = $files;
+		$this->logs = $logs;
 	}
 
 	/**
@@ -67,12 +73,19 @@ class Installer extends Service
 		// filename a phone asks for comes close either way. There is no
 		// separate index on profile_id -- it is the left of the unique one.
 		//
-		// file_size is the whole of what says a resource is an uploaded file
-		// rather than a template. There is no `type` column: only an upload can
-		// set the size, and a column that says the same thing twice is a column
-		// that can disagree with itself. The template stays underneath a file
-		// rather than being cleared by it, so removing the file leaves the
-		// resource the template it was.
+		// `type` is what the resource is, and the only thing that says so:
+		// template (rendered for the client that asked), file (handed over as
+		// it was stored) or log (received from the phone rather than served to
+		// it). It was inferred from file_size until 1.0.14 -- a size meant a
+		// file -- which meant a resource could not say what it was until it
+		// already was one, and could not be a log at any point. It is 16
+		// characters and not an ENUM because adding a fourth kind should be a
+		// line in Resources::TYPES rather than an ALTER.
+		//
+		// file_size is a fact about the upload now rather than the thing that
+		// decides: it is what is on the disk, and it is null on a resource
+		// declared a file that nobody has uploaded to yet -- which is an
+		// unfinished resource, and answered as one.
 		//
 		// The index on `name` alone is for the lookup a request with no client
 		// behind it makes -- firmware, asked for by the name the vendor fixed.
@@ -82,6 +95,7 @@ class Installer extends Service
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`profile_id` INT(11) NOT NULL,
 				`name` VARCHAR(180) NOT NULL,
+				`type` VARCHAR(16) NOT NULL DEFAULT 'template',
 				`template` LONGTEXT NULL,
 				`file_size` INT(10) UNSIGNED NULL DEFAULT NULL,
 				`file_uploaded_at` DATETIME NULL DEFAULT NULL,
@@ -156,6 +170,7 @@ class Installer extends Service
 		// there, so a site upgrading to 1.0.6 gets the two file columns and the
 		// name index from here instead.
 		$this->schema->addResourceFileColumns();
+		$this->schema->addResourceTypeColumn();
 		$this->schema->addClientTokenColumn();
 
 		$this->linkEngine();
@@ -168,6 +183,17 @@ class Installer extends Service
 			$this->installMessage(sprintf(
 				'Provisioner: could not create %s; resource uploads will not work until it exists.',
 				$this->files->repoPath()
+			));
+		}
+
+		// The same, for the other direction: a log resource has nowhere to put
+		// what a phone PUTs without it. Made here so an operator is told at
+		// install rather than by a phone being refused months later, and made
+		// again on the first PUT that needs it.
+		if (!$this->logs->ensureLogs()) {
+			$this->installMessage(sprintf(
+				'Provisioner: could not create %s; logs a phone uploads will not be stored until it exists.',
+				$this->logs->logPath()
 			));
 		}
 

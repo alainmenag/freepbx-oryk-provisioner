@@ -29,10 +29,16 @@
  *                                            name alone -- a phone fetching
  *                                            firmware sends no MAC at all
  *
- * GET or HEAD; the MAC is read from the path, the query string or the
- * User-Agent, and may be missing altogether. A request that names neither a
- * MAC nor a file is a 404 here; anything else is the module's to answer or
- * refuse.
+ * and, in the other direction:
+ *
+ *   PUT /provisioner/0004f282e824-boot.log   a log the phone is sending back,
+ *                                            taken when the profile has a
+ *                                            resource of type Log by that name
+ *
+ * GET or HEAD to fetch, PUT to send; the MAC is read from the path, the query
+ * string or the User-Agent, and on a fetch may be missing altogether. A
+ * request that names neither a MAC nor a file is a 404 here; anything else is
+ * the module's to answer or refuse.
  */
 
 /**
@@ -144,12 +150,27 @@ if (($method === 'GET' || $method === 'HEAD') && ($mac !== '' || $filename !== '
 }
 
 // --------------------------------------------------------------------------
-// 404
+// RECEIVE
 // --------------------------------------------------------------------------
 
-// to-do: a phone also PUTs its boot and app logs. Until there is somewhere
-// for those to go, anything that is not a fetch is not a request this
-// endpoint answers.
+// A phone does not only fetch. It PUTs its boot and app logs back when it has
+// finished starting up, and until 1.0.14 there was nowhere for those to go.
+// A resource of type Log is that somewhere, and receive() ends the request
+// the way serve() does -- with a 200 when the profile takes what was sent, a
+// 404 when it does not.
+//
+// The MAC is required here where it is not for a fetch, and that is the whole
+// of the difference: what a phone sends is written to disk, so it has to be a
+// phone this module knows. There is no equivalent of the by-name firmware
+// lookup in this direction.
+if ($method === 'PUT' && $mac !== '' && $filename !== '') {
+    $provisioner->receive($mac, $filename, $token);
+    exit;
+}
+
+// --------------------------------------------------------------------------
+// 404
+// --------------------------------------------------------------------------
 
 http_response_code(404);
 
@@ -160,7 +181,9 @@ http_response_code(404);
 // be recorded at all.
 $reason = ($method === 'GET' || $method === 'HEAD')
 	? 'Neither a MAC address nor a filename in the request.'
-	: sprintf('%s is not a request this endpoint answers.', $method);
+	: ($method === 'PUT'
+		? 'A PUT needs both a MAC address and a filename.'
+		: sprintf('%s is not a request this endpoint answers.', $method));
 
 $provisioner->log(sprintf(
 	'oryk_provisioner: %s for %s (%s)',

@@ -62,7 +62,7 @@ class Matcher extends Service
 	public function matchResource($profileId, $requested, $suffix, array $values)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name, template, file_size
+			"SELECT id, name, type, template, file_size
 			FROM `{$this->resourcesTable}`
 			WHERE profile_id = :profile_id
 			ORDER BY name"
@@ -221,13 +221,19 @@ class Matcher extends Service
 	}
 
 	/**
-	 * A resource with an uploaded file, by the name it is asked for.
+	 * A resource of type File, by the name it is asked for.
 	 *
 	 * The lookup behind a request that reaches no profile. Matched exactly,
 	 * and only against the name as it was typed: with no client there is no
 	 * MAC to take out of the request and nothing to render a templated name
 	 * against, so a file meant to be fetched this way is named exactly what
 	 * the vendor asks for -- 3111-44500-001.sip.ld.
+	 *
+	 * Narrowed to type = 'file' and not to file_size IS NOT NULL, which is
+	 * the same set today and a different question: what may be handed to a
+	 * caller who has said nothing about who they are is what its author
+	 * declared a file, and a declared file with nothing uploaded to it is
+	 * refused by name rather than passed over as though it did not exist.
 	 *
 	 * Case is the collation's business rather than LOWER()'s. The column is
 	 * utf8mb4 case-insensitive, so a plain comparison already ignores case and
@@ -245,9 +251,9 @@ class Matcher extends Service
 	public function fileByName($requested)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name, file_size
+			"SELECT id, profile_id, name, type, file_size
 			FROM `{$this->resourcesTable}`
-			WHERE name = :name AND file_size IS NOT NULL
+			WHERE name = :name AND type = 'file'
 			ORDER BY id
 			LIMIT 1"
 		);
@@ -263,15 +269,16 @@ class Matcher extends Service
 	 * who called a file directory.xml has already said what it is, and a
 	 * second field saying it again is a second field to get wrong.
 	 *
-	 * The two kinds of resource want different answers to an extension
-	 * nothing here recognises, so the kind is the second argument rather than
-	 * another list of extensions to keep up with. A template with an odd
-	 * extension is still configuration text, which is what .cfg is and what
-	 * every phone here expects; an uploaded file is bytes somebody chose, and
-	 * sending a firmware image as text is how it arrives corrupted.
+	 * The two kinds of resource that are served want different answers to an
+	 * extension nothing here recognises, so the type is the second argument
+	 * rather than another list of extensions to keep up with. A template with
+	 * an odd extension is still configuration text, which is what .cfg is and
+	 * what every phone here expects; an uploaded file is bytes somebody chose,
+	 * and sending a firmware image as text is how it arrives corrupted. A log
+	 * is never sent anywhere, so it never reaches this.
 	 *
 	 * @param string $name Resource name, which is the filename it is served as.
-	 * @param string $kind 'template' or 'file'.
+	 * @param string $kind The resource's type -- 'template' or 'file'.
 	 *
 	 * @return string Content type, without the charset.
 	 */

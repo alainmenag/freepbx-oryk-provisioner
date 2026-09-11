@@ -135,11 +135,26 @@
 	// A resource is a template or an uploaded file, and no column says which:
 	// only an upload sets a size, so a size is what says it. Here rather than
 	// in the two pages with a resource table on them, which is the same reason
-	// orykBytes() is here.
-	function formatResourceKind(value) {
-		return value === null || value === undefined
-			? 'Template'
-			: `File <span class="text-muted">${orykEscape(orykBytes(value))}</span>`;
+	// The resource's `type` column, which since 1.0.14 is the whole of what
+	// says which kind it is -- a size used to mean a file and its absence a
+	// template, so there was no way to be a file with nothing uploaded yet
+	// and no way to be a log at all. The size is still shown beside a file,
+	// as what is stored rather than as the thing that decides.
+	function formatResourceKind(value, row) {
+		const size = row ? row.file_size : null;
+
+		switch (value) {
+			case 'file':
+				return size === null || size === undefined
+					? `File <span class="text-danger">nothing uploaded</span>`
+					: `File <span class="text-muted">${orykEscape(orykBytes(size))}</span>`;
+
+			case 'log':
+				return 'Log';
+
+			default:
+				return 'Template';
+		}
 	}
 
 	/**

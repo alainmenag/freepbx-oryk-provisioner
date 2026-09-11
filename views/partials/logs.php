@@ -144,14 +144,18 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	}
 
 	// The method is on the status rather than in a column of its own: all but
-	// a handful of rows are GET, and the ones that are not say so in their
-	// message anyway.
+	// a handful of rows are a fetch, so GET and HEAD say so in the tooltip
+	// alone and anything else is written out beside the code. A phone PUTting
+	// a log is the reason that is worth doing -- a 200 for something received
+	// and a 200 for something served are the same number and not the same
+	// event, and the filename beside them does not always say which.
 	function formatLogStatus(value, row) {
 		const code = Number(value) || 0;
 		const style = code >= 200 && code < 300 ? 'label-success' : 'label-danger';
 		const method = row.method ? orykEscape(row.method) : '';
+		const shown = method && method !== 'GET' && method !== 'HEAD' ? `${method} ` : '';
 
-		return `<span class="label ${style}" title="${method}">${code || '-'}</span>`;
+		return `<span class="label ${style}" title="${method}">${shown}${code || '-'}</span>`;
 	}
 
 	// Which phone, in the two ways a phone says so without being asked: the

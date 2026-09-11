@@ -73,7 +73,7 @@ class Previews extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name
+			"SELECT id, profile_id, name, type
 			FROM `{$this->resourcesTable}`
 			WHERE id = :id"
 		);
@@ -99,7 +99,10 @@ class Previews extends Service
 			);
 
 			$rows[$index]['filename'] = $request['filename'];
-			$rows[$index]['url'] = $request['url'];
+			// A log is not served, so there is nothing to preview: the
+			// filename is still worth having -- it is what that phone PUTs
+			// to -- and the link would be a 404 with a Render button on it.
+			$rows[$index]['url'] = $resource['type'] === 'log' ? '' : $request['url'];
 		}
 
 		return $rows;
@@ -156,7 +159,7 @@ class Previews extends Service
 			$request = $this->matcher->resourceRequest((string) $row['name'], $values, $mac);
 
 			$rows[$index]['filename'] = $request['filename'];
-			$rows[$index]['url'] = $request['url'];
+			$rows[$index]['url'] = ($row['type'] ?? '') === 'log' ? '' : $request['url'];
 		}
 
 		return $rows;

@@ -58,9 +58,14 @@ class Pages extends Service
 	private $navigator;
 
 	/**
+	 * @var LogRepo
+	 */
+	private $logs;
+
+	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs)
 	{
 		parent::__construct($freepbx);
 
@@ -72,6 +77,7 @@ class Pages extends Service
 		$this->requestLog = $requestLog;
 		$this->counts = $counts;
 		$this->navigator = $navigator;
+		$this->logs = $logs;
 	}
 
 	/**
@@ -314,7 +320,13 @@ class Pages extends Service
 	 */
 	private function showResource(array $profile, $wanted, $tab = '')
 	{
-		$resource = ['id' => 0, 'profile_id' => (int) $profile['id'], 'name' => '', 'template' => ''];
+		$resource = [
+			'id' => 0,
+			'profile_id' => (int) $profile['id'],
+			'name' => '',
+			'type' => 'template',
+			'template' => '',
+		];
 
 		if ($wanted !== '') {
 			$found = $this->resources->resourceRow($wanted, (int) $profile['id']);
@@ -336,6 +348,10 @@ class Pages extends Service
 			]),
 			'profile' => $profile,
 			'placeholders' => $this->template->templatePlaceholders(),
+			// Printed on the page rather than described, because where a log
+			// lands is the whole of what an operator needs from that type and
+			// it is read off this server's own configuration.
+			'logPath' => $this->logs->logPath(),
 			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
 			// A resource that has never been written has no name to render
 			// against a client, so Clients is there but does not open --
