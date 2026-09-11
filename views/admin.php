@@ -10,6 +10,11 @@
  * -- views/client.php and views/profile.php -- which the Add and Edit buttons
  * link to. What is left on the list is deletion, which needs no page.
  *
+ * Every tab is a link and only the tab asked for is rendered -- see
+ * partials/tabs.php. Both tabs name themselves rather than one of them being
+ * the bare URL: neither is the other's default, though a bare
+ * ?display=oryk_provisioner still opens Clients.
+ *
  * @var string             $tab    Tab to open on: clients|profiles|logs
  * @var int                $saved  Row just written on that tab, highlighted here
  * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
@@ -28,6 +33,26 @@ $countScope = [];
 // a saved profile to tell apart.
 $savedClient = $tab === 'clients' ? $saved : 0;
 $savedProfile = $tab === 'profiles' ? $saved : 0;
+
+// The strip, as links. Nothing on this page is ever behind a tab that cannot
+// be opened: an empty table is still a table, and Add lives on it.
+$tabs = [
+	'clients' => [
+		'label' => _('Clients'),
+		'href' => '?display=oryk_provisioner&tab=clients',
+		'count' => 'clients',
+	],
+	'profiles' => [
+		'label' => _('Profiles'),
+		'href' => '?display=oryk_provisioner&tab=profiles',
+		'count' => 'profiles',
+	],
+	'logs' => [
+		'label' => _('Logs'),
+		'href' => '?display=oryk_provisioner&tab=logs',
+		'count' => 'logs',
+	],
+];
 ?>
 <?php include __DIR__ . '/partials/counts.php'; ?>
 <style>
@@ -49,30 +74,12 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
-				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="<?php echo $tab === 'clients' ? 'active' : ''; ?>">
-						<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
-							<?php echo _('Clients'); ?>
-							<?php $countBadge('clients'); ?>
-						</a>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'profiles' ? 'active' : ''; ?>">
-						<a href="#oryk_profiles" aria-controls="oryk_profiles" role="tab" data-toggle="tab">
-							<?php echo _('Profiles'); ?>
-							<?php $countBadge('profiles'); ?>
-						</a>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'logs' ? 'active' : ''; ?>">
-						<a href="#oryk_logs" aria-controls="oryk_logs" role="tab" data-toggle="tab">
-							<?php echo _('Logs'); ?>
-							<?php $countBadge('logs'); ?>
-						</a>
-					</li>
-				</ul>
+				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane <?php echo $tab === 'clients' ? 'active' : ''; ?>" id="oryk_clients">
+					<?php if ($tab === 'clients'): ?>
+					<div class="tab-pane active" id="oryk_clients">
 						<div id="client_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;client=">
 								<i class="fa fa-plus"></i> <?php echo _('Add Client'); ?>
@@ -106,7 +113,10 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 						</table>
 					</div>
 
-					<div role="tabpanel" class="tab-pane <?php echo $tab === 'profiles' ? 'active' : ''; ?>" id="oryk_profiles">
+					<?php endif; ?>
+
+					<?php if ($tab === 'profiles'): ?>
+					<div class="tab-pane active" id="oryk_profiles">
 						<div id="profile_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=">
 								<i class="fa fa-plus"></i> <?php echo _('Add Profile'); ?>
@@ -137,7 +147,10 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 						</table>
 					</div>
 
-					<div role="tabpanel" class="tab-pane <?php echo $tab === 'logs' ? 'active' : ''; ?>" id="oryk_logs">
+					<?php endif; ?>
+
+					<?php if ($tab === 'logs'): ?>
+					<div class="tab-pane active" id="oryk_logs">
 						<?php
 						// Every request, not just the ones a client was found
 						// for -- see the note at the top of the partial.
@@ -145,6 +158,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 						include __DIR__ . '/partials/logs.php';
 						?>
 					</div>
+					<?php endif; ?>
 
 				</div>
 
@@ -265,26 +279,11 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 		return orykSavedProfile && Number(row.id) === orykSavedProfile ? { classes: 'success' } : {};
 	}
 
-	// A table drawn while its tab is hidden has no width to lay itself out
-	// against, so it is told to measure again once the tab is on screen. The
-	// URL is kept in step at the same time -- the way the profile editor keeps
-	// `&tab=` in step with the tab it has open -- so a reload, a bookmark or a
-	// link back here all come back to the tab that was open. Both tabs name
-	// themselves rather than one of them being the bare URL: neither is the
-	// other's default, and `?display=oryk_provisioner` on its own still opens
-	// Clients.
-	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
-		const pane = $(this).attr('href');
-
-		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
-
-		if (window.history && window.history.replaceState) {
-			const tabs = { '#oryk_clients': 'clients', '#oryk_profiles': 'profiles', '#oryk_logs': 'logs' };
-			window.history.replaceState(null, '', `?display=oryk_provisioner&tab=${tabs[pane] || 'clients'}`);
-		}
-	});
-
 	// Deleting is the one action on either tab that needs no page of its own.
+	//
+	// Only one table is on the page -- the tab that was asked for is the only
+	// pane rendered -- so only that one is refreshed. What a delete changes on
+	// the other tab is its badge, and the badges are re-read whole.
 
 	$(document).on('click', '[name="client_delete"]', function () {
 		if (!window.confirm('Delete this client?')) {
@@ -298,7 +297,6 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 			}
 
 			$('#client_table').bootstrapTable('refresh');
-			$('#profile_table').bootstrapTable('refresh');
 			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});

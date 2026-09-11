@@ -34,7 +34,8 @@
  *
  * The bare ?profile=<id>&resource=<id> *is* the Resource tab, the way
  * ?profile=<id> is the profile editor's first tab; Clients names itself with
- * &tab=clients, and the shown.bs.tab handler keeps the address in step.
+ * &tab=clients. Each tab is a link and only the tab asked for is rendered --
+ * see partials/tabs.php.
  *
  * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, template, file_size, file_uploaded_at
  * @var array<string, mixed>                 $profile      The profile it belongs to
@@ -86,6 +87,27 @@ $tab = $isNew ? 'resource' : $tab;
 // is what narrows this page's counts -- not the resource, which nothing is
 // counted against.
 $countScope = ['profile_id' => $profileId];
+
+// The strip, as links. The first tab is the bare ?profile=<id>&resource=<id>,
+// the way every other editor's first tab is the bare URL of the row it edits
+// -- and on a resource that has not been written it is the key present and
+// empty, since `resource=0` names a row that does not exist and is bounced
+// back to the profile.
+$resourceUrl = '?display=oryk_provisioner&profile=' . $profileId . '&resource=' . ($isNew ? '' : $id);
+
+$tabs = [
+	'resource' => [
+		'label' => _('Resource'),
+		'href' => $resourceUrl,
+	],
+	'clients' => [
+		'label' => _('Clients'),
+		'href' => $resourceUrl . '&tab=clients',
+		'count' => 'clients',
+		'disabled' => $isNew,
+		'title' => $isNew ? _('Save the resource first -- the filename a client asks for is this one rendered.') : '',
+	],
+];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 <?php include __DIR__ . '/partials/counts.php'; ?>
@@ -100,34 +122,12 @@ $countScope = ['profile_id' => $profileId];
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
-				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="<?php echo $tab === 'resource' ? 'active' : ''; ?>">
-						<a href="#oryk_resource" aria-controls="oryk_resource" role="tab" data-toggle="tab">
-							<?php echo _('Resource'); ?>
-						</a>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'clients' ? 'active' : ($isNew ? 'disabled' : ''); ?>">
-						<?php if ($isNew): ?>
-							<a href="#" title="<?php echo _('Save the resource first -- the filename a client asks for is this one rendered.'); ?>"
-								onclick="return false;">
-								<?php echo _('Clients'); ?>
-							</a>
-						<?php else: ?>
-							<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
-								<?php echo _('Clients'); ?>
-								<?php $countBadge('clients'); ?>
-							</a>
-						<?php endif; ?>
-					</li>
-				</ul>
+				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resource' ? 'active' : ''; ?>" id="oryk_resource">
-
-						<!-- Not a form: see the note in partials/editor.php. -->
-						<input type="hidden" id="resource_row_id" value="<?php echo $id; ?>">
-						<input type="hidden" id="resource_profile_id" value="<?php echo $profileId; ?>">
+					<?php if ($tab === 'resource'): ?>
+					<div class="tab-pane oryk-tab-section active" id="oryk_resource">
 
 						<div class="element-container">
 							<div class="row">
@@ -255,8 +255,10 @@ $countScope = ['profile_id' => $profileId];
 
 					</div>
 
-					<?php if (!$isNew): ?>
-						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'clients' ? 'active' : ''; ?>" id="oryk_clients">
+					<?php endif; ?>
+
+					<?php if ($tab === 'clients'): ?>
+						<div class="tab-pane oryk-tab-section active" id="oryk_clients">
 
 							<p class="help-block fpbx-help-block">
 								<?php echo _('Clients assigned to the profile that owns this resource.'); ?>
@@ -343,21 +345,6 @@ $countScope = ['profile_id' => $profileId];
 
 		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
-
-	// A table drawn while its tab is hidden has no width to lay itself out
-	// against, so it is told to measure again once the tab is on screen. The
-	// URL is kept in step at the same time, so a reload or a bookmark comes
-	// back to the tab that is open.
-	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
-		const pane = $(this).attr('href');
-
-		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
-
-		if (window.history && window.history.replaceState) {
-			const tab = pane === '#oryk_clients' ? '&tab=clients' : '';
-			window.history.replaceState(null, '', `?display=oryk_provisioner&profile=${orykProfileId}&resource=${orykResourceId}${tab}`);
-		}
-	});
 
 	// Uploading and removing the file are requests of their own rather than
 	// part of Save. The file is stored under the resource's id, so there has
@@ -505,8 +492,8 @@ $countScope = ['profile_id' => $profileId];
 		confirm: 'Delete this resource?',
 		values: function () {
 			return {
-				id: $('#resource_row_id').val(),
-				profile_id: $('#resource_profile_id').val(),
+				id: orykResourceId,
+				profile_id: orykProfileId,
 				name: $('#resource_name').val(),
 				// A new resource is only its name: the box is not on the page yet,
 				// and val() of nothing is undefined, which jQuery would post as the

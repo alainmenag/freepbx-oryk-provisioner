@@ -29,6 +29,10 @@
  * hangs off a profile_id, and nothing can have been assigned to a profile
  * that has never been written.
  *
+ * Each tab is a link and only the tab asked for is rendered -- see
+ * partials/tabs.php. The bare ?profile=<id> is the Profile tab; the other two
+ * name themselves with &tab=.
+ *
  * Save, Delete and Close are the action bar's, drawn by FreePBX from
  * getActionBar() and bound by views/partials/editor.php.
  *
@@ -58,6 +62,33 @@ $tab = $isNew ? 'profile' : $tab;
 
 // Both tabs on this page are this profile's: its files and its clients.
 $countScope = ['profile_id' => $id];
+
+// The strip, as links. The first tab is the bare ?profile=<id>, the way every
+// other editor's first tab is the bare URL of the row it edits -- and on a
+// profile that has not been written it is the key present and empty, since
+// `profile=0` names a row that does not exist and is bounced to the list.
+$profileUrl = '?display=oryk_provisioner&profile=' . ($isNew ? '' : $id);
+
+$tabs = [
+	'profile' => [
+		'label' => _('Profile'),
+		'href' => $profileUrl,
+	],
+	'resources' => [
+		'label' => _('Resources'),
+		'href' => $profileUrl . '&tab=resources',
+		'count' => 'resources',
+		'disabled' => $isNew,
+		'title' => $isNew ? _('Save the profile first -- a resource belongs to one.') : '',
+	],
+	'clients' => [
+		'label' => _('Clients'),
+		'href' => $profileUrl . '&tab=clients',
+		'count' => 'clients',
+		'disabled' => $isNew,
+		'title' => $isNew ? _('Save the profile first -- nothing can be assigned to one that has not been written.') : '',
+	],
+];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 <?php include __DIR__ . '/partials/counts.php'; ?>
@@ -72,46 +103,12 @@ $countScope = ['profile_id' => $id];
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
-				<ul class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="<?php echo $tab === 'profile' ? 'active' : ''; ?>">
-						<a href="#oryk_profile" aria-controls="oryk_profile" role="tab" data-toggle="tab">
-							<?php echo _('Profile'); ?>
-						</a>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'resources' ? 'active' : ($isNew ? 'disabled' : ''); ?>">
-						<?php if ($isNew): ?>
-							<a href="#" title="<?php echo _('Save the profile first -- a resource belongs to one.'); ?>"
-								onclick="return false;">
-								<?php echo _('Resources'); ?>
-							</a>
-						<?php else: ?>
-							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
-								<?php echo _('Resources'); ?>
-								<?php $countBadge('resources'); ?>
-							</a>
-						<?php endif; ?>
-					</li>
-					<li role="presentation" class="<?php echo $tab === 'clients' ? 'active' : ($isNew ? 'disabled' : ''); ?>">
-						<?php if ($isNew): ?>
-							<a href="#" title="<?php echo _('Save the profile first -- nothing can be assigned to one that has not been written.'); ?>"
-								onclick="return false;">
-								<?php echo _('Clients'); ?>
-							</a>
-						<?php else: ?>
-							<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
-								<?php echo _('Clients'); ?>
-								<?php $countBadge('clients'); ?>
-							</a>
-						<?php endif; ?>
-					</li>
-				</ul>
+				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
 				<div class="tab-content">
 
-					<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'profile' ? 'active' : ''; ?>" id="oryk_profile">
-
-						<!-- Not a form: see the note in partials/editor.php. -->
-						<input type="hidden" id="profile_row_id" value="<?php echo $id; ?>">
+					<?php if ($tab === 'profile'): ?>
+					<div class="tab-pane oryk-tab-section active" id="oryk_profile">
 
 						<div class="element-container">
 							<div class="row">
@@ -140,8 +137,10 @@ $countScope = ['profile_id' => $id];
 
 					</div>
 
-					<?php if (!$isNew): ?>
-						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'resources' ? 'active' : ''; ?>" id="oryk_resources">
+					<?php endif; ?>
+
+					<?php if ($tab === 'resources'): ?>
+						<div class="tab-pane oryk-tab-section active" id="oryk_resources">
 
 							<p class="help-block fpbx-help-block">
 								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg. ** Firmware is not yet supported.'); ?>
@@ -179,7 +178,10 @@ $countScope = ['profile_id' => $id];
 
 						</div>
 
-						<div role="tabpanel" class="tab-pane oryk-tab-section <?php echo $tab === 'clients' ? 'active' : ''; ?>" id="oryk_clients">
+					<?php endif; ?>
+
+					<?php if ($tab === 'clients'): ?>
+						<div class="tab-pane oryk-tab-section active" id="oryk_clients">
 
 							<p class="help-block fpbx-help-block">
 								<?php echo _('Clients assigned to this profile.'); ?>
@@ -295,22 +297,6 @@ $countScope = ['profile_id' => $id];
 		].join('');
 	}
 
-	// A table drawn while its tab is hidden has no width to lay itself out
-	// against, so it is told to measure again once the tab is on screen. The
-	// URL is kept in step at the same time, so a reload -- and the Add
-	// Resource link on the tab -- come back to the tab that is open.
-	$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
-		const pane = $(this).attr('href');
-
-		$(pane).find('table[data-toggle="table"]').bootstrapTable('resetView');
-
-		if (window.history && window.history.replaceState) {
-			const tabs = { '#oryk_resources': '&tab=resources', '#oryk_clients': '&tab=clients' };
-			const tab = tabs[pane] || '';
-			window.history.replaceState(null, '', `?display=oryk_provisioner&profile=${orykProfileId}${tab}`);
-		}
-	});
-
 	// Deleting a resource is the one action that needs no page of its own.
 	$(document).on('click', '[name="resource_delete"]', function () {
 		if (!window.confirm('Delete this resource?')) {
@@ -335,7 +321,7 @@ $countScope = ['profile_id' => $id];
 		confirm: 'Delete this profile? Its resources go with it.',
 		values: function () {
 			return {
-				id: $('#profile_row_id').val(),
+				id: orykProfileId,
 				name: $('#profile_name').val()
 			};
 		},
