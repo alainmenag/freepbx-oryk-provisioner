@@ -30,7 +30,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * and it carries whatever the vendor decided to put in front of the
  * name. What is stored is the file, and the file is the resource.
  */
-class LogRepo extends Service
+class LogRepo extends Repo
 {
 	/**
 	 * The directory logs a phone sent are kept in.
@@ -46,9 +46,7 @@ class LogRepo extends Service
 	 */
 	public function logPath()
 	{
-		$logs = trim((string) $this->FreePBX->Config->get('ASTLOGDIR'));
-
-		return ($logs !== '' ? rtrim($logs, '/') : '/var/log/asterisk') . '/provisioner';
+		return $this->asteriskPath('ASTLOGDIR', '/var/log/asterisk', 'provisioner');
 	}
 
 	/**
@@ -72,67 +70,19 @@ class LogRepo extends Service
 	}
 
 	/**
-	 * Make a log directory if it is not there.
+	 * Make the root log directory if it is not there.
 	 *
-	 * Called at install for the root, and again before every PUT for the one
-	 * client's, for the reason FileRepo::ensureRepo() is: the log directory
-	 * is not a place this module is the only writer of, and one that was
-	 * there in the morning may not be by the afternoon.
-	 *
-	 * A client's directory is made on its first upload rather than when the
-	 * client is written. A client that has never sent anything has no
-	 * directory, which is a truer thing for the filesystem to say than an
-	 * empty one per MAC on the site -- and a client written before this
-	 * release would not have got one anyway.
-	 *
-	 * @param mixed $mac MAC to make the directory for, or '' for the root.
+	 * The root only, and only for install() -- a client's own directory is
+	 * made by the PUT that first needs it, since ensureDirectory() makes
+	 * parents anyway. A client that has never sent anything having no
+	 * directory is a truer thing for the filesystem to say than an empty one
+	 * per MAC on the site.
 	 *
 	 * @return bool True when the directory exists and is writable.
 	 */
-	public function ensureLogs($mac = '')
+	public function ensureLogs()
 	{
-		$path = $this->logPath();
-
-		if (!$this->makeDirectory($path)) {
-			return false;
-		}
-
-		if (trim((string) $mac) === '') {
-			return is_writable($path);
-		}
-
-		$client = $this->clientPath($mac);
-
-		return $client !== '' && $this->makeDirectory($client) && is_writable($client);
-	}
-
-	/**
-	 * Make one directory, owned by the user that writes to it.
-	 *
-	 * @param string $path Absolute path.
-	 *
-	 * @return bool True when it is there afterwards.
-	 */
-	private function makeDirectory($path)
-	{
-		if (is_dir($path)) {
-			return true;
-		}
-
-		if (!@mkdir($path, 0750, true) && !is_dir($path)) {
-			$this->log(sprintf('oryk_provisioner: could not create %s', $path), null, 'WARNING');
-
-			return false;
-		}
-
-		// The web user writes here -- this is the endpoint, running under
-		// Apache -- and Asterisk owns the rest of the directory. Neither is
-		// fatal, for the reason ensureRepo() gives: a directory somebody else
-		// made with workable permissions is workable.
-		@chown($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER'));
-		@chgrp($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP'));
-
-		return true;
+		return $this->ensureDirectory($this->logPath());
 	}
 
 	/**
@@ -171,27 +121,32 @@ class LogRepo extends Service
 	 * each time, so appending would store the same lines over and over and
 	 * grow a file nothing prunes; what is wanted is the log as it stands.
 	 *
-	 * @param mixed  $mac      MAC of the client that sent it.
-	 * @param string $filename Name to store it under -- the rendered resource name.
-	 * @param string $source   Stream to read the body from.
+	 * The path is logFile()'s answer, handed in rather than worked out again
+	 * here: the endpoint has already built it to decide there was something
+	 * to store, and building it twice is two chances to build it differently.
+	 *
+	 * @param string $path   Absolute path, from logFile().
+	 * @param string $source Stream to read the body from.
 	 *
 	 * @return array<string, mixed> Status, the path and byte count, or why not.
 	 */
-	public function storeLog($mac, $filename, $source = 'php://input')
+	public function storeLog($path, $source = 'php://input')
 	{
-		$path = $this->logFile($mac, $filename);
+		$path = (string) $path;
 
-		// The endpoint refuses a PUT without a client long before this, so
-		// reaching here without a path is a caller that has invented one, or
-		// a name that rendered to nothing a file can be called.
+		// logFile() answers '' for a MAC that is not one and for a name that
+		// renders to nothing a file can be called, and the endpoint refuses a
+		// PUT with no client long before either. Reaching here without a path
+		// is a caller that has invented one.
 		if ($path === '') {
 			return ['status' => false, 'message' => _('That is not somewhere a log can be stored.')];
 		}
 
-		if (!$this->ensureLogs($mac)) {
+		// The client's own directory, made by the first PUT that needs it.
+		if (!$this->ensureDirectory(dirname($path))) {
 			return [
 				'status' => false,
-				'message' => sprintf(_('%s cannot be written to.'), $this->clientPath($mac)),
+				'message' => sprintf(_('%s cannot be written to.'), dirname($path)),
 			];
 		}
 
@@ -205,7 +160,7 @@ class LogRepo extends Service
 
 			$this->log(sprintf('oryk_provisioner: could not write %s', $path), null, 'WARNING');
 
-			return ['status' => false, 'message' => sprintf(_('%s could not be written.'), $name)];
+			return ['status' => false, 'message' => sprintf(_('%s could not be written.'), basename($path))];
 		}
 
 		$bytes = (int) stream_copy_to_stream($in, $out);

@@ -93,48 +93,7 @@ class Endpoint extends Service
 	 */
 	public function serve($mac, $requested = null, $token = null)
 	{
-		$result = $this->resolveRequest($mac, $requested, $token);
-		$status = $result['code'] ?? ($result['status'] ? 200 : 404);
-
-		$this->log(sprintf(
-			'oryk_provisioner: %s for %s (%s)',
-			(string) $status,
-			(string) $requested !== '' ? (string) $requested : (string) $mac,
-			$result['message'] ?? 'OK',
-		), null, $result['status'] ? 'INFO' : 'DEBUG');
-
-		// Handle HTTP 401 Unauthorized by sending the appropriate headers and exiting.
-		if ($status === 401) {
-			header('WWW-Authenticate: Basic realm="Provisioning"');
-			http_response_code(401);
-			exit;
-		}
-
-		// Both outcomes, and a MAC nothing is associated with as readily as one
-		// that renders: a phone asking for a file nobody has written a client
-		// for is the request an operator most needs to see, and it is the one
-		// that leaves no other trace.
-		$this->requestLog->logRequest($mac, $requested, $status, $result['status'] ? null : ($result['message'] ?? null));
-
-		if (!$result['status']) {
-			$this->sendText(404, $result['message'] . "\n");
-		}
-
-		// Neither an uploaded file nor a stored log ever becomes a string on
-		// the way out: a firmware image is tens of megabytes, a boot log is
-		// occasionally not much less, and the rendered text of a config is
-		// neither. The type goes with it because it decides the content type
-		// -- a log is text somebody is about to read in a browser, where an
-		// uploaded file of an unknown extension is bytes.
-		if (($result['kind'] ?? '') === 'file') {
-			$this->sendFile(
-				(string) $result['path'],
-				(string) $result['resource'],
-				(string) ($result['type'] ?? 'file')
-			);
-		}
-
-		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource'], 'template'));
+		$this->answer($this->resolveRequest($mac, $requested, $token), $mac, $requested);
 	}
 
 	/**
@@ -169,28 +128,66 @@ class Endpoint extends Service
 	{
 		$result = $this->resolveRequest($mac, $requested, $token, 'PUT');
 
+		// The one thing this does that serve() does not: the body is written
+		// before the request is answered. Everything either side of it --
+		// resolving, logging, ending -- is answer()'s, and the same.
 		if ($result['status']) {
-			// The MAC off the result rather than the argument: it is the one
-			// resolveRequest() matched the client by, normalised, and it is
-			// about to be a directory name.
-			$stored = $this->logs->storeLog((string) $result['mac'], (string) $result['filename']);
+			$stored = $this->logs->storeLog($result['path']);
 
 			// Everything up to the write said yes, so a failure here is this
 			// server's and not the phone's. It is still answered as one thing
 			// -- the phone has nothing to do differently either way -- but the
-			// log says which, and says it with the path in it.
+			// log says which, and the byte count rides back on a success.
 			$result = $stored['status']
 				? $result + ['message' => sprintf('%s bytes', $stored['bytes'])]
 				: $stored;
 		}
 
+		$this->answer($result, $mac, $requested);
+	}
+
+	/**
+	 * Report what was decided, send it, and end the request.
+	 *
+	 * The whole of what serve() and receive() have in common, which is
+	 * everything except the write in the middle of one of them: the status,
+	 * the line in the Asterisk log, the 401, the row in the provisioning log,
+	 * the 404, and the body. Two copies of this is how the two directions
+	 * drift apart -- and they had already started to, logging the same
+	 * outcome in two shapes.
+	 *
+	 * The kind decides the body, and every kind there is has one:
+	 *
+	 *   template  the rendered text, as text.
+	 *   file      the file on disk, streamed -- an uploaded file, or a stored
+	 *             log being read back. Neither ever becomes a string: a
+	 *             firmware image is tens of megabytes and a boot log is
+	 *             occasionally not much less. The type goes with it because it
+	 *             decides the content type.
+	 *   log       nothing. This is the answer to a PUT, and a phone uploading
+	 *             a log reads the status and nothing else; a body it did not
+	 *             ask for is a body to be wrong about.
+	 *
+	 * @param array<string, mixed> $result    What resolveRequest() decided.
+	 * @param mixed                $mac       MAC the request was made with.
+	 * @param string|null          $requested Filename as it was asked for.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	private function answer(array $result, $mac, $requested)
+	{
 		$status = $result['code'] ?? ($result['status'] ? 200 : 404);
 
+		// The method is read here rather than passed: it is the same fact the
+		// provisioning log records for itself, and a caller that had to say
+		// which direction it was going would be a caller that could say it
+		// wrongly.
 		$this->log(sprintf(
-			'oryk_provisioner: %s for PUT %s (%s)',
+			'oryk_provisioner: %s for %s %s (%s)',
 			(string) $status,
+			(string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
 			(string) $requested !== '' ? (string) $requested : (string) $mac,
-			$result['message'] ?? 'OK',
+			$result['message'] ?? 'OK'
 		), null, $result['status'] ? 'INFO' : 'DEBUG');
 
 		if ($status === 401) {
@@ -199,16 +196,31 @@ class Endpoint extends Service
 			exit;
 		}
 
+		// Both outcomes, and a MAC nothing is associated with as readily as one
+		// that renders: a phone asking for a file nobody has written a client
+		// for is the request an operator most needs to see, and it is the one
+		// that leaves no other trace. On a success the message is whatever the
+		// answer had to add -- nothing, for a file served; the byte count, for
+		// a log stored.
 		$this->requestLog->logRequest($mac, $requested, $status, $result['message'] ?? null);
 
 		if (!$result['status']) {
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
-		// Nothing to say back. A phone uploading a log reads the status and
-		// nothing else, and a body it did not ask for is a body to be wrong
-		// about.
-		$this->sendText(200, '');
+		if (($result['kind'] ?? '') === 'file') {
+			$this->sendFile(
+				(string) $result['path'],
+				(string) $result['resource'],
+				(string) ($result['type'] ?? 'file')
+			);
+		}
+
+		if (($result['kind'] ?? '') === 'log') {
+			$this->sendText(200, '');
+		}
+
+		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource'], 'template'));
 	}
 
 	/**
@@ -317,7 +329,7 @@ class Endpoint extends Service
 
 			if ($match !== null) {
 				$outcome = $sending
-					? $this->receivedResult($match, $values)
+					? $this->receivedResult($match, $values, $mac)
 					: $this->resourceResult($match, $values, $mac);
 
 				return $outcome + [
@@ -427,11 +439,11 @@ class Endpoint extends Service
 		$name = (string) $resource['name'];
 		$type = (string) ($resource['type'] ?? 'template');
 
-		// Read back from where receive() wrote it, by the same rendered name
-		// through the same LogRepo::logFile() -- so the side that stores a log
-		// and the side that hands it back cannot disagree about the path.
+		// Read back from exactly where receive() writes it: both go through
+		// storedLog(), so the side that stores a log and the side that hands
+		// it back cannot disagree about the path.
 		if ($type === 'log') {
-			$stored = $this->logs->logFile($mac, $this->template->renderTemplate($name, $values));
+			$stored = $this->storedLog($resource, $values, $mac);
 
 			// A log that has not arrived is not a broken resource, so it says
 			// so in its own words rather than borrowing the missing-file line:
@@ -494,27 +506,17 @@ class Endpoint extends Service
 	 * told what that resource is instead -- not with a message about method
 	 * support, which would be true of the endpoint and wrong about the file.
 	 *
-	 * The filename carried back is the resource's own name, rendered against
-	 * this client the way a served resource's name is -- not the filename the
-	 * phone PUT to. What the phone spelled is addressing: it is how the
-	 * request found its way here, and it varies with whatever the vendor
-	 * decided to put in front of the name. What is stored is the file, and the
-	 * file is the resource. So a profile whose log resource is
-	 * `{{device.mac}}-boot.log` stores `0004f282e824-boot.log` and one whose
-	 * resource is `boot.log` stores `boot.log` -- in that client's own
-	 * directory either way, which is what says whose it is.
-	 *
-	 * Rendered rather than taken as typed, because a name is a template here
-	 * as much as anywhere else in the module: it is the same call
-	 * matchResource() makes on the way in, so what a resource is stored as is
-	 * what it is addressed by.
+	 * The path carried back is storedLog()'s, which is the same path a GET of
+	 * this resource reads from -- so what a phone PUTs and what it gets back
+	 * are the same file by construction rather than by agreement.
 	 *
 	 * @param array<string, mixed>  $resource The resource row.
 	 * @param array<string, string> $values   Placeholder name to value.
+	 * @param string                $mac      Client sending it.
 	 *
 	 * @return array<string, mixed> What receive() stores, or a refusal.
 	 */
-	private function receivedResult(array $resource, array $values)
+	private function receivedResult(array $resource, array $values, $mac)
 	{
 		$name = (string) $resource['name'];
 		$type = (string) ($resource['type'] ?? 'template');
@@ -529,9 +531,44 @@ class Endpoint extends Service
 		return [
 			'status' => true,
 			'kind' => 'log',
+			'type' => 'log',
 			'resource' => $name,
-			'filename' => $this->template->renderTemplate($name, $values),
+			'path' => $this->storedLog($resource, $values, $mac),
 		];
+	}
+
+	/**
+	 * Where this client's copy of this log resource is on disk.
+	 *
+	 * The one expression both directions go through -- receivedResult() to
+	 * write it, resourceResult() to read it back.
+	 *
+	 * The name is the resource's own, rendered against this client, and not
+	 * the filename the phone PUT to. What the phone spelled is addressing: it
+	 * is how the request found its way here, and it carries whatever the
+	 * vendor decided to put in front of the name. What is stored is the file,
+	 * and the file is the resource. So a profile whose log resource is
+	 * `{{device.mac}}-boot.log` stores `0004f282e824-boot.log` and one whose
+	 * resource is `boot.log` stores `boot.log` -- in that client's own
+	 * directory either way, which is what says whose it is.
+	 *
+	 * Rendered rather than taken as typed, because a name is a template here
+	 * as much as anywhere else in the module: it is the same call
+	 * matchResource() makes on the way in, so what a resource is stored as is
+	 * what it is addressed by.
+	 *
+	 * @param array<string, mixed>  $resource The resource row.
+	 * @param array<string, string> $values   Placeholder name to value.
+	 * @param string                $mac      Client whose copy it is.
+	 *
+	 * @return string Absolute path, or '' when there is no such path.
+	 */
+	private function storedLog(array $resource, array $values, $mac)
+	{
+		return $this->logs->logFile(
+			$mac,
+			$this->template->renderTemplate((string) $resource['name'], $values)
+		);
 	}
 
 	/**
