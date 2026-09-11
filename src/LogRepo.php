@@ -136,6 +136,29 @@ class LogRepo extends Service
 	}
 
 	/**
+	 * Where one client's log for one resource is kept.
+	 *
+	 * FileRepo::repoFile() for the other direction, and the same job: the one
+	 * place that turns what a resource is into where it is on disk, so the
+	 * side that writes it and the side that reads it back cannot disagree
+	 * about the path. A file in the repo is found by the resource's id; one
+	 * here is found by the client and the resource's rendered name, because
+	 * that is what a log is -- one phone's copy of one file.
+	 *
+	 * @param mixed  $mac      MAC of the client whose log it is.
+	 * @param string $filename Rendered resource name.
+	 *
+	 * @return string Absolute path, or '' when either half is unusable.
+	 */
+	public function logFile($mac, $filename)
+	{
+		$directory = $this->clientPath($mac);
+		$name = $this->safeName($filename);
+
+		return ($directory === '' || $name === '') ? '' : $directory . '/' . $name;
+	}
+
+	/**
 	 * Store what a phone PUT, in its own directory, under the name the
 	 * resource it was PUT to renders to.
 	 *
@@ -156,28 +179,21 @@ class LogRepo extends Service
 	 */
 	public function storeLog($mac, $filename, $source = 'php://input')
 	{
-		$directory = $this->clientPath($mac);
+		$path = $this->logFile($mac, $filename);
 
 		// The endpoint refuses a PUT without a client long before this, so
-		// reaching here without a MAC is a caller that has invented one.
-		if ($directory === '') {
-			return ['status' => false, 'message' => _('A log has to belong to a client.')];
-		}
-
-		$name = $this->safeName($filename);
-
-		if ($name === '') {
-			return ['status' => false, 'message' => _('That is not a name a log can be stored under.')];
+		// reaching here without a path is a caller that has invented one, or
+		// a name that rendered to nothing a file can be called.
+		if ($path === '') {
+			return ['status' => false, 'message' => _('That is not somewhere a log can be stored.')];
 		}
 
 		if (!$this->ensureLogs($mac)) {
 			return [
 				'status' => false,
-				'message' => sprintf(_('%s cannot be written to.'), $directory),
+				'message' => sprintf(_('%s cannot be written to.'), $this->clientPath($mac)),
 			];
 		}
-
-		$path = $directory . '/' . $name;
 
 		$in = @fopen($source, 'rb');
 		$out = $in === false ? false : @fopen($path, 'wb');
@@ -199,7 +215,7 @@ class LogRepo extends Service
 
 		@chmod($path, 0640);
 
-		return ['status' => true, 'path' => $path, 'bytes' => $bytes, 'name' => $name];
+		return ['status' => true, 'path' => $path, 'bytes' => $bytes, 'name' => basename($path)];
 	}
 
 	/**

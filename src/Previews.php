@@ -9,6 +9,11 @@ use PDO;
 /**
  * Which filename does this phone ask this file by.
  *
+ * One URL per row, whichever direction the file travels: a template and
+ * an uploaded file are fetched from it, and a log is PUT to it and read
+ * back from it, so every kind of resource has a link and it is the same
+ * link.
+ *
  * The resource editor's Clients tab and the client editor's Resources tab
  * are one idea seen from both ends, so both decorators are here rather
  * than one on each table -- which is also what keeps Clients and Resources
@@ -73,7 +78,7 @@ class Previews extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name, type
+			"SELECT id, profile_id, name
 			FROM `{$this->resourcesTable}`
 			WHERE id = :id"
 		);
@@ -99,10 +104,7 @@ class Previews extends Service
 			);
 
 			$rows[$index]['filename'] = $request['filename'];
-			// A log is not served, so there is nothing to preview: the
-			// filename is still worth having -- it is what that phone PUTs
-			// to -- and the link would be a 404 with a Render button on it.
-			$rows[$index]['url'] = $resource['type'] === 'log' ? '' : $request['url'];
+			$rows[$index]['url'] = $request['url'];
 		}
 
 		return $rows;
@@ -159,7 +161,7 @@ class Previews extends Service
 			$request = $this->matcher->resourceRequest((string) $row['name'], $values, $mac);
 
 			$rows[$index]['filename'] = $request['filename'];
-			$rows[$index]['url'] = ($row['type'] ?? '') === 'log' ? '' : $request['url'];
+			$rows[$index]['url'] = $request['url'];
 		}
 
 		return $rows;

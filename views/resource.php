@@ -278,10 +278,10 @@ $tabs = [
 										<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s MAC. So a log belongs to a client, and everything one phone has ever sent is in one place.'); ?>
 									</span>
 									<span class="help-block fpbx-help-block">
-										<?php echo _('There is nothing to write here. A log resource is never served: a phone asking to <em>read</em> this filename is refused, the same as one asking for a file this profile does not have. A PUT to a filename no Log resource answers to is refused too, which is what keeps this from being an open upload to the PBX.'); ?>
+										<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>
 									</span>
 									<span class="help-block fpbx-help-block">
-										<?php echo _('Every PUT is recorded on the Logs tab, whether it was taken or refused.'); ?>
+										<?php echo _('A PUT to a filename no Log resource answers to is refused, which is what keeps this from being an open upload to the PBX. Every PUT is recorded on the Logs tab either way, taken or refused.'); ?>
 									</span>
 								</div>
 							</div>

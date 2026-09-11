@@ -120,10 +120,18 @@ class Endpoint extends Service
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
-		// An uploaded file never becomes a string on the way out: a firmware
-		// image is tens of megabytes and the rendered text of a config is not.
+		// Neither an uploaded file nor a stored log ever becomes a string on
+		// the way out: a firmware image is tens of megabytes, a boot log is
+		// occasionally not much less, and the rendered text of a config is
+		// neither. The type goes with it because it decides the content type
+		// -- a log is text somebody is about to read in a browser, where an
+		// uploaded file of an unknown extension is bytes.
 		if (($result['kind'] ?? '') === 'file') {
-			$this->sendFile((string) $result['path'], (string) $result['resource']);
+			$this->sendFile(
+				(string) $result['path'],
+				(string) $result['resource'],
+				(string) ($result['type'] ?? 'file')
+			);
 		}
 
 		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource'], 'template'));
@@ -310,7 +318,7 @@ class Endpoint extends Service
 			if ($match !== null) {
 				$outcome = $sending
 					? $this->receivedResult($match, $values)
-					: $this->resourceResult($match, $values);
+					: $this->resourceResult($match, $values, $mac);
 
 				return $outcome + [
 					'mac' => $mac,
@@ -381,9 +389,17 @@ class Endpoint extends Service
 	 *
 	 * The one place that knows what the kinds of resource are, and the only
 	 * place that needs to: a template is rendered for the client that asked, a
-	 * file is sent as it was stored, and a log is not served at all -- it is
-	 * the one a phone sends *to*, and a GET of one is a phone asking for
-	 * something this profile does not hand out.
+	 * file is sent as it was stored, and a log is sent back as this client
+	 * last PUT it.
+	 *
+	 * A log is readable on purpose. It is the one resource this module did not
+	 * write and the only one whose content is a fact about the phone rather
+	 * than about the profile, which is exactly what somebody debugging that
+	 * phone wants to look at -- so it is a GET like everything else, at the
+	 * URL that phone PUTs to, and the preview link on the client's Resources
+	 * tab means the same thing on a log row as on any other. What it is *not*
+	 * is rendered: what comes back is the bytes the phone sent, because a boot
+	 * log with `{{` in it is a boot log and not a template.
 	 *
 	 * Read off `type` and nothing else. Until 1.0.14 it was read off
 	 * file_size -- a size meant a file and its absence meant a template -- and
@@ -402,18 +418,38 @@ class Endpoint extends Service
 	 *
 	 * @param array<string, mixed>  $resource The resource row.
 	 * @param array<string, string> $values   Placeholder name to value, empty for a file.
+	 * @param string                $mac      Client asking, '' when there is none.
 	 *
 	 * @return array<string, mixed> What serve() sends, or a refusal.
 	 */
-	private function resourceResult(array $resource, array $values)
+	private function resourceResult(array $resource, array $values, $mac = '')
 	{
 		$name = (string) $resource['name'];
 		$type = (string) ($resource['type'] ?? 'template');
 
+		// Read back from where receive() wrote it, by the same rendered name
+		// through the same LogRepo::logFile() -- so the side that stores a log
+		// and the side that hands it back cannot disagree about the path.
 		if ($type === 'log') {
+			$stored = $this->logs->logFile($mac, $this->template->renderTemplate($name, $values));
+
+			// A log that has not arrived is not a broken resource, so it says
+			// so in its own words rather than borrowing the missing-file line:
+			// the usual reason is a phone that has not rebooted since somebody
+			// wrote this, and there is nothing to fix.
+			if ($stored === '' || !is_file($stored)) {
+				return [
+					'status' => false,
+					'message' => sprintf(_('No %s has been received from this client.'), $name),
+				];
+			}
+
 			return [
-				'status' => false,
-				'message' => sprintf(_('%s is a log this profile receives, not a file it serves.'), $name),
+				'status' => true,
+				'kind' => 'file',
+				'type' => 'log',
+				'resource' => $name,
+				'path' => $stored,
 			];
 		}
 
@@ -421,6 +457,7 @@ class Endpoint extends Service
 			return [
 				'status' => true,
 				'kind' => 'template',
+				'type' => 'template',
 				'resource' => $name,
 				'config' => $this->template->renderTemplate((string) $resource['template'], $values),
 			];
@@ -442,6 +479,7 @@ class Endpoint extends Service
 		return [
 			'status' => true,
 			'kind' => 'file',
+			'type' => 'file',
 			'resource' => $name,
 			'path' => $path,
 		];
@@ -548,16 +586,17 @@ class Endpoint extends Service
 	 *
 	 * @param string $path Absolute path to the stored file.
 	 * @param string $name Resource name, which is the filename it is served as.
+	 * @param string $type The resource's type -- 'file' or 'log'.
 	 *
 	 * @return void Never returns.
 	 */
-	private function sendFile($path, $name)
+	private function sendFile($path, $name, $type = 'file')
 	{
 		$size = (int) @filesize($path);
 		$modified = (int) @filemtime($path);
 		$etag = sprintf('"%x-%x"', $modified, $size);
 
-		header('Content-Type: ' . $this->matcher->contentType($name, 'file'));
+		header('Content-Type: ' . $this->matcher->contentType($name, $type));
 		// The name it is saved under. Without this a fetch through a client's
 		// own URL -- /provisioner/0004f282e824-3111-44500-001.sip.ld -- lands
 		// on disk under that whole path segment, MAC and all, when what it is

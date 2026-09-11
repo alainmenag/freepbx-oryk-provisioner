@@ -269,16 +269,16 @@ class Matcher extends Service
 	 * who called a file directory.xml has already said what it is, and a
 	 * second field saying it again is a second field to get wrong.
 	 *
-	 * The two kinds of resource that are served want different answers to an
-	 * extension nothing here recognises, so the type is the second argument
-	 * rather than another list of extensions to keep up with. A template with
-	 * an odd extension is still configuration text, which is what .cfg is and
-	 * what every phone here expects; an uploaded file is bytes somebody chose,
-	 * and sending a firmware image as text is how it arrives corrupted. A log
-	 * is never sent anywhere, so it never reaches this.
+	 * The kinds of resource want different answers to an extension nothing
+	 * here recognises, so the type is the second argument rather than another
+	 * list of extensions to keep up with. A template with an odd extension is
+	 * still configuration text, which is what .cfg is and what every phone
+	 * here expects; a log is text a person is about to read in a browser; an
+	 * uploaded file is bytes somebody chose, and sending a firmware image as
+	 * text is how it arrives corrupted. So only `file` falls to octet-stream.
 	 *
 	 * @param string $name Resource name, which is the filename it is served as.
-	 * @param string $kind The resource's type -- 'template' or 'file'.
+	 * @param string $kind The resource's type -- 'template', 'file' or 'log'.
 	 *
 	 * @return string Content type, without the charset.
 	 */
@@ -295,6 +295,7 @@ class Matcher extends Service
 			case 'conf':
 			case 'ini':
 			case 'txt':
+			case 'log':
 				return 'text/plain';
 
 			default:
