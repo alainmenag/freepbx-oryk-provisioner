@@ -32,6 +32,23 @@ class Clients extends Service
 	const SECURE_EXPR = "(pc.token IS NOT NULL AND pc.token <> '')";
 
 	/**
+	 * How long ago the endpoint last answered this client, in seconds.
+	 *
+	 * The timestamp is what is stored and the age is what is read -- nobody
+	 * looking at a list of phones wants to subtract two datetimes in their
+	 * head -- and the subtraction is done by the database rather than by the
+	 * browser on purpose. A DATETIME column is written in the PBX's own
+	 * clock and carries no zone with it, so a browser in another timezone
+	 * that worked the age out itself would report a phone that checked in a
+	 * minute ago as several hours early or late. Both sides of this
+	 * subtraction are the database's clock, so there is no zone in it at all.
+	 *
+	 * NULL when the client has never been answered, which stays NULL: there
+	 * is no age of something that has not happened.
+	 */
+	const SEEN_AGE_EXPR = 'TIMESTAMPDIFF(SECOND, pc.last_seen, NOW())';
+
+	/**
 	 * @var Freepbx
 	 */
 	private $pbx;
@@ -90,6 +107,12 @@ class Clients extends Service
 			'profile' => 'p.name',
 			'secure' => self::SECURE_EXPR,
 			'enabled' => 'pc.enabled',
+			// Sorted by the timestamp rather than by the age beside it: they
+			// are the same fact one subtraction apart, and the column MySQL
+			// can reach an index through is the stored one. A client that has
+			// never been seen sorts first ascending, which is where the fleet
+			// is read from -- the phones nothing has heard from.
+			'last_seen' => 'pc.last_seen',
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['mac'];
@@ -145,6 +168,8 @@ class Clients extends Service
 				p.name AS profile,
 				p.enabled AS profile_enabled,
 				pc.enabled,
+				pc.last_seen,
+				" . self::SEEN_AGE_EXPR . " AS last_seen_age,
 				" . self::SECURE_EXPR . " AS secure
 			$from
 			$where
@@ -189,9 +214,10 @@ class Clients extends Service
 		// tolerable -- but it is on an admin page, and a weak token behind it
 		// is a weak token in front of anyone who can open that page.
 		$stmt = $this->db->prepare(
-			"SELECT id, mac, device_id, profile_id, token, enabled
-			FROM `{$this->clientsTable}`
-			WHERE id = :id"
+			"SELECT pc.id, pc.mac, pc.device_id, pc.profile_id, pc.token, pc.enabled, pc.last_seen,
+				" . self::SEEN_AGE_EXPR . " AS last_seen_age
+			FROM `{$this->clientsTable}` pc
+			WHERE pc.id = :id"
 		);
 		$stmt->execute([':id' => (int) $id]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -414,6 +440,79 @@ class Clients extends Service
 		}
 
 		return $this->setEnabled($this->clientsTable, $request);
+	}
+
+	/**
+	 * Record that the endpoint has just answered this client.
+	 *
+	 * Called by Endpoint::answer() for every request that went out as a 200,
+	 * which is the whole of what "seen" means here: the phone asked, and it
+	 * was given what it asked for. A refusal is not a sighting -- a phone
+	 * that has been switched off, or is asking for a file its profile does
+	 * not serve, is reaching the PBX and getting nothing, and a last_seen
+	 * that moved on those would say the client is being served when it is
+	 * being refused. The refusals are on the Logs tab, where they are the
+	 * question rather than the answer.
+	 *
+	 * **A PUT counts.** A phone uploading its boot log to a resource its
+	 * profile takes was answered with a 200 like any other request, and it is
+	 * as much proof the phone is alive as fetching a file is.
+	 *
+	 * NOW() rather than a timestamp from PHP: the column is compared against
+	 * NOW() when the age is read, and a row written from a clock that is not
+	 * the one it will be measured against is a row that can be in the future.
+	 *
+	 * One column, and nothing else on the row is read -- the same posture
+	 * setEnabled() takes, and for the same reason: this is written by a
+	 * request being answered, not by anybody editing a client.
+	 *
+	 * `updated_at = updated_at` is the one odd-looking thing in the
+	 * statement and it is load-bearing: that column is
+	 * ON UPDATE CURRENT_TIMESTAMP, so without assigning it to itself every
+	 * phone that booted would read as a client somebody had just edited.
+	 * When a row was last changed and when its phone was last heard from are
+	 * two different facts and this writes only the second.
+	 *
+	 * A Render link clicked in the admin goes through the same endpoint and
+	 * counts, because it is the same request: the module has no way to tell a
+	 * browser asking on a phone's behalf from the phone, and inventing one
+	 * would mean trusting a User-Agent or a flag on the URL. It is the
+	 * posture the provisioning log already takes, and the row it leaves there
+	 * carries the browser's User-Agent for anyone who needs to tell the two
+	 * apart.
+	 *
+	 * A MAC that is not one, or one no client answers to, writes nothing.
+	 * The second is the ordinary case rather than an error: a phone fetching
+	 * firmware by name reaches the endpoint with no client behind it at all,
+	 * and there is no row for it to have been seen on.
+	 *
+	 * Nothing in here may fail a request, which is the rule the provisioning
+	 * log is written under and for the same reason -- the phone has already
+	 * been answered by the time this runs, and a module upgraded without its
+	 * install step has a clients table with no such column.
+	 *
+	 * @param mixed $mac MAC address, written however it was written.
+	 *
+	 * @return void
+	 */
+	public function touchClient($mac)
+	{
+		$mac = Mac::normalize($mac);
+
+		if ($mac === '') {
+			return;
+		}
+
+		try {
+			$stmt = $this->db->prepare(
+				"UPDATE `{$this->clientsTable}`
+				SET last_seen = NOW(), updated_at = updated_at
+				WHERE mac = :mac"
+			);
+			$stmt->execute([':mac' => $mac]);
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: could not record when a client was last seen', $e->getMessage(), 'WARNING');
+		}
 	}
 
 	/**

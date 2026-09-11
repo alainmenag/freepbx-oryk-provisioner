@@ -204,6 +204,20 @@ class Endpoint extends Service
 		// a log stored.
 		$this->requestLog->logRequest($mac, $requested, $status, $result['message'] ?? null);
 
+		// And, when it went out, that this client was heard from. Here rather
+		// than anywhere further in, because this is the one place every
+		// answered request passes through whichever direction it was going:
+		// a file served, a template rendered, a log received. The status is
+		// the same number the provisioning log was just given, so the row on
+		// the Clients list and the row on the Logs tab cannot disagree about
+		// whether the phone was answered.
+		//
+		// Only a 200. A refusal is a phone reaching the PBX and getting
+		// nothing, which is what the log is for -- see touchClient().
+		if ($status === 200) {
+			$this->clients->touchClient($mac);
+		}
+
 		if (!$result['status']) {
 			$this->sendText(404, $result['message'] . "\n");
 		}

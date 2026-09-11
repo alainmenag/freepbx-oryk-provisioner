@@ -247,6 +247,15 @@ elsewhere in the module lands where you were.
 Both list tabs are paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor.
 
+**Last Seen** on the Clients list is the last time the endpoint answered that
+client with a 200 — a file served, a configuration rendered, or a log the phone
+PUT received. It shows how long ago that was, with the exact timestamp on
+hover, and the client's own page shows the timestamp itself. Sort it ascending
+to bring the phones nothing has heard from to the top. A refused request is not
+a sighting: a client that is switched off, or one asking for a file its profile
+does not serve, is reaching the PBX and getting nothing, and that is what the
+Logs tab is for.
+
 **The two preview tabs** are one idea from both ends: the client editor's
 **Resources** tab is one phone over all the files it gets; the resource
 editor's **Clients** tab is one file over all the phones that get it. A
@@ -267,9 +276,16 @@ from the profile that serves it.
 Three tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
 
 **`oryk_provisioner_clients`** — `id`, `mac` (unique, 12 lowercase hex),
-`device_id`, `profile_id`, `token`, `enabled`, `created_at`, `updated_at`.
+`device_id`, `profile_id`, `token`, `enabled`, `last_seen`, `created_at`,
+`updated_at`.
 `enabled` is whether the endpoint answers this client at all; it defaults to 1,
 so every client written before there was a switch is one nobody switched off.
+`last_seen` is when the endpoint last answered this client with a 200, written
+by the request that was answered. It is on the client rather than read out of
+the provisioning log beside it, because that log is prunable — there is a Clear
+button on two pages — and when a phone last checked in has to survive its
+requests being thrown away. It is NULL until the first 200, so every client on
+a site upgrading into this reads as never seen until its phone next asks.
 `token` is a `password_hash()` of the client's token, shown as it stands
 in the client editor and deliberately not indexed: it is verified against,
 never looked up by, since a request already says who is asking.

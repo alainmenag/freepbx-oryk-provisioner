@@ -32,7 +32,7 @@
  * Each tab is a link and only the tab asked for is rendered -- see
  * partials/tabs.php.
  *
- * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token, enabled
+ * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token, enabled, last_seen
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
@@ -65,6 +65,16 @@ $token = (string) ($client['token'] ?? '');
 // Whether the endpoint answers this client at all. A client that has not been
 // written yet is enabled: somebody adding one is adding one to serve.
 $enabled = !isset($client['enabled']) || (int) $client['enabled'] === 1;
+
+// When the endpoint last answered this client with a 200. Read with the row
+// and shown rather than edited -- it is written by the phone asking, and
+// there is nothing here for anybody to set it to.
+//
+// The timestamp itself, where the Clients list shows how long ago it was: a
+// list is scanned, and "2 hours ago" is what scanning wants; this page is one
+// client somebody has already found, and the exact moment is what is left to
+// ask. It is the PBX's own clock, the same one the Logs tab prints.
+$lastSeen = trim((string) ($client['last_seen'] ?? ''));
 
 // Nothing is served to a client that has never been written, or to one
 // with no profile assigned, so its Resources tab is there but does not open.
@@ -275,6 +285,34 @@ $tabs = [
 								</div>
 							</div>
 						</div>
+
+						<?php if (!$isNew): ?>
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label"><?php echo _('Last Seen'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<p class="form-control-static">
+											<?php if ($lastSeen !== ''): ?>
+												<?php echo $h($lastSeen); ?>
+											<?php else: ?>
+												<span class="text-muted"><?php echo _('Never'); ?></span>
+											<?php endif; ?>
+										</p>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('The last time this client asked the endpoint for something and was given it -- a file served, a configuration rendered, or a log received. A refused request does not count: a phone that is switched off, or asking for a file its profile does not serve, is reaching the PBX and getting nothing, and those are on the Logs tab. Never means nothing has been served to this client since it was written.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+						<?php endif; ?>
 
 					</div>
 

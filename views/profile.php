@@ -328,7 +328,6 @@ $tabs = [
 		return [
 			`<div class="flex gap-3">`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`,
-			`<a class="btn btn-default btn-sm" href="/provisioner/${encodeURIComponent(row.mac)}.cfg" target="_blank" title="View the rendered configuration">Render</a>`,
 			`</div>`
 		].join('');
 	}
