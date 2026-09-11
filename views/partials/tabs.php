@@ -69,6 +69,10 @@ $tabEscape = function ($value) {
 		$isDisabled = !$isActive && !empty($tabItem['disabled']);
 		$tabTitle = (string) ($tabItem['title'] ?? '');
 
+		if ($isDisabled) {
+			continue;
+		}
+
 		$tabAttributes = $isDisabled
 			? 'href="#" onclick="return false;"'
 			: 'href="' . $tabEscape($tabItem['href']) . '"';
