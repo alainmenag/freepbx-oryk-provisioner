@@ -9,6 +9,11 @@ use PDO;
 /**
  * Which filename does this phone ask this file by.
  *
+ * One URL per row, whichever direction the file travels: a template and
+ * an uploaded file are fetched from it, and a log is PUT to it and read
+ * back from it, so every kind of resource has a link and it is the same
+ * link.
+ *
  * The resource editor's Clients tab and the client editor's Resources tab
  * are one idea seen from both ends, so both decorators are here rather
  * than one on each table -- which is also what keeps Clients and Resources

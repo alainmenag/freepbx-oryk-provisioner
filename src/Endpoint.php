@@ -35,6 +35,11 @@ class Endpoint extends Service
 	private $files;
 
 	/**
+	 * @var LogRepo
+	 */
+	private $logs;
+
+	/**
 	 * @var ProvisioningLog
 	 */
 	private $requestLog;
@@ -42,7 +47,7 @@ class Endpoint extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, ProvisioningLog $requestLog)
+	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog)
 	{
 		parent::__construct($freepbx);
 
@@ -50,6 +55,7 @@ class Endpoint extends Service
 		$this->matcher = $matcher;
 		$this->template = $template;
 		$this->files = $files;
+		$this->logs = $logs;
 		$this->requestLog = $requestLog;
 	}
 
@@ -87,17 +93,103 @@ class Endpoint extends Service
 	 */
 	public function serve($mac, $requested = null, $token = null)
 	{
-		$result = $this->resolveRequest($mac, $requested, $token);
+		$this->answer($this->resolveRequest($mac, $requested, $token), $mac, $requested);
+	}
+
+	/**
+	 * Take what a phone sent us and end the request.
+	 *
+	 * serve() the other way round, and the reason a resource has a type at
+	 * all: a phone does not only fetch files, it PUTs its boot and app logs
+	 * back -- a Polycom sends /0004f282e824-boot.log the moment it finishes
+	 * starting up -- and until 1.0.14 there was nowhere for those to go and
+	 * nothing that could have said where.
+	 *
+	 * A resource of type Log is that somewhere. It is matched exactly as a
+	 * served file is, by the same names against the same profile, so a
+	 * profile says which logs it takes the same way it says which files it
+	 * serves -- and one it has not declared is refused rather than written,
+	 * which is what keeps this from being an open upload to the PBX for
+	 * anyone who can reach the endpoint.
+	 *
+	 * The body goes to ASTLOGDIR/provisioner/[mac], under the resource's own
+	 * name rendered against that client -- a directory per client, so a
+	 * stored log says whose it is rather than leaving that to whatever the
+	 * vendor happened to call the file. The outcome is logged here, as
+	 * serve() logs its own, because this is where the request ends.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param string|null $requested Filename PUT to.
+	 * @param string|null $token     Token offered, when one was.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	public function receive($mac, $requested = null, $token = null)
+	{
+		$result = $this->resolveRequest($mac, $requested, $token, 'PUT');
+
+		// The one thing this does that serve() does not: the body is written
+		// before the request is answered. Everything either side of it --
+		// resolving, logging, ending -- is answer()'s, and the same.
+		if ($result['status']) {
+			$stored = $this->logs->storeLog($result['path']);
+
+			// Everything up to the write said yes, so a failure here is this
+			// server's and not the phone's. It is still answered as one thing
+			// -- the phone has nothing to do differently either way -- but the
+			// log says which, and the byte count rides back on a success.
+			$result = $stored['status']
+				? $result + ['message' => sprintf('%s bytes', $stored['bytes'])]
+				: $stored;
+		}
+
+		$this->answer($result, $mac, $requested);
+	}
+
+	/**
+	 * Report what was decided, send it, and end the request.
+	 *
+	 * The whole of what serve() and receive() have in common, which is
+	 * everything except the write in the middle of one of them: the status,
+	 * the line in the Asterisk log, the 401, the row in the provisioning log,
+	 * the 404, and the body. Two copies of this is how the two directions
+	 * drift apart -- and they had already started to, logging the same
+	 * outcome in two shapes.
+	 *
+	 * The kind decides the body, and every kind there is has one:
+	 *
+	 *   template  the rendered text, as text.
+	 *   file      the file on disk, streamed -- an uploaded file, or a stored
+	 *             log being read back. Neither ever becomes a string: a
+	 *             firmware image is tens of megabytes and a boot log is
+	 *             occasionally not much less. The type goes with it because it
+	 *             decides the content type.
+	 *   log       nothing. This is the answer to a PUT, and a phone uploading
+	 *             a log reads the status and nothing else; a body it did not
+	 *             ask for is a body to be wrong about.
+	 *
+	 * @param array<string, mixed> $result    What resolveRequest() decided.
+	 * @param mixed                $mac       MAC the request was made with.
+	 * @param string|null          $requested Filename as it was asked for.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	private function answer(array $result, $mac, $requested)
+	{
 		$status = $result['code'] ?? ($result['status'] ? 200 : 404);
 
+		// The method is read here rather than passed: it is the same fact the
+		// provisioning log records for itself, and a caller that had to say
+		// which direction it was going would be a caller that could say it
+		// wrongly.
 		$this->log(sprintf(
-			'oryk_provisioner: %s for %s (%s)',
+			'oryk_provisioner: %s for %s %s (%s)',
 			(string) $status,
+			(string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
 			(string) $requested !== '' ? (string) $requested : (string) $mac,
-			$result['message'] ?? 'OK',
+			$result['message'] ?? 'OK'
 		), null, $result['status'] ? 'INFO' : 'DEBUG');
 
-		// Handle HTTP 401 Unauthorized by sending the appropriate headers and exiting.
 		if ($status === 401) {
 			header('WWW-Authenticate: Basic realm="Provisioning"');
 			http_response_code(401);
@@ -107,20 +199,28 @@ class Endpoint extends Service
 		// Both outcomes, and a MAC nothing is associated with as readily as one
 		// that renders: a phone asking for a file nobody has written a client
 		// for is the request an operator most needs to see, and it is the one
-		// that leaves no other trace.
-		$this->requestLog->logRequest($mac, $requested, $status, $result['status'] ? null : ($result['message'] ?? null));
+		// that leaves no other trace. On a success the message is whatever the
+		// answer had to add -- nothing, for a file served; the byte count, for
+		// a log stored.
+		$this->requestLog->logRequest($mac, $requested, $status, $result['message'] ?? null);
 
 		if (!$result['status']) {
 			$this->sendText(404, $result['message'] . "\n");
 		}
 
-		// An uploaded file never becomes a string on the way out: a firmware
-		// image is tens of megabytes and the rendered text of a config is not.
 		if (($result['kind'] ?? '') === 'file') {
-			$this->sendFile((string) $result['path'], (string) $result['resource']);
+			$this->sendFile(
+				(string) $result['path'],
+				(string) $result['resource'],
+				(string) ($result['type'] ?? 'file')
+			);
 		}
 
-		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource']));
+		if (($result['kind'] ?? '') === 'log') {
+			$this->sendText(200, '');
+		}
+
+		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource'], 'template'));
 	}
 
 	/**
@@ -165,10 +265,11 @@ class Endpoint extends Service
 	 * @return array<string, mixed> Status, what answers when something does,
 	 *                              and a message when nothing did.
 	 */
-	public function resolveRequest($mac, $requested = null, $token = null)
+	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET')
 	{
 		$mac = Mac::normalize($mac);
 		$requested = trim((string) $requested);
+		$sending = $method === 'PUT' || $method === 'POST';
 
 		$client = $mac === '' ? null : $this->clients->clientByMac($mac);
 
@@ -185,34 +286,53 @@ class Endpoint extends Service
 			// for the main config: no filename at all, and the client's own MAC
 			// with no filename after it (/provisioner/0004f282e824, which is
 			// what leaves nothing behind once the MAC is taken off the front).
-			if ($suffix === '') {
+			//
+			// Only on the way out. A phone sending something has named what it
+			// is sending; a PUT to no filename in particular is not a PUT of
+			// the main config, it is a request that named nothing.
+			if ($suffix === '' && !$sending) {
 				$requested = $mac . '.cfg';
 				$suffix = '.cfg';
 			}
 
-			$match = $this->matcher->matchResource((int) $client['profile_id'], $requested, $suffix, $values);
-			$template = $match['template'] ?? null;
+			$match = $suffix === ''
+				? null
+				: $this->matcher->matchResource((int) $client['profile_id'], $requested, $suffix, $values);
 
-			// If the client has a token but no token was provided in the request, return a 401 error.
-			if ($template && $client['token'] && !$token) {
-				return [
-					'status' => false,
-					'message' => _('A token is required for this client.'),
-					'code' => 401,
-				];
-			}
+			// The token guards the client rather than any one of its files, so
+			// it is asked for as soon as something has been matched -- before
+			// the type is looked at, because a 401 that depended on what was
+			// asked for would tell an unauthenticated caller which files exist.
+			//
+			// Before 1.0.14 this read the matched row's `template` column, so a
+			// resource with nothing in that column -- an uploaded file, most of
+			// them -- was served to a tokened client without the token. That
+			// was the inference this release is removing, in the one place it
+			// mattered most.
+			if ($match !== null && $client['token']) {
+				if (!$token) {
+					return [
+						'status' => false,
+						'message' => _('A token is required for this client.'),
+						'code' => 401,
+					];
+				}
 
-			// Compare hashes to protect templates.
-			if ($template && $client['token'] && $token && !password_verify($token, $client['token'])) {
-				return [
-					'status' => false,
-					'message' => _('Invalid authentication provided for this client.'),
-					'code' => 401,
-				];
+				if (!password_verify($token, $client['token'])) {
+					return [
+						'status' => false,
+						'message' => _('Invalid authentication provided for this client.'),
+						'code' => 401,
+					];
+				}
 			}
 
 			if ($match !== null) {
-				return $this->resourceResult($match, $values) + [
+				$outcome = $sending
+					? $this->receivedResult($match, $values, $mac)
+					: $this->resourceResult($match, $values, $mac);
+
+				return $outcome + [
 					'mac' => $mac,
 					'profile' => (string) $client['profile_name'],
 				];
@@ -225,7 +345,22 @@ class Endpoint extends Service
 			// than one with an implicit main config.
 			return [
 				'status' => false,
-				'message' => sprintf(_('%s is not something this profile serves.'), $requested),
+				'message' => $sending
+					? sprintf(_('%s is not something this profile takes.'), $requested)
+					: sprintf(_('%s is not something this profile serves.'), $requested),
+			];
+		}
+
+		// A phone sending something has to be one this module knows, because
+		// what it is sending is written to disk. The file lookup below is for
+		// fetching firmware by name with nobody behind the request, and there
+		// is no counterpart to it in this direction on purpose.
+		if ($sending) {
+			return [
+				'status' => false,
+				'message' => $mac === ''
+					? _('Nothing can be sent to this endpoint without a MAC address.')
+					: sprintf(_('%s is not associated with anything.'), $mac),
 			];
 		}
 
@@ -262,32 +397,79 @@ class Endpoint extends Service
 	}
 
 	/**
-	 * A matched resource as the thing that answers a request.
+	 * A matched resource as the thing that answers a request for it.
 	 *
-	 * The one place that knows there are two kinds of resource, and the only
-	 * place that needs to: one with a file size on it was uploaded and is sent
-	 * as it was stored, one without is a template and is rendered. There is no
-	 * column declaring which -- the size is the answer, because only an upload
-	 * can set it and removing the file clears it again.
+	 * The one place that knows what the kinds of resource are, and the only
+	 * place that needs to: a template is rendered for the client that asked, a
+	 * file is sent as it was stored, and a log is sent back as this client
+	 * last PUT it.
 	 *
-	 * A row that says it has a file and a repository that has not got it is a
+	 * A log is readable on purpose. It is the one resource this module did not
+	 * write and the only one whose content is a fact about the phone rather
+	 * than about the profile, which is exactly what somebody debugging that
+	 * phone wants to look at -- so it is a GET like everything else, at the
+	 * URL that phone PUTs to, and the preview link on the client's Resources
+	 * tab means the same thing on a log row as on any other. What it is *not*
+	 * is rendered: what comes back is the bytes the phone sent, because a boot
+	 * log with `{{` in it is a boot log and not a template.
+	 *
+	 * Read off `type` and nothing else. Until 1.0.14 it was read off
+	 * file_size -- a size meant a file and its absence meant a template -- and
+	 * every consequence of that was of the same shape: a resource could not be
+	 * a file until a file was already on it, so there was no such thing as an
+	 * unfinished one to report; it could not be a log at any point, because
+	 * nothing a log has is a thing to notice; and a template that had once
+	 * held a file and lost it came back silently as a template. What the
+	 * column buys is that each of those is now a state the row can be in and
+	 * say so.
+	 *
+	 * A row that says it is a file and a repository that has not got one is a
 	 * refusal rather than a quiet fall back to the template underneath. A
 	 * phone handed an empty config where it expected firmware fails in a way
 	 * nobody can see; a 404 naming the file says what happened.
 	 *
 	 * @param array<string, mixed>  $resource The resource row.
 	 * @param array<string, string> $values   Placeholder name to value, empty for a file.
+	 * @param string                $mac      Client asking, '' when there is none.
 	 *
 	 * @return array<string, mixed> What serve() sends, or a refusal.
 	 */
-	private function resourceResult(array $resource, array $values)
+	private function resourceResult(array $resource, array $values, $mac = '')
 	{
 		$name = (string) $resource['name'];
+		$type = (string) ($resource['type'] ?? 'template');
 
-		if ($resource['file_size'] === null) {
+		// Read back from exactly where receive() writes it: both go through
+		// storedLog(), so the side that stores a log and the side that hands
+		// it back cannot disagree about the path.
+		if ($type === 'log') {
+			$stored = $this->storedLog($resource, $values, $mac);
+
+			// A log that has not arrived is not a broken resource, so it says
+			// so in its own words rather than borrowing the missing-file line:
+			// the usual reason is a phone that has not rebooted since somebody
+			// wrote this, and there is nothing to fix.
+			if ($stored === '' || !is_file($stored)) {
+				return [
+					'status' => false,
+					'message' => sprintf(_('No %s has been received from this client.'), $name),
+				];
+			}
+
+			return [
+				'status' => true,
+				'kind' => 'file',
+				'type' => 'log',
+				'resource' => $name,
+				'path' => $stored,
+			];
+		}
+
+		if ($type !== 'file') {
 			return [
 				'status' => true,
 				'kind' => 'template',
+				'type' => 'template',
 				'resource' => $name,
 				'config' => $this->template->renderTemplate((string) $resource['template'], $values),
 			];
@@ -295,7 +477,11 @@ class Endpoint extends Service
 
 		$path = $this->files->repoFile($resource['id']);
 
-		if (!is_file($path)) {
+		// Two ways to be a file with nothing behind it, and one message for
+		// both: nothing has been uploaded yet, or something was and is no
+		// longer on the disk. Either way the answer is that the file this
+		// profile says it serves is not there to serve.
+		if ($resource['file_size'] === null || !is_file($path)) {
 			return [
 				'status' => false,
 				'message' => sprintf(_('The uploaded file for %s is missing.'), $name),
@@ -305,9 +491,84 @@ class Endpoint extends Service
 		return [
 			'status' => true,
 			'kind' => 'file',
+			'type' => 'file',
 			'resource' => $name,
 			'path' => $path,
 		];
+	}
+
+	/**
+	 * A matched resource as the thing that answers a request *to* it.
+	 *
+	 * resourceResult() the other way round, and much shorter, because the
+	 * only question in this direction is whether the profile said it takes
+	 * this. A phone that PUTs to a resource of any other type is refused and
+	 * told what that resource is instead -- not with a message about method
+	 * support, which would be true of the endpoint and wrong about the file.
+	 *
+	 * The path carried back is storedLog()'s, which is the same path a GET of
+	 * this resource reads from -- so what a phone PUTs and what it gets back
+	 * are the same file by construction rather than by agreement.
+	 *
+	 * @param array<string, mixed>  $resource The resource row.
+	 * @param array<string, string> $values   Placeholder name to value.
+	 * @param string                $mac      Client sending it.
+	 *
+	 * @return array<string, mixed> What receive() stores, or a refusal.
+	 */
+	private function receivedResult(array $resource, array $values, $mac)
+	{
+		$name = (string) $resource['name'];
+		$type = (string) ($resource['type'] ?? 'template');
+
+		if ($type !== 'log') {
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is a file this profile serves, not a log it receives.'), $name),
+			];
+		}
+
+		return [
+			'status' => true,
+			'kind' => 'log',
+			'type' => 'log',
+			'resource' => $name,
+			'path' => $this->storedLog($resource, $values, $mac),
+		];
+	}
+
+	/**
+	 * Where this client's copy of this log resource is on disk.
+	 *
+	 * The one expression both directions go through -- receivedResult() to
+	 * write it, resourceResult() to read it back.
+	 *
+	 * The name is the resource's own, rendered against this client, and not
+	 * the filename the phone PUT to. What the phone spelled is addressing: it
+	 * is how the request found its way here, and it carries whatever the
+	 * vendor decided to put in front of the name. What is stored is the file,
+	 * and the file is the resource. So a profile whose log resource is
+	 * `{{device.mac}}-boot.log` stores `0004f282e824-boot.log` and one whose
+	 * resource is `boot.log` stores `boot.log` -- in that client's own
+	 * directory either way, which is what says whose it is.
+	 *
+	 * Rendered rather than taken as typed, because a name is a template here
+	 * as much as anywhere else in the module: it is the same call
+	 * matchResource() makes on the way in, so what a resource is stored as is
+	 * what it is addressed by.
+	 *
+	 * @param array<string, mixed>  $resource The resource row.
+	 * @param array<string, string> $values   Placeholder name to value.
+	 * @param string                $mac      Client whose copy it is.
+	 *
+	 * @return string Absolute path, or '' when there is no such path.
+	 */
+	private function storedLog(array $resource, array $values, $mac)
+	{
+		return $this->logs->logFile(
+			$mac,
+			$this->template->renderTemplate((string) $resource['name'], $values)
+		);
 	}
 
 	/**
@@ -362,16 +623,17 @@ class Endpoint extends Service
 	 *
 	 * @param string $path Absolute path to the stored file.
 	 * @param string $name Resource name, which is the filename it is served as.
+	 * @param string $type The resource's type -- 'file' or 'log'.
 	 *
 	 * @return void Never returns.
 	 */
-	private function sendFile($path, $name)
+	private function sendFile($path, $name, $type = 'file')
 	{
 		$size = (int) @filesize($path);
 		$modified = (int) @filemtime($path);
 		$etag = sprintf('"%x-%x"', $modified, $size);
 
-		header('Content-Type: ' . $this->matcher->contentType($name, 'file'));
+		header('Content-Type: ' . $this->matcher->contentType($name, $type));
 		// The name it is saved under. Without this a fetch through a client's
 		// own URL -- /provisioner/0004f282e824-3111-44500-001.sip.ld -- lands
 		// on disk under that whole path segment, MAC and all, when what it is

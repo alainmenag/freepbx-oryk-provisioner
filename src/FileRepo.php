@@ -12,7 +12,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * resource *is* -- template or uploaded file -- is the resource's
  * business, in Resources.
  */
-class FileRepo extends Service
+class FileRepo extends Repo
 {
 	/**
 	 * The directory uploaded resource files are kept in.
@@ -26,9 +26,7 @@ class FileRepo extends Service
 	 */
 	public function repoPath()
 	{
-		$spool = trim((string) $this->FreePBX->Config->get('ASTSPOOLDIR'));
-
-		return ($spool !== '' ? rtrim($spool, '/') : '/var/spool/asterisk') . '/repo';
+		return $this->asteriskPath('ASTSPOOLDIR', '/var/spool/asterisk', 'repo');
 	}
 
 	/**
@@ -60,24 +58,7 @@ class FileRepo extends Service
 	 */
 	public function ensureRepo()
 	{
-		$path = $this->repoPath();
-
-		if (!is_dir($path)) {
-			if (!@mkdir($path, 0750, true) && !is_dir($path)) {
-				$this->log(sprintf('oryk_provisioner: could not create %s', $path), null, 'WARNING');
-
-				return false;
-			}
-
-			// Only for a directory this just made, and neither is fatal: the web
-			// user is the one that writes here and Asterisk owns the rest of the
-			// spool, but a directory somebody else made with workable permissions
-			// is workable, and by an upload it is far too late to be asking.
-			@chown($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER'));
-			@chgrp($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP'));
-		}
-
-		return is_writable($path);
+		return $this->ensureDirectory($this->repoPath());
 	}
 
 	/**

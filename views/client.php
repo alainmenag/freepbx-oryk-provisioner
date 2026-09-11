@@ -271,7 +271,7 @@ $tabs = [
 								<thead>
 									<tr>
 										<th data-field="name" data-formatter="formatResourceName" data-sortable="true"><?php echo _('Resource'); ?></th>
-										<th data-field="file_size" data-formatter="formatResourceKind" data-sortable="true"><?php echo _('Type'); ?></th>
+										<th data-field="type" data-formatter="formatResourceKind" data-sortable="true"><?php echo _('Type'); ?></th>
 										<th data-field="updated_at" data-formatter="formatResourceText" data-sortable="true"><?php echo _('Updated'); ?></th>
 										<th data-field="actions" data-formatter="formatResourceActions"><?php echo _('Actions'); ?></th>
 									</tr>
@@ -336,7 +336,7 @@ $tabs = [
 	orykEditor({
 		save: 'saveClient',
 		remove: 'deleteClient',
-		confirm: 'Delete this client?',
+		confirm: 'Delete this client? Any logs it has sent go with it.',
 		values: function () {
 			return {
 				id: orykClientId,

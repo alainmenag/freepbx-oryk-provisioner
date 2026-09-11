@@ -12,6 +12,7 @@ use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
+use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Logs;
 use FreePBX\Modules\Oryk_Provisioner\Matcher;
 use FreePBX\Modules\Oryk_Provisioner\Navigator;
@@ -59,6 +60,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Tokens           hashing a client's token, and checking one
  *   Schema           the tables, as they are added to
  *   FileRepo         where an uploaded resource file is kept
+ *   LogRepo          where a log a phone sent us is kept
  *   Clients          |
  *   Profiles         |  one per table
  *   Resources        |
@@ -102,6 +104,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Installer */
 	private $installer;
+
+	/** @var LogRepo */
+	private $logs;
 
 	/** @var Matcher */
 	private $matcher;
@@ -158,17 +163,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$this->pbx = new Freepbx($freepbx);
 		$this->files = new FileRepo($freepbx);
+		$this->logs = new LogRepo($freepbx);
 		$this->schema = new Schema($freepbx);
 		$this->tokens = new Tokens($freepbx);
 		$this->provisioningLog = new ProvisioningLog($freepbx);
 		$this->template = new Template($freepbx, $this->pbx);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
-		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens);
+		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs);
 
 		$this->counts = new Counts($freepbx);
 
@@ -178,6 +184,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->matcher,
 			$this->template,
 			$this->files,
+			$this->logs,
 			$this->provisioningLog
 		);
 
@@ -190,7 +197,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->template,
 			$this->provisioningLog,
 			$this->counts,
-			$this->navigator
+			$this->navigator,
+			$this->logs
 		);
 	}
 
@@ -288,18 +296,36 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * Take what a phone sent us and end the request.
+	 *
+	 * The other direction: a phone PUTs its boot and app logs back, and a
+	 * resource of type Log is what says this profile takes one.
+	 *
+	 * @param mixed       $mac       MAC address, written however it was written.
+	 * @param string|null $requested Filename PUT to.
+	 * @param string|null $token     Token offered, when one was.
+	 *
+	 * @return void This ends the request.
+	 */
+	public function receive($mac, $requested = null, $token = null)
+	{
+		$this->endpoint->receive($mac, $requested, $token);
+	}
+
+	/**
 	 * Work out what a provisioning request should be answered with, without
 	 * answering it.
 	 *
 	 * @param mixed       $mac       MAC address, written however it was written.
 	 * @param string|null $requested Filename asked for.
 	 * @param string|null $token     Token offered, when one was.
+	 * @param string      $method    Request method it would be asked with.
 	 *
 	 * @return array<string, mixed> The outcome, for a caller to act on.
 	 */
-	public function resolveRequest($mac, $requested = null, $token = null)
+	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET')
 	{
-		return $this->endpoint->resolveRequest($mac, $requested, $token);
+		return $this->endpoint->resolveRequest($mac, $requested, $token, $method);
 	}
 
 	/**

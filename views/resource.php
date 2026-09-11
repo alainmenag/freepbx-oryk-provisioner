@@ -6,16 +6,22 @@
  * `resource` present and empty to write a new one -- the same shape the
  * profile editor has, one level down.
  *
- * A new resource is its name and nothing else. What it serves -- an uploaded
- * file, or a template -- is on the page once it has been saved, because a file
- * is stored under the resource's id and an unsaved resource has not got one.
- * Rather than one control explaining its own absence while the other works,
- * both arrive together: name it, save it, then say what it serves. Only one of
- * the two is ever on the page after that -- a file hides the template and a
- * written template hides the file, because a resource serves one thing.
+ * A new resource is its name and its type. The type is what the resource is
+ * -- a template rendered for the client that asked, a file handed over as it
+ * was stored, or a log the phone sends back -- and it is the one thing on this
+ * page that decides anything: the control under it is whichever the type says,
+ * and nothing on the page infers it from the other way round. Until 1.0.14 it
+ * was inferred: a file hid the template and text in the template hid the file,
+ * so a resource could not be a file before a file was on it and could not be a
+ * log at all.
  *
- * The placeholder list is under both of them and outlives either being hidden:
- * a filename is a template as much as the body is, and on a new resource the
+ * The body of it -- the upload, or the template box -- is on the page once the
+ * resource has been saved, because a file is stored under the resource's id and
+ * an unsaved resource has not got one. So: name it, say what it is, save, then
+ * write it.
+ *
+ * The placeholder list is under all of them and outlives any being hidden: a
+ * filename is a template as much as the body is, and on a new resource the
  * filename is the only field there is.
  *
  * A resource is a file the profile serves: [mac].cfg, [mac]-phone.cfg,
@@ -37,7 +43,8 @@
  * &tab=clients. Each tab is a link and only the tab asked for is rendered --
  * see partials/tabs.php.
  *
- * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, template, file_size, file_uploaded_at
+ * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, type, template, file_size, file_uploaded_at
+ * @var string                               $logPath      Where a log a phone PUTs is written
  * @var array<string, mixed>                 $profile      The profile it belongs to
  * @var array<string, array<string, string>> $placeholders What a template can refer to
  * @var array<string, int>                   $counts       Rows behind each tab -- see partials/counts.php
@@ -46,7 +53,8 @@
  */
 
 $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template' => ''];
-$resource += ['file_size' => null, 'file_uploaded_at' => null];
+$resource += ['type' => 'template', 'file_size' => null, 'file_uploaded_at' => null];
+$logPath = $logPath ?? '/var/log/asterisk/provisioner';
 $profile = $profile ?? ['id' => 0, 'name' => ''];
 $placeholders = $placeholders ?? [];
 $tab = ($tab ?? '') === 'clients' ? 'clients' : 'resource';
@@ -59,23 +67,29 @@ $id = (int) $resource['id'];
 $profileId = (int) $profile['id'];
 $isNew = $id === 0;
 
-// There is no column saying which kind of resource this is. An upload is the
-// only thing that sets a size, so a size is what says one happened -- and
-// removing the file clears it again and leaves the template underneath, which
-// was never touched.
-$hasFile = $resource['file_size'] !== null;
+// What this resource is, which is a column now and not a deduction. Anything
+// the column does not recognise reads as a template, which is what the default
+// is and what every resource written before the column had been.
+$types = [
+	'template' => _('Template'),
+	'file' => _('File'),
+	'log' => _('Log'),
+];
 
-// And a resource serves one thing, so the page offers one. A file puts the
-// template away and a template puts the file away -- written here as well as
-// in the script, so the page arrives in the state it would settle into rather
-// than showing both for as long as it takes the script to run.
+$type = isset($types[(string) ($resource['type'] ?? '')]) ? (string) $resource['type'] : 'template';
+
+// A resource is one thing, so the page offers one: the control the type names
+// and not the others. Written here as well as in the script, so the page
+// arrives in the state it would settle into rather than showing all of them
+// for as long as it takes the script to run.
 //
-// The template is kept underneath a file rather than cleared by it, so a
-// resource can have both stored while only one of them is what it serves. That
-// is why the file wins: it is the thing being served.
-$hasTemplate = trim((string) $resource['template']) !== '';
-$showFile = $hasFile || !$hasTemplate;
-$showTemplate = !$hasFile;
+// The template is kept underneath whatever else the resource becomes rather
+// than cleared by it, so putting the type back to Template finds the text
+// where it was left.
+$hasFile = $resource['file_size'] !== null;
+$showFile = $type === 'file';
+$showTemplate = $type === 'template';
+$showLog = $type === 'log';
 
 // A resource that has never been written has no name to render against a
 // client, so its Clients tab is there but does not open -- hidden, it would
@@ -155,13 +169,45 @@ $tabs = [
 									</span>
 									<?php if ($isNew): ?>
 										<span class="help-block fpbx-help-block">
-											<?php echo _('Save it, and this page will then take what it serves: an uploaded file, or a template.'); ?>
+											<?php echo _('Save it, and this page will then take what it holds -- a template to write, or a file to upload.'); ?>
 										</span>
 									<?php else: ?>
 										<span class="help-block fpbx-help-block">
 											<?php echo _('What that comes to for each client on this profile is on the Clients tab.'); ?>
 										</span>
 									<?php endif; ?>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="resource_type">
+											<?php echo _('Type'); ?>
+											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
+										</label>
+									</div>
+									<div class="col-md-8">
+										<select class="form-control" id="resource_type">
+											<?php foreach ($types as $value => $label): ?>
+												<option value="<?php echo $h($value); ?>"<?php echo $value === $type ? ' selected' : ''; ?>>
+													<?php echo $h($label); ?>
+												</option>
+											<?php endforeach; ?>
+										</select>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('What this resource is. <strong>Template</strong> is text rendered for the client that asks for it -- a configuration file, a directory, anything with placeholders in it. <strong>File</strong> is something uploaded here and handed over exactly as it was stored -- firmware, a ringtone, anything nothing should be rewriting. <strong>Log</strong> is the other direction: a file the phone sends back rather than one it fetches.'); ?>
+									</span>
+									<span class="help-block fpbx-help-block">
+										<?php echo _('This is the only thing that says which. Changing it changes what a phone asking for this filename is answered with, and changing it away from File removes the uploaded file, since nothing would serve it afterwards.'); ?>
+									</span>
 								</div>
 							</div>
 						</div>
@@ -197,7 +243,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('A resource can serve an uploaded file instead of a template -- firmware, a ringtone, anything a phone fetches that nothing here should be rewriting. It is sent exactly as it was stored, under the filename above. There is nothing else to set: a resource with a file serves the file, and one without serves its template.'); ?>
+										<?php echo _('What this resource serves, sent exactly as it was stored, under the filename above -- firmware, a ringtone, anything a phone fetches that nothing here should be rewriting. A resource set to File with nothing uploaded to it yet is answered as a missing file rather than as a template, so upload one or put the type back.'); ?>
 									</span>
 									<span class="help-block fpbx-help-block">
 										<?php echo _('A phone fetching firmware sends no MAC address at all, so an uploaded file is also found by its name alone, across every profile. Name it exactly what the vendor asks for -- <code>3111-44500-001.sip.ld</code> -- and it will be served to a request that says nothing about who is asking, which also means to anyone who can reach the provisioning URL and knows that name.'); ?>
@@ -208,6 +254,34 @@ $tabs = [
 											$h(ini_get('upload_max_filesize')),
 											$h(ini_get('post_max_size'))
 										); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container<?php echo $showLog ? '' : ' hidden'; ?>" id="resource_log_container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label"><?php echo _('Log'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<p class="form-control-static">
+											<code><?php echo $h($logPath); ?>/<span class="text-muted">[mac]</span>/</code>
+										</p>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s MAC. So a log belongs to a client, and everything one phone has ever sent is in one place.'); ?>
+									</span>
+									<span class="help-block fpbx-help-block">
+										<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>
+									</span>
+									<span class="help-block fpbx-help-block">
+										<?php echo _('A PUT to a filename no Log resource answers to is refused, which is what keeps this from being an open upload to the PBX. Every PUT is recorded on the Logs tab either way, taken or refused.'); ?>
 									</span>
 								</div>
 							</div>
@@ -353,23 +427,23 @@ $tabs = [
 	// that appears to have hung.
 	let orykHasFile = <?php echo $hasFile ? 'true' : 'false'; ?>;
 
-	// A resource serves one thing, so only one of the two is on the page: a
-	// file hides the template, and text in the template hides the file. Which
-	// also says how to change your mind -- empty the box, or remove the file.
+	// A resource is one thing, so one of the three is on the page, and the
+	// select is what says which. Nothing here reads the template box or the
+	// stored file to work it out -- that inference is what the type replaced.
 	//
-	// Read off the two states rather than toggled from each event, so every
-	// path through here agrees and a reload lands on the same page the last
-	// keystroke did.
+	// Read off the select on every path rather than toggled from each event,
+	// so a reload lands on the same page the last change did.
 	function orykShowKind() {
-		const written = ($('#resource_template').val() ?? '').trim() !== '';
+		const type = $('#resource_type').val();
 
 		$('#resource_file_present').toggleClass('hidden', !orykHasFile);
 		$('#resource_file_absent').toggleClass('hidden', orykHasFile);
-		$('#resource_file_container').toggleClass('hidden', !orykHasFile && written);
-		$('#resource_template_container').toggleClass('hidden', orykHasFile);
+		$('#resource_file_container').toggleClass('hidden', type !== 'file');
+		$('#resource_template_container').toggleClass('hidden', type !== 'template');
+		$('#resource_log_container').toggleClass('hidden', type !== 'log');
 	}
 
-	$('#resource_template').on('input', orykShowKind);
+	$('#resource_type').on('change', orykShowKind);
 
 	// The label beside Remove, written in one place: the page renders the size
 	// and the date as data and this says them, so a file that has just been
@@ -404,15 +478,15 @@ $tabs = [
 		form.append('id', orykResourceId);
 		form.append('profile_id', orykProfileId);
 		form.append('name', $('#resource_name').val());
+		// The type goes with it, for the reason the name does: the upload
+		// saves the resource, and a type changed to File on the way to
+		// choosing a file is what made the control appear at all. Sending it
+		// is also what lets saveResource() refuse an upload to something this
+		// page no longer thinks is a file.
+		form.append('type', $('#resource_type').val());
 		form.append('file', input.files[0]);
 
 		const progress = $('#resource_file_progress');
-
-		// Straight away, not when the upload lands: the answer to what this
-		// resource serves was given by choosing the file, and a template box
-		// sitting there through a forty-megabyte upload invites typing into
-		// something that is on its way out.
-		$('#resource_template_container').addClass('hidden');
 
 		progress.removeClass('hidden').find('.progress-bar').css('width', '0%');
 		$(input).prop('disabled', true);
@@ -463,14 +537,15 @@ $tabs = [
 	$('#resource_file_remove').on('click', function (event) {
 		event.preventDefault();
 
-		if (!window.confirm('Remove the uploaded file? This resource goes back to serving its template.')) {
+		if (!window.confirm('Remove the uploaded file? Nothing is served under this filename until another is uploaded, or the type is changed.')) {
 			return;
 		}
 
 		orykPost('deleteResourceFile', {
 			id: orykResourceId,
 			profile_id: orykProfileId,
-			name: $('#resource_name').val()
+			name: $('#resource_name').val(),
+			type: $('#resource_type').val()
 		}).done(function (response) {
 			if (!response || !response.status) {
 				orykShowError(response && response.message);
@@ -495,9 +570,10 @@ $tabs = [
 				id: orykResourceId,
 				profile_id: orykProfileId,
 				name: $('#resource_name').val(),
-				// A new resource is only its name: the box is not on the page yet,
-				// and val() of nothing is undefined, which jQuery would post as the
-				// six letters of it.
+				type: $('#resource_type').val(),
+				// A new resource is its name and its type: the box is not on the
+				// page yet, and val() of nothing is undefined, which jQuery would
+				// post as the six letters of it.
 				template: $('#resource_template').val() ?? ''
 			};
 		},

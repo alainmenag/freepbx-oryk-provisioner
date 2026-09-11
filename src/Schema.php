@@ -45,6 +45,45 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a resources table written before 1.0.14 up to date.
+	 *
+	 * `type` is what a resource is: a template to render, a file to hand
+	 * over, or a log to receive. Before this column that question was
+	 * answered by looking at the row -- a file_size meant a file and its
+	 * absence meant a template -- which worked and said nothing: a resource
+	 * could not be a file until a file was on it, could not be declared a
+	 * log at all, and nothing on the row said what its author meant.
+	 *
+	 * Added with a default rather than backfilled from nothing, so every
+	 * resource written before this is a template, which is what it was. The
+	 * one UPDATE is the rows that were already files, and it runs only on
+	 * the pass that adds the column: after that the column is the authority
+	 * and file_size is a fact about the upload, so a later pass re-deriving
+	 * one from the other would be the guessing this replaces.
+	 *
+	 * Ordered after addResourceFileColumns() by install() and not by
+	 * accident -- the backfill reads file_size, which on a table written
+	 * before 1.0.6 is added by that step.
+	 *
+	 * @return void
+	 */
+	public function addResourceTypeColumn()
+	{
+		if ($this->schemaHas($this->resourcesTable, 'column', 'type')) {
+			return;
+		}
+
+		$this->db->exec(
+			"ALTER TABLE `{$this->resourcesTable}`
+			ADD COLUMN `type` VARCHAR(16) NOT NULL DEFAULT 'template' AFTER `name`"
+		);
+
+		$this->db->exec(
+			"UPDATE `{$this->resourcesTable}` SET `type` = 'file' WHERE `file_size` IS NOT NULL"
+		);
+	}
+
+	/**
 	 * Bring a clients table written before 1.0.12 up to date.
 	 *
 	 * Asked of information_schema rather than tried and caught, for the reason
