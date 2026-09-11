@@ -32,14 +32,16 @@
  * Save, Delete and Close are the action bar's, drawn by FreePBX from
  * getActionBar() and bound by views/partials/editor.php.
  *
- * @var array<string, mixed> $profile  id (0 when new), name
- * @var int                  $assigned Clients using it, for the tab's count
- * @var string               $tab      Tab to open on: profile|resources|clients
- * @var int                  $saved    Resource just written, highlighted here
+ * @var array<string, mixed> $profile   id (0 when new), name
+ * @var int                  $assigned  Clients using it, for the tab's count
+ * @var int                  $resources Resources it serves, for the tab's count
+ * @var string               $tab       Tab to open on: profile|resources|clients
+ * @var int                  $saved     Resource just written, highlighted here
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => ''];
 $assigned = (int) ($assigned ?? 0);
+$resources = (int) ($resources ?? 0);
 $tab = in_array($tab ?? '', ['resources', 'clients'], true) ? $tab : 'profile';
 $saved = (int) ($saved ?? 0);
 
@@ -93,6 +95,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<?php else: ?>
 							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
 								<?php echo _('Resources'); ?>
+								<span class="badge" id="resource_count"><?php echo $resources; ?></span>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -327,6 +330,14 @@ $tab = $isNew ? 'profile' : $tab;
 			}
 
 			$('#resource_table').bootstrapTable('refresh');
+
+			// The tab's count is rendered with the page, and this is the one
+			// thing that changes it without one: the table's own total is
+			// narrowed by the search box, so the row that just went is
+			// subtracted rather than the count re-read from it.
+			const count = $('#resource_count');
+			count.text(Math.max(0, Number(count.text()) - 1));
+
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});

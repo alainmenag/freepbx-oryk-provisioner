@@ -141,6 +141,7 @@ class Pages extends Service
 		return load_view(dirname(__DIR__) . '/views/profile.php', [
 			'profile' => $profile,
 			'assigned' => $profile['id'] ? $this->profiles->profileClientCount((int) $profile['id']) : 0,
+			'resources' => $profile['id'] ? $this->profiles->profileResourceCount((int) $profile['id']) : 0,
 			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
