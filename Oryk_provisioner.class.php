@@ -170,7 +170,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->template = new Template($freepbx, $this->pbx);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
-		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens);
+		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);

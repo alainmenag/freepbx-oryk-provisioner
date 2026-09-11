@@ -286,7 +286,7 @@ $tabs = [
 	// the other tab is its badge, and the badges are re-read whole.
 
 	$(document).on('click', '[name="client_delete"]', function () {
-		if (!window.confirm('Delete this client?')) {
+		if (!window.confirm('Delete this client? Any logs it has sent go with it.')) {
 			return;
 		}
 

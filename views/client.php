@@ -336,7 +336,7 @@ $tabs = [
 	orykEditor({
 		save: 'saveClient',
 		remove: 'deleteClient',
-		confirm: 'Delete this client?',
+		confirm: 'Delete this client? Any logs it has sent go with it.',
 		values: function () {
 			return {
 				id: orykClientId,

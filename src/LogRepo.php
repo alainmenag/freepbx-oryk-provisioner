@@ -174,6 +174,61 @@ class LogRepo extends Repo
 	}
 
 	/**
+	 * Remove everything one client has ever sent, and the directory itself.
+	 *
+	 * FileRepo::removeRepoFile() for the other direction: what is stored for
+	 * a row goes when the row does, so the filesystem never holds something
+	 * nothing on the system can account for. A client's logs are a directory
+	 * rather than a file, which is the only reason this is longer than that.
+	 *
+	 * **What makes deleting a directory safe here is that the path is never
+	 * given.** It is built by clientPath(), which answers either '' or
+	 * logPath() joined to twelve lowercase hex characters -- so there is no
+	 * argument to this method that reaches a directory outside the log root,
+	 * and no caller that could pass one.
+	 *
+	 * One level deep, deliberately. Everything written here is a file, so a
+	 * subdirectory is somebody else's; it is not descended into, and rmdir()
+	 * refusing over it is the right outcome rather than an obstacle.
+	 *
+	 * A directory that is not there is not a failure -- it is the state this
+	 * was asked to reach, and it is the common one: a client that never sent
+	 * anything never had a directory made for it.
+	 *
+	 * @param mixed $mac MAC of the client whose logs these are.
+	 *
+	 * @return bool True when nothing is left at that path.
+	 */
+	public function removeClientLogs($mac)
+	{
+		$path = $this->clientPath($mac);
+
+		if ($path === '' || !is_dir($path)) {
+			return true;
+		}
+
+		foreach ((array) @scandir($path) as $entry) {
+			if ($entry === '.' || $entry === '..') {
+				continue;
+			}
+
+			$file = $path . '/' . $entry;
+
+			if (is_file($file) || is_link($file)) {
+				@unlink($file);
+			}
+		}
+
+		if (!@rmdir($path)) {
+			$this->log(sprintf('oryk_provisioner: could not remove %s', $path), null, 'WARNING');
+
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * A filename off the wire, as something safe to write to disk.
 	 *
 	 * This one is a resource name an administrator typed and saveResource()

@@ -31,15 +31,21 @@ class Clients extends Service
 	private $tokens;
 
 	/**
+	 * @var LogRepo
+	 */
+	private $logs;
+
+	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Freepbx $pbx, Profiles $profiles, Tokens $tokens)
+	public function __construct($freepbx, Freepbx $pbx, Profiles $profiles, Tokens $tokens, LogRepo $logs)
 	{
 		parent::__construct($freepbx);
 
 		$this->pbx = $pbx;
 		$this->profiles = $profiles;
 		$this->tokens = $tokens;
+		$this->logs = $logs;
 	}
 
 	/**
@@ -351,8 +357,38 @@ class Clients extends Service
 		return $stmt->fetchAll(PDO::FETCH_ASSOC);
 	}
 
+	/**
+	 * Remove a client.
+	 *
+	 * Nothing points at a client the way a client points at a profile, so
+	 * there is nothing to refuse this for.
+	 *
+	 * What it has sent us goes with it, and goes first -- while there is
+	 * still a row to say the MAC. The log directory is named after the MAC
+	 * and nothing else, so a row deleted without it would leave a directory
+	 * on the PBX that nothing on the system can account for, holding the boot
+	 * logs of a phone the module has forgotten. That is the order and the
+	 * reason deleteResource() has for an uploaded file.
+	 *
+	 * Its rows in the provisioning log deliberately stay. They are keyed on
+	 * the MAC rather than on this id precisely so that they outlive the
+	 * client and predate it -- a phone's requests from before anybody wrote
+	 * its client are the run of 404s that says what it has been asking for,
+	 * and deleting the client is often the prelude to writing it again.
+	 * Clearing them is its own button on the Logs tab.
+	 *
+	 * @param mixed $id Client id.
+	 *
+	 * @return array<string, mixed> Status of the removal.
+	 */
 	public function deleteClient($id)
 	{
+		$client = $this->clientRow($id);
+
+		if ($client) {
+			$this->logs->removeClientLogs($client['mac']);
+		}
+
 		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");
 		$stmt->execute([':id' => (int) $id]);
 
