@@ -32,7 +32,7 @@
  * Each tab is a link and only the tab asked for is rendered -- see
  * partials/tabs.php.
  *
- * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token
+ * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token, enabled
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
@@ -41,7 +41,7 @@
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
-$client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
+$client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0, 'enabled' => 1];
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
 $available = $available ?? [];
@@ -61,6 +61,10 @@ $profileId = (int) ($client['profile_id'] ?? 0);
 // field, so leaving it alone leaves the token alone and emptying it takes the
 // token away -- and a value with a colon in it is a new token to hash.
 $token = (string) ($client['token'] ?? '');
+
+// Whether the endpoint answers this client at all. A client that has not been
+// written yet is enabled: somebody adding one is adding one to serve.
+$enabled = !isset($client['enabled']) || (int) $client['enabled'] === 1;
 
 // Nothing is served to a client that has never been written, or to one
 // with no profile assigned, so its Resources tab is there but does not open.
@@ -201,9 +205,16 @@ $tabs = [
 										<select class="form-control" id="client_profile_id">
 											<option value=""><?php echo _('None'); ?></option>
 											<?php foreach ($profiles as $profile): ?>
+												<?php
+												// A profile that has been switched off is still offered
+												// -- a client being set up against a profile that is not
+												// in service yet is assigned to it -- but it says so, or
+												// the select would offer it as though it were serving.
+												$profileOff = isset($profile['enabled']) && (int) $profile['enabled'] !== 1;
+												?>
 												<option value="<?php echo (int) $profile['id']; ?>"
 													<?php echo (int) $profile['id'] === $profileId ? 'selected' : ''; ?>>
-													<?php echo $h($profile['name']); ?>
+													<?php echo $h($profile['name']) . ($profileOff ? ' ' . $h(_('(disabled)')) : ''); ?>
 												</option>
 											<?php endforeach; ?>
 										</select>
@@ -213,7 +224,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('What this client is served. Until one is assigned there is nothing to provision, and the client is asked for a configuration it has none of.'); ?>
+										<?php echo _('What this client is served. Until one is assigned there is nothing to provision, and the client is asked for a configuration it has none of. A profile marked disabled is switched off and serves nothing, however this client is set.'); ?>
 									</span>
 								</div>
 							</div>
@@ -237,6 +248,29 @@ $tabs = [
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
 										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. Empty the box to take the token away. Nothing is authenticated against it yet.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="client_enabled"><?php echo _('Status'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<select class="form-control" id="client_enabled">
+											<option value="1" <?php echo $enabled ? 'selected' : ''; ?>><?php echo _('Enabled'); ?></option>
+											<option value="0" <?php echo $enabled ? '' : 'selected'; ?>><?php echo _('Disabled'); ?></option>
+										</select>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('Whether the endpoint answers this client. Disabled, every request it makes is refused -- its profile\'s files, anything served by name, and any log it tries to send -- without the client being deleted or its configuration touched. What it asks for while it is off is still recorded on the Logs tab, which is usually the point of switching it off. The same switch is on the row on the Clients list.'); ?>
 									</span>
 								</div>
 							</div>
@@ -345,7 +379,8 @@ $tabs = [
 				profile_id: $('#client_profile_id').val(),
 				// Sent as it stands, hash or typed token: which one it is, is
 				// saveClient()'s question, and a colon is how it answers it.
-				token: $('#client_token').val()
+				token: $('#client_token').val(),
+				enabled: $('#client_enabled').val()
 			};
 		},
 		// Back to the list on the Clients tab, with the row that was just

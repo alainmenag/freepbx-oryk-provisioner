@@ -251,10 +251,11 @@ class Matcher extends Service
 	public function fileByName($requested)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, profile_id, name, type, file_size
-			FROM `{$this->resourcesTable}`
-			WHERE name = :name AND type = 'file'
-			ORDER BY id
+			"SELECT r.id, r.profile_id, r.name, r.type, r.file_size
+			FROM `{$this->resourcesTable}` r
+			JOIN `{$this->profilesTable}` p ON p.id = r.profile_id
+			WHERE r.name = :name AND r.type = 'file' AND p.enabled = 1
+			ORDER BY r.id
 			LIMIT 1"
 		);
 		$stmt->execute([':name' => (string) $requested]);

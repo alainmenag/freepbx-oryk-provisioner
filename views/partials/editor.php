@@ -79,6 +79,17 @@
 	.gap-3 {
 		gap: 3px;
 	}
+	/*
+	 * A client that has been switched off, wherever it is listed. The list
+	 * has its own copy of this: the switch is drawn there and nowhere else,
+	 * but a client is a client on every tab that names one, and a tab that
+	 * showed a disabled phone as an ordinary row would be the tab somebody
+	 * checks before wondering why it is not provisioning.
+	 */
+	tr.oryk-disabled > td,
+	tr.oryk-disabled > td a:not(.btn) {
+		color: #999;
+	}
 </style>
 
 <script>

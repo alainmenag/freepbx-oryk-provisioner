@@ -15,6 +15,22 @@ use PDO;
  */
 class Clients extends Service
 {
+	// Being switched on and off is the same thing here as it is on a
+	// profile, so it is written once -- see src/Enabled.php.
+	use Enabled;
+
+	/**
+	 * Whether a client has a token, as a column.
+	 *
+	 * The table wants to show whether a client is authenticated, and the one
+	 * thing it must not be shown to do that is the token itself -- so the
+	 * question is answered in SQL and only the answer travels. It is a
+	 * constant because the same expression is both selected and sorted on,
+	 * and the two drifting apart would sort the column by something other
+	 * than what it displays.
+	 */
+	const SECURE_EXPR = "(pc.token IS NOT NULL AND pc.token <> '')";
+
 	/**
 	 * @var Freepbx
 	 */
@@ -72,6 +88,8 @@ class Clients extends Service
 			'device_id' => 'pc.device_id',
 			'description' => 'd.description',
 			'profile' => 'p.name',
+			'secure' => self::SECURE_EXPR,
+			'enabled' => 'pc.enabled',
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['mac'];
@@ -124,7 +142,10 @@ class Clients extends Service
 				pc.profile_id,
 				d.user AS extension,
 				d.description AS description,
-				p.name AS profile
+				p.name AS profile,
+				p.enabled AS profile_enabled,
+				pc.enabled,
+				" . self::SECURE_EXPR . " AS secure
 			$from
 			$where
 			ORDER BY $sort $order
@@ -168,7 +189,7 @@ class Clients extends Service
 		// tolerable -- but it is on an admin page, and a weak token behind it
 		// is a weak token in front of anyone who can open that page.
 		$stmt = $this->db->prepare(
-			"SELECT id, mac, device_id, profile_id, token
+			"SELECT id, mac, device_id, profile_id, token, enabled
 			FROM `{$this->clientsTable}`
 			WHERE id = :id"
 		);
@@ -194,12 +215,14 @@ class Clients extends Service
 			"SELECT
 				pc.mac,
 				pc.token,
+				pc.enabled,
 				pc.device_id,
 				pc.profile_id,
 				d.user AS extension,
 				d.description,
 				d.tech,
-				p.name AS profile_name
+				p.name AS profile_name,
+				p.enabled AS profile_enabled
 			FROM `{$this->clientsTable}` pc
 			LEFT JOIN devices d ON d.id = pc.device_id
 			LEFT JOIN `{$this->profilesTable}` p ON p.id = pc.profile_id
@@ -278,6 +301,9 @@ class Clients extends Service
 		$token = trim((string) ($request['token'] ?? ''));
 		$tokenHash = null;
 
+		// Enabled unless the page said otherwise -- see enabledSubmitted().
+		$enabled = self::enabledSubmitted($request);
+
 		if ($token !== '' && strpos($token, ':') !== false) {
 			$tokenHash = $this->tokens->hashToken($token);
 
@@ -295,7 +321,7 @@ class Clients extends Service
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->clientsTable}`
 				SET mac = :mac, device_id = :device_id, profile_id = :profile_id,
-					token = :token
+					token = :token, enabled = :enabled
 				WHERE id = :id"
 			);
 			$stmt->execute([
@@ -303,6 +329,7 @@ class Clients extends Service
 				':device_id' => $deviceId,
 				':profile_id' => $profileId,
 				':token' => $tokenHash,
+				':enabled' => $enabled,
 				':id' => $id,
 			]);
 
@@ -310,14 +337,15 @@ class Clients extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token)
-			VALUES (:mac, :device_id, :profile_id, :token)"
+			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token, enabled)
+			VALUES (:mac, :device_id, :profile_id, :token, :enabled)"
 		);
 		$stmt->execute([
 			':mac' => $mac,
 			':device_id' => $deviceId,
 			':profile_id' => $profileId,
 			':token' => $tokenHash,
+			':enabled' => $enabled,
 		]);
 
 		return ['status' => true, 'id' => (int) $this->db->lastInsertId()];
@@ -355,6 +383,37 @@ class Clients extends Service
 		$stmt->execute();
 
 		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * Switch a client on or off.
+	 *
+	 * The one thing about a client that is worth changing without opening it,
+	 * which is why it is a button on the row and not only a field on the
+	 * page: switching a phone off is what somebody does to a client they are
+	 * not otherwise editing -- a desk that has been emptied, a MAC that is
+	 * asking for a configuration it should not be given yet -- and making
+	 * them open the editor to do it is making them open the editor to change
+	 * nothing else.
+	 *
+	 * The write is the trait's, and shared with a profile. What is this
+	 * class's is the row: a client that has gone is said in this table's own
+	 * words, and it is said before anything is written rather than by an
+	 * UPDATE that quietly matches nothing.
+	 *
+	 * @param array<string, mixed> $request id, and the state to put it in.
+	 *
+	 * @return array<string, mixed> Status, and the state the client is in.
+	 */
+	public function setClientEnabled($request)
+	{
+		$id = (int) ($request['id'] ?? 0);
+
+		if (!$id || !$this->clientRow($id)) {
+			return ['status' => false, 'message' => _('That client no longer exists.')];
+		}
+
+		return $this->setEnabled($this->clientsTable, $request);
 	}
 
 	/**

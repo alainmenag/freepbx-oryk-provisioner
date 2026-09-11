@@ -25,7 +25,14 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * page you did not ask for and cannot predict.
  *
  * Growing it is adding a branch to levels(). Nothing else has to know: every
- * level is the same five things, and the view draws them all the same way.
+ * level is the same six things, and the view draws them all the same way.
+ *
+ * The sixth is 'add': where a *new* one of these is written, or null where
+ * that is not a thing you can do. Creating is not navigating, so it is not one
+ * of the options -- the view pins it under them, past a rule, out of the
+ * filter's way. But it belongs to the level rather than to the page, because
+ * only the level knows what a new one of itself costs: a resource's is the
+ * profile it would hang off, and a section has none at all.
  */
 class Navigator extends Service
 {
@@ -131,6 +138,9 @@ class Navigator extends Service
 			'prompt' => _('Select a section'),
 			'search' => _('Search sections'),
 			'options' => $options,
+			// The module's sections are the module. There is no writing a
+			// fourth one, so this level is the one that draws no add row.
+			'add' => null,
 		];
 	}
 
@@ -174,6 +184,13 @@ class Navigator extends Service
 			'prompt' => _('Select a client'),
 			'search' => _('Search clients'),
 			'options' => $options,
+			'add' => [
+				'text' => _('New client'),
+				'href' => '?display=oryk_provisioner&client=',
+				// On the page writing one, the add row is where you are --
+				// so the level still has exactly one thing marked active.
+				'active' => $at === 'new',
+			],
 		];
 	}
 
@@ -212,6 +229,11 @@ class Navigator extends Service
 			'prompt' => _('Select a profile'),
 			'search' => _('Search profiles'),
 			'options' => $options,
+			'add' => [
+				'text' => _('New profile'),
+				'href' => '?display=oryk_provisioner&profile=',
+				'active' => $at === 'new',
+			],
 		];
 	}
 
@@ -254,6 +276,13 @@ class Navigator extends Service
 			'prompt' => _('Select a resource'),
 			'search' => _('Search resources'),
 			'options' => $options,
+			// Narrowed to its profile like everything else here: a file is
+			// written to the profile above it or to nothing at all.
+			'add' => [
+				'text' => _('New resource'),
+				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=',
+				'active' => $at === 'new',
+			],
 		];
 	}
 }

@@ -36,14 +36,14 @@
  * Save, Delete and Close are the action bar's, drawn by FreePBX from
  * getActionBar() and bound by views/partials/editor.php.
  *
- * @var array<string, mixed> $profile id (0 when new), name
+ * @var array<string, mixed> $profile id (0 when new), name, enabled
  * @var array<string, int>   $counts  Rows behind each tab -- see partials/counts.php
  * @var string               $tab     Tab to open on: profile|resources|clients
  * @var int                  $saved   Resource just written, highlighted here
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
-$profile = $profile ?? ['id' => 0, 'name' => ''];
+$profile = $profile ?? ['id' => 0, 'name' => '', 'enabled' => 1];
 $tab = in_array($tab ?? '', ['resources', 'clients'], true) ? $tab : 'profile';
 $saved = (int) ($saved ?? 0);
 
@@ -53,6 +53,10 @@ $h = function ($value) {
 
 $id = (int) $profile['id'];
 $isNew = $id === 0;
+
+// Whether the endpoint serves this profile at all. A profile that has not been
+// written yet is enabled: somebody adding one is adding one to serve.
+$enabled = !isset($profile['enabled']) || (int) $profile['enabled'] === 1;
 
 // A new profile has nothing for a resource to belong to and nothing assigned
 // to it, so those tabs are there but do not open: hidden, they would look
@@ -135,6 +139,29 @@ $tabs = [
 							</div>
 						</div>
 
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="profile_enabled"><?php echo _('Status'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<select class="form-control" id="profile_enabled">
+											<option value="1" <?php echo $enabled ? 'selected' : ''; ?>><?php echo _('Enabled'); ?></option>
+											<option value="0" <?php echo $enabled ? '' : 'selected'; ?>><?php echo _('Disabled'); ?></option>
+										</select>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('Whether this profile serves anything. Disabled, every client assigned to it is refused -- its files, and anything of its own served by name -- without any of those clients being changed, so switching it back on serves them again exactly as before. Use it to take a whole fleet out of service while its files are being rewritten. The same switch is on the row on the Profiles list, and what the refused phones asked for is on the Logs tab.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
 					</div>
 
 					<?php endif; ?>
@@ -197,6 +224,7 @@ $tabs = [
 								data-search="true"
 								data-show-refresh="true"
 								data-unique-id="id"
+								data-row-style="formatClientRow"
 								data-sort-name="mac"
 								data-sort-order="asc">
 								<thead>
@@ -261,6 +289,14 @@ $tabs = [
 		return value ? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
+	// Switched off is said by the row rather than by a column of its own: it
+	// is switched on the list or on the client's own page, and this tab is
+	// neither -- what it owes the reader is that the phone it is looking at
+	// is not being served.
+	function formatClientRow(row) {
+		return Number(row.enabled) ? {} : { classes: 'oryk-disabled' };
+	}
+
 	// The Device column names the FreePBX device; the extension it is attached
 	// to is shown alongside it when there is one, and links to that extension.
 	function formatDevice(value, row) {
@@ -322,7 +358,8 @@ $tabs = [
 		values: function () {
 			return {
 				id: orykProfileId,
-				name: $('#profile_name').val()
+				name: $('#profile_name').val(),
+				enabled: $('#profile_enabled').val()
 			};
 		},
 		// The list is re-rendered on arrival, so the saved profile is in
