@@ -239,6 +239,30 @@ class Resources extends Service
 	 *
 	 * @return array<string, mixed> Status of the removal.
 	 */
+	/**
+	 * The files one profile serves, as the navigator lists them.
+	 *
+	 * Narrowed to the profile, the way resourceRow() is and for the same
+	 * reason: a resource has no existence apart from the profile that serves
+	 * it, so there is no such thing as the list of all of them.
+	 *
+	 * @param int $profileId Profile whose files these are.
+	 *
+	 * @return array<int, array<string, mixed>> Resource rows: id, name.
+	 */
+	public function resourceChoices($profileId)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id, name
+				FROM `{$this->resourcesTable}`
+				WHERE profile_id = :profile_id
+				ORDER BY name"
+		);
+		$stmt->execute([':profile_id' => (int) $profileId]);
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
 	public function deleteResource($id)
 	{
 		$this->files->removeRepoFile($id);

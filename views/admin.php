@@ -13,6 +13,7 @@
  * @var string             $tab    Tab to open on: clients|profiles|logs
  * @var int                $saved  Row just written on that tab, highlighted here
  * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
+ * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
 $tab = in_array($tab ?? '', ['profiles', 'logs'], true) ? $tab : 'clients';
@@ -42,13 +43,7 @@ $savedProfile = $tab === 'profiles' ? $saved : 0;
 	<div class="fpbx-container">
 		<div class="display full-border">
 
-			<div class="section-title">
-				<h2>
-					<span class="title">
-						Provisioner
-					</span>
-				</h2>
-			</div>
+			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
 
