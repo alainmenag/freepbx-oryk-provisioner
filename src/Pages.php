@@ -51,9 +51,14 @@ class Pages extends Service
 	private $counts;
 
 	/**
+	 * @var Navigator
+	 */
+	private $navigator;
+
+	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator)
 	{
 		parent::__construct($freepbx);
 
@@ -64,6 +69,7 @@ class Pages extends Service
 		$this->template = $template;
 		$this->requestLog = $requestLog;
 		$this->counts = $counts;
+		$this->navigator = $navigator;
 	}
 
 	/**
@@ -146,6 +152,12 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/profile.php', [
 			'profile' => $profile,
+			// A profile that has not been written is 'new' rather than an id:
+			// the crumb has something to say about a page that is about to be
+			// a profile, and no row to point at.
+			'navigator' => $this->navigator->levels('profiles', [
+				'profile' => $profile['id'] ? (int) $profile['id'] : 'new',
+			]),
 			// Narrowed to this profile, new one included: nothing points at
 			// a profile that has not been written, and profile_id=0 counts
 			// it rather than being read as no narrowing at all.
@@ -205,6 +217,9 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/client.php', [
 			'client' => $client,
+			'navigator' => $this->navigator->levels('clients', [
+				'client' => $client['id'] ? (int) $client['id'] : 'new',
+			]),
 			'freepbxDevices' => $this->pbx->freepbxDevices(),
 			'profiles' => $this->profiles->profileChoices(),
 			// Two scopes on one page: Resources is the profile's, Logs is
@@ -252,6 +267,12 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/resource.php', [
 			'resource' => $resource,
+			// Both levels, because a resource is reached through its profile
+			// and is nothing without it.
+			'navigator' => $this->navigator->levels('profiles', [
+				'profile' => (int) $profile['id'],
+				'resource' => $resource['id'] ? (int) $resource['id'] : 'new',
+			]),
 			'profile' => $profile,
 			'placeholders' => $this->template->templatePlaceholders(),
 			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
@@ -282,13 +303,18 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
+		$tab = in_array($tab, ['profiles', 'logs'], true) ? $tab : 'clients';
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
-			'tab' => in_array($tab, ['profiles', 'logs'], true) ? $tab : 'clients',
+			'tab' => $tab,
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 			// Nothing above this page to narrow them by: every client, every
 			// profile, every request.
 			'counts' => $this->counts->pageCounts(),
+			// The section is the tab this page opens on, and nothing under it
+			// is open: those levels are prompts, which is how somebody gets
+			// from here to a row without reading the table first.
+			'navigator' => $this->navigator->levels($tab),
 		]);
 	}
 

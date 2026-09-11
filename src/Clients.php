@@ -324,6 +324,33 @@ class Clients extends Service
 	 *
 	 * @return array<string, mixed> Status of the removal.
 	 */
+	/**
+	 * The clients the navigator lists.
+	 *
+	 * A MAC and the description of the FreePBX device behind it, off the same
+	 * join listClients() reads: the MAC is what a client *is* and is unreadable,
+	 * the description is what its owner calls it and is not unique, so the
+	 * option carries both and is found by either.
+	 *
+	 * Unpaged, like profileChoices() beside it. Both are read to fill a control
+	 * that offers every row there is, which is what a navigator is for; the
+	 * tables are where a list too long to look at is searched and paged.
+	 *
+	 * @return array<int, array<string, mixed>> Client rows: id, mac, description.
+	 */
+	public function clientChoices()
+	{
+		$stmt = $this->db->prepare(
+			"SELECT pc.id, pc.mac, d.description
+				FROM `{$this->clientsTable}` pc
+				LEFT JOIN devices d ON d.id = pc.device_id
+				ORDER BY pc.mac"
+		);
+		$stmt->execute();
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
 	public function deleteClient($id)
 	{
 		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");

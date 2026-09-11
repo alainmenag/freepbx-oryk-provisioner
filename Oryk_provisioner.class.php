@@ -14,6 +14,7 @@ use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
 use FreePBX\Modules\Oryk_Provisioner\Logs;
 use FreePBX\Modules\Oryk_Provisioner\Matcher;
+use FreePBX\Modules\Oryk_Provisioner\Navigator;
 use FreePBX\Modules\Oryk_Provisioner\Pages;
 use FreePBX\Modules\Oryk_Provisioner\Previews;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
@@ -105,6 +106,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Matcher */
 	private $matcher;
 
+	/** @var Navigator */
+	private $navigator;
+
 	/** @var Pages */
 	private $pages;
 
@@ -162,6 +166,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files);
 
@@ -184,7 +189,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->pbx,
 			$this->template,
 			$this->provisioningLog,
-			$this->counts
+			$this->counts,
+			$this->navigator
 		);
 	}
 

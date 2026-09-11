@@ -37,6 +37,7 @@
  * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
  * @var array<string, bool>               $available      Which of the other tabs have anything on them
  * @var string                            $tab            Tab to open on: client|resources|logs
+ * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
 $client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
@@ -84,17 +85,7 @@ $countScope = ['profile_id' => $profileId, 'mac' => $mac];
 	<div class="fpbx-container">
 		<div class="display full-border">
 
-			<div class="section-title">
-				<h2>
-					<span class="title">
-						<a class="title" href="?display=oryk_provisioner&tab=clients">Provisioner</a>
-						<span>:: Client</span>
-						<?php if (isset($client['mac'])): ?>
-							<code><?php echo $h($client['mac']); ?></code>
-						<?php endif; ?>
-					</span>
-				</h2>
-			</div>
+			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
 

@@ -36,6 +36,7 @@
  * @var array<string, int>   $counts  Rows behind each tab -- see partials/counts.php
  * @var string               $tab     Tab to open on: profile|resources|clients
  * @var int                  $saved   Resource just written, highlighted here
+ * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => ''];
@@ -65,17 +66,7 @@ $countScope = ['profile_id' => $id];
 	<div class="fpbx-container">
 		<div class="display full-border">
 
-			<div class="section-title">
-				<h2>
-					<span class="title">
-						<a class="title" href="?display=oryk_provisioner&tab=profiles">Provisioner</a>
-						<span>:: Profile</span>
-						<?php if (isset($profile['name'])): ?>
-							<code><?php echo $h($profile['name']); ?></code>
-						<?php endif; ?>
-					</span>
-				</h2>
-			</div>
+			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
 

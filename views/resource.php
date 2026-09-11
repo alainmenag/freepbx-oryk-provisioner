@@ -41,6 +41,7 @@
  * @var array<string, array<string, string>> $placeholders What a template can refer to
  * @var array<string, int>                   $counts       Rows behind each tab -- see partials/counts.php
  * @var string                               $tab          Tab to open on: resource|clients
+ * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
 $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template' => ''];
@@ -93,21 +94,7 @@ $countScope = ['profile_id' => $profileId];
 	<div class="fpbx-container">
 		<div class="display full-border">
 
-			<div class="section-title">
-				<h2>
-					<span class="title">
-						<a class="title" href="?display=oryk_provisioner&tab=profiles">Provisioner</a>
-						<span>:: Profile</span>
-						<a class="title" href="?display=oryk_provisioner&profile=<?php echo $profileId; ?>&tab=resources">
-							<span><?php echo $h($profile['name']); ?></span>
-						</a>
-						<span>:: Resource</span>
-						<?php if (isset($resource['name'])): ?>
-							<code id="resource_crumb"><?php echo $h($resource['name']); ?></code>
-						<?php endif; ?>
-					</span>
-				</h2>
-			</div>
+			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
 
@@ -410,7 +397,7 @@ $countScope = ['profile_id' => $profileId];
 	// rename that has already been written without a page load behind it.
 	function orykSaved(response) {
 		if (response && response.name) {
-			$('#resource_crumb').text(response.name);
+			orykNavText('resource', response.name);
 		}
 	}
 
