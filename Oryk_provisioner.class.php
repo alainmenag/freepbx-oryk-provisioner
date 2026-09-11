@@ -387,6 +387,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveClient':
 			case 'saveProfile':
 			case 'deleteClient':
+			case 'setClientEnabled':
+			case 'setProfileEnabled':
 			case 'deleteProfile':
 			case 'listResources':
 			case 'saveResource':
@@ -445,6 +447,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteClient':
 				return $this->clients->deleteClient($_REQUEST['id'] ?? null);
+
+			// One column, changed from the row it is shown on. Not folded
+			// into saveClient: that writes every field the editor holds, and
+			// a list row does not hold them -- a save posted from one would
+			// be a save of what it happened to know. The same for a profile,
+			// one level up, and the same write underneath both -- see
+			// src/Enabled.php.
+			case 'setClientEnabled':
+				return $this->clients->setClientEnabled($_REQUEST);
+
+			case 'setProfileEnabled':
+				return $this->profiles->setProfileEnabled($_REQUEST);
 
 			case 'deleteProfile':
 				return $this->profiles->deleteProfile($_REQUEST['id'] ?? null);

@@ -38,6 +38,11 @@ and the rendering.
   admin session.
 - Gives you an admin page per client, profile and resource, and a per-row
   Render link so you can see exactly what a given phone gets.
+- Lets you switch a client — or a whole profile — off from its row on the
+  list, or from its own page: every request it makes is refused until you
+  switch it back on, and nothing about it is lost in the meantime. Switching a
+  profile off stops every client assigned to it at once, without touching one
+  of them.
 - Logs metadata only — MAC, file, profile. Never the rendered body.
 
 ---
@@ -262,7 +267,9 @@ from the profile that serves it.
 Three tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
 
 **`oryk_provisioner_clients`** — `id`, `mac` (unique, 12 lowercase hex),
-`device_id`, `profile_id`, `token`, `created_at`, `updated_at`.
+`device_id`, `profile_id`, `token`, `enabled`, `created_at`, `updated_at`.
+`enabled` is whether the endpoint answers this client at all; it defaults to 1,
+so every client written before there was a switch is one nobody switched off.
 `token` is a `password_hash()` of the client's token, shown as it stands
 in the client editor and deliberately not indexed: it is verified against,
 never looked up by, since a request already says who is asking.
@@ -270,8 +277,11 @@ never looked up by, since a request already says who is asking.
 and it keeps that name deliberately: it holds a FreePBX device id, which is the
 one thing on the row that is still a device.
 
-**`oryk_provisioner_profiles`** — `id`, `name` (unique), `created_at`,
-`updated_at`.
+**`oryk_provisioner_profiles`** — `id`, `name` (unique), `enabled`,
+`created_at`, `updated_at`. `enabled` is the same column a client has and
+means the same thing one level up: a disabled profile serves nothing, so every
+client assigned to it is refused. It defaults to 1, so profiles written before
+there was a switch are ones nobody switched off.
 
 **`oryk_provisioner_resources`** — `id`, `profile_id`, `name`, `template`
 (LONGTEXT), `created_at`, `updated_at`. Unique on `(profile_id, name)`.
@@ -322,8 +332,9 @@ Know what this is before you expose it:
   Until it does, restrict who can reach `/provisioner/` at the network layer,
   and prefer HTTPS.
 - **Failures are not uniform.** A 404 says which kind of failure it was
-  ("… is not associated with anything", "… has no profile assigned"), so a
-  caller probing MACs can tell a known one from an unknown one.
+  ("… is not associated with anything", "… has no profile assigned",
+  "… is disabled", "The … profile is disabled"), so a caller probing MACs can
+  tell a known one from an unknown one.
 - **Secrets are not masked anywhere in the UI.** The Render links serve the real
   rendered file, secret included.
 - The provisioning log records metadata only — MAC, file, profile — never the
@@ -338,9 +349,9 @@ Know what this is before you expose it:
 The larger design this is working towards, none of which exists in the code:
 
 - **Provisioning tokens** — the storage is there (a hashed per-client token and
-  `verifyToken()`), and nothing calls it: the endpoint checks no token,
-  there is no per-client enable/disable, and a 404 still says which kind of
-  failure it was. A token that has to *identify* a client, the way
+  `verifyToken()`), and nothing calls it: the endpoint checks no token, and a
+  404 still says which kind of failure it was — a disabled client included,
+  which is now a refusal of its own. A token that has to *identify* a client, the way
   `/provisioner/{token}/{file}` would, needs a lookup a `password_hash()`
   column cannot serve, so that scheme wants a second, digest-based column
   rather than this one.

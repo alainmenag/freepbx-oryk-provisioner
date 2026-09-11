@@ -55,6 +55,7 @@ class Installer extends Service
 			"CREATE TABLE IF NOT EXISTS `{$this->profilesTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`name` VARCHAR(191) NOT NULL,
+				`enabled` TINYINT(1) NOT NULL DEFAULT 1,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -116,6 +117,11 @@ class Installer extends Service
 		// rather than for the one it produces today. There is no plaintext
 		// column beside it and no index on it: it is verified against, never
 		// looked up by, and hashToken() says why.
+		//
+		// enabled is whether the endpoint answers this client at all. A row
+		// is written enabled -- somebody adding a client is adding one to
+		// serve -- and switching it off is a deliberate act taken afterwards,
+		// on the client or from its row on the list.
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->clientsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -123,6 +129,7 @@ class Installer extends Service
 				`device_id` VARCHAR(20) NULL DEFAULT NULL,
 				`profile_id` INT(11) NULL DEFAULT NULL,
 				`token` VARCHAR(255) NULL DEFAULT NULL,
+				`enabled` TINYINT(1) NOT NULL DEFAULT 1,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -172,6 +179,8 @@ class Installer extends Service
 		$this->schema->addResourceFileColumns();
 		$this->schema->addResourceTypeColumn();
 		$this->schema->addClientTokenColumn();
+		$this->schema->addClientEnabledColumn();
+		$this->schema->addProfileEnabledColumn();
 
 		$this->linkEngine();
 

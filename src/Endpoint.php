@@ -273,6 +273,54 @@ class Endpoint extends Service
 
 		$client = $mac === '' ? null : $this->clients->clientByMac($mac);
 
+		// A client that has been switched off is answered nothing, and before
+		// anything else is looked at: not its profile's files, not the files
+		// that are served by name to callers with no client at all, and not a
+		// log it tries to send. Disabling a client is the operator saying
+		// this MAC is not to be provisioned, and a switch that only covered
+		// what the profile serves would leave firmware -- the one resource
+		// that can be fetched without a client behind the request -- still
+		// going out to it.
+		//
+		// It reads as a refusal rather than as an unknown MAC, which is the
+		// posture the rest of this method already takes: every message here
+		// says which kind of no it is, because the operator reading them on
+		// the Logs tab is the one the endpoint is talking to. A phone does
+		// not read them either way. Closing that gap is the token scheme's
+		// job and it is a change to all of them at once, not to this one.
+		if ($client && !(int) ($client['enabled'] ?? 1)) {
+			return [
+				'status' => false,
+				'message' => sprintf(_('%s is disabled.'), $mac),
+			];
+		}
+
+		// And the same switch one level up. A profile that has been switched
+		// off serves nothing to anybody, so every client assigned to it is
+		// refused here without any of those clients having been touched --
+		// which is the whole point of a switch on the profile rather than on
+		// each of them in turn.
+		//
+		// The refusal names the profile rather than the client, because that
+		// is the difference between this and the line above it: the operator
+		// reading the Logs tab is looking at a run of refusals from phones
+		// that are individually fine, and what they need told is which one
+		// thing to switch back on.
+		//
+		// Its uploaded files are refused too, and that is decided elsewhere
+		// -- fileByName() will not look inside a disabled profile, because
+		// that lookup answers callers with no client behind them at all and
+		// so never reaches this line.
+		if ($client && $client['profile_id'] !== null && !(int) ($client['profile_enabled'] ?? 1)) {
+			return [
+				'status' => false,
+				'message' => sprintf(
+					_('The %s profile is disabled.'),
+					(string) $client['profile_name']
+				),
+			];
+		}
+
 		if ($client && $client['profile_id'] !== null) {
 			$values = $this->template->provisioningValues($client);
 

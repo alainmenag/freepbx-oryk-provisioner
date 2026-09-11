@@ -13,9 +13,20 @@ use PDO;
  * to it. A profile clients still point at is refused deletion rather
  * than cascading; its resources do cascade, and take their uploaded
  * files with them.
+ *
+ * It can also be switched off, which is the same switch a client has one
+ * level up: a disabled profile serves nothing to anybody, so every client
+ * assigned to it is refused without any of them being touched. That is what
+ * it is for -- a profile being rewritten, or a vendor's phones to be held
+ * back for an afternoon, is a fleet to stop rather than a list of clients to
+ * go through one at a time.
  */
 class Profiles extends Service
 {
+	// The switch is the same on both tables, and written once -- see
+	// src/Enabled.php.
+	use Enabled;
+
 	/**
 	 * @var FileRepo
 	 */
@@ -41,6 +52,7 @@ class Profiles extends Service
 		$sortable = [
 			'name' => 'p.name',
 			'assigned' => 'assigned',
+			'enabled' => 'p.enabled',
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['name'];
@@ -66,6 +78,7 @@ class Profiles extends Service
 			SELECT
 				p.id,
 				p.name,
+				p.enabled,
 				(
 					SELECT COUNT(*)
 					FROM `{$this->clientsTable}` pc
@@ -104,7 +117,7 @@ class Profiles extends Service
 	public function profileRow($id)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name
+			"SELECT id, name, enabled
 			FROM `{$this->profilesTable}`
 			WHERE id = :id"
 		);
@@ -117,9 +130,9 @@ class Profiles extends Service
 	/**
 	 * Create or update a profile.
 	 *
-	 * A name and nothing else. What the profile serves is its resources, each
-	 * written on its own page, and who it serves is the clients assigned
-	 * to it -- neither is edited here.
+	 * A name and whether it serves at all. What the profile serves is its
+	 * resources, each written on its own page, and who it serves is the
+	 * clients assigned to it -- neither is edited here.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
@@ -143,14 +156,18 @@ class Profiles extends Service
 			return ['status' => false, 'message' => _('A profile with that name already exists.')];
 		}
 
+		// Enabled unless the page said otherwise -- see enabledSubmitted().
+		$enabled = self::enabledSubmitted($request);
+
 		if ($id) {
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->profilesTable}`
-				SET name = :name
+				SET name = :name, enabled = :enabled
 				WHERE id = :id"
 			);
 			$stmt->execute([
 				':name' => $name,
+				':enabled' => $enabled,
 				':id' => $id,
 			]);
 
@@ -158,11 +175,44 @@ class Profiles extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->profilesTable}` (name) VALUES (:name)"
+			"INSERT INTO `{$this->profilesTable}` (name, enabled) VALUES (:name, :enabled)"
 		);
-		$stmt->execute([':name' => $name]);
+		$stmt->execute([':name' => $name, ':enabled' => $enabled]);
 
 		return ['status' => true, 'id' => (int) $this->db->lastInsertId(), 'name' => $name];
+	}
+
+	/**
+	 * Switch a profile on or off.
+	 *
+	 * The client's switch read one level up, and the reason it is worth
+	 * having twice: a profile switched off stops every phone assigned to it
+	 * at once, and switching it back on starts them again, with nothing about
+	 * any of those clients changed in between. The alternative -- walking the
+	 * Clients tab switching each one off, and remembering which of them were
+	 * already off when you come back -- is the thing this is instead of.
+	 *
+	 * Unlike deletion, it does not care how many clients point at the
+	 * profile. Deletion is refused while any do, because a client must never
+	 * name a profile that has gone; this leaves the profile exactly where it
+	 * is, which is what makes it the safe way to take a fleet out of service.
+	 *
+	 * The write is the trait's, shared with a client; what is this class's is
+	 * the row and how a missing one is said.
+	 *
+	 * @param array<string, mixed> $request id, and the state to put it in.
+	 *
+	 * @return array<string, mixed> Status, and the state the profile is in.
+	 */
+	public function setProfileEnabled($request)
+	{
+		$id = (int) ($request['id'] ?? 0);
+
+		if (!$id || !$this->profileRow($id)) {
+			return ['status' => false, 'message' => _('That profile no longer exists.')];
+		}
+
+		return $this->setEnabled($this->profilesTable, $request);
 	}
 
 	/**
@@ -249,12 +299,19 @@ class Profiles extends Service
 	/**
 	 * The profiles a client can point at.
 	 *
-	 * @return array<int, array<string, mixed>> Profile rows, id and name.
+	 * A disabled profile is still one of them, and deliberately: it is what a
+	 * client being set up against a profile that is not in service yet should
+	 * be assigned to, and hiding it would leave somebody wondering where the
+	 * profile went. The state travels with the name so the select can say
+	 * which ones are switched off rather than offering them as though they
+	 * were serving.
+	 *
+	 * @return array<int, array<string, mixed>> Profile rows: id, name, enabled.
 	 */
 	public function profileChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name FROM `{$this->profilesTable}` ORDER BY name"
+			"SELECT id, name, enabled FROM `{$this->profilesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 

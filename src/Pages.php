@@ -118,7 +118,7 @@ class Pages extends Service
 		}
 
 		$wanted = trim((string) $_REQUEST['profile']);
-		$profile = ['id' => 0, 'name' => ''];
+		$profile = ['id' => 0, 'name' => '', 'enabled' => 1];
 
 		if ($wanted !== '') {
 			$found = $this->profiles->profileRow($wanted);
@@ -194,7 +194,7 @@ class Pages extends Service
 	 */
 	private function showClient($wanted, $tab = '')
 	{
-		$client = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
+		$client = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0, 'enabled' => 1];
 
 		if ($wanted !== '') {
 			$found = $this->clients->clientRow($wanted);

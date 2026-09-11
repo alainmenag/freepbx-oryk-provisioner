@@ -104,6 +104,63 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a clients table written before 1.0.15 up to date.
+	 *
+	 * @return void
+	 */
+	public function addClientEnabledColumn()
+	{
+		$this->addEnabledColumn($this->clientsTable, 'token');
+	}
+
+	/**
+	 * Bring a profiles table written before 1.0.16 up to date.
+	 *
+	 * @return void
+	 */
+	public function addProfileEnabledColumn()
+	{
+		$this->addEnabledColumn($this->profilesTable, 'name');
+	}
+
+	/**
+	 * Give a table the column that says whether the endpoint answers for it.
+	 *
+	 * The same column on two tables, added the same way, so it is added in
+	 * one place: a client and a profile are switched off by the same switch
+	 * and mean the same thing by it -- see src/Enabled.php, which is the
+	 * other half of this.
+	 *
+	 * Added with a default of 1 rather than backfilled, because a row written
+	 * before there was a switch is a row nobody switched off: everything on a
+	 * site upgrading into this is served exactly what it was being served the
+	 * moment before.
+	 *
+	 * NOT NULL with a default rather than nullable, and deliberately: a
+	 * three-state column would have a value meaning "nobody has said", and
+	 * every reader would then have to decide what that meant. There are two
+	 * states and the column holds them.
+	 *
+	 * Both names are interpolated and neither may come from a request: the
+	 * table is named by the caller above from Service's properties, and the
+	 * column it goes after is written here.
+	 *
+	 * @param string $table Table to add it to.
+	 * @param string $after Column it is placed after.
+	 *
+	 * @return void
+	 */
+	private function addEnabledColumn($table, $after)
+	{
+		if (!$this->schemaHas($table, 'column', 'enabled')) {
+			$this->db->exec(
+				"ALTER TABLE `$table`
+				ADD COLUMN `enabled` TINYINT(1) NOT NULL DEFAULT 1 AFTER `$after`"
+			);
+		}
+	}
+
+	/**
 	 * Whether a table already has a column, or an index, by that name.
 	 *
 	 * One question of two catalogues, because there is one thing the answer

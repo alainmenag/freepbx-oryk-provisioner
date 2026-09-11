@@ -348,6 +348,7 @@ $tabs = [
 								data-search="true"
 								data-show-refresh="true"
 								data-unique-id="id"
+								data-row-style="formatClientRow"
 								data-sort-name="mac"
 								data-sort-order="asc">
 								<thead>
@@ -378,6 +379,14 @@ $tabs = [
 
 	function formatClientMac(value, row) {
 		return value ? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
+	}
+
+	// A client that has been switched off is greyed here too. The Render link
+	// beside it still points where it always did, and following it now gets
+	// the refusal the phone gets -- which is the honest answer to what this
+	// client receives.
+	function formatClientRow(row) {
+		return Number(row.enabled) ? {} : { classes: 'oryk-disabled' };
 	}
 
 	// The Device column names the FreePBX device the client points at,
