@@ -8,9 +8,8 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * How this module writes to the FreePBX log.
  *
  * A trait rather than a method on Service because the module class needs it
- * too and cannot extend Service -- it extends FreePBX_Helpers, which is the
- * BMO contract. One implementation, used by both, rather than the same ten
- * lines written twice.
+ * too and cannot extend Service -- it extends FreePBX_Helpers, the BMO
+ * contract.
  */
 trait Logs
 {

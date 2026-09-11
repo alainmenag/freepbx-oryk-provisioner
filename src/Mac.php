@@ -7,10 +7,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * A MAC address, as written and as found.
  *
- * Twelve lowercase hex characters with the separators stripped is how a MAC
- * is stored and compared everywhere in this module; a phone may write it any
- * of half a dozen ways. Static because neither of these needs anything --
- * they are the two things everything else has to agree on.
+ * Twelve lowercase hex characters with the separators stripped is how a MAC is
+ * stored and compared everywhere in this module; a phone may write it any of
+ * half a dozen ways. Static because these are the two things everything else
+ * has to agree on.
  */
 class Mac
 {
@@ -31,14 +31,11 @@ class Mac
 	/**
 	 * A MAC as the provisioning log stores it.
 	 *
-	 * Normalised when it is a MAC, so a row can be read back by what asked
-	 * for it, and kept as it was sent when it is not: on a row like that, what
-	 * the thing at the other end actually sent is the whole of what the row is
-	 * worth having.
+	 * Normalised when it is a MAC, so a row can be read back by what asked for it,
+	 * and kept as sent when it is not: on a row like that, what the thing at the
+	 * other end actually sent is the whole of what the row is worth having.
 	 *
-	 * Here rather than in ProvisioningLog because both ends of that table now
-	 * use it -- the rows are written and read by one class and counted by
-	 * another, and they have to agree on the spelling.
+	 * Here rather than in ProvisioningLog because both ends of that table use it.
 	 *
 	 * @param mixed $mac MAC address as it was written.
 	 *
@@ -54,9 +51,8 @@ class Mac
 	/**
 	 * The MAC a requested filename carries, if it carries one.
 	 *
-	 * The endpoint's own reading of a path, kept to the same pattern: twelve
-	 * hexadecimal characters, optionally paired off with colons or dashes,
-	 * not run up against more hex on either side.
+	 * The endpoint's own reading of a path: twelve hexadecimal characters,
+	 * optionally paired off with colons or dashes, not run up against more hex.
 	 *
 	 * @param string $filename Filename as it would be asked for.
 	 *

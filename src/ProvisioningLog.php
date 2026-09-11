@@ -19,19 +19,16 @@ class ProvisioningLog extends Service
 	/**
 	 * Rows for a Logs table.
 	 *
-	 * One statement asked two ways, the way listClients is: every request the
-	 * endpoint has answered on the module page, and one client's own on the
-	 * client editor's Logs tab, which asks with `mac`.
+	 * One statement asked two ways, the way listClients is: every request on the
+	 * module page, and one client's own on the client editor's Logs tab.
 	 *
-	 * It asks with a MAC rather than a client id, and that is the point. A row
-	 * is written for a MAC whether or not anything is associated with it, so
-	 * the requests a phone made before somebody wrote its client are on that
-	 * client's tab the moment it exists -- which is the run of 404s that says
-	 * what the phone has been asking for all along.
+	 * It asks with a MAC rather than a client id, and that is the point. Rows are
+	 * written for a MAC whether or not a client exists, so the requests a phone
+	 * made before somebody wrote its client are on that client's tab the moment it
+	 * exists -- the run of 404s that says what it has been asking for all along.
 	 *
-	 * Newest first unless asked otherwise, and the id breaks the tie: a phone
-	 * that has just booted asks for six files inside one second, and a log
-	 * that shuffles them is a log that cannot be read.
+	 * Newest first unless asked otherwise, with the id breaking the tie: a phone
+	 * that has just booted asks for six files inside one second.
 	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
@@ -131,11 +128,9 @@ class ProvisioningLog extends Service
 	/**
 	 * Empty the log, or one client's part of it.
 	 *
-	 * Narrowed the same way the table is: the client editor's tab clears the
-	 * one phone's rows, the module page's clears the lot. A provisioning log
-	 * grows by a row per file per boot per phone and nothing prunes it, so
-	 * this is the only thing standing between a busy site and a table larger
-	 * than everything else the module has.
+	 * Narrowed the same way the table is. A provisioning log grows by a row per
+	 * file per boot per phone and nothing prunes it, so this is the only thing
+	 * standing between a busy site and a table larger than the rest of the module.
 	 *
 	 * @param array<string, mixed> $request Submitted values; `mac` narrows it.
 	 *
@@ -172,21 +167,16 @@ class ProvisioningLog extends Service
 	 * Record one provisioning request.
 	 *
 	 * Written on the way out of serve(), whichever way that went, and by the
-	 * endpoint itself for the requests that never reach serve() at
-	 * all -- a PUT of a phone's boot log, or a path with no MAC anywhere in
-	 * it. A request nobody can answer is the one worth having a record of.
+	 * endpoint itself for the requests that never reach serve() at all. A request
+	 * nobody can answer is the one worth having a record of.
 	 *
-	 * Metadata only, which is the rule the README sets and the reason there is
-	 * no column for the rendered body: it carries device.secret whenever a
-	 * template asks for it, and a log is not where that belongs. What is kept
-	 * is who asked, what for, and how it went -- not which resource answered,
-	 * because the filename as the phone spelled it is the fact of the request,
-	 * and which file of which profile it reached is the profile's answer and
-	 * may not be the same answer tomorrow.
+	 * Metadata only, which is why there is no column for the rendered body: it
+	 * carries device.secret whenever a template asks for it. Which resource
+	 * answered is not kept either -- the filename as the phone spelled it is the
+	 * fact of the request, where which file of which profile it reached is a
+	 * question the profile may answer differently tomorrow.
 	 *
-	 * Nothing in here may fail a request. A phone whose configuration is ready
-	 * does not go without it because the log table is missing, which is
-	 * exactly the state a module upgraded without its install step is in.
+	 * Nothing in here may fail a request.
 	 *
 	 * @param mixed       $mac       MAC address, written however it was written.
 	 * @param string|null $requested Filename asked for, '' when none was.
@@ -221,12 +211,9 @@ class ProvisioningLog extends Service
 	/**
 	 * A value cut to what its column holds.
 	 *
-	 * Everything logged comes off the wire -- a filename, a User-Agent, a
-	 * message with a filename in it -- so none of it has a length anyone here
-	 * decided. Cut rather than refused: a truncated User-Agent still says
-	 * which phone asked, and a row that failed to insert says nothing at all.
-	 *
-	 * Counted in characters, which is what the column holds.
+	 * Everything logged comes off the wire, so none of it has a length anyone here
+	 * decided. Cut rather than refused: a truncated User-Agent still says which
+	 * phone asked, and a row that failed to insert says nothing at all.
 	 *
 	 * @param mixed $value  Value as it arrived.
 	 * @param int   $length Characters the column takes.

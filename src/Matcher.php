@@ -9,18 +9,16 @@ use PDO;
 /**
  * A filename is a MAC and a name, read both ways.
  *
- * Take this client's MAC back out of what the phone asked for and what is
- * left is the file it wants -- .cfg, phone.cfg, cfg.xml -- and that is
- * what a resource is named after. matchResource() goes from a request to
- * a resource; resourceRequest() is the same thinking backwards, from a
- * resource and a client to the request that reaches it, which is what the
- * preview links are drawn from.
+ * Take this client's MAC back out of what the phone asked for and what is left
+ * is the file it wants -- .cfg, phone.cfg, cfg.xml -- and that is what a
+ * resource is named after. matchResource() goes from a request to a resource;
+ * resourceRequest() is the same thinking backwards, from a resource and a
+ * client to the request that reaches it, which is what the preview links are
+ * drawn from.
  */
 class Matcher extends Service
 {
-	/**
-	 * @var Template
-	 */
+	/** @var Template */
 	private $template;
 
 	/**
@@ -38,19 +36,15 @@ class Matcher extends Service
 	 *
 	 * Two ways, and a name written out in full wins:
 	 *
-	 *   {{device.mac}}-phone.cfg  rendered with this client's values and
-	 *                             compared to what was actually asked for, so
-	 *                             one resource covers every client on the
-	 *                             profile -- and a vendor that does not put
-	 *                             the MAC at the front, or anywhere, can
-	 *                             still be named exactly.
-	 *   phone.cfg                 compared against the request with the MAC
-	 *                             taken off the front, so the ordinary case
-	 *                             can be typed as the tail on its own.
+	 *   {{device.mac}}-phone.cfg  rendered with this client's values and compared
+	 *                             to what was asked for, so a vendor that does not
+	 *                             put the MAC at the front can still be named.
+	 *   phone.cfg                 compared against the request with the MAC taken
+	 *                             off the front -- the ordinary case, typed as the
+	 *                             tail on its own.
 	 *
-	 * Both are the same string in the same column, which is the point: the
-	 * second is only what the first becomes when it has no placeholders in
-	 * it. There is nothing to declare and nothing to migrate later.
+	 * Both are the same string in the same column: the second is only what the
+	 * first becomes when it has no placeholders in it.
 	 *
 	 * @param int                   $profileId Profile the resources belong to.
 	 * @param string                $requested Filename as it was asked for.
@@ -74,16 +68,14 @@ class Matcher extends Service
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $resource) {
 			$name = (string) $resource['name'];
 
-			// Filenames are matched without regard to case throughout: a
-			// phone asking for 0004F282E824.cfg and one asking for
-			// 0004f282e824.cfg are the same phone asking for the same file.
+			// Case-insensitive throughout: 0004F282E824.cfg and 0004f282e824.cfg
+			// are the same phone asking for the same file.
 			if (strcasecmp($this->template->renderTemplate($name, $values), $requested) === 0) {
 				return $resource;
 			}
 
-			// Held rather than returned. A rendered name is what its author
-			// wrote out in full, and it wins over one that only matches the
-			// tail of the request.
+			// Held rather than returned: a rendered name is what its author wrote
+			// out in full, and it wins over one that matches only the tail.
 			if ($fallback === null && $suffix !== '' && strcasecmp($name, $suffix) === 0) {
 				$fallback = $resource;
 			}
@@ -95,21 +87,13 @@ class Matcher extends Service
 	/**
 	 * A requested filename with this client's own MAC taken off the front.
 	 *
-	 * Phones ask by MAC, in whatever separator style they favour:
-	 * 0004f282e824-phone.cfg, 00:04:f2:82:e8:24-phone.cfg and
-	 * 0004f282e824.cfg are all one client asking. What is left is the part a
-	 * resource can be named after -- phone.cfg, and .cfg for the main config,
-	 * which is a resource of the profile like any other file it serves.
+	 * Phones ask by MAC in whatever separator style they favour, so what is left is
+	 * the part a resource can be named after -- phone.cfg, and .cfg for the main
+	 * config. A filename not beginning with this client's MAC comes back unchanged.
 	 *
-	 * A filename that does not begin with this client's MAC comes back
-	 * unchanged: it is either meant literally or meant for somebody else, and
-	 * neither is helped by having something trimmed off it.
-	 *
-	 * Read a character at a time, stopping the moment twelve hex digits are
-	 * in hand, because a pattern that allows a dot between them will also
-	 * take the dot of the extension: [mac].cfg has to come back as `.cfg`,
-	 * not `cfg`. Stopping at the twelfth digit means nothing past the MAC is
-	 * ever looked at, and 0004.f282.e824 grouping costs nothing extra.
+	 * Read a character at a time, stopping the moment twelve hex digits are in
+	 * hand: a pattern that allows a dot between them would also take the dot of the
+	 * extension, and [mac].cfg has to come back as `.cfg`, not `cfg`.
 	 *
 	 * @param string $filename Last segment of the requested path.
 	 * @param string $mac      This client's normalised MAC.
@@ -150,35 +134,24 @@ class Matcher extends Service
 
 		$rest = substr($filename, $end);
 
-		// The dot of an extension belongs to the name that is left --
-		// [mac].cfg is `.cfg` -- where a dash or an underscore is only the
-		// vendor's way of joining the two, and part of neither.
+		// The dot of an extension belongs to the name that is left -- [mac].cfg
+		// is `.cfg` -- where a dash or underscore is only the vendor's joining.
 		return ($rest !== '' && $rest[0] === '.') ? $rest : ltrim($rest, '-_');
 	}
 
 	/**
 	 * What one client asks for when it asks for one resource, and where.
 	 *
-	 * matchResource() read backwards. A name is matched either as it renders
-	 * or as the tail of a request with the MAC taken off the front, so the
-	 * request that reaches this resource is one of:
-	 *
-	 *   {{device.mac}}-phone.cfg  renders to 0004f282e824-phone.cfg, which is
-	 *                             asked for as it stands.
-	 *   phone.cfg                 has no MAC to render, so the phone asks for
-	 *                             0004f282e824-phone.cfg and resourceSuffix()
-	 *                             takes the MAC back off. Joined by nothing
-	 *                             when the name is an extension of its own
-	 *                             (.cfg), by a dash otherwise.
+	 * matchResource() read backwards, so the request that reaches this resource is
+	 * either the name as it renders ({{device.mac}}-phone.cfg) or the MAC joined to
+	 * the name as typed (phone.cfg) -- by nothing when the name is an extension of
+	 * its own, by a dash otherwise.
 	 *
 	 * Whether that request can be *linked* is a second question, because the
-	 * endpoint reads the MAC out of the path: a name that renders with this
-	 * client's MAC in it says who is asking, and one with no MAC at all can
-	 * say so with ?mac=. A name carrying somebody else's twelve hex digits --
-	 * 000000000000-directory.xml, which is a real filename a real phone asks
-	 * for -- cannot: the endpoint takes the MAC from the path over the query
-	 * string, so the link would render the wrong client. Those rows get the
-	 * filename and no link, which is the truth about them.
+	 * endpoint reads the MAC out of the path. A name carrying somebody else's
+	 * twelve hex digits -- 000000000000-directory.xml, a real filename a real phone
+	 * asks for -- cannot be linked: the path wins over the query string and the
+	 * link would render the wrong client. Those rows get the filename and no link.
 	 *
 	 * @param string                $name   Resource name, as typed.
 	 * @param array<string, string> $values Placeholder name to value.
@@ -196,17 +169,15 @@ class Matcher extends Service
 			return ['filename' => $rendered, 'url' => $this->engineUrl($rendered)];
 		}
 
-		// Somebody else's twelve hex digits, written into the name and asked
-		// for exactly as they stand -- 000000000000-directory.xml is a phone
-		// asking every profile for the same file. It is served, and it is
-		// not linkable: the endpoint would read that MAC as the client.
+		// Somebody else's twelve hex digits, asked for exactly as they stand.
+		// Served, and not linkable: the endpoint would read that MAC as the
+		// client.
 		if ($carries !== '') {
 			return ['filename' => $rendered, 'url' => ''];
 		}
 
-		// No placeholders and no MAC of its own, so the phone asks for the
-		// MAC and this name joined and the endpoint takes the MAC back off
-		// again.
+		// No placeholders and no MAC of its own, so the phone asks for the MAC
+		// and this name joined, and the endpoint takes the MAC back off.
 		if ($rendered === $name && $name !== '') {
 			$joined = $mac . ($name[0] === '.' ? '' : '-') . $name;
 
@@ -223,26 +194,17 @@ class Matcher extends Service
 	/**
 	 * A resource of type File, by the name it is asked for.
 	 *
-	 * The lookup behind a request that reaches no profile. Matched exactly,
-	 * and only against the name as it was typed: with no client there is no
-	 * MAC to take out of the request and nothing to render a templated name
-	 * against, so a file meant to be fetched this way is named exactly what
-	 * the vendor asks for -- 3111-44500-001.sip.ld.
+	 * The lookup behind a request that reaches no profile. Matched exactly, and
+	 * only against the name as typed: with no client there is no MAC to take out of
+	 * the request and nothing to render a templated name against.
 	 *
-	 * Narrowed to type = 'file' and not to file_size IS NOT NULL, which is
-	 * the same set today and a different question: what may be handed to a
-	 * caller who has said nothing about who they are is what its author
-	 * declared a file, and a declared file with nothing uploaded to it is
+	 * Narrowed to type = 'file' and not to file_size IS NOT NULL -- the same set
+	 * today and a different question, so a declared file with nothing uploaded is
 	 * refused by name rather than passed over as though it did not exist.
 	 *
-	 * Case is the collation's business rather than LOWER()'s. The column is
-	 * utf8mb4 case-insensitive, so a plain comparison already ignores case and
-	 * can use the index on `name`, where wrapping the column in a function
-	 * would be just as correct and would guarantee a scan.
-	 *
-	 * Two profiles carrying the same firmware is the ordinary case rather than
-	 * an ambiguity worth refusing -- they hold the same bytes -- so the lowest
-	 * id wins rather than the request failing over which of them it meant.
+	 * Case is the collation's business rather than LOWER()'s: the column is
+	 * case-insensitive, so a plain comparison can use the index on `name`. Two
+	 * profiles carrying the same firmware is ordinary, so the lowest id wins.
 	 *
 	 * @param string $requested Filename as it was asked for.
 	 *
@@ -266,17 +228,14 @@ class Matcher extends Service
 	/**
 	 * What a file is served as.
 	 *
-	 * Read off the name rather than stored against the resource: an author
-	 * who called a file directory.xml has already said what it is, and a
-	 * second field saying it again is a second field to get wrong.
+	 * Read off the name rather than stored against the resource: an author who
+	 * called a file directory.xml has already said what it is.
 	 *
-	 * The kinds of resource want different answers to an extension nothing
-	 * here recognises, so the type is the second argument rather than another
-	 * list of extensions to keep up with. A template with an odd extension is
-	 * still configuration text, which is what .cfg is and what every phone
-	 * here expects; a log is text a person is about to read in a browser; an
-	 * uploaded file is bytes somebody chose, and sending a firmware image as
-	 * text is how it arrives corrupted. So only `file` falls to octet-stream.
+	 * The kinds want different answers to an extension nothing here recognises, so
+	 * the type is the second argument. A template with an odd extension is still
+	 * configuration text and a log is text somebody is about to read; an uploaded
+	 * file is bytes somebody chose, and sending firmware as text is how it arrives
+	 * corrupted. So only `file` falls to octet-stream.
 	 *
 	 * @param string $name Resource name, which is the filename it is served as.
 	 * @param string $kind The resource's type -- 'template', 'file' or 'log'.
@@ -316,9 +275,9 @@ class Matcher extends Service
 	 */
 	public function engineUrl($filename)
 	{
-		// A colon is legal in a path segment and is how half the vendors
-		// separate a MAC, so it is left as it is rather than escaped into
-		// something the endpoint's own reading of the path would miss.
+		// A colon is legal in a path segment and is how half the vendors separate
+		// a MAC, so it is left as it is rather than escaped into something the
+		// endpoint's own reading of the path would miss.
 		return '/' . $this->engineLink . '/' . str_replace('%3A', ':', rawurlencode((string) $filename));
 	}
 }

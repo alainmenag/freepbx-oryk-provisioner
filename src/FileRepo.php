@@ -7,20 +7,17 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Where an uploaded resource file is kept.
  *
- * ASTSPOOLDIR/repo, one file per resource id. A store and nothing more:
- * it knows the path, makes the directory and removes a file. What a
- * resource *is* -- template or uploaded file -- is the resource's
- * business, in Resources.
+ * ASTSPOOLDIR/repo, one file per resource id. A store and nothing more: the
+ * path, the directory, and removing a file. What a resource *is* -- template
+ * or uploaded file -- is Resources' business.
  */
 class FileRepo extends Repo
 {
 	/**
 	 * The directory uploaded resource files are kept in.
 	 *
-	 * Under the Asterisk spool rather than anywhere beneath the web root:
-	 * these are handed out by the endpoint reading them, never by Apache
-	 * finding them, and a firmware image has no business being reachable at
-	 * its path on disk as well as by the name a phone asks for.
+	 * Under the Asterisk spool rather than beneath the web root: these are handed
+	 * out by the endpoint reading them, never by Apache finding them.
 	 *
 	 * @return string Absolute path, without a trailing slash.
 	 */
@@ -32,11 +29,10 @@ class FileRepo extends Repo
 	/**
 	 * Where one resource's uploaded file is kept.
 	 *
-	 * Named after the resource id and nothing else -- not the filename it is
-	 * served under, which can be renamed and repeats across profiles, and
-	 * nothing the uploader sent. An integer cast is a path that cannot climb
-	 * out of the directory it is in, and it means a file can still be found
-	 * and removed by id alone when the row it belonged to is being deleted.
+	 * Named after the resource id and nothing else -- not the filename it is served
+	 * under, which can be renamed and repeats across profiles. The integer cast is
+	 * a path that cannot climb out of its directory, and it means a file can still
+	 * be found and removed when the row it belonged to is going.
 	 *
 	 * @param mixed $id Resource id.
 	 *
@@ -50,9 +46,8 @@ class FileRepo extends Repo
 	/**
 	 * Make the repository directory if it is not there.
 	 *
-	 * Called at install and again before every upload, because the spool is
-	 * not a place the module is the only writer of and a directory that was
-	 * there in the morning may not be by the afternoon.
+	 * At install and again before every upload: the spool is not a place this
+	 * module is the only writer of.
 	 *
 	 * @return bool True when the directory exists and is writable.
 	 */
@@ -64,8 +59,8 @@ class FileRepo extends Repo
 	/**
 	 * Remove one resource's uploaded file.
 	 *
-	 * A file that is not there is not a failure: it is the state this was
-	 * asked to reach.
+	 * A file that is not there is not a failure: it is the state this was asked to
+	 * reach.
 	 *
 	 * @param mixed $id Resource id.
 	 *

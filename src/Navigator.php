@@ -9,46 +9,33 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * The module's pages are a tree -- Clients has clients under it, Profiles has
  * profiles and every profile has its files -- and this builds the path through
- * it that views/partials/navigator.php draws. One level per step, each
- * carrying what it is now and every sibling it could be instead.
+ * it that views/partials/navigator.php draws: one level per step, each carrying
+ * what it is now and every sibling it could be instead.
  *
  * Two rules hold it together, and they are why the view needs to know nothing
- * about the module at all:
+ * about the module:
  *
  *   - a level lists its siblings, never its children;
  *   - choosing one goes to *that* level's own page, and everything under it is
  *     rebuilt from what is there.
  *
  * The second is what makes it a navigator rather than a record of where you
- * have been. Pick another profile and you land on that profile -- not on
- * whichever of its files happens to sit where the last one did, which is a
- * page you did not ask for and cannot predict.
+ * have been: pick another profile and you land on that profile.
  *
- * Growing it is adding a branch to levels(). Nothing else has to know: every
- * level is the same six things, and the view draws them all the same way.
- *
- * The sixth is 'add': where a *new* one of these is written, or null where
- * that is not a thing you can do. Creating is not navigating, so it is not one
- * of the options -- the view pins it under them, past a rule, out of the
- * filter's way. But it belongs to the level rather than to the page, because
- * only the level knows what a new one of itself costs: a resource's is the
- * profile it would hang off, and a section has none at all.
+ * Every level is the same six things. The sixth is 'add' -- where a new one of
+ * these is written, or null where that is not a thing you can do. It belongs to
+ * the level because only the level knows what a new one costs: a resource's is
+ * the profile it would hang off, and a section has none at all.
  */
 class Navigator extends Service
 {
-	/**
-	 * @var Clients
-	 */
+	/** @var Clients */
 	private $clients;
 
-	/**
-	 * @var Profiles
-	 */
+	/** @var Profiles */
 	private $profiles;
 
-	/**
-	 * @var Resources
-	 */
+	/** @var Resources */
 	private $resources;
 
 	/**
@@ -66,12 +53,12 @@ class Navigator extends Service
 	/**
 	 * The levels one page is reached through.
 	 *
-	 * `$at` says which row is open at each level below the section: an id, or
-	 * the string 'new' on a page writing a row that does not exist yet. A
-	 * level nothing is open at still draws -- it is how you get to one.
+	 * `$at` says which row is open at each level below the section: an id, or the
+	 * string 'new' on a page writing a row that does not exist yet. A level nothing
+	 * is open at still draws -- it is how you get to one.
 	 *
-	 * @param string                    $section clients|profiles|logs.
-	 * @param array<string, mixed>      $at      Row open at each level below it.
+	 * @param string               $section clients|profiles|logs.
+	 * @param array<string, mixed> $at      Row open at each level below it.
 	 *
 	 * @return array<int, array<string, mixed>> Levels, outermost first.
 	 */
@@ -90,10 +77,8 @@ class Navigator extends Service
 
 			$levels[] = $this->profileLevel($profile);
 
-			// A resource hangs off a profile that has been written, so on a
-			// new profile this level is absent rather than empty: the page
-			// under this one does not exist yet, which is a different thing
-			// from existing with nothing on it.
+			// A resource hangs off a profile that has been written, so on a new
+			// profile this level is absent rather than empty.
 			if (ctype_digit((string) $profile) && (int) $profile) {
 				$levels[] = $this->resourceLevel((int) $profile, isset($at['resource']) ? $at['resource'] : null);
 			}
@@ -105,8 +90,7 @@ class Navigator extends Service
 	/**
 	 * The module's own sections, which are the list page's three tabs.
 	 *
-	 * This level is never empty and never unchosen: every page in the module
-	 * is in one of them.
+	 * Never empty and never unchosen: every page in the module is in one of them.
 	 *
 	 * @param string $section Section this page is in.
 	 *
@@ -138,8 +122,7 @@ class Navigator extends Service
 			'prompt' => _('Select a section'),
 			'search' => _('Search sections'),
 			'options' => $options,
-			// The module's sections are the module. There is no writing a
-			// fourth one, so this level is the one that draws no add row.
+			// No writing a fourth section, so this level draws no add row.
 			'add' => null,
 		];
 	}
@@ -147,10 +130,8 @@ class Navigator extends Service
 	/**
 	 * Every client, by the MAC it is and the description it is known by.
 	 *
-	 * Twelve hex digits are exact and unreadable; a device description is
-	 * readable and not unique. The option carries both, and the filter reads
-	 * across the pair, so a phone is found by whichever of the two its owner
-	 * has in mind.
+	 * Twelve hex digits are exact and unreadable; a description is readable and not
+	 * unique. The option carries both and the filter reads across the pair.
 	 *
 	 * @param mixed $at Client id open here, 'new', or null.
 	 *
@@ -187,8 +168,7 @@ class Navigator extends Service
 			'add' => [
 				'text' => _('New client'),
 				'href' => '?display=oryk_provisioner&client=',
-				// On the page writing one, the add row is where you are --
-				// so the level still has exactly one thing marked active.
+				// On the page writing one, the add row is where you are.
 				'active' => $at === 'new',
 			],
 		];
@@ -240,8 +220,8 @@ class Navigator extends Service
 	/**
 	 * The files one profile serves.
 	 *
-	 * Narrowed to the profile above it, the way everything about a resource
-	 * is: an id belonging to another profile names nothing at this URL.
+	 * Narrowed to the profile above it: an id belonging to another profile names
+	 * nothing at this URL.
 	 *
 	 * @param int   $profileId Profile whose files these are.
 	 * @param mixed $at        Resource id open here, 'new', or null.
@@ -276,8 +256,7 @@ class Navigator extends Service
 			'prompt' => _('Select a resource'),
 			'search' => _('Search resources'),
 			'options' => $options,
-			// Narrowed to its profile like everything else here: a file is
-			// written to the profile above it or to nothing at all.
+			// A file is written to the profile above it or to nothing at all.
 			'add' => [
 				'text' => _('New resource'),
 				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=',

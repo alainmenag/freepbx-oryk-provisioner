@@ -7,17 +7,13 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * A placeholder, and what it resolves to.
  *
- * {{name}} with dotted names, a flat map behind it, and a name nothing
- * answers to rendering empty -- a phone copes with an empty value, it
- * does not cope with a literal {{ }} where a value belongs. The map is
- * built here so the endpoint, the two preview tabs and the resource
- * editor's placeholder list are all reading the same one.
+ * {{name}} with dotted names, a flat map behind it, and a name nothing answers
+ * to rendering empty. The map is built here so the endpoint, the two preview
+ * tabs and the resource editor's placeholder list all read the same one.
  */
 class Template extends Service
 {
-	/**
-	 * @var Freepbx
-	 */
+	/** @var Freepbx */
 	private $pbx;
 
 	/**
@@ -33,13 +29,10 @@ class Template extends Service
 	/**
 	 * Fill in a template's {{ }} placeholders.
 	 *
-	 * The delimiters and the dotted names are the ones the full engine will
-	 * use, so profiles written against this keep rendering: what is missing
-	 * is filters, sections and escaping, not the syntax.
-	 *
-	 * A name nothing answers to renders as nothing. A phone parsing a config
-	 * copes with an empty value; it does not cope with a literal `{{ }}` left
-	 * where a value was meant to be.
+	 * The delimiters and dotted names are the ones the full engine will use, so
+	 * profiles written against this keep rendering; what is missing is filters,
+	 * sections and escaping, not the syntax. A name nothing answers to renders as
+	 * nothing -- a phone copes with an empty value, not with a literal `{{ }}`.
 	 *
 	 * @param string                $template Template text.
 	 * @param array<string, string> $values   Placeholder name to value.
@@ -60,14 +53,10 @@ class Template extends Service
 	/**
 	 * What a template can refer to, as a flat map of dotted names.
 	 *
-	 * Flat and dotted rather than nested, because that is what the
-	 * placeholders are: `{{device.mac}}` is a key here, not a path walked
-	 * through arrays. The eventual resolver puts sources in precedence order
-	 * behind the same names.
-	 *
-	 * A client with no FreePBX device still renders -- everything the
-	 * client would have answered for is simply empty, which is what a profile
-	 * of pure static configuration wants anyway.
+	 * Flat and dotted rather than nested, because that is what the placeholders
+	 * are: `{{device.mac}}` is a key here, not a path walked through arrays. A
+	 * client with no FreePBX device still renders, everything it would have
+	 * answered for simply empty.
 	 *
 	 * @param array<string, mixed> $row Client row from clientByMac().
 	 *
@@ -100,10 +89,9 @@ class Template extends Service
 			'server.port' => '5060',
 		];
 
-		// Everything else the device is configured with in FreePBX, under its
-		// own prefix: transport, callerid, dtmfmode and the rest are vendor
-		// business, so the template asks for what it needs by name rather
-		// than this file deciding in advance what a phone might want.
+		// Everything else the device is configured with in FreePBX, under its own
+		// prefix: transport, callerid, dtmfmode and the rest are vendor business, so
+		// a template asks for what it needs by name.
 		foreach ($sip as $keyword => $data) {
 			$values['sip.' . $keyword] = $data;
 		}
@@ -114,9 +102,8 @@ class Template extends Service
 	/**
 	 * The host a phone would register against.
 	 *
-	 * Taken from the request, which is the host the administrator is looking
-	 * at the PBX on and, on a single-address system, the one the phones use.
-	 * A module setting overrides it once there are settings to hold one.
+	 * Taken from the request, which is the host the administrator is looking at
+	 * the PBX on and, on a single-address system, the one the phones use.
 	 *
 	 * @return string Hostname or address, without a port.
 	 */
@@ -131,11 +118,9 @@ class Template extends Service
 	/**
 	 * What a template can refer to, as the editor lists it.
 	 *
-	 * Written out here rather than derived from a rendering, because the
-	 * resource editor has to be able to say what the names are with no client
-	 * in hand -- a new resource's profile may not be assigned to anything yet.
-	 * The `sip.` names are whatever the device carries in FreePBX, so the view
-	 * names a few by way of example instead of listing them.
+	 * Written out here rather than derived from a rendering, because the resource
+	 * editor has to say what the names are with no client in hand. The `sip.` names
+	 * are whatever the device carries, so the view names a few as examples.
 	 *
 	 * @return array<string, array<string, string>> Group heading to name and note.
 	 */

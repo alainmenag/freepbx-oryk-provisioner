@@ -8,58 +8,37 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Which URL is which page.
  *
  * Everything the module edits is a page, told apart by which key the URL
- * carries, and every page is a tab strip over a tab content with its tab
- * in the address. A tab is a link, so a tab is a page too: only the pane
- * that was asked for is rendered, and the strip above it is links to the
- * rest -- see views/partials/tabs.php. doConfigPageInit() is where an id
- * that names no row is sent back to the list -- before any markup, because
- * a redirect out of showPage() would be too late to set a header.
+ * carries, and every page is a tab strip over a tab content with its tab in the
+ * address. A tab is a link, so a tab is a page too: only the pane that was
+ * asked for is rendered -- see views/partials/tabs.php.
  */
 class Pages extends Service
 {
-	/**
-	 * @var Clients
-	 */
+	/** @var Clients */
 	private $clients;
 
-	/**
-	 * @var Profiles
-	 */
+	/** @var Profiles */
 	private $profiles;
 
-	/**
-	 * @var Resources
-	 */
+	/** @var Resources */
 	private $resources;
 
-	/**
-	 * @var Freepbx
-	 */
+	/** @var Freepbx */
 	private $pbx;
 
-	/**
-	 * @var Template
-	 */
+	/** @var Template */
 	private $template;
 
-	/**
-	 * @var ProvisioningLog
-	 */
+	/** @var ProvisioningLog */
 	private $requestLog;
 
-	/**
-	 * @var Counts
-	 */
+	/** @var Counts */
 	private $counts;
 
-	/**
-	 * @var Navigator
-	 */
+	/** @var Navigator */
 	private $navigator;
 
-	/**
-	 * @var LogRepo
-	 */
+	/** @var LogRepo */
 	private $logs;
 
 	/**
@@ -93,14 +72,8 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&profile=<id>&resource=<id> one of its files
 	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
 	 *
-	 * A key present but empty is deliberate rather than a degenerate case: it
-	 * is the same page doing the same thing, minus a row to replace.
-	 *
-	 * Everything the module edits is a page. A client was a dialog on
-	 * the list until 1.0.6 -- three short fields do fit in one -- but a dialog
-	 * has no address, so nothing could link to a client, and the profile
-	 * editor's Clients tab had to send an id back to the list and have JS
-	 * re-open the dialog on arrival. One way in, addressable, like the rest.
+	 * A key present but empty is deliberate rather than a degenerate case: the same
+	 * page doing the same thing, minus a row to replace.
 	 *
 	 * @return string Rendered page output.
 	 */
@@ -135,13 +108,9 @@ class Pages extends Service
 
 		$tab = (string) ($_REQUEST['tab'] ?? '');
 
-		// ?profile=<id>&resource=<id> is one of that profile's resources, and
-		// ?profile=<id>&resource= is a new one -- the same shape ?profile= has
-		// itself, one level down. A resource carries a block of configuration
-		// text that wants room and a monospace column, so it gets a page
-		// rather than a dialog on the profile's Resources tab. Since the
-		// profile stopped carrying text of its own, this is the only page in
-		// the module with a template box on it.
+		// ?profile=<id>&resource= is a new one -- the same shape ?profile= has,
+		// one level down. A resource carries configuration text that wants room
+		// and a monospace column, so it gets a page rather than a dialog.
 		if ($profile['id'] && isset($_REQUEST['resource'])) {
 			$page = $this->showResource($profile, trim((string) $_REQUEST['resource']), $tab);
 
@@ -178,14 +147,11 @@ class Pages extends Service
 	/**
 	 * Render the client editor.
 	 *
-	 * What both selects offer is rendered with the page rather than fetched:
-	 * it is a list of FreePBX devices and a list of profiles, and the page is
-	 * already waiting on the module for the client itself.
+	 * What both selects offer is rendered with the page rather than fetched, since
+	 * the page is already waiting on the module for the client itself.
 	 *
-	 * Resources is the other end of the resource editor's Clients tab: the
-	 * files this client's profile serves, each with the filename *this* phone
-	 * asks for. One client's provisioning, listed where the client
-	 * is -- which is where somebody debugging a phone is already looking.
+	 * Resources is the other end of the resource editor's Clients tab: the files
+	 * this client's profile serves, each with the filename *this* phone asks for.
 	 *
 	 * @param string $wanted Client id, or '' for a new one.
 	 * @param string $tab    Tab to open on: client|resources.
@@ -233,15 +199,12 @@ class Pages extends Service
 	/**
 	 * Which of a client's tabs have anything behind them.
 	 *
-	 * Resources needs a profile behind it -- nothing is served to a client
-	 * without one. Logs needs only a MAC to have been asked about, and
-	 * deliberately does not need the profile: a client with no profile is
-	 * exactly the one whose phone is being refused, and those refusals are
-	 * what its log is made of.
+	 * Resources needs a profile behind it. Logs needs only a MAC, and deliberately
+	 * not the profile: a client with no profile is exactly the one whose phone is
+	 * being refused, and those refusals are what its log is made of.
 	 *
 	 * Here rather than in showClient() because getActionBar() asks the same
-	 * question -- a tab that cannot open is a tab the page falls back from,
-	 * and the buttons have to agree with the pane that was rendered.
+	 * question, and the buttons have to agree with the pane that was rendered.
 	 *
 	 * @param array<string, mixed> $client The client row.
 	 *
@@ -258,11 +221,9 @@ class Pages extends Service
 	/**
 	 * Which tab the request actually opens on.
 	 *
-	 * `?tab=` is what was asked for; this is what the page will render, which
-	 * is not the same thing -- every editor falls back to its first tab when
-	 * the one asked for has nothing behind it yet. An empty string is that
-	 * first tab, which is the bare URL of the row being edited and the only
-	 * tab with fields on it.
+	 * `?tab=` is what was asked for; this is what will render. Every editor falls
+	 * back to its first tab when the one asked for has nothing behind it yet, and
+	 * an empty string is that first tab -- the only one with fields on it.
 	 *
 	 * @return string Tab the page opens on, or '' for the editor's own.
 	 */
@@ -302,15 +263,12 @@ class Pages extends Service
 	/**
 	 * Render the resource editor.
 	 *
-	 * The same page as the profile editor in everything but which two columns
-	 * it is bound to, which is why both are one view apiece over a shared
-	 * partial rather than one view with a mode flag.
+	 * The same page as the profile editor in everything but which two columns it is
+	 * bound to, which is why both are one view apiece over a shared partial rather
+	 * than one view with a mode flag.
 	 *
-	 * Clients is the profile's own client list, narrowed no further and
-	 * widened by one column: which filename each of them asks *this* resource
-	 * for. A resource's name is a template, so that filename is a different
-	 * string per client -- which is exactly why there was no per-resource
-	 * preview until there was a per-client row to hang one on.
+	 * Clients is the profile's own client list widened by one column: which
+	 * filename each of them asks *this* resource for.
 	 *
 	 * @param array<string, mixed> $profile Profile the resource belongs to.
 	 * @param string               $wanted  Resource id, or '' for a new one.
@@ -363,15 +321,10 @@ class Pages extends Service
 	/**
 	 * Render the list page.
 	 *
-	 * All three tables are filled over AJAX and no row is edited here, so what
-	 * the view is handed is which tab to open on, which row the editor it came
-	 * back from has just written, and the counts its tabs are labelled with.
-	 *
-	 * The counts come from Counts rather than from the tables, here and on
-	 * every other page -- see the note there.
-	 *
-	 * One `saved` for all three: each editor returns to its own tab, so the
-	 * tab it arrives on says which table the id belongs to.
+	 * All three tables are filled over AJAX and no row is edited here, so the view
+	 * is handed which tab to open on, which row the editor it came back from wrote,
+	 * and the counts its tabs are labelled with. One `saved` for all three: each
+	 * editor returns to its own tab, so the tab says which table the id belongs to.
 	 *
 	 * @param string|null $tab Tab to open on, or null to take it from the request.
 	 *
@@ -398,20 +351,16 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors have any: the list's two tabs each carry their own Add,
-	 * and a single button in the header could not say which tab it meant.
+	 * Only the editors have any: the list's two tabs each carry their own Add, and
+	 * one button in the header could not say which tab it meant.
 	 *
-	 * Deliberately not the usual submit/delete names -- those are wired by
-	 * core to a `form.fpbx-submit`, and none of these pages has a form: a row
-	 * is saved over AJAX, not posted. These are ours, and
+	 * Deliberately not the usual submit/delete names -- core wires those to a
+	 * `form.fpbx-submit`, and none of these pages has a form. These are ours, and
 	 * views/partials/editor.php binds them.
 	 *
-	 * Save is drawn only on the editor's own tab. Since a tab is a link, only
-	 * the pane that was asked for is rendered, so on any other tab the fields
-	 * Save posts are not on the page at all -- and a Save that quietly posts
-	 * a form that is not there would write empty strings over the row. Delete
-	 * and Close stay: both act on the row rather than on the fields, and the
-	 * row's id is printed into every one of its tabs.
+	 * Save is drawn only on the editor's own tab: a tab is a link, so elsewhere the
+	 * fields Save posts are not on the page, and a Save that posted a form that is
+	 * not there would write empty strings over the row.
 	 *
 	 * @param string $request Current page request.
 	 *
@@ -465,11 +414,9 @@ class Pages extends Service
 	/**
 	 * Initialise the module configuration page.
 	 *
-	 * An id that names no row is a stale link or a hand-edited URL: opening an
-	 * editor on it would bind the fields to something that cannot be saved
-	 * back. It is sent to the list instead, and it is done here because this
-	 * runs before any of the page has been written -- a redirect out of
-	 * showPage() would be too late to set a header.
+	 * An id that names no row is a stale link or a hand-edited URL, and is sent to
+	 * the list instead. Done here because this runs before any of the page has been
+	 * written -- a redirect out of showPage() would be too late to set a header.
 	 *
 	 * @param string $page Current configuration page.
 	 *
