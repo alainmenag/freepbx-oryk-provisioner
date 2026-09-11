@@ -278,6 +278,7 @@ $tab = $isNew ? 'resource' : $tab;
 								data-side-pagination="server"
 								data-pagination="true"
 								data-search="true"
+								data-show-refresh="true"
 								data-unique-id="id"
 								data-sort-name="mac"
 								data-sort-order="asc">
