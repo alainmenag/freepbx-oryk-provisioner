@@ -124,6 +124,29 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a clients table written before 1.0.17 up to date.
+	 *
+	 * Nullable with no default, and deliberately: a client that has never
+	 * been seen has no time to record, and a column that answered that with
+	 * the moment the column was added would say every phone on the site
+	 * checked in at once, on the day of the upgrade. NULL is the one honest
+	 * value for "has not asked yet", and it is what every row starts at --
+	 * including rows that have been provisioning for a year, which report
+	 * themselves again the next time they ask.
+	 *
+	 * @return void
+	 */
+	public function addClientLastSeenColumn()
+	{
+		if (!$this->schemaHas($this->clientsTable, 'column', 'last_seen')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->clientsTable}`
+				ADD COLUMN `last_seen` DATETIME NULL DEFAULT NULL AFTER `enabled`"
+			);
+		}
+	}
+
+	/**
 	 * Give a table the column that says whether the endpoint answers for it.
 	 *
 	 * The same column on two tables, added the same way, so it is added in

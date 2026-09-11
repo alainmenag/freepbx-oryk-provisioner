@@ -123,6 +123,7 @@ $tabs = [
 									<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 									<th data-field="profile" data-formatter="formatClientProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
 									<th data-field="secure" data-formatter="formatClientSecure" data-sortable="true"><?php echo _('Secure'); ?></th>
+									<th data-field="last_seen" data-formatter="formatClientSeen" data-sortable="true"><?php echo _('Last Seen'); ?></th>
 									<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
@@ -192,6 +193,11 @@ $tabs = [
 	// rather than the page looking unchanged after coming back.
 	const orykSavedClient = <?php echo $savedClient; ?>;
 	const orykSavedProfile = <?php echo $savedProfile; ?>;
+
+	// Said in one place because the client editor says the same thing about
+	// the same client, and the two reading differently would be two answers
+	// to one question.
+	const orykClientNeverSeen = <?php echo json_encode(_('Never')); ?>;
 
 	// Every call to the module is a POST to ajax.php with the command in the
 	// query string, which is what FreePBX dispatches on.
@@ -263,6 +269,63 @@ $tabs = [
 	// number rather than on the value as it arrives -- '0' is true.
 	function formatClientSecure(value, row) {
 		return Number(value) ? 'Yes' : 'No';
+	}
+
+	// When the endpoint last answered this client with a 200, which is to say
+	// the last time the phone asked for something and got it.
+	//
+	// Drawn as how long ago rather than as the timestamp, because the
+	// question being asked of this column is "is that phone alive", and an
+	// answer of "14:32" has to be subtracted from the wall clock before it
+	// says anything. The timestamp is the hover title, for when the age is
+	// not enough and the exact moment is the point.
+	//
+	// The age is the server's own subtraction -- see Clients::SEEN_AGE_EXPR.
+	// Working it out here from the timestamp would mean parsing a DATETIME
+	// written in the PBX's clock as though it were written in the browser's,
+	// and reporting a phone that checked in a minute ago as hours out
+	// wherever the two differ.
+	//
+	// A client nothing has ever been served to says so in words. It is the
+	// row worth finding on this list: a phone that was set up and has never
+	// come back is either not plugged in or not reaching the PBX, and an
+	// empty cell would read as a column that had failed to load.
+	function formatClientSeen(value, row) {
+		if (!value) {
+			return `<span class="text-muted" title="Nothing has been served to this client yet">${orykEscape(orykClientNeverSeen)}</span>`;
+		}
+
+		return `<span title="${orykEscape(value)}">${orykEscape(orykSince(row.last_seen_age))}</span>`;
+	}
+
+	// A number of seconds, as the largest unit that still says something
+	// useful. Deliberately coarse: this is read to tell a phone that checked
+	// in this morning from one that stopped answering in March, and
+	// "3 days ago" does that where "3 days, 4 hours and 11 minutes ago" only
+	// makes the column wider.
+	//
+	// A negative age is a clock that has been moved back under a row that was
+	// written before it; it reads as just now rather than as the future.
+	function orykSince(seconds) {
+		const age = Math.max(0, Number(seconds) || 0);
+
+		const units = [
+			[31536000, 'year'],
+			[2592000, 'month'],
+			[86400, 'day'],
+			[3600, 'hour'],
+			[60, 'minute']
+		];
+
+		for (const [size, name] of units) {
+			if (age >= size) {
+				const count = Math.floor(age / size);
+
+				return `${count} ${name}${count === 1 ? '' : 's'} ago`;
+			}
+		}
+
+		return 'just now';
 	}
 
 	function formatProfileName(value, row) {

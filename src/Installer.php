@@ -122,6 +122,15 @@ class Installer extends Service
 		// is written enabled -- somebody adding a client is adding one to
 		// serve -- and switching it off is a deliberate act taken afterwards,
 		// on the client or from its row on the list.
+		//
+		// last_seen is the last time the endpoint answered this client with a
+		// 200, written by the request that was answered. It is on the client
+		// rather than derived from the provisioning log beside it, because
+		// the log is prunable -- there is a Clear button on two pages and a
+		// retention policy still to come -- and when a phone last checked in
+		// is the one fact about a client that must survive its requests being
+		// thrown away. NULL until the first one: see
+		// Schema::addClientLastSeenColumn().
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->clientsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -130,6 +139,7 @@ class Installer extends Service
 				`profile_id` INT(11) NULL DEFAULT NULL,
 				`token` VARCHAR(255) NULL DEFAULT NULL,
 				`enabled` TINYINT(1) NOT NULL DEFAULT 1,
+				`last_seen` DATETIME NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -181,6 +191,7 @@ class Installer extends Service
 		$this->schema->addClientTokenColumn();
 		$this->schema->addClientEnabledColumn();
 		$this->schema->addProfileEnabledColumn();
+		$this->schema->addClientLastSeenColumn();
 
 		$this->linkEngine();
 
