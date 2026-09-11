@@ -22,9 +22,15 @@
  * Included by every view, in place of its section title. What it needs is one
  * variable, which is the whole contract with src/Navigator.php.
  *
+ * Creating is the one thing here that is not navigating, and it is drawn like
+ * it: pinned under the options, past a rule, out of the filter and out of the
+ * arrow keys, so the list you walk is still only places that exist. A level
+ * that says you cannot write a new one -- the sections -- simply has no row.
+ *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
  *                                       Each: key, text, mono, prompt, search,
- *                                       options[] of text, note, href, active.
+ *                                       options[] of text, note, href, active,
+ *                                       add of text, href, active (or null).
  */
 
 $navigator = isset($navigator) && is_array($navigator) ? $navigator : [];
@@ -156,6 +162,38 @@ $e = function ($value) {
 		font-size: 13px;
 		line-height: 17px;
 	}
+
+	/*
+	 * Where a new one is written. Pinned to the foot of the menu the way the
+	 * filter is pinned to its head -- a list long enough to scroll is exactly
+	 * the list where you may give up on finding one and write it instead, and
+	 * having to scroll to the end to do that is the wrong way round.
+	 *
+	 * The rule above it is the whole distinction being drawn: everything over
+	 * the line is somewhere that exists.
+	 */
+	.oryk-nav .oryk-nav-menu > li.oryk-nav-add {
+		position: sticky;
+		bottom: 0;
+		z-index: 1;
+		background: #fff;
+		border-bottom: 1px solid #eee;
+	}
+	.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a {
+		color: #555;
+	}
+	.oryk-nav .oryk-nav-menu > li.oryk-nav-add .oryk-nav-plus {
+		display: inline-block;
+		width: 12px;
+		margin-right: 4px;
+		font-weight: 700;
+		color: #999;
+	}
+	.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a:hover .oryk-nav-plus,
+	.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a:focus .oryk-nav-plus,
+	.oryk-nav .oryk-nav-menu > li.oryk-nav-add.active .oryk-nav-plus {
+		color: inherit;
+	}
 </style>
 
 <nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>" style="margin-bottom: 25px;">
@@ -186,6 +224,21 @@ $e = function ($value) {
 						<input type="text" class="form-control input-sm" placeholder="<?php echo $e($level['search']); ?>" aria-label="<?php echo $e($level['search']); ?>">
 					</li>
 
+					<?php if (!$level['options']): ?>
+						<li class="oryk-nav-empty"><?php echo $e(_('Nothing here yet')); ?></li>
+					<?php endif; ?>
+
+					<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
+
+					<?php if (!empty($level['add'])): ?>
+						<li class="oryk-nav-add<?php echo !empty($level['add']['active']) ? ' active' : ''; ?>">
+							<a href="<?php echo $e($level['add']['href']); ?>">
+								<span class="oryk-nav-plus" aria-hidden="true">+</span><span class="oryk-nav-label"
+									style="display: inline;"><?php echo $e($level['add']['text']); ?></span>
+							</a>
+						</li>
+					<?php endif; ?>
+
 					<?php foreach ($level['options'] as $option): ?>
 						<li class="oryk-nav-option<?php echo !empty($option['active']) ? ' active' : ''; ?>">
 							<a href="<?php echo $e($option['href']); ?>">
@@ -196,12 +249,6 @@ $e = function ($value) {
 							</a>
 						</li>
 					<?php endforeach; ?>
-
-					<?php if (!$level['options']): ?>
-						<li class="oryk-nav-empty"><?php echo $e(_('Nothing here yet')); ?></li>
-					<?php endif; ?>
-
-					<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
 
 				</ul>
 			</li>
