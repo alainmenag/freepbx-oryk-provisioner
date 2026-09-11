@@ -29,6 +29,29 @@ class Mac
 	}
 
 	/**
+	 * A MAC as the provisioning log stores it.
+	 *
+	 * Normalised when it is a MAC, so a row can be read back by what asked
+	 * for it, and kept as it was sent when it is not: on a row like that, what
+	 * the thing at the other end actually sent is the whole of what the row is
+	 * worth having.
+	 *
+	 * Here rather than in ProvisioningLog because both ends of that table now
+	 * use it -- the rows are written and read by one class and counted by
+	 * another, and they have to agree on the spelling.
+	 *
+	 * @param mixed $mac MAC address as it was written.
+	 *
+	 * @return string The normalised MAC, or what was asked with.
+	 */
+	public static function stored($mac)
+	{
+		$normalised = self::normalize($mac);
+
+		return $normalised !== '' ? $normalised : trim((string) $mac);
+	}
+
+	/**
 	 * The MAC a requested filename carries, if it carries one.
 	 *
 	 * The endpoint's own reading of a path, kept to the same pattern: twelve

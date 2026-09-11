@@ -34,8 +34,7 @@
  * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
- * @var int                               $resources      Resources on its profile, for the tab's count
- * @var int                               $logs           Requests logged against its MAC, for the tab's count
+ * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
  * @var array<string, bool>               $available      Which of the other tabs have anything on them
  * @var string                            $tab            Tab to open on: client|resources|logs
  */
@@ -43,8 +42,6 @@
 $client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0];
 $freepbxDevices = $freepbxDevices ?? [];
 $profiles = $profiles ?? [];
-$resources = (int) ($resources ?? 0);
-$logs = (int) ($logs ?? 0);
 $available = $available ?? [];
 $tab = in_array($tab ?? '', ['resources', 'logs'], true) ? $tab : 'client';
 
@@ -75,8 +72,13 @@ $logged = (bool) ($available['logs'] ?? (!$isNew && $mac !== ''));
 if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 	$tab = 'client';
 }
+
+// Two scopes on one page: what is served comes from the profile this client
+// is assigned to, what was asked for is kept against its MAC.
+$countScope = ['profile_id' => $profileId, 'mac' => $mac];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
+<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
@@ -115,7 +117,7 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 						<?php else: ?>
 							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
 								<?php echo _('Resources'); ?>
-								<span class="badge"><?php echo $resources; ?></span>
+								<?php $countBadge('resources'); ?>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -128,7 +130,7 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 						<?php else: ?>
 							<a href="#oryk_logs" aria-controls="oryk_logs" role="tab" data-toggle="tab">
 								<?php echo _('Logs'); ?>
-								<span class="badge"><?php echo $logs; ?></span>
+								<?php $countBadge('logs'); ?>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -275,6 +277,7 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 								data-side-pagination="server"
 								data-pagination="true"
 								data-search="true"
+								data-show-refresh="true"
 								data-unique-id="id"
 								data-sort-name="name"
 								data-sort-order="asc">

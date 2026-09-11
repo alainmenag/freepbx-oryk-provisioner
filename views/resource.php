@@ -39,7 +39,7 @@
  * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, template, file_size, file_uploaded_at
  * @var array<string, mixed>                 $profile      The profile it belongs to
  * @var array<string, array<string, string>> $placeholders What a template can refer to
- * @var int                                  $assigned     Clients on the profile, for the tab's count
+ * @var array<string, int>                   $counts       Rows behind each tab -- see partials/counts.php
  * @var string                               $tab          Tab to open on: resource|clients
  */
 
@@ -47,7 +47,6 @@ $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template'
 $resource += ['file_size' => null, 'file_uploaded_at' => null];
 $profile = $profile ?? ['id' => 0, 'name' => ''];
 $placeholders = $placeholders ?? [];
-$assigned = (int) ($assigned ?? 0);
 $tab = ($tab ?? '') === 'clients' ? 'clients' : 'resource';
 
 $h = function ($value) {
@@ -81,8 +80,14 @@ $showTemplate = !$hasFile;
 // look like something a resource does not have rather than something this one
 // does not have yet.
 $tab = $isNew ? 'resource' : $tab;
+
+// The one tab with a table on it is the profile's client list, so the profile
+// is what narrows this page's counts -- not the resource, which nothing is
+// counted against.
+$countScope = ['profile_id' => $profileId];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
+<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
@@ -123,7 +128,7 @@ $tab = $isNew ? 'resource' : $tab;
 						<?php else: ?>
 							<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
 								<?php echo _('Clients'); ?>
-								<span class="badge"><?php echo $assigned; ?></span>
+								<?php $countBadge('clients'); ?>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -278,6 +283,7 @@ $tab = $isNew ? 'resource' : $tab;
 								data-side-pagination="server"
 								data-pagination="true"
 								data-search="true"
+								data-show-refresh="true"
 								data-unique-id="id"
 								data-sort-name="mac"
 								data-sort-order="asc">

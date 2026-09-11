@@ -217,10 +217,10 @@ class Profiles extends Service
 	/**
 	 * How many clients a profile is assigned to.
 	 *
-	 * Which clients they are is the editor's Clients tab, and that asks for
-	 * them itself over listClients, a page at a time. This is the number
-	 * alone: what the tab is labelled with, and what a profile still in use
-	 * is refused deletion over.
+	 * The rule that a profile still in use is not deleted, and only that:
+	 * what a tab is labelled with comes from Counts, which counts the same
+	 * table the same way. Both are rowCount() now, so there is one statement
+	 * between them and nothing to keep in step.
 	 *
 	 * @param int $profileId Profile id.
 	 *
@@ -228,32 +228,7 @@ class Profiles extends Service
 	 */
 	public function profileClientCount($profileId)
 	{
-		$stmt = $this->db->prepare(
-			"SELECT COUNT(*) FROM `{$this->clientsTable}` WHERE profile_id = :id"
-		);
-		$stmt->execute([':id' => (int) $profileId]);
-
-		return (int) $stmt->fetchColumn();
-	}
-
-	/**
-	 * How many resources a profile serves.
-	 *
-	 * The rows are a tab's business and it pages through them itself over
-	 * listResources; this is the number alone, which labels the tab.
-	 *
-	 * @param int $profileId Profile id.
-	 *
-	 * @return int Resources belonging to the profile.
-	 */
-	public function profileResourceCount($profileId)
-	{
-		$stmt = $this->db->prepare(
-			"SELECT COUNT(*) FROM `{$this->resourcesTable}` WHERE profile_id = :id"
-		);
-		$stmt->execute([':id' => (int) $profileId]);
-
-		return (int) $stmt->fetchColumn();
+		return $this->rowCount($this->clientsTable, 'profile_id', (int) $profileId);
 	}
 
 	/**

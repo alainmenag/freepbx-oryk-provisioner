@@ -46,9 +46,14 @@ class Pages extends Service
 	private $requestLog;
 
 	/**
+	 * @var Counts
+	 */
+	private $counts;
+
+	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts)
 	{
 		parent::__construct($freepbx);
 
@@ -58,6 +63,7 @@ class Pages extends Service
 		$this->pbx = $pbx;
 		$this->template = $template;
 		$this->requestLog = $requestLog;
+		$this->counts = $counts;
 	}
 
 	/**
@@ -140,7 +146,10 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/profile.php', [
 			'profile' => $profile,
-			'assigned' => $profile['id'] ? $this->profiles->profileClientCount((int) $profile['id']) : 0,
+			// Narrowed to this profile, new one included: nothing points at
+			// a profile that has not been written, and profile_id=0 counts
+			// it rather than being read as no narrowing at all.
+			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
 			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
@@ -198,8 +207,11 @@ class Pages extends Service
 			'client' => $client,
 			'freepbxDevices' => $this->pbx->freepbxDevices(),
 			'profiles' => $this->profiles->profileChoices(),
-			'resources' => $profileId ? $this->profiles->profileResourceCount($profileId) : 0,
-			'logs' => $mac !== '' ? $this->requestLog->macLogCount($mac) : 0,
+			// Two scopes on one page: Resources is the profile's, Logs is
+			// this MAC's. Both tabs are drawn only when there is something
+			// behind them, so neither count is read for a badge that is not
+			// there.
+			'counts' => $this->counts->pageCounts(['profile_id' => $profileId, 'mac' => $mac]),
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'client',
 		]);
@@ -242,7 +254,7 @@ class Pages extends Service
 			'resource' => $resource,
 			'profile' => $profile,
 			'placeholders' => $this->template->templatePlaceholders(),
-			'assigned' => $this->profiles->profileClientCount((int) $profile['id']),
+			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
 			// A resource that has never been written has no name to render
 			// against a client, so Clients is there but does not open --
 			// the same way Resources is on a new profile.
@@ -253,11 +265,14 @@ class Pages extends Service
 	/**
 	 * Render the list page.
 	 *
-	 * Both tables are filled over AJAX and neither row is edited here, so all
-	 * the view is handed is which tab to open on and which row the editor it
-	 * came back from has just written.
+	 * All three tables are filled over AJAX and no row is edited here, so what
+	 * the view is handed is which tab to open on, which row the editor it came
+	 * back from has just written, and the counts its tabs are labelled with.
 	 *
-	 * One `saved` for both tables: each editor returns to its own tab, so the
+	 * The counts come from Counts rather than from the tables, here and on
+	 * every other page -- see the note there.
+	 *
+	 * One `saved` for all three: each editor returns to its own tab, so the
 	 * tab it arrives on says which table the id belongs to.
 	 *
 	 * @param string|null $tab Tab to open on, or null to take it from the request.
@@ -271,6 +286,9 @@ class Pages extends Service
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => in_array($tab, ['profiles', 'logs'], true) ? $tab : 'clients',
 			'saved' => (int) ($_REQUEST['saved'] ?? 0),
+			// Nothing above this page to narrow them by: every client, every
+			// profile, every request.
+			'counts' => $this->counts->pageCounts(),
 		]);
 	}
 

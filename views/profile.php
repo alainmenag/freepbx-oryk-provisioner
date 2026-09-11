@@ -32,14 +32,13 @@
  * Save, Delete and Close are the action bar's, drawn by FreePBX from
  * getActionBar() and bound by views/partials/editor.php.
  *
- * @var array<string, mixed> $profile  id (0 when new), name
- * @var int                  $assigned Clients using it, for the tab's count
- * @var string               $tab      Tab to open on: profile|resources|clients
- * @var int                  $saved    Resource just written, highlighted here
+ * @var array<string, mixed> $profile id (0 when new), name
+ * @var array<string, int>   $counts  Rows behind each tab -- see partials/counts.php
+ * @var string               $tab     Tab to open on: profile|resources|clients
+ * @var int                  $saved   Resource just written, highlighted here
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => ''];
-$assigned = (int) ($assigned ?? 0);
 $tab = in_array($tab ?? '', ['resources', 'clients'], true) ? $tab : 'profile';
 $saved = (int) ($saved ?? 0);
 
@@ -55,8 +54,12 @@ $isNew = $id === 0;
 // like features this profile does not have rather than ones it does not have
 // yet.
 $tab = $isNew ? 'profile' : $tab;
+
+// Both tabs on this page are this profile's: its files and its clients.
+$countScope = ['profile_id' => $id];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
+<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
@@ -93,6 +96,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<?php else: ?>
 							<a href="#oryk_resources" aria-controls="oryk_resources" role="tab" data-toggle="tab">
 								<?php echo _('Resources'); ?>
+								<?php $countBadge('resources'); ?>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -105,7 +109,7 @@ $tab = $isNew ? 'profile' : $tab;
 						<?php else: ?>
 							<a href="#oryk_clients" aria-controls="oryk_clients" role="tab" data-toggle="tab">
 								<?php echo _('Clients'); ?>
-								<span class="badge"><?php echo $assigned; ?></span>
+								<?php $countBadge('clients'); ?>
 							</a>
 						<?php endif; ?>
 					</li>
@@ -167,6 +171,7 @@ $tab = $isNew ? 'profile' : $tab;
 								data-side-pagination="server"
 								data-pagination="true"
 								data-search="true"
+								data-show-refresh="true"
 								data-unique-id="id"
 								data-row-style="formatResourceRow"
 								data-sort-name="name"
@@ -197,6 +202,7 @@ $tab = $isNew ? 'profile' : $tab;
 								data-side-pagination="server"
 								data-pagination="true"
 								data-search="true"
+								data-show-refresh="true"
 								data-unique-id="id"
 								data-sort-name="mac"
 								data-sort-order="asc">
@@ -327,6 +333,7 @@ $tab = $isNew ? 'profile' : $tab;
 			}
 
 			$('#resource_table').bootstrapTable('refresh');
+			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});
