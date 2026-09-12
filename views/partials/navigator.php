@@ -19,6 +19,16 @@
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
  *
+ * Over each crumb is the level's own title -- what these are, plural -- and it
+ * is a link to where they are all listed: `resources` over a filename goes to
+ * that profile's Resources tab. So a level names two places rather than one,
+ * the row that is open and the list it came out of, and getting back to the
+ * list no longer means going up to the profile and picking the tab again.
+ * Both the word and the URL come from Navigator, because the view knows
+ * nothing about the module -- it cannot pluralise `resource` into a heading in
+ * a language it was not written in, and it certainly cannot know that a
+ * profile's files are listed on the profile rather than on the list page.
+ *
  * Included by every view, in place of its section title. What it needs is one
  * variable, which is the whole contract with src/Navigator.php.
  *
@@ -28,7 +38,8 @@
  * that says you cannot write a new one -- the sections -- simply has no row.
  *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
- *                                       Each: key, text, mono, prompt, search,
+ *                                       Each: key, title of text and href,
+ *                                       text, mono, prompt, search,
  *                                       options[] of text, note, href, active,
  *                                       add of text, href, active (or null).
  */
@@ -78,6 +89,29 @@ $e = function ($value) {
 	.oryk-nav .oryk-nav-toggle .caret {
 		margin-left: 5px;
 		color: #999;
+	}
+
+	/*
+	 * The level's title, over the crumb: small, muted, and a link to the list
+	 * it names. Its own font-size rule, because the heading type above is set
+	 * on every direct link of a crumb and this is not the heading.
+	 *
+	 * `align-self` because the <li> is a flex column, which would otherwise
+	 * stretch the link -- and its underline -- the full width of the crumb
+	 * under it. What it points at is one word, so one word is what it is.
+	 */
+	.oryk-nav .breadcrumb > li > .oryk-nav-title {
+		align-self: flex-start;
+		padding: 0 7px;
+		border: 0;
+		font-size: 12px;
+		line-height: 17px;
+		color: #999;
+	}
+	.oryk-nav .breadcrumb > li > a.oryk-nav-title:hover,
+	.oryk-nav .breadcrumb > li > a.oryk-nav-title:focus {
+		color: #333;
+		text-decoration: underline;
 	}
 
 	/* A name that is typed exactly -- a filename, twelve hex digits -- is
@@ -213,10 +247,21 @@ $e = function ($value) {
 			$key = (string) $level['key'];
 			$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
 			$chosen = (string) $level['text'] !== '';
+
+			// A level says what it is; whether that has a list page to point
+			// at is the level's business, and one that names none draws the
+			// word alone rather than a link that goes nowhere.
+			$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
+			$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : '';
+			$titleHref = ($title && isset($title['href'])) ? (string) $title['href'] : '';
 			?>
 			<li class="dropdown oryk-nav-level">
 
-				<a style="font-size: 14px;" title="Go to <?php echo $e($key . 's'); ?>"><?php echo $e($key . 's'); ?></a>
+				<?php if ($titleText !== '' && $titleHref !== ''): ?>
+					<a class="oryk-nav-title" href="<?php echo $e($titleHref); ?>" title="<?php echo $e(sprintf(_('Go to %s'), $titleText)); ?>"><?php echo $e($titleText); ?></a>
+				<?php elseif ($titleText !== ''): ?>
+					<span class="oryk-nav-title"><?php echo $e($titleText); ?></span>
+				<?php endif; ?>
 
 				<a href="#" class="oryk-nav-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
 					<span class="oryk-nav-text<?php echo $chosen ? $mono : ' oryk-nav-prompt'; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>">
