@@ -583,20 +583,13 @@ $tabs = [
 				template: $('#resource_template').val() ?? ''
 			};
 		},
-		// Back to the profile's Resources tab, which is re-rendered on
-		// arrival, with the row that was just written picked out.
-		//
-		// Except for the first save of a new resource, which lands on the
-		// resource's own page instead. A new one is its name and nothing else,
-		// and saving it is what brings the file and the template on to the page
-		// -- going back to the list here would mean saving, arriving somewhere
-		// else, and clicking Edit to reach the half of the page the save was for.
-		saved: function (response) {
-			if (!orykResourceId) {
-				return `?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(response.id)}`;
-			}
-
-			return orykResources + '&saved=' + encodeURIComponent(response.id);
+		// This resource's own page: the same address on a save that changed it,
+		// the new row's first address on a save that wrote it. A new resource
+		// is its name and its type, and saving it is what brings the file box
+		// and the template on to the page, so the row's own page is where the
+		// rest of the work is.
+		page: function (id) {
+			return `?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(id)}`;
 		},
 		closed: orykResources
 	});

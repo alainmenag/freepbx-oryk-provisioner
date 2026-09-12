@@ -139,7 +139,6 @@ class Pages extends Service
 			// rather than being read as no narrowing at all.
 			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
 			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
-			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 		]);
 	}
 
@@ -320,11 +319,9 @@ class Pages extends Service
 	 * Render the list page.
 	 *
 	 * All three tables are filled over AJAX and no row is edited here, so the view
-	 * is handed which tab to open on, which row the editor it came back from has
-	 * just written, and the counts its tabs are labelled with.
-	 *
-	 * One `saved` for all three: each editor returns to its own tab, so the tab it
-	 * arrives on says which table the id belongs to.
+	 * is handed which tab to open on and the counts its tabs are labelled with.
+	 * Nothing arrives from a save: an editor's Save stays on the row it wrote, and
+	 * only Close and a finished Delete come back here.
 	 *
 	 * @param string|null $tab Tab to open on, or null to take it from the request.
 	 *
@@ -337,7 +334,6 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
-			'saved' => (int) ($_REQUEST['saved'] ?? 0),
 			// Nothing above this page to narrow them by.
 			'counts' => $this->counts->pageCounts(),
 			// The section is the tab this page opens on, and nothing under it is open:

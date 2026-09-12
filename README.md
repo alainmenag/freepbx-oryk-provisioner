@@ -285,7 +285,11 @@ elsewhere in the module lands where you were.
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
-and Close are in the FreePBX action bar on every editor. A tab is an ordinary
+and Close are in the FreePBX action bar on every editor. Save leaves you on
+what you are editing: a change reloads the same page with it written, and a new
+client, profile or resource opens on its own page — which is where the rest of
+it is filled in, since a resource's file and template and a profile's Resources
+tab exist only once the row does. Close is what goes back to the list. A tab is an ordinary
 link and only the pane asked for is rendered, so a tab with nothing behind it
 yet — Resources on a profile nobody has written — is not drawn at all.
 
