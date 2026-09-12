@@ -220,6 +220,11 @@ class Pages extends Service
 			]),
 			'freepbxDevices' => $this->pbx->freepbxDevices(),
 			'profiles' => $this->profiles->profileChoices(),
+			// The address this client provisions by when nobody gives it a
+			// MAC. '' on a client that has not been written, which has no id
+			// to derive one from yet -- the page says so rather than naming
+			// an address it cannot know.
+			'assigned' => Mac::assigned($client['id']),
 			// Two scopes on one page: Resources is the profile's, Logs is
 			// this MAC's. Both tabs are drawn only when there is something
 			// behind them, so neither count is read for a badge that is not

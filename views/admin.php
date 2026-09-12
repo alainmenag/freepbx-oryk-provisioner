@@ -223,8 +223,23 @@ $tabs = [
 		return value ? orykEscape(value) : '-';
 	}
 
+	// An address the module assigned -- 02 and the client's own id, given to a
+	// client written without a MAC -- is marked as one, because nothing will
+	// ever arrive asking for it: a client on an assigned address provisions by
+	// its token, and the column would otherwise read as a handset that has
+	// simply never been heard from.
 	function formatMac(value, row) {
-		return value ? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
+		if (!value) {
+			return '-';
+		}
+
+		const link = `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>`;
+
+		if (!row.assigned) {
+			return link;
+		}
+
+		return `${link} <span class="label label-default" title="Assigned by the module, since this client was written without a MAC address of its own">assigned</span>`;
 	}
 
 	// The Device column names the FreePBX device; the extension it is attached

@@ -37,6 +37,7 @@
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
+ * @var string                            $assigned       The address this client provisions by when it is given no MAC
  * @var array<string, bool>               $available      Which of the other tabs have anything on them
  * @var string                            $tab            Tab to open on: client|resources|logs
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
@@ -55,6 +56,14 @@ $h = function ($value) {
 $id = (int) $client['id'];
 $isNew = $id === 0;
 $mac = (string) $client['mac'];
+
+// A client written without a MAC address is given one off its own id, and
+// this is whether the address on the row is that one. Worked out by the
+// module and passed in rather than spelled out again here: the page says
+// which of the two kinds of address it is showing, and only Mac::assigned()
+// decides what an assigned address looks like.
+$assigned = (string) ($assigned ?? '');
+$isAssigned = $assigned !== '' && $mac === $assigned;
 $deviceId = (string) ($client['device_id'] ?? '');
 $profileId = (int) ($client['profile_id'] ?? 0);
 
@@ -162,12 +171,12 @@ $tabs = [
 									<div class="col-md-4">
 										<label class="control-label" for="client_mac">
 											<?php echo _('MAC Address'); ?>
-											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
 										</label>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="client_mac"
-											autocomplete="off" placeholder="001565aabbcc"
+											autocomplete="off"
+											placeholder="<?php echo $h($isNew ? _('001565aabbcc -- or leave empty') : '001565aabbcc'); ?>"
 											value="<?php echo $h($mac); ?>">
 									</div>
 								</div>
@@ -176,6 +185,19 @@ $tabs = [
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
 										<?php echo _('The address the client provisions with. Stored as 12 lowercase hexadecimal characters; separators are removed. Unique -- a MAC is associated once.'); ?>
+										<?php if ($isNew): ?>
+											<?php echo _('Leave it empty and the client is assigned one of its own when you save: <code>02</code> and its id, an address no handset is made with.'); ?>
+										<?php elseif ($isAssigned): ?>
+											<?php printf(
+												_('This client was assigned %s, since it was written without a MAC of its own. Type the handset\'s address over it when there is one.'),
+												'<code>' . $h($mac) . '</code>'
+											); ?>
+										<?php elseif ($assigned !== ''): ?>
+											<?php printf(
+												_('Empty it and this client is assigned %s instead.'),
+												'<code>' . $h($assigned) . '</code>'
+											); ?>
+										<?php endif; ?>
 									</span>
 								</div>
 							</div>

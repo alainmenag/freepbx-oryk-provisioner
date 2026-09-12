@@ -10,8 +10,10 @@ use PDO;
  * The clients table.
  *
  * A client is a MAC, the FreePBX device it stands for and the profile it
- * is served -- and the MAC is the only required part of that. clientByMac()
- * is the endpoint's way in, and the same row the editor reads.
+ * is served -- and none of the three has to be given: a client written
+ * without a MAC is assigned one off its own id (see Mac::assigned()), so
+ * every row has the address the endpoint finds it by. clientByMac() is that
+ * way in, and the same row the editor reads.
  */
 class Clients extends Service
 {
@@ -201,6 +203,17 @@ class Clients extends Service
 
 		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+		// Whether the address on the row is one the module made up, which the
+		// MAC column says beside it. Worked out here rather than in SQL or in
+		// the browser so that there is one spelling of what an assigned
+		// address is, and it is Mac::assigned() -- a second spelling of it
+		// would be a second thing to keep in step with the one that writes
+		// them. Only the page of rows that was read is asked.
+		foreach ($rows as &$row) {
+			$row['assigned'] = Mac::isAssigned($row['mac'], $row['id']);
+		}
+		unset($row);
+
 		return [
 			'total' => $total,
 			'rows' => $rows,
@@ -280,6 +293,11 @@ class Clients extends Service
 	/**
 	 * Create or update a client.
 	 *
+	 * `mac` is the field that can arrive empty and still be written: what is
+	 * stored is then the address the client's own id names, which on a new
+	 * client is only knowable after the INSERT -- see the transaction at the
+	 * bottom of this method and Mac::assigned().
+	 *
 	 * `token` is the field here that is not simply written: what arrives is
 	 * either a token to hash or the hash of one, told apart by the colon. See
 	 * the note above it, and hashToken(). The two addresses are the fields
@@ -293,9 +311,18 @@ class Clients extends Service
 	public function saveClient($request)
 	{
 		$id = (int) ($request['id'] ?? 0);
-		$mac = Mac::normalize($request['mac'] ?? '');
 
-		if ($mac === '') {
+		// **An empty box is no longer a refusal.** A client with no MAC to
+		// type is an ordinary client -- a softphone, one reached by its
+		// token, a row written before the handset is out of its box -- and it
+		// is assigned an address of its own below. What is still refused is
+		// something typed that is not an address, which is a typo and not a
+		// client without a MAC; the two are told apart by whether the box was
+		// empty, since Mac::normalize() answers '' to both.
+		$submitted = trim((string) ($request['mac'] ?? ''));
+		$mac = Mac::normalize($submitted);
+
+		if ($submitted !== '' && $mac === '') {
 			return [
 				'status' => false,
 				'message' => _('A MAC address is 12 hexadecimal characters, with or without separators.'),
@@ -329,12 +356,16 @@ class Clients extends Service
 			return ['status' => false, 'message' => _('The private address is not an IP address.')];
 		}
 
-		$taken = $this->db->prepare(
-			"SELECT id FROM `{$this->clientsTable}` WHERE mac = :mac AND id != :id"
-		);
-		$taken->execute([':mac' => $mac, ':id' => $id]);
+		// A client that has been written already names the address it would be
+		// assigned, so an emptied box is answered here and needs nothing from
+		// the database. That is the whole of what emptying it can mean once
+		// the box is filled in from the row: a client is being taken off the
+		// MAC it was on, not left without one.
+		if ($mac === '' && $id) {
+			$mac = Mac::assigned($id);
+		}
 
-		if ($taken->fetchColumn()) {
+		if ($mac !== '' && $this->macTaken($mac, $id)) {
 			return ['status' => false, 'message' => _('That MAC address is already associated.')];
 		}
 
@@ -397,21 +428,108 @@ class Clients extends Service
 			return ['status' => true, 'id' => $id];
 		}
 
-		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token, enabled, public_ip, private_ip)
-			VALUES (:mac, :device_id, :profile_id, :token, :enabled, :public_ip, :private_ip)"
-		);
-		$stmt->execute([
-			':mac' => $mac,
-			':device_id' => $deviceId,
-			':profile_id' => $profileId,
-			':token' => $tokenHash,
-			':enabled' => $enabled,
-			':public_ip' => $publicIp,
-			':private_ip' => $privateIp,
-		]);
+		// The one case the id has to exist before the address can be worked
+		// out: a new client with no MAC. It is inserted holding a place and
+		// given its own address a statement later, and the two are one
+		// transaction because a row that never reached the second statement
+		// would be a client provisioning by a random address nobody can
+		// account for -- committed, listed, and wrong.
+		$assigning = $mac === '';
 
-		return ['status' => true, 'id' => (int) $this->db->lastInsertId()];
+		if ($assigning) {
+			$mac = Mac::provisional();
+		}
+
+		// Begun only if nothing has begun one already: beginTransaction()
+		// inside an open transaction throws, and the handle is FreePBX's and
+		// shared. Either way the two statements below cannot be separated,
+		// which is the whole of what this needs; a refusal rolls back
+		// regardless, because the row must not stand if the address does not.
+		$owned = !$this->db->inTransaction();
+
+		if ($owned) {
+			$this->db->beginTransaction();
+		}
+
+		try {
+			$stmt = $this->db->prepare(
+				"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token, enabled, public_ip, private_ip)
+				VALUES (:mac, :device_id, :profile_id, :token, :enabled, :public_ip, :private_ip)"
+			);
+			$stmt->execute([
+				':mac' => $mac,
+				':device_id' => $deviceId,
+				':profile_id' => $profileId,
+				':token' => $tokenHash,
+				':enabled' => $enabled,
+				':public_ip' => $publicIp,
+				':private_ip' => $privateIp,
+			]);
+
+			$id = (int) $this->db->lastInsertId();
+
+			if ($assigning) {
+				$mac = Mac::assigned($id);
+
+				// Somebody typed this address on another client by hand,
+				// which is the one way an assigned address can be taken.
+				// Refused rather than worked around: an address that is not
+				// the one this client's id names is an address nothing can
+				// derive, and the alternative -- picking the next free one --
+				// would make that the ordinary case.
+				if ($this->macTaken($mac, $id)) {
+					$this->db->rollBack();
+
+					return [
+						'status' => false,
+						'message' => sprintf(
+							_('This client would be assigned %s, which is already associated with another client. Give it a MAC address of its own, or free that one.'),
+							$mac
+						),
+					];
+				}
+
+				$stmt = $this->db->prepare(
+					"UPDATE `{$this->clientsTable}` SET mac = :mac WHERE id = :id"
+				);
+				$stmt->execute([':mac' => $mac, ':id' => $id]);
+			}
+
+			if ($owned) {
+				$this->db->commit();
+			}
+		} catch (\Exception $e) {
+			if ($this->db->inTransaction()) {
+				$this->db->rollBack();
+			}
+
+			throw $e;
+		}
+
+		return ['status' => true, 'id' => $id];
+	}
+
+	/**
+	 * Whether another client already answers to this address.
+	 *
+	 * The MAC is UNIQUE, so this is asked to refuse a save in the module's
+	 * own words rather than let the database refuse it in its own. Asked of
+	 * an address somebody typed and of one the module assigned, which is why
+	 * it is a method and not two copies of one statement.
+	 *
+	 * @param string $mac Normalised MAC address.
+	 * @param mixed  $id  The client being written, which is not itself a clash.
+	 *
+	 * @return bool
+	 */
+	private function macTaken($mac, $id)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id FROM `{$this->clientsTable}` WHERE mac = :mac AND id != :id"
+		);
+		$stmt->execute([':mac' => $mac, ':id' => (int) $id]);
+
+		return (bool) $stmt->fetchColumn();
 	}
 
 	/**

@@ -11,8 +11,9 @@ Guidance for Claude Code working in this repository.
 ## What this is
 
 A FreePBX 16/17 module (`rawname` `oryk_provisioner`, BMO class
-`Oryk_provisioner`) that provisions VoIP phones. A **client** is a MAC address,
-optionally a FreePBX device and optionally a **profile**; a profile serves
+`Oryk_provisioner`) that provisions VoIP phones. A **client** is a MAC address
+(assigned off its own id when nobody gives it one), optionally a FreePBX device
+and optionally a **profile**; a profile serves
 **resources**, and a resource is a filename plus a type. A phone fetches
 `/provisioner/<mac>-phone.cfg` and gets that profile's `phone.cfg` rendered for
 that client.
@@ -63,7 +64,11 @@ Tables: `oryk_provisioner_clients`, `_profiles`, `_resources`, `_logs`.
   everything else is bound.
 - **A MAC is twelve lowercase hex characters, separators stripped**
   (`Mac::normalize()`). `Mac::stored()` is the log's variant, which keeps what
-  was sent when it was not a MAC.
+  was sent when it was not a MAC. `Mac::assigned($id)` is the address a client
+  written without one is given (`02` + the id, zero-padded); it is **stored in
+  the `mac` column like any other**, so nothing that serves knows there are two
+  kinds. Only `Mac::assigned()` decides what an assigned address looks like —
+  do not spell that derivation again in SQL or in a view.
 - A new AJAX command must be named in **both** `ajaxRequest()` and
   `ajaxHandler()`.
 - PHP and views are indented with **tabs**. Strings shown to an operator go

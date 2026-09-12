@@ -70,10 +70,17 @@ device 1002 (ext 1002)
 ```
 
 **Client** — a MAC address, optionally a FreePBX device, optionally a profile.
-The MAC is the only required field; it is unique, and stored as 12 lowercase
-hexadecimal characters with any separators stripped. The FreePBX `devices`
-table stays the source of truth for the device, its extension and its
-description, so a client carries none of its own.
+Nothing is required. The MAC is unique and stored as 12 lowercase hexadecimal
+characters with any separators stripped; leave it empty and the client is
+assigned an address of its own — `02` followed by its id, so client 6 is
+`020000000006`. `02` is the IEEE's locally administered prefix, which means no
+handset is manufactured with one, so an assigned address cannot collide with a
+real phone. A client on an assigned address is one that provisions by **token**
+rather than by MAC — a softphone, or a row written before the handset is out of
+its box — and it is served exactly like any other. The Clients list marks such
+an address *assigned*. The FreePBX `devices` table stays the source of truth for
+the device, its extension and its description, so a client carries none of its
+own.
 
 A client can also be told **where the phone is**: a **private IP**, the address
 the handset answers its own web interface on, and a **public IP**, the address
@@ -135,8 +142,9 @@ reg.1.server.1.transport="{{sip.transport}}"
 Add more resources for the other files the phone fetches — `phone.cfg`,
 `directory.xml`, and so on.
 
-**3. Add a client.** *Clients → Add Client*. Enter the MAC, pick the FreePBX
-device it stands for, pick the profile, save.
+**3. Add a client.** *Clients → Add Client*. Enter the MAC — or leave it empty
+to have one assigned — pick the FreePBX device it stands for, pick the profile,
+save.
 
 **4. Check what it will get.** Open the client and look at its **Resources**
 tab: every file it asks for, under the filename it will ask for, with a
@@ -490,7 +498,7 @@ src/FileRepo.php             where an uploaded resource file is kept
 src/LogRepo.php              where a log a phone sent us is kept
 src/Tokens.php               hashing a client's token, and checking one
 src/Freepbx.php              the only file that asks FreePBX about a device
-src/Mac.php                  a MAC as written, and as found in a filename
+src/Mac.php                  a MAC as written, as found in a filename, and as assigned
 src/Schema.php               the tables, as they are added to
 src/Installer.php            installing and uninstalling
 src/Logs.php                 how this module writes to the FreePBX log
