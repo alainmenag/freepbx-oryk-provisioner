@@ -317,6 +317,10 @@ class Clients extends Service
 		// refused as a duplicate of the first. See Schema::relaxClientMacColumn().
 		$mac = $mac === '' ? null : $mac;
 
+		if (!$mac) {
+			$mac = '02' . str_pad((string) $id, 10, '0', STR_PAD_LEFT);
+		}
+
 		$deviceId = trim((string) ($request['device_id'] ?? ''));
 		$deviceId = $deviceId === '' ? null : $deviceId;
 
