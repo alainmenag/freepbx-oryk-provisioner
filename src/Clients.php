@@ -286,6 +286,9 @@ class Clients extends Service
 	 * that can be refused -- see address(), which is what lets the Clients
 	 * list put one of them in a link.
 	 *
+	 * The MAC is optional and is the one field here stored as NULL when it is
+	 * empty rather than as '' -- see the note above the uniqueness check.
+	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
@@ -293,14 +296,26 @@ class Clients extends Service
 	public function saveClient($request)
 	{
 		$id = (int) ($request['id'] ?? 0);
-		$mac = Mac::normalize($request['mac'] ?? '');
 
-		if ($mac === '') {
+		// Optional, so the empty box and the mistyped one have to be told apart
+		// before normalize() flattens both to '': a client nobody has read a
+		// label off yet is written without a MAC, and `00156` is a mistake worth
+		// saying so about rather than quietly storing as no MAC at all.
+		$macTyped = trim((string) ($request['mac'] ?? ''));
+		$mac = Mac::normalize($macTyped);
+
+		if ($macTyped !== '' && $mac === '') {
 			return [
 				'status' => false,
 				'message' => _('A MAC address is 12 hexadecimal characters, with or without separators.'),
 			];
 		}
+
+		// NULL rather than '', and the unique key on the column is the whole of
+		// why: MySQL counts NULLs as distinct from each other and empty strings
+		// as equal, so stored as '' the second client without a MAC would be
+		// refused as a duplicate of the first. See Schema::relaxClientMacColumn().
+		$mac = $mac === '' ? null : $mac;
 
 		$deviceId = trim((string) ($request['device_id'] ?? ''));
 		$deviceId = $deviceId === '' ? null : $deviceId;
@@ -329,13 +344,18 @@ class Clients extends Service
 			return ['status' => false, 'message' => _('The private address is not an IP address.')];
 		}
 
-		$taken = $this->db->prepare(
-			"SELECT id FROM `{$this->clientsTable}` WHERE mac = :mac AND id != :id"
-		);
-		$taken->execute([':mac' => $mac, ':id' => $id]);
+		// Only when there is a MAC to be taken. Two clients without one are not
+		// a collision: neither can be reached by a MAC, so there is nothing for
+		// them to be ambiguous between.
+		if ($mac !== null) {
+			$taken = $this->db->prepare(
+				"SELECT id FROM `{$this->clientsTable}` WHERE mac = :mac AND id != :id"
+			);
+			$taken->execute([':mac' => $mac, ':id' => $id]);
 
-		if ($taken->fetchColumn()) {
-			return ['status' => false, 'message' => _('That MAC address is already associated.')];
+			if ($taken->fetchColumn()) {
+				return ['status' => false, 'message' => _('That MAC address is already associated.')];
+			}
 		}
 
 		// The Token field round-trips: the editor is filled in with what is

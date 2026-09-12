@@ -152,6 +152,9 @@ class Navigator extends Service
 	 * across the pair, so a phone is found by whichever of the two its owner
 	 * has in mind.
 	 *
+	 * A client written before anybody read the label off the handset has no
+	 * MAC to be named by, and shows the dash the lists show it as.
+	 *
 	 * @param mixed $at Client id open here, 'new', or null.
 	 *
 	 * @return array<string, mixed> One level.
@@ -165,15 +168,21 @@ class Navigator extends Service
 			$id = (int) $row['id'];
 			$active = (string) $at === (string) $id;
 
+			// The MAC is optional, and a blank breadcrumb names nothing -- so a
+			// client without one reads as the dash every list already shows it
+			// as, in the option and in the crumb alike.
+			$mac = (string) $row['mac'];
+			$mac = $mac === '' ? '-' : $mac;
+
 			$options[] = [
-				'text' => (string) $row['mac'],
+				'text' => $mac,
 				'note' => (string) (isset($row['description']) ? $row['description'] : ''),
 				'href' => '?display=oryk_provisioner&client=' . $id,
 				'active' => $active,
 			];
 
 			if ($active) {
-				$text = (string) $row['mac'];
+				$text = $mac;
 			}
 		}
 
