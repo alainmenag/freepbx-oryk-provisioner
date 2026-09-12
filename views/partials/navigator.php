@@ -54,6 +54,11 @@ $e = function ($value) {
 		margin: 0;
 		padding: 0;
 		background: none;
+		gap: 10px;
+	}
+	.oryk-nav .breadcrumb > li {
+		display: flex;
+		flex-direction: column;
 	}
 	.oryk-nav .breadcrumb > li > a {
 		display: inline-block;
@@ -210,6 +215,8 @@ $e = function ($value) {
 			$chosen = (string) $level['text'] !== '';
 			?>
 			<li class="dropdown oryk-nav-level">
+
+				<a style="font-size: 14px;" title="Go to <?php echo $e($key . 's'); ?>"><?php echo $e($key . 's'); ?></a>
 
 				<a href="#" class="oryk-nav-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
 					<span class="oryk-nav-text<?php echo $chosen ? $mono : ' oryk-nav-prompt'; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>">
