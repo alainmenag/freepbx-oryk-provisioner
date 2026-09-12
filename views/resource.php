@@ -138,10 +138,10 @@ $tabs = [
 
 				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
-				<div class="tab-content">
+				<div class="tab-content" style="display: flex; flex-direction: row; flex-wrap: wrap;">
 
 					<?php if ($tab === 'resource'): ?>
-					<div class="tab-pane oryk-tab-section active" id="oryk_resource">
+					<div class="tab-pane oryk-tab-section active" id="oryk_resource" style="flex: auto;">
 
 						<div class="element-container">
 							<div class="row">
@@ -311,28 +311,25 @@ $tabs = [
 
 						<?php endif; ?>
 
+					</div>
+
+					<div style="flex: 1 1;">
 						<div class="element-container">
 							<div class="row">
 								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label"><?php echo _('Placeholders'); ?></label>
-									</div>
-									<div class="col-md-8">
-										<span class="help-block fpbx-help-block">
-											<?php echo _('Filled in when a client asks for the file -- in the filename above as much as in a template, which is how one resource covers every client on the profile. Click one to copy it.'); ?>
+										<span class="help-block">
+											<?php echo _('Filled in when a client asks for the file -- in the filename as much as in a template, which is how one resource covers every client on the profile. Click one to copy it.'); ?>
 										</span>
 										<?php include __DIR__ . '/partials/placeholders.php'; ?>
-									</div>
 								</div>
 							</div>
 						</div>
-
 					</div>
 
 					<?php endif; ?>
 
 					<?php if ($tab === 'clients'): ?>
-						<div class="tab-pane oryk-tab-section active" id="oryk_clients">
+						<div class="tab-pane oryk-tab-section active" id="oryk_clients" style="flex: 1;">
 
 							<p class="help-block fpbx-help-block">
 								<?php echo _('Clients assigned to the profile that owns this resource.'); ?>
