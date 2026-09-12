@@ -355,7 +355,7 @@ $tabs = [
 									<tr>
 										<th data-field="mac" data-formatter="formatClientMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
 										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
-										<th data-field="device_extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
+										<th data-field="extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 										<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>

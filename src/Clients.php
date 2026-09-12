@@ -103,6 +103,11 @@ class Clients extends Service
 		$sortable = [
 			'mac' => 'pc.mac',
 			'device_id' => 'pc.device_id',
+			// The extension is the device's `user` column, which is what the
+			// row carries under this name -- the heading's data-field, the key
+			// in the row and the key here all have to be the one word, or the
+			// column falls back to sorting by MAC without saying so.
+			'extension' => 'd.user',
 			'description' => 'd.description',
 			'profile' => 'p.name',
 			'secure' => self::SECURE_EXPR,

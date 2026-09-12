@@ -117,8 +117,4 @@ the thing it described.
 
 ## Known cruft (not yet fixed, do not be surprised)
 
-- The profile editor's and resource editor's client tables declare
-  `data-field="device_extension"` while the rows carry `extension`; the
-  formatter reads `row.extension`, so it displays, but sorting that column
-  silently falls back to MAC.
 - No rate limiting or lockout on token verification.
