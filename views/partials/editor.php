@@ -240,11 +240,19 @@
 	 * did not draw -- Save on a tab that has no fields, Delete on a row that
 	 * has never been written -- is simply one that never fires.
 	 *
+	 * Save stays on the row it wrote. For a row that already existed that URL
+	 * is the one in the address bar, so the page reloads showing what was
+	 * written; for a new one it is the id the save handed back, which is the
+	 * first address that row has ever had. Either way the editor open
+	 * afterwards is the editor that was open before -- which is what the
+	 * fields are for, since half of each editor exists only once the row does:
+	 * a resource's file box and template, a profile's Resources tab.
+	 *
 	 * editor.values()  what to post, including the row id
 	 * editor.save      command that writes it
 	 * editor.remove    command that deletes it
 	 * editor.confirm   what Delete asks before it does
-	 * editor.saved(r)  where to go once it is written
+	 * editor.page(id)  this editor's own URL for a row
 	 * editor.closed    where Close and a finished Delete go
 	 */
 	function orykEditor(editor) {
@@ -257,7 +265,7 @@
 					return;
 				}
 
-				window.location = editor.saved(response);
+				window.location = editor.page(response.id);
 			}).fail(function () {
 				orykShowError('The server could not be reached.');
 			});

@@ -189,6 +189,13 @@ says what to do by hand.
   nothing behind it is not drawn. Nothing about tabs is scripted. The
   consequence: Save is drawn only on the editor's own tab, because on any other
   tab the fields it posts are not on the page.
+- **Save stays on the row it wrote.** An editor's Save lands on that row's own
+  page: the address it was already at when the row existed -- so the page
+  reloads with what was written on it -- and the new row's first address when
+  it did not, which is the load that brings the rest of the editor on to the
+  page (a resource's file box and template, a profile's Resources tab). The URL
+  is the row and nothing else: no key says a save has just happened. Only Close
+  and a finished Delete go back to a list.
 - **No view contains a `<form>`.** The module page renders inside the FreePBX
   page form and a nested form is dropped by the browser. Fields are read by id
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.

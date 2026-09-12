@@ -474,10 +474,10 @@ $tabs = [
 				enabled: $('#client_enabled').val()
 			};
 		},
-		// Back to the list on the Clients tab, with the row that was just
-		// written picked out -- the same thing the profile editor does.
-		saved: function (response) {
-			return orykClients + '&saved=' + encodeURIComponent(response.id);
+		// This client's own page: the same address on a save that changed it,
+		// the new row's first address on a save that wrote it.
+		page: function (id) {
+			return '?display=oryk_provisioner&client=' + encodeURIComponent(id);
 		},
 		closed: orykClients
 	});

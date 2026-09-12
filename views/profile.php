@@ -39,13 +39,11 @@
  * @var array<string, mixed> $profile id (0 when new), name, enabled
  * @var array<string, int>   $counts  Rows behind each tab -- see partials/counts.php
  * @var string               $tab     Tab to open on: profile|resources|clients
- * @var int                  $saved   Resource just written, highlighted here
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => '', 'enabled' => 1];
 $tab = in_array($tab ?? '', ['resources', 'clients'], true) ? $tab : 'profile';
-$saved = (int) ($saved ?? 0);
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -190,7 +188,6 @@ $tabs = [
 								data-search="true"
 								data-show-refresh="true"
 								data-unique-id="id"
-								data-row-style="formatResourceRow"
 								data-sort-name="name"
 								data-sort-order="asc">
 								<thead>
@@ -253,10 +250,6 @@ $tabs = [
 	const orykProfileId = <?php echo $id; ?>;
 	const orykList = '?display=oryk_provisioner&tab=profiles';
 
-	// The resource just written by its editor, so the row it landed on says so
-	// rather than the tab looking unchanged after coming back to it.
-	const orykSavedResource = <?php echo $saved; ?>;
-
 	function formatResourceText(value) {
 		return value ? orykEscape(value) : '-';
 	}
@@ -275,10 +268,6 @@ $tabs = [
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');
-	}
-
-	function formatResourceRow(row) {
-		return orykSavedResource && Number(row.id) === orykSavedResource ? { classes: 'success' } : {};
 	}
 
 	function formatClientText(value) {
@@ -363,10 +352,12 @@ $tabs = [
 				enabled: $('#profile_enabled').val()
 			};
 		},
-		// The list is re-rendered on arrival, so the saved profile is in
-		// its table without anything here having to put it there.
-		saved: function (response) {
-			return orykList + '&saved=' + encodeURIComponent(response.id);
+		// This profile's own page: the same address on a save that changed it,
+		// the new row's first address on a save that wrote it -- which is the
+		// load that brings Resources and Clients on to the page, both being
+		// tabs a profile has only once it has been written.
+		page: function (id) {
+			return '?display=oryk_provisioner&profile=' + encodeURIComponent(id);
 		},
 		closed: orykList
 	});

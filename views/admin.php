@@ -25,23 +25,15 @@
  * ?display=oryk_provisioner still opens Clients.
  *
  * @var string             $tab    Tab to open on: clients|profiles|logs
- * @var int                $saved  Row just written on that tab, highlighted here
  * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
 $tab = in_array($tab ?? '', ['profiles', 'logs'], true) ? $tab : 'clients';
-$saved = (int) ($saved ?? 0);
 
 // Nothing above this page narrows them: every client, every profile, every
 // request the endpoint has answered.
 $countScope = [];
-
-// One `saved` in the URL, and the tab it arrives on says which table it means:
-// each editor comes back to its own tab, so there is never a saved client and
-// a saved profile to tell apart.
-$savedClient = $tab === 'clients' ? $saved : 0;
-$savedProfile = $tab === 'profiles' ? $saved : 0;
 
 // The strip, as links. Nothing on this page is ever behind a tab that cannot
 // be opened: an empty table is still a table, and Add lives on it.
@@ -117,7 +109,7 @@ $tabs = [
 							data-search="true"
 							data-show-refresh="true"
 							data-unique-id="id"
-							data-row-style="formatClientRow"
+							data-row-style="orykRowClasses"
 							data-sort-name="mac"
 							data-sort-order="asc">
 							<thead>
@@ -156,7 +148,7 @@ $tabs = [
 							data-search="true"
 							data-show-refresh="true"
 							data-unique-id="id"
-							data-row-style="formatProfileRow"
+							data-row-style="orykRowClasses"
 							data-sort-name="name"
 							data-sort-order="asc">
 							<thead>
@@ -193,11 +185,6 @@ $tabs = [
 <script>
 
 	const orykAjax = 'ajax.php?module=oryk_provisioner&command=';
-
-	// The row each editor has just written, so the one it landed on can say so
-	// rather than the page looking unchanged after coming back.
-	const orykSavedClient = <?php echo $savedClient; ?>;
-	const orykSavedProfile = <?php echo $savedProfile; ?>;
 
 	// Said in one place because the client editor says the same thing about
 	// the same client, and the two reading differently would be two answers
@@ -393,20 +380,11 @@ $tabs = [
 	}
 
 	// What a row has to say about itself before anything has been read out of
-	// it: that it was just written, that it has been switched off, or both.
-	// Shared for the same reason the switch is.
-	function orykRowClasses(row, saved) {
-		const classes = [];
-
-		if (saved && Number(row.id) === saved) {
-			classes.push('success');
-		}
-
-		if (!Number(row.enabled)) {
-			classes.push('oryk-disabled');
-		}
-
-		return classes.length ? { classes: classes.join(' ') } : {};
+	// it: that it has been switched off. Both tables are drawn with it, for the
+	// reason they share the switch -- a client and a profile are switched off
+	// the same way and have to read the same way.
+	function orykRowClasses(row) {
+		return Number(row.enabled) ? {} : { classes: 'oryk-disabled' };
 	}
 
 	// The phone's own web interface, at the private address written on the
@@ -461,10 +439,6 @@ $tabs = [
 		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
 	}
 
-	function formatClientRow(row) {
-		return orykRowClasses(row, orykSavedClient);
-	}
-
 	// Editing a profile is a page too, and for the same reason. Its switch is
 	// the client's one level up: switching a profile off stops every phone
 	// assigned to it at once, which is why the title says so -- the row it is
@@ -478,10 +452,6 @@ $tabs = [
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');
-	}
-
-	function formatProfileRow(row) {
-		return orykRowClasses(row, orykSavedProfile);
 	}
 
 	// Deleting is the one action on either tab that needs no page of its own.
