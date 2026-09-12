@@ -110,13 +110,6 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
-		// mac is what a phone is found by and is nullable, so a client can be
-		// written before anybody has read the label off the handset. NULL and
-		// not '' because the unique key beside it counts NULLs as distinct and
-		// empty strings as equal -- see Schema::relaxClientMacColumn(). A
-		// client without one is never reached: the endpoint reads the MAC out
-		// of the path a phone asks with.
-		//
 		// device_id is the FreePBX devices.id, which is a string column there,
 		// so it is a string here too rather than something that has to be cast
 		// on every join.
@@ -150,7 +143,7 @@ class Installer extends Service
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->clientsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
-				`mac` VARCHAR(12) NULL DEFAULT NULL,
+				`mac` VARCHAR(12) NOT NULL,
 				`device_id` VARCHAR(20) NULL DEFAULT NULL,
 				`profile_id` INT(11) NULL DEFAULT NULL,
 				`token` VARCHAR(255) NULL DEFAULT NULL,
@@ -214,7 +207,6 @@ class Installer extends Service
 		$this->schema->addProfileEnabledColumn();
 		$this->schema->addClientLastSeenColumn();
 		$this->schema->addClientAddressColumns();
-		$this->schema->relaxClientMacColumn();
 
 		$this->linkEngine();
 

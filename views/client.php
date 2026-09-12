@@ -160,7 +160,10 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_mac"><?php echo _('MAC Address'); ?></label>
+										<label class="control-label" for="client_mac">
+											<?php echo _('MAC Address'); ?>
+											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
+										</label>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="client_mac"
@@ -172,7 +175,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('The address the client provisions with. Stored as 12 lowercase hexadecimal characters; separators are removed. Unique -- a MAC is associated once. Optional: a client can be written before anybody has read the label off the handset, and one without a MAC is simply never reached -- the endpoint finds a client by the MAC in the path a phone asks with, so there is nothing that could arrive for it until one is filled in. Typing something that is not a MAC is still refused; it is the empty box that is allowed.'); ?>
+										<?php echo _('The address the client provisions with. Stored as 12 lowercase hexadecimal characters; separators are removed. Unique -- a MAC is associated once.'); ?>
 									</span>
 								</div>
 							</div>
