@@ -45,7 +45,9 @@ class Installer extends Service
 	 * Install the module.
 	 *
 	 * Every table is created if it is not already there, so installing over an
-	 * existing install leaves the data where it is;
+	 * existing install leaves the data where it is; what an older install is
+	 * missing is added afterwards by Schema, which asks the database what is
+	 * there rather than trusting a dbversion.
 	 *
 	 * @return bool True when installation completes.
 	 */
@@ -184,8 +186,11 @@ class Installer extends Service
 		);
 
 		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already
-		// there, so a site upgrading to 1.0.6 gets the two file columns and the
-		// name index from here instead.
+		// there, so every column added after a table first existed is added from
+		// here instead. Each step asks information_schema whether it has already
+		// been done, so this is the same on a fresh install, an upgrade and a
+		// reinstall. Order matters in one place: addResourceTypeColumn() backfills
+		// from file_size, which addResourceFileColumns() is what adds.
 		$this->schema->addResourceFileColumns();
 		$this->schema->addResourceTypeColumn();
 		$this->schema->addClientTokenColumn();

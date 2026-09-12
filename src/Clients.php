@@ -378,13 +378,6 @@ class Clients extends Service
 	}
 
 	/**
-	 * Remove a client.
-	 *
-	 * @param mixed $id Client id.
-	 *
-	 * @return array<string, mixed> Status of the removal.
-	 */
-	/**
 	 * The clients the navigator lists.
 	 *
 	 * A MAC and the description of the FreePBX device behind it, off the same

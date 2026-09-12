@@ -58,10 +58,11 @@
  * | HEAD   | `/0004f282e824-app.log`                 | `FileTransport PolycomVVX-VVX_500-UA/5.9.7.4477 Type/Application` |
  */
 
-// Bootstrap FreePBX for an anonymous request: skip the admin session and the
-// Asterisk manager connection (this endpoint only reads the database), and
-// load this module alone rather than every module's functions. These are read
-// by bootstrap.php, which /etc/freepbx.conf pulls in.
+// Bootstrap FreePBX for an anonymous request: no admin session, and this
+// module's functions rather than every module's. Both are read by
+// bootstrap.php, which /etc/freepbx.conf pulls in. Nothing here talks to
+// Asterisk -- the endpoint only reads the database and the two file
+// repositories.
 
 $bootstrap_settings = [];
 $bootstrap_settings['freepbx_auth'] = false;
@@ -74,7 +75,6 @@ require '/etc/freepbx.conf';
 $freepbx = \FreePBX::Create();
 $provisioner = \FreePBX::Oryk_provisioner();
 
-$headers = getallheaders();
 $requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); // /provisioner/00908f3bbcba.cfg
 $requestAgent = $_SERVER['HTTP_USER_AGENT'] ?? ''; // AUDC-IPPhone/2.0.0_build_15 (420HD; 00908F3BBCBA)
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';

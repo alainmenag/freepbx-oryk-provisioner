@@ -1,22 +1,24 @@
 <?php
 /**
- * The module page: a Clients tab and a Profiles tab.
+ * The module page: a Clients tab, a Profiles tab and a Logs tab.
  *
- * Both tables are filled by the module's AJAX commands, so nothing on this
+ * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
- * which row was just written, so it can say so.
+ * which row was just written, so it can say so. Logs is the provisioning log
+ * unnarrowed, and is drawn by partials/logs.php, which the client editor
+ * includes too.
  *
  * Neither a client nor a profile is edited here. Both are pages of their own
  * -- views/client.php and views/profile.php -- which the Add and Edit buttons
  * link to. What is left on the list is deletion and the switch, which is the
  * other thing that needs no page: one column, changed on the row it is shown
- * on. Both tables have one, they mean the same thing -- the endpoint answers
- * this row, or it answers nothing for it -- so both are drawn and handled by
- * the same three functions below.
+ * on. The clients table and the profiles table both have one, they mean the
+ * same thing -- the endpoint answers this row, or it answers nothing for it
+ * -- so both are drawn and handled by the same three functions below.
  *
  * Every tab is a link and only the tab asked for is rendered -- see
- * partials/tabs.php. Both tabs name themselves rather than one of them being
- * the bare URL: neither is the other's default, though a bare
+ * partials/tabs.php. Each tab names itself rather than one of them being the
+ * bare URL: none is the others' default, though a bare
  * ?display=oryk_provisioner still opens Clients.
  *
  * @var string             $tab    Tab to open on: clients|profiles|logs
@@ -67,11 +69,11 @@ $tabs = [
 		gap: 3px;
 	}
 	/*
-	 * A disabled client stays on the list -- it is still a client, and the
-	 * whole point of the switch is that nothing about the row is lost -- so
-	 * it says what it is by being greyed rather than by being somewhere
-	 * else. The buttons keep their own colours: they are what is done to the
-	 * row, not what the row says.
+	 * A disabled row stays on the list -- a client or a profile that has been
+	 * switched off is still one, and the whole point of the switch is that
+	 * nothing about the row is lost -- so it says what it is by being greyed
+	 * rather than by being somewhere else. The buttons keep their own
+	 * colours: they are what is done to the row, not what the row says.
 	 */
 	tr.oryk-disabled > td,
 	tr.oryk-disabled > td a:not(.btn) {

@@ -29,6 +29,15 @@
  * So the server renders one pane -- the one asked for -- and the strip above
  * it is links to the others. Nothing here is scripted at all.
  *
+ * A tab with nothing behind it yet -- Resources on a profile nobody has
+ * written -- is not drawn at all. It was drawn disabled at first, with a
+ * title saying why, on the argument that hiding it reads as a feature the
+ * page does not have where the truth is that it does not have it *yet*. What
+ * settled it the other way is that a tab is a link now: a strip of links with
+ * a dead one in it is the odd one out, and the page it would lead to is one
+ * the user reaches by saving the row in front of them anyway. The views still
+ * pass `disabled` and `title` -- they are what says which tabs to leave out.
+ *
  * The badge is written by partials/counts.php, which is included before this
  * and refreshes every badge on the page from one request. Counts are of the
  * tabs, not of the panes, so a tab still says how many rows are behind it
@@ -44,7 +53,9 @@
  *                                                count    badge to draw, named
  *                                                         for its table, from
  *                                                         partials/counts.php
- *                                                disabled nothing behind it yet
+ *                                                disabled nothing behind it
+ *                                                         yet, so it is not
+ *                                                         drawn
  *                                                title    why, when it is
  */
 
@@ -60,34 +71,23 @@ $tabEscape = function ($value) {
 		<?php
 		$isActive = (string) $tabKey === $tab;
 
-		// A tab with nothing behind it yet -- Resources on a profile nobody
-		// has written -- is drawn rather than hidden: hidden, it reads as a
-		// feature this page does not have, where what is true is that it does
-		// not have it *yet*. It is the one tab that is not a link, because
-		// there is no page for it to be a link to, and the one with no badge,
-		// because a count of nothing is not news.
-		$isDisabled = !$isActive && !empty($tabItem['disabled']);
-		$tabTitle = (string) ($tabItem['title'] ?? '');
-
-		if ($isDisabled) {
+		// A tab with nothing behind it yet is left out entirely -- see the
+		// note at the top. The tab that is open is never one of them: it is
+		// the pane the page actually rendered, so skipping it would leave a
+		// strip that does not contain the page you are on.
+		if (!$isActive && !empty($tabItem['disabled'])) {
 			continue;
 		}
 
-		$tabAttributes = $isDisabled
-			? 'href="#" onclick="return false;"'
-			: 'href="' . $tabEscape($tabItem['href']) . '"';
+		$tabAttributes = 'href="' . $tabEscape($tabItem['href']) . '"';
 
 		if ($isActive) {
 			$tabAttributes .= ' aria-current="page"';
 		}
-
-		if ($tabTitle !== '') {
-			$tabAttributes .= ' title="' . $tabEscape($tabTitle) . '"';
-		}
 		?>
-		<li<?php echo $isActive ? ' class="active"' : ($isDisabled ? ' class="disabled"' : ''); ?>>
+		<li<?php echo $isActive ? ' class="active"' : ''; ?>>
 			<a <?php echo $tabAttributes; ?>><?php echo $tabEscape($tabItem['label']); ?><?php
-				if (!$isDisabled && !empty($tabItem['count']) && isset($countBadge)) {
+				if (!empty($tabItem['count']) && isset($countBadge)) {
 					echo ' ';
 					$countBadge($tabItem['count']);
 				}

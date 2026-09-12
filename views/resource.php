@@ -582,7 +582,7 @@ $tabs = [
 				type: $('#resource_type').val(),
 				// A new resource is its name and its type: the box is not on the
 				// page yet, and val() of nothing is undefined, which jQuery would
-				// post as the six letters of it.
+				// post as the nine letters of it.
 				template: $('#resource_template').val() ?? ''
 			};
 		},

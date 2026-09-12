@@ -1,6 +1,6 @@
 <?php
 /**
- * views/profile.php -- one profile, over two tabs.
+ * views/profile.php -- one profile, over three tabs.
  *
  * Reached at ?display=oryk_provisioner&profile=<id> to edit an existing
  * profile, or ?display=oryk_provisioner&profile= (present, empty) to write a
@@ -170,7 +170,7 @@ $tabs = [
 						<div class="tab-pane oryk-tab-section active" id="oryk_resources">
 
 							<p class="help-block fpbx-help-block">
-								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg. ** Firmware is not yet supported.'); ?>
+								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg -- and the logs it sends back. Each is a template rendered for the client that asks, a file uploaded here and served exactly as stored (firmware, ringtones), or a log the phone PUTs; the resource says which.'); ?>
 							</p>
 
 							<div id="resource_toolbar" class="oryk-toolbar">
@@ -319,11 +319,13 @@ $tabs = [
 		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
 	}
 
-	// Edit is the client's own page, the same link the list draws: an
-	// client is one row with one editor, wherever it is reached from,
-	// and that editor is also where a client is moved to another profile and
-	// so off this tab. Config is the URL a phone is given; every row here has
-	// a profile by definition, so every row has one.
+	// Edit is the client's own page, the same link the list draws: a client
+	// is one row with one editor, wherever it is reached from, and that
+	// editor is also where a client is moved to another profile and so off
+	// this tab. There is no per-row Render here, because what a client is
+	// served is a file rather than a profile -- those links are one level
+	// down, on the resource editor's Clients tab and the client editor's
+	// Resources tab, where a resource and a client meet.
 	function formatClientActions(value, row) {
 		return [
 			`<div class="flex gap-3">`,

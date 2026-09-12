@@ -1,4 +1,3 @@
-<!-- /var/www/html/admin/modules/oryk_provisioner/module.xml -->
 <module>
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
@@ -19,21 +18,21 @@
 		*1.0.15* A client can be switched off. The toggle on its row on the Clients list enables and disables it in place, and the same switch is a Status field on the client's own page. Disabled, every request that client makes is refused -- its profile's files, anything served by name, and any log it tries to PUT -- while the client itself, its token and its profile stay exactly as they were, so switching it back on serves what it was serving before. What it asks for while it is off is still written to the provisioning log, which is usually why it was switched off. Existing clients are enabled on upgrade
 		*1.0.14* A resource has a &lt;strong&gt;type&lt;/strong&gt;: Template, File or Log. It used to be inferred -- an uploaded file meant a file and no file meant a template -- so a resource could not be a file until a file was on it, and could not be a log at all. The type is now the only thing that says which, set on the resource editor, and it decides what a phone asking for that filename gets. Log is the new one and the reason for the rest: a phone PUTs its boot and app logs back when it finishes starting up, and a resource of type Log is what says this profile takes one -- what arrives is written to ASTLOGDIR/provisioner/&lt;mac&gt;/ under the resource's own name rendered for that client, a directory per client, so everything one phone has sent is in one place. Fetching the same URL reads the stored log back, exactly as it arrived and not rendered, so Render on a Log row means the same thing it does on any other. A PUT to anything else is still refused. Existing resources are migrated on upgrade: anything with a file uploaded to it becomes File, everything else Template. Also fixed: a client with a token could fetch a resource whose template column was empty -- an uploaded file, usually -- without presenting the token
 		*1.0.13* The module class is a thin adapter over src/. What was one 3,400-line file is sixteen classes in a namespace of its own -- Clients, Profiles, Resources, Matcher, Previews, Template, Endpoint, Pages, Installer, Schema, FileRepo, Tokens, ProvisioningLog, Freepbx, Mac -- loaded by an autoloader the module registers for itself, since BMO autoloads the module class and nothing else. Every method moved verbatim; not one column changed and nothing behaves differently
-		*1.0.12* A client can be given a token. Type it as -- username:password -- and it is hashed with password_hash() when you save; the Token box holds that hash from then on, so leaving it alone leaves the token alone, typing a new user:password over it replaces it, and emptying it takes it away. A colon is what marks a value as a token still to be hashed. verifyToken() is the other half of the mechanism;
+		*1.0.12* A client can be given a token. Type it as -- username:password -- and it is hashed with password_hash() when you save; the Token box holds that hash from then on, so leaving it alone leaves the token alone, typing a new user:password over it replaces it, and emptying it takes it away. A colon is what marks a value as a token still to be hashed. A client that has one must present it: the endpoint asks for HTTP Basic credentials and answers 401 until they verify against the stored hash
 		*1.0.11* A resource can serve an uploaded file instead of a template -- firmware above all. Upload one on the resource and it is served exactly as stored, under the resource's filename; remove it and the resource is the template it was, text and all. There is no type to set: the file is the difference. Files are kept in ASTSPOOLDIR/repo, named after the resource id, and go when the resource or its profile does. serveConfig() is now serve(), and it answers a request with no MAC address in it -- a phone fetching firmware sends none -- from the uploaded files, matched by name across every profile
 		*1.0.10* A provisioning log: one row per request the endpoint answered -- MAC, the file asked for, the status it was answered with and when -- written whether or not a client exists for the MAC. Read it at &amp;tab=logs on the module page, or on a client's own Logs tab, which is narrowed by MAC and so shows what a phone was asking for before anybody wrote its client. Metadata only; the rendered configuration is never stored
 		*1.0.8* A device is a &lt;strong&gt;client&lt;/strong&gt;: the row pairing a MAC with a FreePBX device and a profile is named that everywhere -- &amp;client=&lt;id&gt;, a Clients tab, listClients/saveClient/deleteClient -- so "device" now only ever means the FreePBX device it points at. The table is oryk_provisioner_clients; nothing renames it for you, so rename it before upgrading
 		*1.0.7* A profile no longer holds a template of its own: every file it serves is a resource, the main config included, named &lt;code&gt;.cfg&lt;/code&gt; like any other. The profiles table drops its `template` column on upgrade and the text in it is not migrated -- copy anything you still want into a resource first
 		*1.0.6* Adding and editing a device is a page of its own at &amp;device=&lt;id&gt;, the shape a profile already had, rather than a modal on the list
 		*1.0.5* Profile resources: a profile serves the other files a phone asks it for -- &lt;mac&gt;-phone.cfg, &lt;mac&gt;-directory.xml and the rest -- each a filename and a template of its own, edited on a Resources tab of the profile
-		*1.0.4* Unauthenticated device endpoint at modules/oryk_provisioner/provision.php: a phone fetches its config with ?mac=&lt;mac&gt;, no admin login, by bootstrapping FreePBX directly instead of going through config.php
+		*1.0.4* Unauthenticated device endpoint at engine/provisioner.php, reached as /provisioner/ through a symlink install() puts in the web root: a phone fetches its config with /provisioner/&lt;mac&gt;.cfg or ?mac=&lt;mac&gt;, no admin login, by bootstrapping FreePBX directly instead of going through config.php
 		*1.0.3* Rendered configuration at ?display=oryk_provisioner&amp;mac=&lt;mac&gt;&amp;config=, with {{ }} placeholders filled in from the device, its extension and the profile
 		*1.0.2* Devices and Profiles: a MAC address is associated with a FreePBX device and a profile, and a profile is a name and a block of configuration text
 		*1.0.1* New
 	</changelog>
 	<category>Oryk</category>
 	<description>Provision and manage VoIP endpoints with standardized device configurations for softphones, Yealink, Polycom, Grandstream, and other supported devices. Generate configuration data in JSON, XML, key-value, and device-specific formats.</description>
-	<more-info>https://oryk.com/voip/media</more-info>
+	<more-info>https://oryk.com/voip/provisioner</more-info>
 	<menuitems>
 		<oryk_provisioner category="Oryk" order="1" display="oryk_provisioner" access="all" requires_auth="true">
 			<![CDATA[
@@ -44,7 +43,6 @@
 	</menuitems>
 	<depends>
 		<module>core</module>
-		<module>userman</module>
 	</depends>
 	<supported>
 		<version>16.0</version>

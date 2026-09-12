@@ -1,11 +1,13 @@
 <?php
 /**
- * views/partials/editor.php -- what the profile and resource editors share.
+ * views/partials/editor.php -- what the three editors share.
  *
- * The two are the same page bound to different columns: a name, a block of
- * configuration text, and an action bar of Save, Delete and Close that posts
- * to ajax.php rather than submitting anything. Everything alike about them is
- * here; what is left in each view is its own fields and where Save goes next.
+ * views/client.php, views/profile.php and views/resource.php are one page
+ * bound to different rows: fields, and an action bar of Save, Delete and
+ * Close that posts to ajax.php rather than submitting anything. Everything
+ * alike about them is here -- orykPost(), orykShowError(), orykEscape(),
+ * orykBytes(), formatResourceKind(), the placeholder chips and orykEditor();
+ * what is left in each view is its own fields and where Save goes next.
  *
  * Neither page contains a <form>. The module page is itself rendered inside
  * the FreePBX page form, and a nested form is dropped by the browser, which
@@ -143,14 +145,17 @@
 		return (unit === 0 ? size : size.toFixed(1)) + ' ' + units[unit];
 	}
 
-	// A resource is a template or an uploaded file, and no column says which:
-	// only an upload sets a size, so a size is what says it. Here rather than
-	// in the two pages with a resource table on them, which is the same reason
 	// The resource's `type` column, which since 1.0.14 is the whole of what
-	// says which kind it is -- a size used to mean a file and its absence a
+	// says which kind it is. A size used to mean a file and its absence a
 	// template, so there was no way to be a file with nothing uploaded yet
 	// and no way to be a log at all. The size is still shown beside a file,
-	// as what is stored rather than as the thing that decides.
+	// as what is stored rather than as the thing that decides -- and a file
+	// with nothing behind it says so, because that is a resource somebody
+	// has not finished and the endpoint answers it as one.
+	//
+	// Here rather than in the two pages with a resource table on them, for
+	// the reason everything else in this partial is: one reading of a row,
+	// wherever the row is drawn.
 	function formatResourceKind(value, row) {
 		const size = row ? row.file_size : null;
 

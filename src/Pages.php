@@ -398,8 +398,9 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors have any: the list's two tabs each carry their own Add,
-	 * and a single button in the header could not say which tab it meant.
+	 * Only the editors have any: the list's tabs carry their own controls --
+	 * an Add on Clients and on Profiles, a Clear on Logs -- and a single button
+	 * in the header could not say which tab it meant.
 	 *
 	 * Deliberately not the usual submit/delete names -- those are wired by
 	 * core to a `form.fpbx-submit`, and none of these pages has a form: a row

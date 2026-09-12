@@ -88,6 +88,8 @@ class Endpoint extends Service
 	 *
 	 * @param mixed       $mac       MAC address, written however it was written, or ''.
 	 * @param string|null $requested Filename asked for, or null for the main config.
+	 * @param string|null $token     Token offered, when one was -- user:password
+	 *                               off the request's Basic credentials.
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
@@ -273,8 +275,19 @@ class Endpoint extends Service
 	 * recognise. There is nothing to fill it in from without a client, so a
 	 * caller with neither a MAC nor a filename has asked for nothing.
 	 *
+	 * A client with a token has to present it, and is asked for it as soon as
+	 * something has been matched -- before the resource's type is looked at, so
+	 * a 401 cannot tell an unauthenticated caller which files exist. Two
+	 * refusals come before any of this: a client that has been switched off,
+	 * and a client whose profile has.
+	 *
 	 * @param mixed       $mac       MAC address, written however it was written, or ''.
 	 * @param string|null $requested Filename asked for, or null for the main config.
+	 * @param string|null $token     Token offered, when one was -- user:password
+	 *                               off the request's Basic credentials.
+	 * @param string      $method    Method it is being asked with. PUT and POST
+	 *                               are a phone sending a log; anything else is
+	 *                               a fetch.
 	 *
 	 * @return array<string, mixed> Status, what answers when something does,
 	 *                              and a message when nothing did.
