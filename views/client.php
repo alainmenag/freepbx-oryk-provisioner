@@ -396,7 +396,7 @@ $tabs = [
 										<th data-field="name" data-formatter="formatResourceName" data-sortable="true"><?php echo _('Resource'); ?></th>
 										<th data-field="type" data-formatter="formatResourceKind" data-sortable="true"><?php echo _('Type'); ?></th>
 										<th data-field="updated_at" data-formatter="formatResourceText" data-sortable="true"><?php echo _('Updated'); ?></th>
-										<th data-field="actions" data-formatter="formatResourceActions"><?php echo _('Actions'); ?></th>
+										<th data-field="actions" data-formatter="formatResourceActions" data-align="right"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
 							</table>
@@ -445,15 +445,15 @@ $tabs = [
 	// (000000000000-directory.xml and the like), since the endpoint reads the
 	// client out of the path and such a URL would answer for another client.
 	function formatResourceActions(value, row) {
-		const actions = [
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`
-		];
+		const actions = [];
 
 		if (row.url) {
 			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this client receives it">Render</a>`);
 		}
 
-		return `<div class="flex gap-3">${actions.join('')}</div>`;
+		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`);
+
+		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
 	}
 
 	orykEditor({

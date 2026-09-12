@@ -138,10 +138,10 @@ $tabs = [
 
 				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
-				<div class="tab-content">
+				<div class="tab-content" style="display: flex; flex-direction: row; flex-wrap: wrap;">
 
 					<?php if ($tab === 'resource'): ?>
-					<div class="tab-pane oryk-tab-section active" id="oryk_resource">
+					<div class="tab-pane oryk-tab-section active" id="oryk_resource" style="flex: auto;">
 
 						<div class="element-container">
 							<div class="row">
@@ -311,28 +311,25 @@ $tabs = [
 
 						<?php endif; ?>
 
+					</div>
+
+					<div style="flex: 1 1;">
 						<div class="element-container">
 							<div class="row">
 								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label"><?php echo _('Placeholders'); ?></label>
-									</div>
-									<div class="col-md-8">
-										<span class="help-block fpbx-help-block">
-											<?php echo _('Filled in when a client asks for the file -- in the filename above as much as in a template, which is how one resource covers every client on the profile. Click one to copy it.'); ?>
+										<span class="help-block">
+											<?php echo _('Filled in when a client asks for the file -- in the filename as much as in a template, which is how one resource covers every client on the profile. Click one to copy it.'); ?>
 										</span>
 										<?php include __DIR__ . '/partials/placeholders.php'; ?>
-									</div>
 								</div>
 							</div>
 						</div>
-
 					</div>
 
 					<?php endif; ?>
 
 					<?php if ($tab === 'clients'): ?>
-						<div class="tab-pane oryk-tab-section active" id="oryk_clients">
+						<div class="tab-pane oryk-tab-section active" id="oryk_clients" style="flex: 1;">
 
 							<p class="help-block fpbx-help-block">
 								<?php echo _('Clients assigned to the profile that owns this resource.'); ?>
@@ -356,7 +353,7 @@ $tabs = [
 										<th data-field="mac" data-formatter="formatClientMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
 										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 										<th data-field="extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
-										<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
+										<th data-field="actions" data-formatter="formatClientActions" data-align="right"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
 							</table>
@@ -418,15 +415,15 @@ $tabs = [
 	// the client out of the path and such a URL would answer for the wrong
 	// phone.
 	function formatClientActions(value, row) {
-		const actions = [
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`
-		];
+		const actions = [];
 
 		if (row.url) {
 			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this client receives it">Render</a>`);
 		}
 
-		return `<div class="flex gap-3">${actions.join('')}</div>`;
+		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
+
+		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
 	}
 
 	// Uploading and removing the file are requests of their own rather than

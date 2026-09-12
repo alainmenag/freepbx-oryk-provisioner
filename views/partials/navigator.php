@@ -86,10 +86,6 @@ $e = function ($value) {
 		border-color: #ddd;
 		background: #f7f7f7;
 	}
-	.oryk-nav .oryk-nav-toggle .caret {
-		margin-left: 5px;
-		color: #999;
-	}
 
 	/*
 	 * The level's title, over the crumb: small, muted, and a link to the list
@@ -262,7 +258,6 @@ $e = function ($value) {
 					<span class="oryk-nav-text<?php echo $chosen ? $mono : ' oryk-nav-prompt'; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>">
 						<?php echo $e($chosen ? $level['text'] : $level['prompt']); ?>
 					</span>
-					<span class="caret"></span>
 				</a>
 
 				<ul class="dropdown-menu oryk-nav-menu">

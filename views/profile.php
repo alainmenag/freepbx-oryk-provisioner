@@ -198,7 +198,7 @@ $tabs = [
 										<th data-field="name" data-formatter="formatResourceName" data-sortable="true"><?php echo _('Filename'); ?></th>
 										<th data-field="type" data-formatter="formatResourceKind" data-sortable="true"><?php echo _('Type'); ?></th>
 										<th data-field="updated_at" data-formatter="formatResourceText" data-sortable="true"><?php echo _('Updated'); ?></th>
-										<th data-field="actions" data-formatter="formatResourceActions"><?php echo _('Actions'); ?></th>
+										<th data-field="actions" data-formatter="formatResourceActions" data-align="right"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
 							</table>
@@ -233,7 +233,7 @@ $tabs = [
 										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 										<th data-field="extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 										<th data-field="description" data-formatter="formatClientText" data-sortable="true"><?php echo _('Description'); ?></th>
-										<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
+										<th data-field="actions" data-formatter="formatClientActions" data-align="right"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
 							</table>
@@ -270,9 +270,9 @@ $tabs = [
 	// reads the resource back itself rather than being handed one.
 	function formatResourceActions(value, row) {
 		return [
-			`<div class="flex gap-3">`,
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`,
+			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			`<button type="button" class="btn btn-danger btn-sm" name="resource_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');
 	}
@@ -328,7 +328,7 @@ $tabs = [
 	// Resources tab, where a resource and a client meet.
 	function formatClientActions(value, row) {
 		return [
-			`<div class="flex gap-3">`,
+			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');
