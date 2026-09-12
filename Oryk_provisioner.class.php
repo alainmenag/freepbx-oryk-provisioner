@@ -26,8 +26,8 @@ use FreePBX\Modules\Oryk_Provisioner\Template;
 use FreePBX\Modules\Oryk_Provisioner\Tokens;
 
 // The subsystems this module is made of live in src/ and are loaded as they
-// are asked for. BMO autoloads the module class itself, by rawname, and
-// nothing else, so anything standing alongside it has to say where it lives.
+// are asked for: BMO autoloads the module class itself, by rawname, and
+// nothing else.
 if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
 	define('ORYK_PROVISIONER_AUTOLOADER', true);
 
@@ -76,18 +76,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
 	use Logs;
 
-	/**
-	 * FreePBX application instance.
-	 *
-	 * @var object
-	 */
+	/** @var object FreePBX application instance. */
 	public $FreePBX;
 
-	/**
-	 * Asterisk database handle.
-	 *
-	 * @var \PDO
-	 */
+	/** @var \PDO Asterisk database handle. */
 	public $db;
 
 	/** @var Clients */
@@ -144,9 +136,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Create an Oryk provisioner module instance.
 	 *
-	 * Built in dependency order, each subsystem once, collaborators handed
-	 * in -- so what depends on what is readable here rather than discovered
-	 * by following calls.
+	 * Built in dependency order, each subsystem once, collaborators handed in --
+	 * so what depends on what is readable here rather than found by following
+	 * calls.
 	 *
 	 * @param object|null $freepbx FreePBX application instance.
 	 *
@@ -407,12 +399,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/**
 	 * Process an AJAX request.
 	 *
-	 * A dispatch table over the subsystems, with one thing done here rather
-	 * than in either of them: the two list commands are decorated with the
-	 * filename each row's client-and-resource pairing produces, when they
-	 * were asked from one of the preview tabs. That decoration needs both
-	 * tables and so belongs to neither -- it is Previews, applied to the page
-	 * of rows that was read.
+	 * A dispatch table over the subsystems, with one thing done here rather than
+	 * in either of them: the two list commands are decorated with the filename
+	 * each row's client-and-resource pairing produces, when they were asked from
+	 * one of the preview tabs. That decoration needs both tables and so belongs to
+	 * neither.
 	 *
 	 * @return array<string, mixed>|null AJAX response data.
 	 */
@@ -424,9 +415,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listClients':
 				$result = $this->clients->listClients();
 
-				// Only the page that was read, and only when a resource was
-				// asked about: rendering a name costs this client's values,
-				// and a client that is not on screen is not worth them.
+				// Only the page that was read, and only when a resource was asked about:
+				// rendering a name costs this client's values.
 				if (isset($_REQUEST['resource_id'])) {
 					$result['rows'] = $this->previews->withResourceFilenames(
 						$result['rows'],
@@ -448,12 +438,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteClient':
 				return $this->clients->deleteClient($_REQUEST['id'] ?? null);
 
-			// One column, changed from the row it is shown on. Not folded
-			// into saveClient: that writes every field the editor holds, and
-			// a list row does not hold them -- a save posted from one would
-			// be a save of what it happened to know. The same for a profile,
-			// one level up, and the same write underneath both -- see
-			// src/Enabled.php.
+			// One column, changed from the row it is shown on. Not folded into
+			// saveClient: that writes every field the editor holds, and a list row does
+			// not hold them. Same for a profile -- see src/Enabled.php.
 			case 'setClientEnabled':
 				return $this->clients->setClientEnabled($_REQUEST);
 
@@ -466,9 +453,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listResources':
 				$result = $this->resources->listResources();
 
-				// The client editor's Resources tab asks the same question of
-				// the same table, from the other side: these files, for that
-				// one phone.
+				// The client editor's Resources tab asks the same question of the same
+				// table, from the other side: these files, for that one phone.
 				if (isset($_REQUEST['client_id'])) {
 					$result['rows'] = $this->previews->withClientFilenames(
 						$result['rows'],
@@ -496,11 +482,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'clearLogs':
 				return $this->provisioningLog->clearLogs($_REQUEST);
 
-			// Every count a page has a badge for, in one answer: what the
-			// tabs are labelled with after something on the page has changed
-			// one. One command rather than four because a page that has just
-			// deleted a client has changed what two of its tabs say, and
-			// asking table by table is how two of them end up disagreeing.
+			// Every count a page has a badge for, in one answer. One command rather
+			// than four because a page that has just deleted a client has changed what
+			// two of its tabs say, and asking table by table is how two of them end up
+			// disagreeing.
 			case 'counts':
 				return $this->counts->countsRequest();
 

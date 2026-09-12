@@ -9,27 +9,20 @@ use PDO;
 /**
  * The profiles table.
  *
- * A profile is a name, the resources it serves and the clients assigned
- * to it. A profile clients still point at is refused deletion rather
- * than cascading; its resources do cascade, and take their uploaded
- * files with them.
+ * A profile is a name, the resources it serves and the clients assigned to it.
+ * A profile clients still point at is refused deletion rather than cascading;
+ * its resources do cascade, and take their uploaded files with them.
  *
- * It can also be switched off, which is the same switch a client has one
- * level up: a disabled profile serves nothing to anybody, so every client
- * assigned to it is refused without any of them being touched. That is what
- * it is for -- a profile being rewritten, or a vendor's phones to be held
- * back for an afternoon, is a fleet to stop rather than a list of clients to
- * go through one at a time.
+ * It can also be switched off, the same switch a client has one level up: a
+ * disabled profile serves nothing to anybody, so every client assigned to it
+ * is refused without any of them being touched.
  */
 class Profiles extends Service
 {
-	// The switch is the same on both tables, and written once -- see
-	// src/Enabled.php.
+	// The switch is the same on both tables, written once -- see src/Enabled.php.
 	use Enabled;
 
-	/**
-	 * @var FileRepo
-	 */
+	/** @var FileRepo */
 	private $files;
 
 	/**
@@ -108,7 +101,7 @@ class Profiles extends Service
 	 * One profile, for the editor.
 	 *
 	 * Read on the way into the page rather than fetched by it: the editor is a
-	 * page of its own now, so there is nothing to wait for over AJAX.
+	 * page of its own, so there is nothing to wait for over AJAX.
 	 *
 	 * @param mixed $id Profile id.
 	 *
@@ -131,8 +124,8 @@ class Profiles extends Service
 	 * Create or update a profile.
 	 *
 	 * A name and whether it serves at all. What the profile serves is its
-	 * resources, each written on its own page, and who it serves is the
-	 * clients assigned to it -- neither is edited here.
+	 * resources, each written on its own page, and who it serves is the clients
+	 * assigned to it -- neither is edited here.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
@@ -185,20 +178,17 @@ class Profiles extends Service
 	/**
 	 * Switch a profile on or off.
 	 *
-	 * The client's switch read one level up, and the reason it is worth
-	 * having twice: a profile switched off stops every phone assigned to it
-	 * at once, and switching it back on starts them again, with nothing about
-	 * any of those clients changed in between. The alternative -- walking the
-	 * Clients tab switching each one off, and remembering which of them were
-	 * already off when you come back -- is the thing this is instead of.
+	 * The client's switch one level up: a profile switched off stops every phone
+	 * assigned to it at once, and switching it back on starts them again with
+	 * nothing about any of those clients changed in between.
 	 *
-	 * Unlike deletion, it does not care how many clients point at the
-	 * profile. Deletion is refused while any do, because a client must never
-	 * name a profile that has gone; this leaves the profile exactly where it
-	 * is, which is what makes it the safe way to take a fleet out of service.
+	 * Unlike deletion, it does not care how many clients point at the profile.
+	 * Deletion is refused while any do, because a client must never name a profile
+	 * that has gone; this leaves the profile where it is, which is what makes it
+	 * the safe way to take a fleet out of service.
 	 *
-	 * The write is the trait's, shared with a client; what is this class's is
-	 * the row and how a missing one is said.
+	 * The write is the trait's; what is this class's is the row and how a missing
+	 * one is said.
 	 *
 	 * @param array<string, mixed> $request id, and the state to put it in.
 	 *
@@ -218,8 +208,8 @@ class Profiles extends Service
 	/**
 	 * Remove a profile.
 	 *
-	 * A profile that clients still point at is kept, so a client never
-	 * ends up naming a profile that has gone.
+	 * A profile that clients still point at is kept, so a client never ends up
+	 * naming a profile that has gone.
 	 *
 	 * @param mixed $id Profile id.
 	 *
@@ -241,13 +231,10 @@ class Profiles extends Service
 			];
 		}
 
-		// Resources go with it. Unlike a client, a resource has
-		// no existence apart from the profile that serves it -- there is
-		// nothing to reassign it to and nothing left for it to mean.
-		//
-		// Their ids are read first because an uploaded file is named after
-		// the resource it belongs to: once the rows are gone there is
-		// nothing left to say which files in the repository were theirs.
+		// Resources go with it: unlike a client, a resource has no existence apart
+		// from the profile that serves it. Their ids are read first because an
+		// uploaded file is named after the resource it belongs to -- once the rows
+		// are gone there is nothing to say which files were theirs.
 		$owned = $this->db->prepare("SELECT id FROM `{$this->resourcesTable}` WHERE profile_id = :id");
 		$owned->execute([':id' => $id]);
 
@@ -267,10 +254,9 @@ class Profiles extends Service
 	/**
 	 * How many clients a profile is assigned to.
 	 *
-	 * The rule that a profile still in use is not deleted, and only that:
-	 * what a tab is labelled with comes from Counts, which counts the same
-	 * table the same way. Both are rowCount() now, so there is one statement
-	 * between them and nothing to keep in step.
+	 * The rule that a profile still in use is not deleted, and only that: what a
+	 * tab is labelled with comes from Counts, which counts the same table the same
+	 * way. Both are rowCount(), so there is one statement between them.
 	 *
 	 * @param int $profileId Profile id.
 	 *
@@ -299,12 +285,10 @@ class Profiles extends Service
 	/**
 	 * The profiles a client can point at.
 	 *
-	 * A disabled profile is still one of them, and deliberately: it is what a
-	 * client being set up against a profile that is not in service yet should
-	 * be assigned to, and hiding it would leave somebody wondering where the
-	 * profile went. The state travels with the name so the select can say
-	 * which ones are switched off rather than offering them as though they
-	 * were serving.
+	 * A disabled profile is still one of them, deliberately: it is what a client
+	 * being set up against a profile not yet in service is assigned to. The state
+	 * travels with the name so the select can say which are switched off rather
+	 * than offering them as though they were serving.
 	 *
 	 * @return array<int, array<string, mixed>> Profile rows: id, name, enabled.
 	 */

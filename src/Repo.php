@@ -7,18 +7,15 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * A directory this module keeps files in.
  *
- * There are two, they are opposites, and they are the same shape.
- * FileRepo is what an operator uploaded and the endpoint hands out;
- * LogRepo is what a phone uploaded and the endpoint hands back. Both
- * hang a directory of their own off one of Asterisk's, both have to
- * make it before writing -- neither is the only writer of the tree it
- * sits in, and one that was there in the morning may not be by the
- * afternoon -- and both want it owned by the web user that writes to it.
+ * There are two, they are opposites, and they are the same shape. FileRepo is
+ * what an operator uploaded and the endpoint hands out; LogRepo is what a
+ * phone uploaded and the endpoint hands back. Both hang a directory off one of
+ * Asterisk's, both have to make it before writing -- neither is the only
+ * writer of the tree it sits in -- and both want it owned by the web user.
  *
- * That much is here. Where the directory is, and what a file in it is
- * called, is the subclass's, because that is the whole of what makes
- * them different: a repo file is found by the resource's id, a log by
- * the client and the resource's rendered name.
+ * Where the directory is, and what a file in it is called, is the subclass's:
+ * a repo file is found by the resource's id, a log by the client and the
+ * resource's rendered name.
  */
 abstract class Repo extends Service
 {
@@ -60,11 +57,9 @@ abstract class Repo extends Service
 				return false;
 			}
 
-			// Only for a directory this just made, and neither is fatal: the
-			// web user is the one that writes here and Asterisk owns the rest
-			// of the tree, but a directory somebody else made with workable
-			// permissions is workable, and by a write it is far too late to
-			// be asking.
+			// Only for a directory this just made, and neither is fatal: a directory
+			// somebody else made with workable permissions is workable, and by a write
+			// it is far too late to be asking.
 			@chown($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBUSER'));
 			@chgrp($path, (string) $this->FreePBX->Config->get('AMPASTERISKWEBGROUP'));
 		}
