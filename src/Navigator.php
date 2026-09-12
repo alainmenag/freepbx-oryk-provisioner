@@ -25,14 +25,22 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * page you did not ask for and cannot predict.
  *
  * Growing it is adding a branch to levels(). Nothing else has to know: every
- * level is the same six things, and the view draws them all the same way.
+ * level is the same shape, and the view draws them all the same way.
  *
- * The sixth is 'add': where a *new* one of these is written, or null where
- * that is not a thing you can do. Creating is not navigating, so it is not one
- * of the options -- the view pins it under them, past a rule, out of the
- * filter's way. But it belongs to the level rather than to the page, because
- * only the level knows what a new one of itself costs: a resource's is the
- * profile it would hang off, and a section has none at all.
+ * Two of those keys are places rather than values, and both are here rather
+ * than in the view because only the level knows what they cost -- a resource's
+ * are scoped to the profile it hangs off, a section's are the module itself:
+ *
+ *   - 'title': what this level is, plural, and where they are all listed. It
+ *     is the small line over the crumb, and it is a link, so the level names
+ *     its own list page as well as the row open in it. The view says nothing
+ *     about the module, so it cannot work the label out from the key: it is
+ *     given, which is also what lets it be translated and what lets two levels
+ *     of the same key read differently if they ever need to.
+ *   - 'add': where a *new* one of these is written, or null where that is not
+ *     a thing you can do. Creating is not navigating, so it is not one of the
+ *     options -- the view pins it under them, past a rule, out of the filter's
+ *     way.
  */
 class Navigator extends Service
 {
@@ -133,6 +141,13 @@ class Navigator extends Service
 
 		return [
 			'key' => 'section',
+			// Every section is a tab of the list page, so the list page is
+			// where they are all named -- the same URL the Provisioner crumb
+			// goes to, which is the module and its sections being one thing.
+			'title' => [
+				'text' => _('Sections'),
+				'href' => '?display=oryk_provisioner',
+			],
 			'text' => $sections[$section],
 			'mono' => false,
 			'prompt' => _('Select a section'),
@@ -188,6 +203,10 @@ class Navigator extends Service
 
 		return [
 			'key' => 'client',
+			'title' => [
+				'text' => _('Clients'),
+				'href' => '?display=oryk_provisioner&tab=clients',
+			],
 			'text' => $at === 'new' ? _('New client') : $text,
 			'mono' => true,
 			'prompt' => _('Select a client'),
@@ -233,6 +252,10 @@ class Navigator extends Service
 
 		return [
 			'key' => 'profile',
+			'title' => [
+				'text' => _('Profiles'),
+				'href' => '?display=oryk_provisioner&tab=profiles',
+			],
 			'text' => $at === 'new' ? _('New profile') : $text,
 			'mono' => false,
 			'prompt' => _('Select a profile'),
@@ -280,6 +303,13 @@ class Navigator extends Service
 
 		return [
 			'key' => 'resource',
+			// The only level whose list is not a tab of the module's own list
+			// page: a profile's files are listed on that profile, so the
+			// title carries the profile the way every other href here does.
+			'title' => [
+				'text' => _('Resources'),
+				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&tab=resources',
+			],
 			'text' => $at === 'new' ? _('New resource') : $text,
 			'mono' => true,
 			'prompt' => _('Select a resource'),
