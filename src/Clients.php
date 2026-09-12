@@ -172,7 +172,7 @@ class Clients extends Service
 		$sql = "
 			SELECT
 				pc.id,
-				pc.mac,
+				COALESCE(pc.mac, CONCAT('02', LPAD(pc.id, 10, '0'))) AS mac,
 				pc.device_id,
 				pc.profile_id,
 				d.user AS extension,
@@ -228,7 +228,7 @@ class Clients extends Service
 		// tolerable -- but it is on an admin page, and a weak token behind it
 		// is a weak token in front of anyone who can open that page.
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, pc.device_id, pc.profile_id, pc.token, pc.enabled, pc.last_seen,
+			"SELECT pc.id, COALESCE(pc.mac, CONCAT('02', LPAD(pc.id, 10, '0'))) AS mac, pc.device_id, pc.profile_id, pc.token, pc.enabled, pc.last_seen,
 				pc.public_ip, pc.private_ip,
 				" . self::SEEN_AGE_EXPR . " AS last_seen_age
 			FROM `{$this->clientsTable}` pc
@@ -254,7 +254,7 @@ class Clients extends Service
 	{
 		$stmt = $this->db->prepare(
 			"SELECT
-				pc.mac,
+				COALESCE(pc.mac, CONCAT('02', LPAD(pc.id, 10, '0'))) AS mac,
 				pc.token,
 				pc.enabled,
 				pc.device_id,
@@ -481,7 +481,7 @@ class Clients extends Service
 	public function clientChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, d.description
+			"SELECT pc.id, COALESCE(pc.mac, CONCAT('02', LPAD(pc.id, 10, '0'))) AS mac, d.description
 				FROM `{$this->clientsTable}` pc
 				LEFT JOIN devices d ON d.id = pc.device_id
 				ORDER BY pc.mac"
