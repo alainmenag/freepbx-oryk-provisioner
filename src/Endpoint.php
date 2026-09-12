@@ -114,11 +114,11 @@ class Endpoint extends Service
 	 * which is what keeps this from being an open upload to the PBX for
 	 * anyone who can reach the endpoint.
 	 *
-	 * The body goes to ASTLOGDIR/provisioner/[mac], under the resource's own
-	 * name rendered against that client -- a directory per client, so a
-	 * stored log says whose it is rather than leaving that to whatever the
-	 * vendor happened to call the file. The outcome is logged here, as
-	 * serve() logs its own, because this is where the request ends.
+	 * The body goes to ASTLOGDIR/provisioner/[client id], under the
+	 * resource's own name rendered against that client -- a directory per
+	 * client, so a stored log says whose it is rather than leaving that to
+	 * whatever the vendor happened to call the file. The outcome is logged
+	 * here, as serve() logs its own, because this is where the request ends.
 	 *
 	 * @param mixed       $mac       MAC address, written however it was written.
 	 * @param string|null $requested Filename PUT to.
@@ -404,8 +404,8 @@ class Endpoint extends Service
 
 			if ($match !== null) {
 				$outcome = $sending
-					? $this->receivedResult($match, $values, $mac)
-					: $this->resourceResult($match, $values, $mac);
+					? $this->receivedResult($match, $values, (int) $client['id'])
+					: $this->resourceResult($match, $values, (int) $client['id']);
 
 				return $outcome + [
 					'mac' => $mac,
@@ -505,11 +505,11 @@ class Endpoint extends Service
 	 *
 	 * @param array<string, mixed>  $resource The resource row.
 	 * @param array<string, string> $values   Placeholder name to value, empty for a file.
-	 * @param string                $mac      Client asking, '' when there is none.
+	 * @param int                   $client   Id of the client asking, 0 when there is none.
 	 *
 	 * @return array<string, mixed> What serve() sends, or a refusal.
 	 */
-	private function resourceResult(array $resource, array $values, $mac = '')
+	private function resourceResult(array $resource, array $values, $client = 0)
 	{
 		$name = (string) $resource['name'];
 		$type = (string) ($resource['type'] ?? 'template');
@@ -518,7 +518,7 @@ class Endpoint extends Service
 		// storedLog(), so the side that stores a log and the side that hands
 		// it back cannot disagree about the path.
 		if ($type === 'log') {
-			$stored = $this->storedLog($resource, $values, $mac);
+			$stored = $this->storedLog($resource, $values, $client);
 
 			// A log that has not arrived is not a broken resource, so it says
 			// so in its own words rather than borrowing the missing-file line:
@@ -587,11 +587,11 @@ class Endpoint extends Service
 	 *
 	 * @param array<string, mixed>  $resource The resource row.
 	 * @param array<string, string> $values   Placeholder name to value.
-	 * @param string                $mac      Client sending it.
+	 * @param int                   $client   Id of the client sending it.
 	 *
 	 * @return array<string, mixed> What receive() stores, or a refusal.
 	 */
-	private function receivedResult(array $resource, array $values, $mac)
+	private function receivedResult(array $resource, array $values, $client)
 	{
 		$name = (string) $resource['name'];
 		$type = (string) ($resource['type'] ?? 'template');
@@ -608,7 +608,7 @@ class Endpoint extends Service
 			'kind' => 'log',
 			'type' => 'log',
 			'resource' => $name,
-			'path' => $this->storedLog($resource, $values, $mac),
+			'path' => $this->storedLog($resource, $values, $client),
 		];
 	}
 
@@ -625,7 +625,9 @@ class Endpoint extends Service
 	 * and the file is the resource. So a profile whose log resource is
 	 * `{{device.mac}}-boot.log` stores `0004f282e824-boot.log` and one whose
 	 * resource is `boot.log` stores `boot.log` -- in that client's own
-	 * directory either way, which is what says whose it is.
+	 * directory either way, which is what says whose it is. The directory is
+	 * the client's id, so a client whose MAC is corrected keeps what it has
+	 * already sent, and a deleted client's logs go with the row.
 	 *
 	 * Rendered rather than taken as typed, because a name is a template here
 	 * as much as anywhere else in the module: it is the same call
@@ -634,14 +636,14 @@ class Endpoint extends Service
 	 *
 	 * @param array<string, mixed>  $resource The resource row.
 	 * @param array<string, string> $values   Placeholder name to value.
-	 * @param string                $mac      Client whose copy it is.
+	 * @param int                   $client   Id of the client whose copy it is.
 	 *
 	 * @return string Absolute path, or '' when there is no such path.
 	 */
-	private function storedLog(array $resource, array $values, $mac)
+	private function storedLog(array $resource, array $values, $client)
 	{
 		return $this->logs->logFile(
-			$mac,
+			$client,
 			$this->template->renderTemplate((string) $resource['name'], $values)
 		);
 	}

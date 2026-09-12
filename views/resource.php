@@ -267,7 +267,7 @@ $tabs = [
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static">
-											<code><?php echo $h($logPath); ?>/<span class="text-muted">[mac]</span>/</code>
+											<code><?php echo $h($logPath); ?>/<span class="text-muted">[client.id]</span>/</code>
 										</p>
 									</div>
 								</div>
@@ -275,7 +275,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s MAC. So a log belongs to a client, and everything one phone has ever sent is in one place.'); ?>
+										<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s id. So a log belongs to a client, and everything one phone has ever sent is in one place -- including after somebody corrects the MAC, which is why the directory is the id and not the MAC. Deleting the client takes the directory with it.'); ?>
 									</span>
 									<span class="help-block fpbx-help-block">
 										<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>

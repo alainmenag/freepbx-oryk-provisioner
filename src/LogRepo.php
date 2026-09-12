@@ -7,9 +7,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Where a log a phone sent us is kept.
  *
- * ASTLOGDIR/provisioner/[mac]/[filename]. The counterpart of FileRepo
- * and deliberately not the same directory: a file in the repo is
- * something an operator uploaded and the endpoint hands out, and one
+ * ASTLOGDIR/provisioner/[client id]/[filename]. The counterpart of
+ * FileRepo and deliberately not the same directory: a file in the repo
+ * is something an operator uploaded and the endpoint hands out, and one
  * here is something a phone uploaded and nothing hands out at all.
  * Different direction, different lifetime, different place.
  *
@@ -22,7 +22,16 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * reason it is more work: it is the module saying whose log this is
  * rather than the phone happening to mention it, so a vendor that names
  * its uploads something fixed cannot quietly overwrite the fleet, and
- * `ls` on one MAC is everything one phone has ever sent.
+ * `ls` on one directory is everything one phone has ever sent.
+ *
+ * **The directory is the client's id, not its MAC.** The id is what the
+ * client *is*; the MAC is a field on it, and a field can be corrected. A
+ * MAC typed wrong and fixed a week later used to leave everything that
+ * phone had sent in a directory nothing on the system pointed at any
+ * more, and start a second one beside it. The id cannot be edited and
+ * cannot be reused, so a client's logs follow the client for as long as
+ * there is one -- and stop being anybody's the moment there is not,
+ * which is what makes deleteClient() able to prune them by id alone.
  *
  * The filename inside it is the resource's own name, rendered against
  * that client, which the endpoint works out and hands over. What the
@@ -40,7 +49,7 @@ class LogRepo extends Repo
 	 * everything else on the box somebody reads for the same reason.
 	 *
 	 * This is the root; every stored log is a directory further down, under
-	 * the MAC of the client that sent it.
+	 * the id of the client that sent it.
 	 *
 	 * @return string Absolute path, without a trailing slash.
 	 */
@@ -52,21 +61,20 @@ class LogRepo extends Repo
 	/**
 	 * Where one client's logs are kept.
 	 *
-	 * Normalised here rather than trusted from the caller, though the caller
-	 * has already normalised it: this is the one value in the module that
-	 * becomes a directory name, and Mac::normalize() answers with twelve
-	 * lowercase hex characters or with nothing at all. There is no third
-	 * answer for a path to be built out of.
+	 * The id is cast here rather than trusted from the caller, though the
+	 * caller has it from a row: this is the one value in the module that
+	 * becomes a directory name, and an int is either a positive number or it
+	 * is nothing a path can be built out of. There is no third answer.
 	 *
-	 * @param mixed $mac MAC address, written however it was written.
+	 * @param mixed $client Client id.
 	 *
-	 * @return string Absolute path, or '' when that is not a MAC.
+	 * @return string Absolute path, or '' when that is not a client id.
 	 */
-	public function clientPath($mac)
+	public function clientPath($client)
 	{
-		$mac = Mac::normalize($mac);
+		$id = (int) $client;
 
-		return $mac === '' ? '' : $this->logPath() . '/' . $mac;
+		return $id > 0 ? $this->logPath() . '/' . $id : '';
 	}
 
 	/**
@@ -76,7 +84,7 @@ class LogRepo extends Repo
 	 * made by the PUT that first needs it, since ensureDirectory() makes
 	 * parents anyway. A client that has never sent anything having no
 	 * directory is a truer thing for the filesystem to say than an empty one
-	 * per MAC on the site.
+	 * per client on the site.
 	 *
 	 * @return bool True when the directory exists and is writable.
 	 */
@@ -92,17 +100,17 @@ class LogRepo extends Repo
 	 * place that turns what a resource is into where it is on disk, so the
 	 * side that writes it and the side that reads it back cannot disagree
 	 * about the path. A file in the repo is found by the resource's id; one
-	 * here is found by the client and the resource's rendered name, because
-	 * that is what a log is -- one phone's copy of one file.
+	 * here is found by the client's id and the resource's rendered name,
+	 * because that is what a log is -- one phone's copy of one file.
 	 *
-	 * @param mixed  $mac      MAC of the client whose log it is.
+	 * @param mixed  $client   Id of the client whose log it is.
 	 * @param string $filename Rendered resource name.
 	 *
 	 * @return string Absolute path, or '' when either half is unusable.
 	 */
-	public function logFile($mac, $filename)
+	public function logFile($client, $filename)
 	{
-		$directory = $this->clientPath($mac);
+		$directory = $this->clientPath($client);
 		$name = $this->safeName($filename);
 
 		return ($directory === '' || $name === '') ? '' : $directory . '/' . $name;
@@ -134,7 +142,7 @@ class LogRepo extends Repo
 	{
 		$path = (string) $path;
 
-		// logFile() answers '' for a MAC that is not one and for a name that
+		// logFile() answers '' for an id that is not one and for a name that
 		// renders to nothing a file can be called, and the endpoint refuses a
 		// PUT with no client long before either. Reaching here without a path
 		// is a caller that has invented one.
@@ -183,9 +191,9 @@ class LogRepo extends Repo
 	 *
 	 * **What makes deleting a directory safe here is that the path is never
 	 * given.** It is built by clientPath(), which answers either '' or
-	 * logPath() joined to twelve lowercase hex characters -- so there is no
-	 * argument to this method that reaches a directory outside the log root,
-	 * and no caller that could pass one.
+	 * logPath() joined to a positive integer -- so there is no argument to
+	 * this method that reaches a directory outside the log root, and no
+	 * caller that could pass one.
 	 *
 	 * One level deep, deliberately. Everything written here is a file, so a
 	 * subdirectory is somebody else's; it is not descended into, and rmdir()
@@ -195,13 +203,13 @@ class LogRepo extends Repo
 	 * was asked to reach, and it is the common one: a client that never sent
 	 * anything never had a directory made for it.
 	 *
-	 * @param mixed $mac MAC of the client whose logs these are.
+	 * @param mixed $client Id of the client whose logs these are.
 	 *
 	 * @return bool True when nothing is left at that path.
 	 */
-	public function removeClientLogs($mac)
+	public function removeClientLogs($client)
 	{
-		$path = $this->clientPath($mac);
+		$path = $this->clientPath($client);
 
 		if ($path === '' || !is_dir($path)) {
 			return true;
