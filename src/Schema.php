@@ -184,6 +184,39 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a clients table written before 1.0.19 up to date.
+	 *
+	 * The MAC stopped being required, so the column stops being NOT NULL. An
+	 * empty box is stored as NULL and not as '', and the unique key on the
+	 * column is the whole reason it has to be: MySQL counts NULLs as distinct
+	 * from one another and empty strings as equal, so stored as '' the key
+	 * would admit exactly one client without a MAC and refuse every one after
+	 * it as a duplicate. The key is kept -- a MAC that is written is still
+	 * written once.
+	 *
+	 * The one step here that asks what a column is rather than whether it is
+	 * there, since MODIFY is not ADD and there is no new name to look for.
+	 * Left alone when the question cannot be answered, for the reason
+	 * schemaHas() gives: not knowing is a reason not to ALTER.
+	 *
+	 * Nothing is backfilled. Every row written before this has a real MAC,
+	 * and a column merely allowed to be NULL changes none of them.
+	 *
+	 * @return void
+	 */
+	public function relaxClientMacColumn()
+	{
+		if ($this->columnIsNullable($this->clientsTable, 'mac') !== false) {
+			return;
+		}
+
+		$this->db->exec(
+			"ALTER TABLE `{$this->clientsTable}`
+			MODIFY COLUMN `mac` VARCHAR(12) NULL DEFAULT NULL"
+		);
+	}
+
+	/**
 	 * Give a table the column that says whether the endpoint answers for it.
 	 *
 	 * The same column on two tables, added the same way, so it is added in
@@ -217,6 +250,37 @@ class Schema extends Service
 				"ALTER TABLE `$table`
 				ADD COLUMN `enabled` TINYINT(1) NOT NULL DEFAULT 1 AFTER `$after`"
 			);
+		}
+	}
+
+	/**
+	 * Whether a column is declared nullable.
+	 *
+	 * Three answers rather than two: true, false, and null for a column that
+	 * is not there or a catalogue that could not be read. Both of those are
+	 * reasons to leave the table alone, which is the rule schemaHas() states
+	 * and the reason a caller tests against false rather than for truth.
+	 *
+	 * @param string $table  Table name.
+	 * @param string $column Column name.
+	 *
+	 * @return bool|null True when nullable, false when NOT NULL, null when unknown.
+	 */
+	private function columnIsNullable($table, $column)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT IS_NULLABLE FROM information_schema.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column"
+			);
+			$stmt->execute([':table' => $table, ':column' => $column]);
+			$nullable = $stmt->fetchColumn();
+
+			return $nullable === false ? null : strtoupper((string) $nullable) === 'YES';
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: could not read information_schema', $e->getMessage(), 'WARNING');
+
+			return null;
 		}
 	}
 
