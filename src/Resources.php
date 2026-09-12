@@ -305,21 +305,6 @@ class Resources extends Service
 	}
 
 	/**
-	 * Remove a resource.
-	 *
-	 * Nothing points at a resource the way a client points at a
-	 * profile, so there is nothing to refuse this for.
-	 *
-	 * Its uploaded file goes first, while there is still a row to say the
-	 * id: the file is named after the resource and nothing else, so a row
-	 * deleted without it would leave a number in the repository that
-	 * nothing on the system can account for.
-	 *
-	 * @param mixed $id Resource id.
-	 *
-	 * @return array<string, mixed> Status of the removal.
-	 */
-	/**
 	 * The files one profile serves, as the navigator lists them.
 	 *
 	 * Narrowed to the profile, the way resourceRow() is and for the same
@@ -343,6 +328,21 @@ class Resources extends Service
 		return $stmt->fetchAll(PDO::FETCH_ASSOC);
 	}
 
+	/**
+	 * Remove a resource.
+	 *
+	 * Nothing points at a resource the way a client points at a
+	 * profile, so there is nothing to refuse this for.
+	 *
+	 * Its uploaded file goes first, while there is still a row to say the
+	 * id: the file is named after the resource and nothing else, so a row
+	 * deleted without it would leave a number in the repository that
+	 * nothing on the system can account for.
+	 *
+	 * @param mixed $id Resource id.
+	 *
+	 * @return array<string, mixed> Status of the removal.
+	 */
 	public function deleteResource($id)
 	{
 		$this->files->removeRepoFile($id);

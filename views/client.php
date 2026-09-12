@@ -257,7 +257,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
-										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. Empty the box to take the token away. Nothing is authenticated against it yet.'); ?>
+										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. Empty the box to take the token away. While one is set, the endpoint answers this client nothing until it presents those credentials: a request without them, or with the wrong ones, is a 401. A client with no token is served to anyone who knows its MAC address.'); ?>
 									</span>
 								</div>
 							</div>

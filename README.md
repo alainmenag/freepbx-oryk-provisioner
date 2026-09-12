@@ -12,12 +12,13 @@ and the rendering.
 > ### Status
 >
 > This is Stage 1 and it is deliberately smaller than the design it is working
-> towards. **The provisioning endpoint is unauthenticated and keyed on MAC
-> address**: anyone who can reach the URL and knows a MAC gets that phone's
-> configuration, SIP secret included. Read [Security](#security) before putting
-> it anywhere public. Provisioning tokens, a GraphQL API, per-client parameter
-> overrides and a bundled vendor template library are [not built
-> yet](#not-built-yet).
+> towards. **A client with no token is served to anyone who can reach the URL
+> and knows its MAC address** — configuration, SIP secret included. A client
+> that has been given a token must present it, and is a 401 until it does, but
+> a token is opt-in per client and nothing makes you set one. Read
+> [Security](#security) before putting this anywhere public. A GraphQL API,
+> per-client parameter overrides and a bundled vendor template library are [not
+> built yet](#not-built-yet).
 
 ---
 
@@ -31,11 +32,17 @@ and the rendering.
 
 - Associates a MAC address with a FreePBX device and a provisioning profile.
 - Serves every file a phone asks its profile for — the main config, phone,
-  web, directory — each one a filename and a template you write.
+  web, directory — each one a filename and a **type**: a template you write and
+  the module renders, or a file you upload and it hands over exactly as stored
+  (firmware, ringtones).
+- Takes the boot and app logs a phone PUTs back, when the profile has a
+  resource of type **Log** by that name, and keeps them per client under
+  `ASTLOGDIR/provisioner/<mac>/`.
 - Fills `{{placeholder}}` names from the client, its FreePBX device, that
   device's extension, and the device's own SIP settings.
-- Answers phones on an unauthenticated endpoint at `/provisioner/`, without an
-  admin session.
+- Answers phones at `/provisioner/`, without an admin session — and, for a
+  client you have given a token, only against HTTP Basic credentials that
+  verify against the stored hash.
 - Gives you an admin page per client, profile and resource, and a per-row
   Render link so you can see exactly what a given phone gets.
 - Lets you switch a client — or a whole profile — off from its row on the
@@ -43,7 +50,9 @@ and the rendering.
   switch it back on, and nothing about it is lost in the meantime. Switching a
   profile off stops every client assigned to it at once, without touching one
   of them.
-- Logs metadata only — MAC, file, profile. Never the rendered body.
+- Records every request the endpoint answered — MAC, filename, status, method,
+  address, User-Agent — on a Logs tab of its own and on each client's page.
+  Metadata only: never the rendered body.
 
 ---
 
@@ -72,13 +81,22 @@ Token box holds that hash from then on, so leaving it alone leaves the token
 alone, typing a new `user:password` over it replaces it, and emptying it takes
 it away. **A colon is what marks a value as a token still to be hashed**; a
 value without one is stored as it was typed and verifies against nothing.
-`verifyToken($mac, $token)` is the other half.
+
+While a client has a token, the endpoint refuses it everything until it
+presents one: the request needs HTTP Basic credentials, and `user:password` is
+checked with `password_verify()` against the stored hash. A wrong token, or
+none, is a `401` with a `WWW-Authenticate` header — asked for as soon as a
+filename has matched, and before the resource's type is looked at, so a 401
+cannot tell an unauthenticated caller which files exist.
 
 **Profile** — a name, and the files it serves. Nothing else: a profile holds no
 configuration text of its own.
 
-**Resource** — one file. A filename and a template. The main configuration file
-is a resource like every other file, named `.cfg`.
+**Resource** — one file. A filename, and a type that says what the filename
+gets: **Template** (rendered for the client that asked), **File** (uploaded
+here, served byte for byte) or **Log** (received from the phone rather than
+served to it, and read back at the same URL). The main configuration file is a
+resource like every other file, named `.cfg`.
 
 A client with no device still provisions — the device-derived placeholders are
 simply empty, which is what a profile of static configuration wants. A client
@@ -140,6 +158,8 @@ at all — `requires_auth="false"` governs menu visibility, not anonymous access
 | `/provisioner/?mac=0004f282e824` | the same, for a caller with no filename to give |
 | `/provisioner/0004f282e824-phone.cfg` | its `phone.cfg` resource |
 | `/provisioner/0004f282e824-directory.xml` | its `directory.xml` resource |
+| `/provisioner/3111-44500-001.sip.ld` | a File resource of any enabled profile, by name alone — a phone fetching firmware sends no MAC |
+| `PUT /provisioner/0004f282e824-boot.log` | stores the body, when that profile has a Log resource answering to the name |
 
 **Who is asking** is read from the path, then the query string, then an
 AudioCodes `User-Agent`. **A MAC in the path always wins over `?mac=`** — which
@@ -150,11 +170,14 @@ matters for a filename that carries somebody else's MAC, such as the
 **What they asked for** is the last segment of the path, verbatim. Which
 resource of which profile that names is worked out by the module.
 
-GET and HEAD are served. Anything else — including the boot and app logs a
-phone PUTs — is a 404 and a log line.
+GET and HEAD fetch; PUT sends. A PUT needs a MAC — what a phone sends is
+written to disk, so it has to be a phone this module knows — where a fetch does
+not, since firmware is asked for by name alone. Anything else is a 404 and a
+log line.
 
-A MAC that is not associated, a client with no profile, and a filename the
-profile does not serve are all 404s.
+A MAC that is not associated, a client with no profile, a client or profile
+that has been switched off, and a filename the profile does not serve are all
+404s. A client that has a token and did not present it is a 401.
 
 ---
 
@@ -183,7 +206,10 @@ Names are unique per profile, not globally — two profiles both serving a
 `{{device.mac}}-phone.cfg` is the normal case.
 
 **Content type** is taken from the extension: `.xml` is served as `text/xml`,
-`.json` as `application/json`, everything else as `text/plain`.
+`.json` as `application/json`, `.cfg`/`.conf`/`.ini`/`.txt`/`.log` as
+`text/plain`. Anything else is `text/plain` for a template or a log and
+`application/octet-stream` for an uploaded file — sending a firmware image as
+text is how it arrives corrupted.
 
 ---
 
@@ -239,13 +265,15 @@ elsewhere in the module lands where you were.
 
 | URL | Page | Tabs |
 | --- | --- | --- |
-| `?display=oryk_provisioner` | the list | Clients, Profiles |
-| `&client=<id>` | one client (`&client=` for a new one) | Client, Resources |
+| `?display=oryk_provisioner` | the list | Clients, Profiles, Logs |
+| `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 
-Both list tabs are paginated, searchable and sortable server-side. Save, Delete
-and Close are in the FreePBX action bar on every editor.
+Every table is paginated, searchable and sortable server-side. Save, Delete
+and Close are in the FreePBX action bar on every editor. A tab is an ordinary
+link and only the pane asked for is rendered, so a tab with nothing behind it
+yet — Resources on a profile nobody has written — is not drawn at all.
 
 **Last Seen** on the Clients list is the last time the endpoint answered that
 client with a 200 — a file served, a configuration rendered, or a log the phone
@@ -273,7 +301,10 @@ from the profile that serves it.
 
 ## Database
 
-Three tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
+Four tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
+Columns added after a table first existed are added by `src/Schema.php`, which
+asks `information_schema` what is already there rather than trusting a
+`dbversion`.
 
 **`oryk_provisioner_clients`** — `id`, `mac` (unique, 12 lowercase hex),
 `device_id`, `profile_id`, `token`, `enabled`, `last_seen`, `created_at`,
@@ -299,10 +330,24 @@ means the same thing one level up: a disabled profile serves nothing, so every
 client assigned to it is refused. It defaults to 1, so profiles written before
 there was a switch are ones nobody switched off.
 
-**`oryk_provisioner_resources`** — `id`, `profile_id`, `name`, `template`
-(LONGTEXT), `created_at`, `updated_at`. Unique on `(profile_id, name)`.
+**`oryk_provisioner_resources`** — `id`, `profile_id`, `name`, `type`,
+`template` (LONGTEXT), `file_size`, `file_uploaded_at`, `created_at`,
+`updated_at`. Unique on `(profile_id, name)`, and a plain key on `name` for the
+by-name lookup a request with no client behind it makes.
+`type` is `template`, `file` or `log`, and it is the only thing that says which
+— it was inferred from `file_size` until 1.0.14, which meant a resource could
+not be a file before a file was on it and could not be a log at all.
+`file_size` is now a fact about the upload rather than the thing that decides;
+the file itself lives in `ASTSPOOLDIR/repo`, named after the resource id.
 
-`uninstall()` leaves all three in place.
+**`oryk_provisioner_logs`** — `id`, `mac`, `filename`, `status`, `message`,
+`method`, `ip`, `user_agent`, `created_at`. One row per request the endpoint
+answered, written whether or not the MAC is one this module knows — which is
+why there is no `client_id` on it and no foreign key, and why `mac` is 64 wide:
+it also has to hold what was asked with when what was asked with is not a MAC
+at all.
+
+`uninstall()` leaves all four in place.
 
 ---
 
@@ -339,14 +384,20 @@ removes the symlink — and only if it still resolves to this module's engine.
 
 Know what this is before you expose it:
 
-- **The endpoint is unauthenticated and keyed on MAC address.** Anyone who can
+- **A client with no token is keyed on MAC address alone.** Anyone who can
   reach the URL and knows — or guesses — a MAC gets that client's rendered
-  configuration, including `device.secret` if the template emits it. This is
-  inherent to MAC-based provisioning and the reason the token scheme exists in
-  the design. A client's token is stored, hashed, and can be verified — but
-  nothing checks it yet, so setting one changes nothing about who is served.
-  Until it does, restrict who can reach `/provisioner/` at the network layer,
-  and prefer HTTPS.
+  configuration, including `device.secret` if the template emits it. Giving the
+  client a token closes that: the endpoint then answers it nothing without HTTP
+  Basic credentials that verify against the stored hash. Nothing makes you set
+  one, so a fleet provisioned without tokens is as open as it ever was —
+  restrict who can reach `/provisioner/` at the network layer, and prefer
+  HTTPS, since Basic credentials over plain http are credentials in the clear.
+- **A token is not rate limited and there is no lockout.** A wrong one costs
+  the caller a single bcrypt verification over an endpoint anyone can reach.
+- **An uploaded File resource is served to a caller with no client behind it
+  at all**, matched by name across every enabled profile — which is what lets a
+  phone fetch firmware before anybody has written its client, and also means
+  anyone who reaches the endpoint and knows the name can fetch it.
 - **Failures are not uniform.** A 404 says which kind of failure it was
   ("… is not associated with anything", "… has no profile assigned",
   "… is disabled", "The … profile is disabled"), so a caller probing MACs can
@@ -364,13 +415,13 @@ Know what this is before you expose it:
 
 The larger design this is working towards, none of which exists in the code:
 
-- **Provisioning tokens** — the storage is there (a hashed per-client token and
-  `verifyToken()`), and nothing calls it: the endpoint checks no token, and a
-  404 still says which kind of failure it was — a disabled client included,
-  which is now a refusal of its own. A token that has to *identify* a client, the way
-  `/provisioner/{token}/{file}` would, needs a lookup a `password_hash()`
-  column cannot serve, so that scheme wants a second, digest-based column
-  rather than this one.
+- **A token that *identifies* a client**, the way `/provisioner/{token}/{file}`
+  would. The token there is today authenticates a client the request has
+  already named by its MAC; identifying one by the token alone needs a lookup a
+  `password_hash()` column cannot serve, so that scheme wants a second,
+  digest-based column rather than this one. Uniform failures belong with it: a
+  404 still says which kind of failure it was, so a caller probing MACs can
+  tell a known one from an unknown one.
 - **Per-client parameters** and the resolution order (module settings → schema
   defaults → template defaults → FreePBX/extension → client overrides). A client
   today is a MAC, a device and a profile; nothing overrides anything.
@@ -378,13 +429,13 @@ The larger design this is working towards, none of which exists in the code:
   softphone. Every template is one you write, and a profile is set up one file
   at a time from empty — there is no seeding and no copying resources between
   profiles.
-- **Static resources.** Everything renders; there is no verbatim type for
-  content with literal braces in it, and no firmware serving.
-- **A GraphQL API**, a `fwconsole` command, module settings, and a stored
-  provisioning log with a page to read it.
+- **Copying resources between profiles, or seeding a new one.** A profile is
+  set up one file at a time from empty.
+- **A GraphQL API**, a `fwconsole` command, and module settings.
+- **Pruning the provisioning log.** It grows by a row per file per boot per
+  phone and nothing trims it; the Clear button on the Logs tabs is all there
+  is.
 - **Template filters, sections and content-type-aware escaping.**
-- **Somewhere for a phone's boot and app logs to go** — they are PUT, and PUT is
-  a 404.
 - Backup and restore hooks are stubs.
 
 ---
@@ -392,21 +443,51 @@ The larger design this is working towards, none of which exists in the code:
 ## Code map
 
 ```
-Oryk_provisioner.class.php   BMO: install/uninstall, page dispatch, AJAX
-                             commands, and the renderer (renderConfig,
-                             matchResource, provisioningValues, serveConfig)
-engine/provisioner.php       the unauthenticated endpoint: who is asking and
-                             what they asked for, and nothing else
+Oryk_provisioner.class.php   BMO: the contract FreePBX calls, an autoloader
+                             for src/, and the AJAX dispatch table. Since
+                             1.0.13 it is a thin adapter and nothing else
+src/Service.php              what every subsystem is given: FreePBX, the
+                             database, the four table names
+src/Clients.php              |
+src/Profiles.php             |  one per table
+src/Resources.php            |
+src/ProvisioningLog.php      |
+src/Enabled.php              the enabled column, shared by two of them
+src/Endpoint.php             answering a provisioning request, and ending it
+src/Matcher.php              a filename is a MAC and a name, read both ways
+src/Template.php             a placeholder, and what it resolves to
+src/Previews.php             which filename does this phone ask this file by
+src/Pages.php                which URL is which page
+src/Navigator.php            the breadcrumb's levels
+src/Counts.php               the row counts a tab is labelled with
+src/Repo.php                 a directory this module keeps files in
+src/FileRepo.php             where an uploaded resource file is kept
+src/LogRepo.php              where a log a phone sent us is kept
+src/Tokens.php               hashing a client's token, and checking one
+src/Freepbx.php              the only file that asks FreePBX about a device
+src/Mac.php                  a MAC as written, and as found in a filename
+src/Schema.php               the tables, as they are added to
+src/Installer.php            installing and uninstalling
+src/Logs.php                 how this module writes to the FreePBX log
+engine/provisioner.php       the endpoint: who is asking and what they asked
+                             for, and nothing else
 engine/.htaccess             rewrites the engine directory to provisioner.php
 page.oryk_provisioner.php    one line into showPage()
 views/admin.php              the list
 views/client.php             the client editor
 views/profile.php            the profile editor
 views/resource.php           the resource editor
+views/partials/navigator.php the breadcrumb every page is topped with
+views/partials/tabs.php      the tab strip every page is laid out under
+views/partials/counts.php    the badges on those tabs
 views/partials/editor.php    the CSS and JS all three editors share
+views/partials/logs.php      the provisioning log, as a table
 views/partials/placeholders.php   the placeholder reference
 ```
 
 AJAX commands, all authenticated through `ajax.php`: `listClients`,
-`listProfiles`, `listResources`, `saveClient`, `saveProfile`, `saveResource`,
-`deleteClient`, `deleteProfile`, `deleteResource`.
+`listProfiles`, `listResources`, `listLogs`, `saveClient`, `saveProfile`,
+`saveResource`, `deleteClient`, `deleteProfile`, `deleteResource`,
+`setClientEnabled`, `setProfileEnabled`, `uploadResourceFile`,
+`deleteResourceFile`, `clearLogs`, `counts`. A new one has to be named in both
+`ajaxRequest()` and `ajaxHandler()`.

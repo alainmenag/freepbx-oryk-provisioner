@@ -15,7 +15,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 class Schema extends Service
 {
 	/**
-	 * Bring a resources table written before 1.0.6 up to date.
+	 * Bring a resources table written before 1.0.11 up to date.
+	 *
+	 * file_size and file_uploaded_at are what an uploaded file leaves on the
+	 * row, and the index on `name` is for the by-name lookup a request with no
+	 * client behind it makes -- see Matcher::fileByName().
 	 *
 	 * Asked of information_schema rather than tried and caught: a failed DDL
 	 * statement is not something a PDO exception cleanly tells apart from a

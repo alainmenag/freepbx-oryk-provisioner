@@ -47,11 +47,14 @@ class Tokens extends Service
 	/**
 	 * Whether a client's token is the one presented.
 	 *
-	 * Nothing calls this yet -- the endpoint is still keyed on MAC address
-	 * alone and authenticates nothing. It is here because a stored hash that
-	 * nothing can check is not a mechanism, and it is public because what will
-	 * eventually call it is engine/provisioner.php rather than a page of this
-	 * module.
+	 * The same check the endpoint makes, for a caller that has only a MAC.
+	 * Nothing inside the module calls it: Endpoint::resolveRequest() is already
+	 * holding the client row by the time it has something to authenticate, so
+	 * it does its own password_verify() against the hash on that row rather
+	 * than reading it a second time. It stays public because it is reachable
+	 * through the Oryk_provisioner class passthrough, which is how anything
+	 * outside this module -- a console command, engine/provisioner.php -- would
+	 * ask the question.
 	 *
 	 * A client with no token set is false rather than true. The question this
 	 * answers is "is this the client's token", and a client that has none has
