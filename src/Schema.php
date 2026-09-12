@@ -151,6 +151,39 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a clients table written before 1.0.18 up to date.
+	 *
+	 * Where the phone is, as an operator knows it: the address it answers its
+	 * own web interface on, and the address the site it sits behind is reached
+	 * at from outside. Neither is discovered and neither is used to reach the
+	 * phone from here -- they are written down on the client so that the
+	 * Clients list can offer a link to the handset, and so that a template can
+	 * render what only the operator knows.
+	 *
+	 * Nullable with no default, and for the reason last_seen is: nobody has
+	 * said where a phone written before this column is, and any value that
+	 * answered that would be answering it wrongly for every row at once.
+	 *
+	 * 45 characters is an IPv6 address at its longest, which is what the
+	 * provisioning log's own `ip` column is sized for.
+	 *
+	 * @return void
+	 */
+	public function addClientAddressColumns()
+	{
+		$columns = [
+			'public_ip' => 'ADD COLUMN `public_ip` VARCHAR(45) NULL DEFAULT NULL AFTER `last_seen`',
+			'private_ip' => 'ADD COLUMN `private_ip` VARCHAR(45) NULL DEFAULT NULL AFTER `public_ip`',
+		];
+
+		foreach ($columns as $column => $clause) {
+			if (!$this->schemaHas($this->clientsTable, 'column', $column)) {
+				$this->db->exec("ALTER TABLE `{$this->clientsTable}` $clause");
+			}
+		}
+	}
+
+	/**
 	 * Give a table the column that says whether the endpoint answers for it.
 	 *
 	 * The same column on two tables, added the same way, so it is added in

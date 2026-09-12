@@ -143,12 +143,19 @@ class Clients extends Service
 		// Bracketed, now that it is no longer the only thing in there: an
 		// unbracketed OR chain ANDed with the profile would match every
 		// client whose profile name contains the search.
+		//
+		// The addresses are searched on as well as the names, because an
+		// address is one of the two things somebody arrives at this list
+		// already holding -- a MAC off a label, or an address off a router's
+		// lease table -- and the question both times is which phone it is.
 		if ($search !== '') {
 			$clauses[] = "(pc.mac LIKE :search
 				OR pc.device_id LIKE :search
 				OR d.user LIKE :search
 				OR d.description LIKE :search
-				OR p.name LIKE :search)";
+				OR p.name LIKE :search
+				OR pc.public_ip LIKE :search
+				OR pc.private_ip LIKE :search)";
 			$params[':search'] = '%' . $search . '%';
 		}
 
@@ -174,6 +181,8 @@ class Clients extends Service
 				p.enabled AS profile_enabled,
 				pc.enabled,
 				pc.last_seen,
+				pc.public_ip,
+				pc.private_ip,
 				" . self::SEEN_AGE_EXPR . " AS last_seen_age,
 				" . self::SECURE_EXPR . " AS secure
 			$from
@@ -220,6 +229,7 @@ class Clients extends Service
 		// is a weak token in front of anyone who can open that page.
 		$stmt = $this->db->prepare(
 			"SELECT pc.id, pc.mac, pc.device_id, pc.profile_id, pc.token, pc.enabled, pc.last_seen,
+				pc.public_ip, pc.private_ip,
 				" . self::SEEN_AGE_EXPR . " AS last_seen_age
 			FROM `{$this->clientsTable}` pc
 			WHERE pc.id = :id"
@@ -249,6 +259,8 @@ class Clients extends Service
 				pc.enabled,
 				pc.device_id,
 				pc.profile_id,
+				pc.public_ip,
+				pc.private_ip,
 				d.user AS extension,
 				d.description,
 				d.tech,
@@ -268,9 +280,11 @@ class Clients extends Service
 	/**
 	 * Create or update a client.
 	 *
-	 * `token` is the one field here that is not simply written: what arrives
-	 * is either a token to hash or the hash of one, told apart by the colon.
-	 * See the note above it, and hashToken().
+	 * `token` is the field here that is not simply written: what arrives is
+	 * either a token to hash or the hash of one, told apart by the colon. See
+	 * the note above it, and hashToken(). The two addresses are the fields
+	 * that can be refused -- see address(), which is what lets the Clients
+	 * list put one of them in a link.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
@@ -300,6 +314,19 @@ class Clients extends Service
 
 		if ($profileId !== null && !$this->profiles->profileExists($profileId)) {
 			return ['status' => false, 'message' => _('That profile no longer exists.')];
+		}
+
+		// Refused rather than stored as typed, and said separately for each so
+		// the message names the box to go back to. See address().
+		$publicIp = self::address($request['public_ip'] ?? '');
+		$privateIp = self::address($request['private_ip'] ?? '');
+
+		if ($publicIp === false) {
+			return ['status' => false, 'message' => _('The public address is not an IP address.')];
+		}
+
+		if ($privateIp === false) {
+			return ['status' => false, 'message' => _('The private address is not an IP address.')];
 		}
 
 		$taken = $this->db->prepare(
@@ -352,7 +379,8 @@ class Clients extends Service
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->clientsTable}`
 				SET mac = :mac, device_id = :device_id, profile_id = :profile_id,
-					token = :token, enabled = :enabled
+					token = :token, enabled = :enabled,
+					public_ip = :public_ip, private_ip = :private_ip
 				WHERE id = :id"
 			);
 			$stmt->execute([
@@ -361,6 +389,8 @@ class Clients extends Service
 				':profile_id' => $profileId,
 				':token' => $tokenHash,
 				':enabled' => $enabled,
+				':public_ip' => $publicIp,
+				':private_ip' => $privateIp,
 				':id' => $id,
 			]);
 
@@ -368,8 +398,8 @@ class Clients extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token, enabled)
-			VALUES (:mac, :device_id, :profile_id, :token, :enabled)"
+			"INSERT INTO `{$this->clientsTable}` (mac, device_id, profile_id, token, enabled, public_ip, private_ip)
+			VALUES (:mac, :device_id, :profile_id, :token, :enabled, :public_ip, :private_ip)"
 		);
 		$stmt->execute([
 			':mac' => $mac,
@@ -377,9 +407,41 @@ class Clients extends Service
 			':profile_id' => $profileId,
 			':token' => $tokenHash,
 			':enabled' => $enabled,
+			':public_ip' => $publicIp,
+			':private_ip' => $privateIp,
 		]);
 
 		return ['status' => true, 'id' => (int) $this->db->lastInsertId()];
+	}
+
+	/**
+	 * A submitted address, as it is to be stored.
+	 *
+	 * **Validated rather than trimmed and written**, and that is the invariant
+	 * the Clients list depends on: the private address is put into an `href`
+	 * on the row, and a value filter_var() has agreed is an address cannot be
+	 * a `javascript:` anything. Nothing else on a client is written into a URL
+	 * the admin's own browser follows, so nothing else is checked this way.
+	 *
+	 * An empty box is no address, which is what most clients have. IPv4 and
+	 * IPv6 both pass; a hostname does not, deliberately -- the field says what
+	 * it holds, and a name would have to be resolved by something to be worth
+	 * more than the address it resolves to.
+	 *
+	 * @param mixed $value Submitted address.
+	 *
+	 * @return string|null|false The address, null when the box was empty,
+	 *                           false when what was typed is not an address.
+	 */
+	private static function address($value)
+	{
+		$value = trim((string) $value);
+
+		if ($value === '') {
+			return null;
+		}
+
+		return filter_var($value, FILTER_VALIDATE_IP) ?: false;
 	}
 
 	/**

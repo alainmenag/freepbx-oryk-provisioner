@@ -75,6 +75,16 @@ hexadecimal characters with any separators stripped. The FreePBX `devices`
 table stays the source of truth for the device, its extension and its
 description, so a client carries none of its own.
 
+A client can also be told **where the phone is**: a **private IP**, the address
+the handset answers its own web interface on, and a **public IP**, the address
+the site it sits behind is reached at from outside. Both are written down rather
+than discovered — nothing in the module connects to a phone, so nothing can fill
+them in — and both must be an IPv4 or IPv6 address. Given a private address, the
+client's row on the Clients list grows a button that opens the handset's web
+interface in a new tab; the public one is kept for reference. Both are searched
+by the box above the list, and both render into a configuration as
+`{{client.private_ip}}` and `{{client.public_ip}}`.
+
 A client can also be given a **token**: a secret typed as `user:password` —
 `username:password` — and hashed with `password_hash()` when you save. The
 Token box holds that hash from then on, so leaving it alone leaves the token
@@ -231,6 +241,8 @@ box; click one to copy it.
 | `{{device.tech}}` | `pjsip` or `sip` |
 | `{{device.username}}` | SIP username |
 | `{{device.secret}}` | SIP secret |
+| `{{client.private_ip}}` | where the handset is on the local network |
+| `{{client.public_ip}}` | where the site it sits behind is reached |
 | `{{extension.number}}` | the extension the device is attached to |
 | `{{extension.name}}` | display name |
 | `{{extension.voicemail}}` | voicemail setting |
@@ -284,6 +296,13 @@ a sighting: a client that is switched off, or one asking for a file its profile
 does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
 
+**The phone's web interface** is one button on the Clients list, on the rows
+that have a private address on them: it opens `http://<address>` in a new tab.
+It is drawn from what is stored on the client and nothing more — the module
+never connects to a phone, so the button is not a reachability check, and a row
+with no address simply has no button. The address is validated when it is saved
+precisely because it ends up in a link.
+
 **The two preview tabs** are one idea from both ends: the client editor's
 **Resources** tab is one phone over all the files it gets; the resource
 editor's **Clients** tab is one file over all the phones that get it. A
@@ -307,8 +326,8 @@ asks `information_schema` what is already there rather than trusting a
 `dbversion`.
 
 **`oryk_provisioner_clients`** — `id`, `mac` (unique, 12 lowercase hex),
-`device_id`, `profile_id`, `token`, `enabled`, `last_seen`, `created_at`,
-`updated_at`.
+`device_id`, `profile_id`, `token`, `enabled`, `last_seen`, `public_ip`,
+`private_ip`, `created_at`, `updated_at`.
 `enabled` is whether the endpoint answers this client at all; it defaults to 1,
 so every client written before there was a switch is one nobody switched off.
 `last_seen` is when the endpoint last answered this client with a 200, written
@@ -317,6 +336,12 @@ the provisioning log beside it, because that log is prunable — there is a Clea
 button on two pages — and when a phone last checked in has to survive its
 requests being thrown away. It is NULL until the first 200, so every client on
 a site upgrading into this reads as never seen until its phone next asks.
+`public_ip` and `private_ip` are where the phone is, as somebody wrote it
+down; both are `VARCHAR(45)`, which is an IPv6 address at its longest, and both
+are NULL until they are filled in. Nothing discovers them and nothing in the
+module connects to them: `private_ip` is what the Clients list draws its link
+to the handset from, which is why both are validated with `filter_var()` on the
+way in rather than stored as typed.
 `token` is a `password_hash()` of the client's token, shown as it stands
 in the client editor and deliberately not indexed: it is verified against,
 never looked up by, since a request already says who is asking.

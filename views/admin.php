@@ -14,7 +14,10 @@
  * other thing that needs no page: one column, changed on the row it is shown
  * on. The clients table and the profiles table both have one, they mean the
  * same thing -- the endpoint answers this row, or it answers nothing for it
- * -- so both are drawn and handled by the same three functions below.
+ * -- so both are drawn and handled by the same three functions below. The
+ * one action on either table that leaves the PBX is on a client: a link to
+ * the phone's own web interface, drawn from the private address written on
+ * that client and only on the rows that have one.
  *
  * Every tab is a link and only the tab asked for is rendered -- see
  * partials/tabs.php. Each tab names itself rather than one of them being the
@@ -406,18 +409,57 @@ $tabs = [
 		return classes.length ? { classes: classes.join(' ') } : {};
 	}
 
+	// The phone's own web interface, at the private address written on the
+	// client. Plain http, because that is what a handset answers on out of
+	// the box, and the address is stored as a bare address rather than as a
+	// URL so there is no field for a scheme to arrive through.
+	//
+	// The address is validated when it is saved -- see Clients::address() --
+	// and it is checked again here, because this is where it becomes an href
+	// and an href is the one place where being wrong about it would matter.
+	// Anything that is not an address returns no URL and draws no button,
+	// rather than a link that goes somewhere unintended.
+	//
+	// Nothing about this is a reachability check: the module has never
+	// connected to a phone and does not here either. The button opens a tab
+	// and the browser finds out, which is the only thing on this page that
+	// is on the same network as the handset.
+	function orykPhoneUrl(address) {
+		if (!/^[0-9A-Fa-f.:]+$/.test(address || '')) {
+			return '';
+		}
+
+		// An IPv6 address is bracketed in a URL, or its colons read as a port.
+		return 'http://' + (address.indexOf(':') === -1 ? address : `[${address}]`);
+	}
+
 	// Editing a client is a page, not a dialog, so Edit is a link: the
 	// row's id is the whole of what the editor needs, and it reads the
 	// client back itself rather than being handed one. Beside it are the two
-	// things that need no page -- the switch, and deletion.
+	// things that need no page -- the switch, and deletion -- and, on a
+	// client somebody has written an address for, the way to the phone
+	// itself. That one is drawn only when there is an address to draw it
+	// from: a button that led nowhere on most rows would be worse than no
+	// button, and the column says as much by being shorter.
 	function formatClientActions(value, row) {
-		return [
-			`<div class="flex gap-3">`,
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`,
-			orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'),
-			`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
-			`</div>`
-		].join('');
+		const actions = [
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`
+		];
+
+		const phone = orykPhoneUrl(row.private_ip);
+
+		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
+
+		if (phone) {
+			actions.push(
+				`<a class="btn btn-default btn-sm" href="${phone}" target="_blank" rel="noopener noreferrer"` +
+				` title="Open this phone's web interface at ${orykEscape(row.private_ip)}">` +
+				`<i class="fa fa-external-link" style="margin: 0;"></i></a>`
+			);
+		}
+
+		return `<div class="flex gap-3">${actions.join('')}</div>`;
 	}
 
 	function formatClientRow(row) {

@@ -13,12 +13,13 @@
  * fields were two things to keep in step. A page is one way in, and every
  * other editor in the module is already one.
  *
- * Client is the MAC, the FreePBX device behind it and the profile it is
- * assigned. Resources is what that comes to: the files its profile serves,
- * each with the filename this client asks for and a link that fetches it as
- * this client would -- the resource editor's Clients tab read from the other
- * end, and the tab to open when a particular client is not getting what it
- * should.
+ * Client is the MAC, the FreePBX device behind it, the profile it is
+ * assigned and where the phone is -- the two addresses, which are written
+ * down here rather than discovered. Resources is what that comes to: the
+ * files its profile serves, each with the filename this client asks for and
+ * a link that fetches it as this client would -- the resource editor's
+ * Clients tab read from the other end, and the tab to open when a particular
+ * client is not getting what it should.
  *
  * Logs is what actually happened: every file this phone has asked the
  * endpoint for and how each one went. It is narrowed by MAC rather than by
@@ -32,7 +33,7 @@
  * Each tab is a link and only the tab asked for is rendered -- see
  * partials/tabs.php.
  *
- * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token, enabled, last_seen
+ * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token, enabled, last_seen, public_ip, private_ip
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
  * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
@@ -56,6 +57,15 @@ $isNew = $id === 0;
 $mac = (string) $client['mac'];
 $deviceId = (string) ($client['device_id'] ?? '');
 $profileId = (int) ($client['profile_id'] ?? 0);
+
+// Where the phone is, as somebody wrote it down: the address it answers its
+// own web interface on, and the address the site it sits behind is reached at.
+// Nothing here discovers either, and nothing in the module connects to them --
+// the private one is what the Clients list offers a link to, and both are
+// renderable in a template. Stored validated, so what comes back is an
+// address or nothing.
+$publicIp = (string) ($client['public_ip'] ?? '');
+$privateIp = (string) ($client['private_ip'] ?? '');
 
 // The stored hash, shown as it stands. A save writes back whatever is in the
 // field, so leaving it alone leaves the token alone and emptying it takes the
@@ -244,6 +254,50 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
+										<label class="control-label" for="client_private_ip"><?php echo _('Private IP'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<input type="text" class="form-control" id="client_private_ip"
+											autocomplete="off" spellcheck="false" placeholder="192.168.1.50"
+											value="<?php echo $h($privateIp); ?>">
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('Where this phone is on the local network. Optional, and written down here rather than discovered -- nothing in the module reaches a phone, so nothing can fill it in. Given one, the Clients list grows a button on this row that opens the phone\'s own web interface at that address in a new tab, which is the page you want when a handset needs looking at directly. An IPv4 or IPv6 address; anything else is refused, since the address goes into a link.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="client_public_ip"><?php echo _('Public IP'); ?></label>
+									</div>
+									<div class="col-md-8">
+										<input type="text" class="form-control" id="client_public_ip"
+											autocomplete="off" spellcheck="false" placeholder="203.0.113.24"
+											value="<?php echo $h($publicIp); ?>">
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block">
+										<?php echo _('The address the site this phone sits behind is reached at from outside. Optional, and kept for reference: nothing is served differently because of it and there is no button for it -- a public address is usually the router rather than the handset. Both addresses are searched on the Clients list, and both can be rendered into a configuration as {{client.public_ip}} and {{client.private_ip}}.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
 										<label class="control-label" for="client_token"><?php echo _('Token'); ?></label>
 									</div>
 									<div class="col-md-8">
@@ -415,6 +469,8 @@ $tabs = [
 				mac: $('#client_mac').val(),
 				device_id: $('#client_device_id').val(),
 				profile_id: $('#client_profile_id').val(),
+				private_ip: $('#client_private_ip').val(),
+				public_ip: $('#client_public_ip').val(),
 				// Sent as it stands, hash or typed token: which one it is, is
 				// saveClient()'s question, and a colon is how it answers it.
 				token: $('#client_token').val(),
