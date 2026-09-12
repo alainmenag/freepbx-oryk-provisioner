@@ -17,21 +17,15 @@ class Tokens extends Service
 	 * Hash a token for storage.
 	 *
 	 * password_hash() rather than a digest of the string, because a token is a
-	 * secret somebody chose -- `username:password` is the shape this field
-	 * invites -- and a fast digest of a chosen secret is a wordlist away from
-	 * the secret. The algorithm, the cost and the salt travel inside the hash,
-	 * so the column holds everything verifying needs and the module has no
-	 * second thing to keep in step.
+	 * secret somebody chose and a fast digest of a chosen secret is a wordlist
+	 * away from the secret. The algorithm, cost and salt travel inside the hash.
 	 *
-	 * What it costs is that the column cannot be looked up: the same token
-	 * hashed twice gives two different strings, so there is no SELECT that
-	 * finds a client by the token it presented. That is the right trade here
-	 * because a request already says who is asking -- the MAC address is in
-	 * the path -- and the token only has to say whether it is really them. A
-	 * token meant to *identify* a client instead, the way the README's
-	 * /provisioner/{token}/{file} would, has to be a digest of something
-	 * random enough that a digest is safe, and would be a second column rather
-	 * than a different meaning for this one.
+	 * What it costs is that **the column cannot be looked up**: the same token
+	 * hashed twice gives two different strings. That is the right trade because a
+	 * request already says who is asking -- the MAC is in the path -- and the
+	 * token only has to say whether it is really them. A token meant to *identify*
+	 * a client instead, the way the README's /provisioner/{token}/{file} would,
+	 * has to be a digest of something random, and would be a second column.
 	 *
 	 * @param string $token Token as typed.
 	 *
@@ -47,19 +41,15 @@ class Tokens extends Service
 	/**
 	 * Whether a client's token is the one presented.
 	 *
-	 * The same check the endpoint makes, for a caller that has only a MAC.
-	 * Nothing inside the module calls it: Endpoint::resolveRequest() is already
-	 * holding the client row by the time it has something to authenticate, so
-	 * it does its own password_verify() against the hash on that row rather
-	 * than reading it a second time. It stays public because it is reachable
-	 * through the Oryk_provisioner class passthrough, which is how anything
-	 * outside this module -- a console command, engine/provisioner.php -- would
-	 * ask the question.
+	 * The same check the endpoint makes, for a caller that has only a MAC. Nothing
+	 * inside the module calls it -- Endpoint::resolveRequest() is already holding
+	 * the client row -- but it is reachable through the Oryk_provisioner
+	 * passthrough, which is how anything outside this module would ask.
 	 *
-	 * A client with no token set is false rather than true. The question this
-	 * answers is "is this the client's token", and a client that has none has
-	 * no token that this is. Whether a request with nothing to check should be
-	 * let through is a policy question, and it belongs to whatever asks.
+	 * **A client with no token set is false rather than true.** The question is
+	 * "is this the client's token", and a client that has none has no token that
+	 * this is. Whether a request with nothing to check should be let through is a
+	 * policy question belonging to whatever asks.
 	 *
 	 * @param string $mac   MAC address of the client, in any separator style.
 	 * @param string $token Token as presented.
@@ -81,10 +71,9 @@ class Tokens extends Service
 	/**
 	 * The stored token hash for a MAC address, if there is one.
 	 *
-	 * Private, and returning the hash rather than the row, because the hash
-	 * has exactly one use and no reason to travel further than the method that
-	 * verifies against it. It is deliberately not part of clientRow(), so no
-	 * page of this module is ever handed it.
+	 * Private, and returning the hash rather than the row, because the hash has
+	 * one use and no reason to travel further. It is deliberately not part of
+	 * clientRow(), so no page of this module is ever handed it.
 	 *
 	 * @param string $mac MAC address, in any separator style.
 	 *

@@ -10,10 +10,9 @@ use PDO;
  * The only file that asks FreePBX about a device.
  *
  * Everything this module knows about a device, an extension and its SIP
- * settings is read here and nowhere else, so a site missing a table --
- * or a FreePBX that has moved one -- is one file's problem rather than
- * five. Every lookup degrades to empty data rather than throwing: a
- * client with no FreePBX device behind it still renders.
+ * settings is read here and nowhere else, so a site missing a table is one
+ * file's problem rather than five. **Every lookup degrades to empty data
+ * rather than throwing**: a client with no FreePBX device still renders.
  */
 class Freepbx extends Service
 {
@@ -52,9 +51,8 @@ class Freepbx extends Service
 	/**
 	 * The FreePBX device settings for a device id.
 	 *
-	 * `sip` is where core keeps them, one keyword per row, for both drivers.
-	 * A site without that table -- or with a device that has no settings --
-	 * renders a template with those values empty rather than failing.
+	 * `sip` is where core keeps them, one keyword per row, for both drivers. A
+	 * site without that table renders those values empty rather than failing.
 	 *
 	 * @param string|null $deviceId FreePBX devices.id.
 	 *
@@ -77,10 +75,10 @@ class Freepbx extends Service
 		$settings = [];
 
 		foreach ($rows as $setting) {
-			// Keywords become placeholder names, and a placeholder name is
-			// letters, digits, underscores and the dot that separates the
-			// prefix -- so anything else in a keyword is folded to an
-			// underscore rather than producing a name nothing can spell.
+			// Keywords become placeholder names, and a placeholder name is letters,
+			// digits, underscores and the dot that separates the prefix -- so anything
+			// else is folded to an underscore rather than producing a name nothing can
+			// spell.
 			$keyword = preg_replace('/[^A-Za-z0-9_]/', '_', (string) $setting['keyword']);
 			$settings[$keyword] = (string) $setting['data'];
 		}

@@ -11,34 +11,25 @@ use PDO;
  *
  * A resource is a filename and a type, and the type says what the filename
  * gets: a template is rendered for the client that asked, a file is handed
- * over as it was stored, a log is received from the phone rather than
- * served to it.
+ * over as stored, a log is received from the phone rather than served to it.
  *
  * Uploading and removing a file live here rather than in FileRepo, because
- * both are operations on a resource that happen to write a file -- the row
- * and the file are saved together or not at all.
+ * both are operations on a resource that happen to write a file -- the row and
+ * the file are saved together or not at all.
  */
 class Resources extends Service
 {
 	/**
-	 * What a resource can be.
-	 *
-	 * The first is the default, here and in the column: a resource somebody
-	 * has written a filename for and said nothing else about is a template,
-	 * which is what every resource written before 1.0.14 was.
+	 * What a resource can be. The first is the default, here and in the column.
 	 *
 	 * @var array<int, string>
 	 */
 	const TYPES = ['template', 'file', 'log'];
 
-	/**
-	 * @var Profiles
-	 */
+	/** @var Profiles */
 	private $profiles;
 
-	/**
-	 * @var FileRepo
-	 */
+	/** @var FileRepo */
 	private $files;
 
 	/**
@@ -75,8 +66,8 @@ class Resources extends Service
 		$offset = (int) ($_REQUEST['offset'] ?? 0);
 		$search = (string) ($_REQUEST['search'] ?? '');
 
-		// Always narrowed to the one profile: the table is on that profile's
-		// page and a resource has no meaning away from it.
+		// Always narrowed to the one profile: the table is on that profile's page
+		// and a resource has no meaning away from it.
 		$where = 'WHERE profile_id = :profile_id';
 		$params = [':profile_id' => $profileId];
 
@@ -116,10 +107,8 @@ class Resources extends Service
 	/**
 	 * One resource of one profile, for the editor.
 	 *
-	 * Read on the way into the page rather than fetched by it, the same way
-	 * the profile editor reads its profile. The profile is part of the lookup
-	 * rather than checked after it: a resource id that belongs to a different
-	 * profile names nothing at this URL.
+	 * The profile is part of the lookup rather than checked after it: a resource
+	 * id that belongs to a different profile names nothing at this URL.
 	 *
 	 * @param mixed $id        Resource id.
 	 * @param int   $profileId Profile it has to belong to.
@@ -153,10 +142,9 @@ class Resources extends Service
 		$name = trim((string) ($request['name'] ?? ''));
 		$template = (string) ($request['template'] ?? '');
 
-		// null when the caller said nothing about the type, which is not the
-		// same as saying 'template': a save that carries only a filename --
-		// the one an upload does on its way past -- leaves the type where it
-		// was rather than quietly putting it back to the default.
+		// null when the caller said nothing about the type, which is not the same
+		// as saying 'template': a save carrying only a filename -- the one an
+		// upload does on its way past -- leaves the type where it was.
 		$type = $this->resourceType($request);
 
 		if ($type === '') {
@@ -171,15 +159,14 @@ class Resources extends Service
 			return ['status' => false, 'message' => _('A resource needs the filename a phone asks for.')];
 		}
 
-		// The name is matched against the last segment of a request path, so
-		// a separator in it could never match anything. Better said here than
-		// found out as a phone quietly failing to provision.
+		// The name is matched against the last segment of a request path, so a
+		// separator in it could never match anything. Better said here than found
+		// out as a phone quietly failing to provision.
 		if (strpbrk($name, '/\\') !== false) {
 			return ['status' => false, 'message' => _('A filename cannot contain a slash.')];
 		}
 
-		// Counted in characters, which is what the column holds, rather than
-		// in bytes: a name is almost always ASCII, where the two are the same.
+		// Counted in characters, which is what the column holds, rather than bytes.
 		if (mb_strlen($name) > 180) {
 			return ['status' => false, 'message' => _('That filename is too long.')];
 		}
@@ -211,35 +198,26 @@ class Resources extends Service
 				':profile_id' => $profileId,
 			];
 
-			// Two reasons the template may not be written, and they are the
-			// same reason twice: this only writes what it was actually given.
-			//
-			// A resource that is not a template is not showing a template box
-			// at all, so its text stays underneath whatever it is now rather
-			// than being destroyed by it -- put it back to a template and the
-			// text is where it was. And a caller that sent no template did not
-			// mean an empty one: uploading a file saves the resource's name
-			// along with it, and that is a save of the name and nothing else.
+			// Two reasons the template may not be written, and they are the same
+			// reason twice: this writes only what it was actually given. A resource
+			// that is not a template is not showing a template box, so its text stays
+			// underneath; and a caller that sent no template did not mean an empty one.
 			if (array_key_exists('template', $request) && $type === 'template') {
 				$set .= ', template = :template';
 				$params[':template'] = $template;
 			}
 
-			// A resource that is no longer a file has no uploaded file, and
-			// the file goes with the saying so. This is the one thing the type
-			// being the authority costs: before it, a file was removed by
-			// pressing Remove and there was nothing else that could mean it.
-			// Now changing the type means it too, so the row cannot claim to
-			// be a template while a file sits in the repository under its id
-			// waiting to be served by a type it no longer has.
+			// A resource that is no longer a file has no uploaded file, and the file
+			// goes with the saying so -- otherwise the row could claim to be a
+			// template while a file sat in the repository under its id.
 			if ($type !== 'file' && $existing['file_size'] !== null) {
 				$this->files->removeRepoFile($id);
 				$set .= ', file_size = NULL, file_uploaded_at = NULL';
 			}
 
-			// The profile is in the WHERE rather than trusted from the form:
-			// a resource does not move between profiles, and an id from one
-			// profile posted at another is not an edit of anything.
+			// The profile is in the WHERE rather than trusted from the form: a
+			// resource does not move between profiles, and an id from one profile
+			// posted at another is not an edit of anything.
 			$stmt = $this->db->prepare(
 				"UPDATE `{$this->resourcesTable}`
 				SET $set
@@ -281,13 +259,11 @@ class Resources extends Service
 	/**
 	 * The type a request is asking for, if it is asking for one at all.
 	 *
-	 * Three answers rather than two, because there are three things a caller
-	 * can mean: a type it named, nothing (leave the type where it is -- the
-	 * filename-only save an upload makes on its way past), and a type that is
-	 * not one of ours, which is a refusal and not a fall back to the default.
-	 * A select on a page can only ever send one of the three, which is the
-	 * reason to be strict about the fourth: anything else reaching here came
-	 * from something other than the editor.
+	 * Three answers rather than two: a type it named, nothing (leave the type
+	 * where it is -- the filename-only save an upload makes on its way past), and
+	 * a type that is not one of ours, which is a refusal and not a fall back to
+	 * the default. A select can only send one of the three, which is the reason to
+	 * be strict about the fourth.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
@@ -307,9 +283,9 @@ class Resources extends Service
 	/**
 	 * The files one profile serves, as the navigator lists them.
 	 *
-	 * Narrowed to the profile, the way resourceRow() is and for the same
-	 * reason: a resource has no existence apart from the profile that serves
-	 * it, so there is no such thing as the list of all of them.
+	 * Narrowed to the profile, the way resourceRow() is: a resource has no
+	 * existence apart from the profile that serves it, so there is no such thing
+	 * as the list of all of them.
 	 *
 	 * @param int $profileId Profile whose files these are.
 	 *
@@ -331,13 +307,12 @@ class Resources extends Service
 	/**
 	 * Remove a resource.
 	 *
-	 * Nothing points at a resource the way a client points at a
-	 * profile, so there is nothing to refuse this for.
+	 * Nothing points at a resource the way a client points at a profile, so there
+	 * is nothing to refuse this for.
 	 *
-	 * Its uploaded file goes first, while there is still a row to say the
-	 * id: the file is named after the resource and nothing else, so a row
-	 * deleted without it would leave a number in the repository that
-	 * nothing on the system can account for.
+	 * Its uploaded file goes first, while there is still a row to say the id: the
+	 * file is named after the resource and nothing else, so a row deleted without
+	 * it would leave a number in the repository nothing can account for.
 	 *
 	 * @param mixed $id Resource id.
 	 *
@@ -356,12 +331,10 @@ class Resources extends Service
 	/**
 	 * Save the resource's name and type, when a file action was given them.
 	 *
-	 * Uploading and removing a file both save the resource they act on: the
-	 * button was pressed on a page that may be carrying a renamed resource or
-	 * one whose type has just been changed to File, and it means the page.
-	 * Neither has an opinion about what a name or a type may be --
-	 * saveResource() already knows, and a second opinion is a second thing to
-	 * keep in step with the first.
+	 * Uploading and removing a file both save the resource they act on: the button
+	 * was pressed on a page that may be carrying a renamed resource, and it means
+	 * the page. Neither has an opinion about what a name or a type may be --
+	 * saveResource() already knows.
 	 *
 	 * The template is deliberately not among them: what is not passed is not
 	 * written, and the text under a file stays as it was.
@@ -395,18 +368,13 @@ class Resources extends Service
 	/**
 	 * Store an uploaded file against a resource.
 	 *
-	 * The file is what a resource of type File serves, and the template it
-	 * had is left in the column underneath -- put the type back to Template
-	 * and the text is where it was.
+	 * The file is what a resource of type File serves; the template it had is left
+	 * in the column underneath, so putting the type back to Template restores it.
 	 *
-	 * The resource is saved as part of it, so choosing a file is the whole of
-	 * what has to be done: a filename edited on the way to the upload is
-	 * written with it rather than sitting unsaved behind a file that is
-	 * already stored.
-	 *
-	 * The resource has to have been written first, because the file is named
-	 * after its id and a resource that has never been saved has not got one.
-	 * That is why the control is inert on a new resource rather than absent.
+	 * The resource is saved as part of it, so choosing a file is the whole of what
+	 * has to be done. It has to have been written first, because the file is named
+	 * after its id -- which is why the control is inert on a new resource rather
+	 * than absent.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
@@ -414,11 +382,9 @@ class Resources extends Service
 	 */
 	public function uploadResourceFile($request)
 	{
-		// A body over post_max_size arrives with $_POST and $_FILES both
-		// empty and no error set anywhere -- PHP discards it before any of
-		// this runs. The only trace is a Content-Length with nothing behind
-		// it, and without this the answer would be 'no file was uploaded',
-		// which is true and useless.
+		// A body over post_max_size arrives with $_POST and $_FILES both empty and
+		// no error set anywhere -- PHP discards it before any of this runs. The
+		// only trace is a Content-Length with nothing behind it.
 		if (!$_POST && !$_FILES && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
 			return [
 				'status' => false,
@@ -448,11 +414,10 @@ class Resources extends Service
 		$name = $saved['name'] ?? (string) $resource['name'];
 		$type = $saved['type'] ?? (string) $resource['type'];
 
-		// The type is what says a resource serves a file, so it is what says
-		// a resource may be given one. Refused rather than set from here: an
-		// upload arriving at a resource that has not been declared a file is
-		// a page out of step with the row, and silently making the row agree
-		// is how a template with text in it stops being served.
+		// The type is what says a resource serves a file, so it is what says a
+		// resource may be given one. Refused rather than set from here: silently
+		// making the row agree is how a template with text in it stops being
+		// served.
 		if ($type !== 'file') {
 			return [
 				'status' => false,
@@ -470,8 +435,8 @@ class Resources extends Service
 			return ['status' => false, 'message' => $this->uploadErrorMessage((int) $file['error'])];
 		}
 
-		// Nothing else in here reads the name the browser sent, and this is
-		// why: the only thing it could be used for is a path.
+		// Nothing else in here reads the name the browser sent, and this is why:
+		// the only thing it could be used for is a path.
 		if (!is_uploaded_file((string) $file['tmp_name'])) {
 			return ['status' => false, 'message' => _('That was not an uploaded file.')];
 		}
@@ -495,9 +460,9 @@ class Resources extends Service
 		@chmod($target, 0640);
 		clearstatcache(true, $target);
 
-		// Read back off the file rather than taken from the upload: the size
-		// is the column that says this resource is a file at all, so it says
-		// what is on the disk and not what was meant to be.
+		// Read back off the file rather than taken from the upload: the size is
+		// the column that says this resource is a file at all, so it says what is
+		// on the disk and not what was meant to be.
 		$size = (int) filesize($target);
 
 		$stmt = $this->db->prepare(
@@ -526,11 +491,9 @@ class Resources extends Service
 	/**
 	 * Take the uploaded file off a resource.
 	 *
-	 * What is left is a resource of type File with nothing uploaded to it,
-	 * which is an unfinished resource and is answered as one -- not a
-	 * template, which it only becomes by being said to be one. The text it
-	 * had is still in the column underneath, untouched. The resource is saved
-	 * on the way through, as it is for an upload.
+	 * What is left is a resource of type File with nothing uploaded to it, which
+	 * is an unfinished resource and is answered as one -- not a template, which it
+	 * only becomes by being said to be one. The text it had is untouched.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *

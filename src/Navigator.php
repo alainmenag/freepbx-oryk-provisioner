@@ -13,50 +13,34 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * carrying what it is now and every sibling it could be instead.
  *
  * Two rules hold it together, and they are why the view needs to know nothing
- * about the module at all:
+ * about the module:
  *
  *   - a level lists its siblings, never its children;
  *   - choosing one goes to *that* level's own page, and everything under it is
  *     rebuilt from what is there.
  *
  * The second is what makes it a navigator rather than a record of where you
- * have been. Pick another profile and you land on that profile -- not on
- * whichever of its files happens to sit where the last one did, which is a
- * page you did not ask for and cannot predict.
+ * have been: pick another profile and you land on that profile, not on
+ * whichever of its files happens to sit where the last one did.
  *
- * Growing it is adding a branch to levels(). Nothing else has to know: every
- * level is the same shape, and the view draws them all the same way.
+ * Growing it is adding a branch to levels(). Two keys are places rather than
+ * values, and are built here because only the level knows what they cost:
  *
- * Two of those keys are places rather than values, and both are here rather
- * than in the view because only the level knows what they cost -- a resource's
- * are scoped to the profile it hangs off, a section's are the module itself:
- *
- *   - 'title': what this level is, plural, and where they are all listed. It
- *     is the small line over the crumb, and it is a link, so the level names
- *     its own list page as well as the row open in it. The view says nothing
- *     about the module, so it cannot work the label out from the key: it is
- *     given, which is also what lets it be translated and what lets two levels
- *     of the same key read differently if they ever need to.
- *   - 'add': where a *new* one of these is written, or null where that is not
- *     a thing you can do. Creating is not navigating, so it is not one of the
- *     options -- the view pins it under them, past a rule, out of the filter's
- *     way.
+ *   - 'title': what this level is, plural, and where they are all listed -- a
+ *     link, so the level names its own list page as well as the row open in
+ *     it. Given rather than derived, which is what lets it be translated.
+ *   - 'add': where a *new* one is written, or null where that is not a thing
+ *     you can do. Creating is not navigating, so it is not one of the options.
  */
 class Navigator extends Service
 {
-	/**
-	 * @var Clients
-	 */
+	/** @var Clients */
 	private $clients;
 
-	/**
-	 * @var Profiles
-	 */
+	/** @var Profiles */
 	private $profiles;
 
-	/**
-	 * @var Resources
-	 */
+	/** @var Resources */
 	private $resources;
 
 	/**
@@ -98,10 +82,8 @@ class Navigator extends Service
 
 			$levels[] = $this->profileLevel($profile);
 
-			// A resource hangs off a profile that has been written, so on a
-			// new profile this level is absent rather than empty: the page
-			// under this one does not exist yet, which is a different thing
-			// from existing with nothing on it.
+			// A resource hangs off a profile that has been written, so on a new profile
+			// this level is absent rather than empty.
 			if (ctype_digit((string) $profile) && (int) $profile) {
 				$levels[] = $this->resourceLevel((int) $profile, isset($at['resource']) ? $at['resource'] : null);
 			}
@@ -141,9 +123,8 @@ class Navigator extends Service
 
 		return [
 			'key' => 'section',
-			// Every section is a tab of the list page, so the list page is
-			// where they are all named -- the same URL the Provisioner crumb
-			// goes to, which is the module and its sections being one thing.
+			// Every section is a tab of the list page, so the list page is where they
+			// are all named -- the same URL the Provisioner crumb goes to.
 			'title' => [
 				'text' => _('Sections'),
 				'href' => '?display=oryk_provisioner',
@@ -153,8 +134,8 @@ class Navigator extends Service
 			'prompt' => _('Select a section'),
 			'search' => _('Search sections'),
 			'options' => $options,
-			// The module's sections are the module. There is no writing a
-			// fourth one, so this level is the one that draws no add row.
+			// The module's sections are the module. There is no writing a fourth one,
+			// so this level draws no add row.
 			'add' => null,
 		];
 	}
@@ -162,13 +143,9 @@ class Navigator extends Service
 	/**
 	 * Every client, by the MAC it is and the description it is known by.
 	 *
-	 * Twelve hex digits are exact and unreadable; a device description is
-	 * readable and not unique. The option carries both, and the filter reads
-	 * across the pair, so a phone is found by whichever of the two its owner
-	 * has in mind.
-	 *
-	 * A client written before anybody read the label off the handset has no
-	 * MAC to be named by, and shows the dash the lists show it as.
+	 * Twelve hex digits are exact and unreadable; a device description is readable
+	 * and not unique. The option carries both and the filter reads across the
+	 * pair, so a phone is found by whichever its owner has in mind.
 	 *
 	 * @param mixed $at Client id open here, 'new', or null.
 	 *
@@ -183,9 +160,8 @@ class Navigator extends Service
 			$id = (int) $row['id'];
 			$active = (string) $at === (string) $id;
 
-			// The MAC is optional, and a blank breadcrumb names nothing -- so a
-			// client without one reads as the dash every list already shows it
-			// as, in the option and in the crumb alike.
+			// The MAC is optional, and a blank breadcrumb names nothing -- so a client
+			// without one reads as the dash every list already shows it as.
 			$mac = (string) $row['mac'];
 			$mac = $mac === '' ? '-' : $mac;
 
@@ -215,8 +191,8 @@ class Navigator extends Service
 			'add' => [
 				'text' => _('New client'),
 				'href' => '?display=oryk_provisioner&client=',
-				// On the page writing one, the add row is where you are --
-				// so the level still has exactly one thing marked active.
+				// On the page writing one, the add row is where you are -- so the level
+				// still has exactly one thing marked active.
 				'active' => $at === 'new',
 			],
 		];
@@ -272,8 +248,8 @@ class Navigator extends Service
 	/**
 	 * The files one profile serves.
 	 *
-	 * Narrowed to the profile above it, the way everything about a resource
-	 * is: an id belonging to another profile names nothing at this URL.
+	 * Narrowed to the profile above it, the way everything about a resource is: an
+	 * id belonging to another profile names nothing at this URL.
 	 *
 	 * @param int   $profileId Profile whose files these are.
 	 * @param mixed $at        Resource id open here, 'new', or null.
@@ -303,9 +279,8 @@ class Navigator extends Service
 
 		return [
 			'key' => 'resource',
-			// The only level whose list is not a tab of the module's own list
-			// page: a profile's files are listed on that profile, so the
-			// title carries the profile the way every other href here does.
+			// The only level whose list is not a tab of the module's own list page: a
+			// profile's files are listed on that profile.
 			'title' => [
 				'text' => _('Resources'),
 				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&tab=resources',
@@ -315,8 +290,8 @@ class Navigator extends Service
 			'prompt' => _('Select a resource'),
 			'search' => _('Search resources'),
 			'options' => $options,
-			// Narrowed to its profile like everything else here: a file is
-			// written to the profile above it or to nothing at all.
+			// Narrowed to its profile like everything else here: a file is written to
+			// the profile above it or to nothing at all.
 			'add' => [
 				'text' => _('New resource'),
 				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=',

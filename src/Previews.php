@@ -9,33 +9,24 @@ use PDO;
 /**
  * Which filename does this phone ask this file by.
  *
- * One URL per row, whichever direction the file travels: a template and
- * an uploaded file are fetched from it, and a log is PUT to it and read
- * back from it, so every kind of resource has a link and it is the same
- * link.
+ * One URL per row, whichever direction the file travels: a template and an
+ * uploaded file are fetched from it, a log is PUT to it and read back from it.
  *
- * The resource editor's Clients tab and the client editor's Resources tab
- * are one idea seen from both ends, so both decorators are here rather
- * than one on each table -- which is also what keeps Clients and Resources
- * from having to know about each other. Neither reads more than the page
- * of rows it was handed: rendering a name costs a client's values, and a
- * row that is not on screen is not worth them.
+ * The resource editor's Clients tab and the client editor's Resources tab are
+ * one idea seen from both ends, so both decorators are here rather than one on
+ * each table -- which is also what keeps Clients and Resources from having to
+ * know about each other. Neither reads more than the page of rows it was
+ * handed: rendering a name costs a client's values.
  */
 class Previews extends Service
 {
-	/**
-	 * @var Clients
-	 */
+	/** @var Clients */
 	private $clients;
 
-	/**
-	 * @var Matcher
-	 */
+	/** @var Matcher */
 	private $matcher;
 
-	/**
-	 * @var Template
-	 */
+	/** @var Template */
 	private $template;
 
 	/**
@@ -53,18 +44,15 @@ class Previews extends Service
 	/**
 	 * The filename each client asks one resource for, added to its row.
 	 *
-	 * A resource's name is a template, so the file a phone actually asks for
-	 * is a different string per client -- which is why a resource has no one
-	 * URL to preview and why this belongs on a client row rather than on the
-	 * resource itself.
+	 * A resource's name is a template, so the file a phone actually asks for is a
+	 * different string per client -- which is why a resource has no one URL to
+	 * preview and why this belongs on a client row.
 	 *
-	 * Each row is rendered against the values the endpoint would render it
-	 * against, read the same way through clientByMac(), so what the tab
-	 * shows is what a phone gets rather than a second guess at it.
+	 * Each row is rendered against the values the endpoint would use, read the
+	 * same way through clientByMac(), so the tab shows what a phone gets rather
+	 * than a second guess at it.
 	 *
-	 * A row whose client has since moved to another profile is left
-	 * undecorated rather than shown a filename this resource would not
-	 * answer to.
+	 * A row whose client has since moved to another profile is left undecorated.
 	 *
 	 * @param array<int, array<string, mixed>> $rows       Client rows as read.
 	 * @param mixed                            $resourceId Resource they are being asked about.
@@ -114,18 +102,13 @@ class Previews extends Service
 	 * The filename one client asks each of these resources for, added to its row.
 	 *
 	 * withResourceFilenames() the other way round -- one resource over many
-	 * clients there, one client over many resources here -- so both go
-	 * through resourceRequest() and render against the values the endpoint
-	 * would use, rather than either tab having its own idea of what a phone
-	 * asks for.
+	 * clients there, one client over many resources here -- so both go through
+	 * resourceRequest() and render against the values the endpoint would use.
 	 *
-	 * The client's values are read once and rendered against every row: it is
-	 * one phone here, where withResourceFilenames() has one name and a page
-	 * of phones.
+	 * The client's values are read once and rendered against every row.
 	 *
-	 * A resource whose profile is not the one this client is assigned to is
-	 * left undecorated -- it is not served to this phone, whatever its name
-	 * renders to.
+	 * A resource whose profile is not this client's is left undecorated: it is not
+	 * served to this phone, whatever its name renders to.
 	 *
 	 * @param array<int, array<string, mixed>> $rows     Resource rows as read.
 	 * @param mixed                            $clientId Client they are being asked about.
