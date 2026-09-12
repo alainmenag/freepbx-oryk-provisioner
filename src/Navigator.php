@@ -145,7 +145,7 @@ class Navigator extends Service
 			// where they are all named -- the same URL the Provisioner crumb
 			// goes to, which is the module and its sections being one thing.
 			'title' => [
-				'text' => _('sections'),
+				'text' => _('Sections'),
 				'href' => '?display=oryk_provisioner',
 			],
 			'text' => $sections[$section],
@@ -204,7 +204,7 @@ class Navigator extends Service
 		return [
 			'key' => 'client',
 			'title' => [
-				'text' => _('clients'),
+				'text' => _('Clients'),
 				'href' => '?display=oryk_provisioner&tab=clients',
 			],
 			'text' => $at === 'new' ? _('New client') : $text,
@@ -253,7 +253,7 @@ class Navigator extends Service
 		return [
 			'key' => 'profile',
 			'title' => [
-				'text' => _('profiles'),
+				'text' => _('Profiles'),
 				'href' => '?display=oryk_provisioner&tab=profiles',
 			],
 			'text' => $at === 'new' ? _('New profile') : $text,
@@ -307,7 +307,7 @@ class Navigator extends Service
 			// page: a profile's files are listed on that profile, so the
 			// title carries the profile the way every other href here does.
 			'title' => [
-				'text' => _('resources'),
+				'text' => _('Resources'),
 				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&tab=resources',
 			],
 			'text' => $at === 'new' ? _('New resource') : $text,

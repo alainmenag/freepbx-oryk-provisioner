@@ -101,17 +101,11 @@ $e = function ($value) {
 	 * under it. What it points at is one word, so one word is what it is.
 	 */
 	.oryk-nav .breadcrumb > li > .oryk-nav-title {
-		align-self: flex-start;
 		padding: 0 7px;
 		border: 0;
 		font-size: 12px;
 		line-height: 17px;
 		color: #999;
-	}
-	.oryk-nav .breadcrumb > li > a.oryk-nav-title:hover,
-	.oryk-nav .breadcrumb > li > a.oryk-nav-title:focus {
-		color: #333;
-		text-decoration: underline;
 	}
 
 	/* A name that is typed exactly -- a filename, twelve hex digits -- is
@@ -239,6 +233,7 @@ $e = function ($value) {
 	<ol class="breadcrumb">
 
 		<li>
+			<a href="?display=oryk_provisioner" class="oryk-nav-title">Home</a>
 			<a href="?display=oryk_provisioner" style="font-weight: bolder;"><?php echo $e(_('Provisioner')); ?></a>
 		</li>
 
