@@ -244,7 +244,9 @@ class Clients extends Service
 	 * The client a MAC names, with the FreePBX device and profile behind it.
 	 *
 	 * One statement rather than three lookups: the whole of what rendering
-	 * needs is one row wide.
+	 * needs is one row wide. `pc.id` is on it because a stored log lives in a
+	 * directory named after the client -- see LogRepo -- and the endpoint has
+	 * only this row to learn that from.
 	 *
 	 * @param string $mac Normalised MAC address.
 	 *
@@ -254,6 +256,7 @@ class Clients extends Service
 	{
 		$stmt = $this->db->prepare(
 			"SELECT
+				pc.id,
 				pc.mac,
 				pc.token,
 				pc.enabled,
@@ -618,12 +621,15 @@ class Clients extends Service
 	 * Nothing points at a client the way a client points at a profile, so
 	 * there is nothing to refuse this for.
 	 *
-	 * What it has sent us goes with it, and goes first -- while there is
-	 * still a row to say the MAC. The log directory is named after the MAC
-	 * and nothing else, so a row deleted without it would leave a directory
-	 * on the PBX that nothing on the system can account for, holding the boot
-	 * logs of a phone the module has forgotten. That is the order and the
-	 * reason deleteResource() has for an uploaded file.
+	 * What it has sent us goes with it. The log directory is named after this
+	 * id and nothing else, so a row deleted without it would leave a
+	 * directory on the PBX that nothing on the system can account for,
+	 * holding the boot logs of a phone the module has forgotten -- and the
+	 * next client written would be given the same id by MySQL long before
+	 * anybody noticed, and inherit them. That is the reason deleteResource()
+	 * has for an uploaded file, and it is why this does not need the row: the
+	 * id it was called with is the whole of what says where the logs are, so
+	 * there is nothing to read first and nothing to have read too late.
 	 *
 	 * Its rows in the provisioning log deliberately stay. They are keyed on
 	 * the MAC rather than on this id precisely so that they outlive the
@@ -638,11 +644,7 @@ class Clients extends Service
 	 */
 	public function deleteClient($id)
 	{
-		$client = $this->clientRow($id);
-
-		if ($client) {
-			$this->logs->removeClientLogs($client['mac']);
-		}
+		$this->logs->removeClientLogs($id);
 
 		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");
 		$stmt->execute([':id' => (int) $id]);

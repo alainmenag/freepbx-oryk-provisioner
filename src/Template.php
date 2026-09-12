@@ -94,12 +94,15 @@ class Template extends Service
 			'extension.number' => (string) ($row['extension'] ?? ''),
 			'extension.name' => (string) ($extension['name'] ?? ''),
 			'extension.voicemail' => (string) ($extension['voicemail'] ?? ''),
-			// The client's own two facts. Under `client.` rather than
-			// `device.` because they are the module's, not FreePBX's: every
-			// device.* name above is answered by the devices table or by the
-			// sip settings behind it, and these two are answered by the row
-			// an operator typed them into. A client without them renders
-			// empty, like every other name nothing answers to.
+			// The client's own facts. Under `client.` rather than `device.`
+			// because they are the module's, not FreePBX's: every device.*
+			// name above is answered by the devices table or by the sip
+			// settings behind it, and these are answered by the client row.
+			// A client without them renders empty, like every other name
+			// nothing answers to. `client.id` is the one an operator meets
+			// outside a template: it is the directory a phone's logs are
+			// stored in.
+			'client.id' => (string) ($row['id'] ?? ''),
 			'client.public_ip' => (string) ($row['public_ip'] ?? ''),
 			'client.private_ip' => (string) ($row['private_ip'] ?? ''),
 			'profile.id' => (string) ($row['profile_id'] ?? ''),
@@ -162,6 +165,7 @@ class Template extends Service
 				'device.secret' => _('SIP secret'),
 			],
 			_('Client') => [
+				'client.id' => _('This client'),
 				'client.private_ip' => _('Address on the local network'),
 				'client.public_ip' => _('Address the site is reached at'),
 			],

@@ -37,7 +37,9 @@ and the rendering.
   (firmware, ringtones).
 - Takes the boot and app logs a phone PUTs back, when the profile has a
   resource of type **Log** by that name, and keeps them per client under
-  `ASTLOGDIR/provisioner/<mac>/`.
+  `ASTLOGDIR/provisioner/<client id>/` — the id rather than the MAC, so a
+  corrected MAC does not strand what a phone has already sent, and deleting a
+  client takes its logs with it.
 - Fills `{{placeholder}}` names from the client, its FreePBX device, that
   device's extension, and the device's own SIP settings.
 - Answers phones at `/provisioner/`, without an admin session — and, for a
