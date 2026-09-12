@@ -125,6 +125,13 @@ class Installer extends Service
 		// serve -- and switching it off is a deliberate act taken afterwards,
 		// on the client or from its row on the list.
 		//
+		// public_ip and private_ip are where the phone is, written down by
+		// whoever set it up rather than discovered: nothing here reaches a
+		// phone, so there is nothing that could fill them in. private_ip is
+		// what the Clients list draws its link to the handset's own web
+		// interface from, which is why both are validated as addresses on the
+		// way in -- see Clients::address().
+		//
 		// last_seen is the last time the endpoint answered this client with a
 		// 200, written by the request that was answered. It is on the client
 		// rather than derived from the provisioning log beside it, because
@@ -142,6 +149,8 @@ class Installer extends Service
 				`token` VARCHAR(255) NULL DEFAULT NULL,
 				`enabled` TINYINT(1) NOT NULL DEFAULT 1,
 				`last_seen` DATETIME NULL DEFAULT NULL,
+				`public_ip` VARCHAR(45) NULL DEFAULT NULL,
+				`private_ip` VARCHAR(45) NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -197,6 +206,7 @@ class Installer extends Service
 		$this->schema->addClientEnabledColumn();
 		$this->schema->addProfileEnabledColumn();
 		$this->schema->addClientLastSeenColumn();
+		$this->schema->addClientAddressColumns();
 
 		$this->linkEngine();
 

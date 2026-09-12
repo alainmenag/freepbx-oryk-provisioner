@@ -94,6 +94,14 @@ class Template extends Service
 			'extension.number' => (string) ($row['extension'] ?? ''),
 			'extension.name' => (string) ($extension['name'] ?? ''),
 			'extension.voicemail' => (string) ($extension['voicemail'] ?? ''),
+			// The client's own two facts. Under `client.` rather than
+			// `device.` because they are the module's, not FreePBX's: every
+			// device.* name above is answered by the devices table or by the
+			// sip settings behind it, and these two are answered by the row
+			// an operator typed them into. A client without them renders
+			// empty, like every other name nothing answers to.
+			'client.public_ip' => (string) ($row['public_ip'] ?? ''),
+			'client.private_ip' => (string) ($row['private_ip'] ?? ''),
 			'profile.id' => (string) ($row['profile_id'] ?? ''),
 			'profile.name' => (string) ($row['profile_name'] ?? ''),
 			'server.host' => $this->serverHost(),
@@ -152,6 +160,10 @@ class Template extends Service
 				'device.tech' => _('pjsip or sip'),
 				'device.username' => _('SIP username'),
 				'device.secret' => _('SIP secret'),
+			],
+			_('Client') => [
+				'client.private_ip' => _('Address on the local network'),
+				'client.public_ip' => _('Address the site is reached at'),
 			],
 			_('Extension') => [
 				'extension.number' => _('Extension the device is attached to'),
