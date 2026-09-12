@@ -129,7 +129,7 @@ $tabs = [
 									<th data-field="profile" data-formatter="formatClientProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
 									<th data-field="secure" data-formatter="formatClientSecure" data-sortable="true"><?php echo _('Secure'); ?></th>
 									<th data-field="last_seen" data-formatter="formatClientSeen" data-sortable="true"><?php echo _('Last Seen'); ?></th>
-									<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
+									<th data-field="actions" data-formatter="formatClientActions" data-align="right"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
@@ -163,7 +163,7 @@ $tabs = [
 								<tr>
 									<th data-field="name" data-formatter="formatProfileName" data-sortable="true" ><?php echo _('Name'); ?></th>
 									<th data-field="assigned" data-formatter="formatAssignedClients" data-sortable="true"><?php echo _('Clients'); ?></th>
-									<th data-field="actions" data-formatter="formatProfileActions"><?php echo _('Actions'); ?></th>
+									<th data-field="actions" data-formatter="formatProfileActions" data-align="right"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
@@ -442,14 +442,9 @@ $tabs = [
 	// from: a button that led nowhere on most rows would be worse than no
 	// button, and the column says as much by being shorter.
 	function formatClientActions(value, row) {
-		const actions = [
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`
-		];
+		const actions = [];
 
 		const phone = orykPhoneUrl(row.private_ip);
-
-		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
 
 		if (phone) {
 			actions.push(
@@ -459,7 +454,11 @@ $tabs = [
 			);
 		}
 
-		return `<div class="flex gap-3">${actions.join('')}</div>`;
+		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
+		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
+
+		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
 	}
 
 	function formatClientRow(row) {
@@ -473,10 +472,10 @@ $tabs = [
 	// column beside it.
 	function formatProfileActions(value, row) {
 		return [
-			`<div class="flex gap-3">`,
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
+			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			orykSwitch(row, 'setProfileEnabled', '#profile_table', 'profile', 'every client assigned to it is refused'),
 			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');
 	}

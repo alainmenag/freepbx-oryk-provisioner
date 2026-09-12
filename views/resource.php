@@ -353,7 +353,7 @@ $tabs = [
 										<th data-field="mac" data-formatter="formatClientMac" data-sortable="true"><?php echo _('MAC Address'); ?></th>
 										<th data-field="device_id" data-formatter="formatDevice" data-sortable="true"><?php echo _('Device'); ?></th>
 										<th data-field="extension" data-formatter="formatExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
-										<th data-field="actions" data-formatter="formatClientActions"><?php echo _('Actions'); ?></th>
+										<th data-field="actions" data-formatter="formatClientActions" data-align="right"><?php echo _('Actions'); ?></th>
 									</tr>
 								</thead>
 							</table>
@@ -415,15 +415,15 @@ $tabs = [
 	// the client out of the path and such a URL would answer for the wrong
 	// phone.
 	function formatClientActions(value, row) {
-		const actions = [
-			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`
-		];
+		const actions = [];
 
 		if (row.url) {
 			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this client receives it">Render</a>`);
 		}
 
-		return `<div class="flex gap-3">${actions.join('')}</div>`;
+		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
+
+		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
 	}
 
 	// Uploading and removing the file are requests of their own rather than
