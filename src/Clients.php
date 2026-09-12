@@ -311,11 +311,28 @@ class Clients extends Service
 			];
 		}
 
-		// NULL rather than '', and the unique key on the column is the whole of
-		// why: MySQL counts NULLs as distinct from each other and empty strings
-		// as equal, so stored as '' the second client without a MAC would be
-		// refused as a duplicate of the first. See Schema::relaxClientMacColumn().
-		$mac = $mac === '' ? null : $mac;
+		// If this is a new client without a MAC, insert a placeholder row to get an ID
+		if (!$id && !$mac) {
+			$stmt = $this->db->prepare(
+				"INSERT INTO `{$this->clientsTable}` (enabled)
+				VALUES (:enabled)"
+			);
+			$stmt->execute([':enabled' => 0]);
+			$id = (int) $this->db->lastInsertId();
+		}
+
+		if (!$id) {
+			return ['status' => false, 'message' => _('Failed to generate a client ID.')];
+		}
+
+		// Generate a placeholder MAC for the new client if it doesn't have one.
+		if (!$mac) {
+			$mac = '02' . str_pad((string) $id, 10, '0', STR_PAD_LEFT);
+		}
+
+		if (!$mac) {
+			return ['status' => false, 'message' => _('Failed to generate a MAC address.')];
+		}
 
 		$deviceId = trim((string) ($request['device_id'] ?? ''));
 		$deviceId = $deviceId === '' ? null : $deviceId;
