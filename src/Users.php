@@ -280,7 +280,8 @@ class Users extends Service
 	 *
 	 * @return string The number saved under.
 	 *
-	 * @throws \Exception When the number is refused or the user has gone.
+	 * @throws \Exception When the number is refused, the id is not a user, or
+	 *                    Core would not write the device.
 	 */
 	public function store(array $input)
 	{
@@ -289,7 +290,9 @@ class Users extends Service
 		$email = array_key_exists('email', $input) ? trim((string) $input['email']) : null;
 		$stored = $id === '' ? null : $this->device($id);
 
-		if ($id !== '' && !$stored) {
+		// Only a user is saved as one: a handset posted here would be deleted
+		// and added back as an extension of its own
+		if ($id !== '' && (!$stored || ($stored['tech'] ?? '') !== 'pjsip' || (string) ($stored['user'] ?? '') !== (string) $stored['id'])) {
 			throw new \Exception(_('That user no longer exists.'));
 		}
 
@@ -402,12 +405,18 @@ class Users extends Service
 			\FreePBX::Core()->delDevice($stored['id'], true);
 		}
 
-		if (\FreePBX::Core()->addDevice($uid, 'pjsip', $generated, true)) {
-			\FreePBX::Core()->processEPM($uid, 'pjsip', true);
+		// The old row is already gone, so a refused add is a failed save, not
+		// a quiet one
+		if (!\FreePBX::Core()->addDevice($uid, 'pjsip', $generated, true)) {
+			$this->logError('unable to add device ' . $uid);
 
-			$this->endpoints->apply($uid);
-			$this->reload();
+			throw new \Exception(sprintf(_('The device for %s could not be written; see the FreePBX log.'), $uid));
 		}
+
+		\FreePBX::Core()->processEPM($uid, 'pjsip', true);
+
+		$this->endpoints->apply($uid);
+		$this->reload();
 
 		return (string) $uid;
 	}

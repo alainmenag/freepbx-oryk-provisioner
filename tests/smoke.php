@@ -310,6 +310,37 @@ is_eq('a keyword no driver names is not written to sip', isset($settings['not_a_
 is_eq('the forced settings still win', $settings['media_encryption']['value'], 'sdes');
 is_eq('the old row is replaced in edit mode', FreePBX::$core->deleted, [['1001', true]]);
 
+$s = build();
+FreePBX::$core->devices['9990000101'] = ['id' => '9990000101', 'tech' => 'pjsip', 'user' => '1001'];
+$threw = false;
+try {
+	$s['users']->store(['id' => '9990000101', 'extension' => '', 'name' => 'Handset']);
+} catch (\Exception $e) {
+	$threw = true;
+}
+is_eq('a handset posted as a user is refused', $threw, true);
+is_eq('and left alone', [FreePBX::$core->deleted, FreePBX::$core->added], [[], null]);
+
+/** A Core that will not write the device. */
+class RefusingCore extends StubCore
+{
+	public function addDevice($id, $tech, $settings, $editmode = false)
+	{
+		return false;
+	}
+}
+
+$s = build();
+FreePBX::$core = new RefusingCore();
+$threw = false;
+try {
+	$s['users']->store(['id' => '', 'extension' => '1001', 'name' => 'Desk']);
+} catch (\Exception $e) {
+	$threw = true;
+}
+is_eq('a device Core will not write is a failed save', $threw, true);
+is_eq('and saveUser says so', $s['users']->saveUser(['id' => '', 'extension' => '1001'])['status'], false);
+
 echo "\n  a changed number renumbers, and the clients follow:\n";
 
 $s = build();
