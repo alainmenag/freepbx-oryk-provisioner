@@ -7,25 +7,18 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * The mailbox side of an extension.
  *
- * FreePBX keeps mailboxes in voicemail.conf rather than in the database,
- * and reaches them through an alias keyed on the number rather than
- * directly, so a number that moves has three separate things to carry with
- * it: the entry in the configuration file, the messages on disk, and the
- * alias that makes message waiting and the direct dial code work. Getting
- * one of the three wrong is not visible until somebody rings the extension.
- *
- * This also answers what a mailbox is dialled as, which the call history
- * needs: the pseudo extensions Core puts in the dialplan and the feature
- * code that reaches a mailbox directly all carry the number.
+ * A moving number carries three things: the voicemail.conf entry, the
+ * messages on disk, and the alias message waiting and direct dial use.
+ * Getting one wrong is invisible until somebody rings the extension. Also
+ * answers what numbers dial a mailbox, for the call history.
  */
 class VoicemailManager extends Service
 {
 	/**
 	 * Move a mailbox from one extension to another.
 	 *
-	 * Voicemail boxes live in voicemail.conf rather than the database, so the
-	 * entry is rewritten under the new number and the messages on disk are
-	 * moved with it. Extensions without a mailbox are skipped.
+	 * Rewrites the voicemail.conf entry and moves the messages on disk.
+	 * Extensions without a mailbox are skipped.
 	 *
 	 * @param int|string $old Number being left behind.
 	 * @param int|string $new Number being moved to.
@@ -98,17 +91,12 @@ class VoicemailManager extends Service
 	/**
 	 * Move the device-to-mailbox alias that follows a mailbox.
 	 *
-	 * A FreePBX mailbox is not reached directly. The device asks for
-	 * `<id>@device` and an alias maps that onto the real
-	 * `<mailbox>@<context>`. On Asterisk 16.2 and later the alias is a
-	 * [pbxaliases] section that saveVoicemail() builds from the voicemail
-	 * module's own key/value store; before that it was a symlink under
-	 * voicemail/device. Both are keyed on the number, so a mailbox that
-	 * moves without its alias is a mailbox nothing points at: no message
-	 * waiting indicator, and *97 answering on an empty box.
+	 * `<id>@device` is aliased to `<mailbox>@<context>`: a [pbxaliases] entry
+	 * on Asterisk 16.2+, a symlink under voicemail/device before that. Both are
+	 * keyed on the number; a mailbox moved without its alias loses message
+	 * waiting and *97 answers an empty box.
 	 *
-	 * Nothing is saved here. The caller writes voicemail.conf out once the
-	 * mailbox and its alias have both been moved.
+	 * Nothing is saved here; the caller writes voicemail.conf afterwards.
 	 *
 	 * @param object     $voicemail Voicemail module instance.
 	 * @param int|string $old       Number being left behind.
@@ -178,10 +166,8 @@ class VoicemailManager extends Service
 	/**
 	 * Keep the extension's voicemail email in step with the device email.
 	 *
-	 * Voicemail addresses live in voicemail.conf rather than the database, so
-	 * this edits the mailbox in place the same way the voicemail module does
-	 * and leaves the password, greeting name, pager and options untouched.
-	 * Extensions without a mailbox are skipped.
+	 * Edits the mailbox in place, leaving password, name, pager and options
+	 * untouched. Extensions without a mailbox are skipped.
 	 *
 	 * @param int|string  $extension Extension/user number.
 	 * @param string|null $email     Email to store, null to leave it alone.
@@ -229,17 +215,11 @@ class VoicemailManager extends Service
 	/**
 	 * The numbers that reach an extension's mailbox rather than the extension.
 	 *
-	 * Core adds a set of pseudo extensions to the dialplan for a mailbox, and
-	 * a prefix dials one directly. The prefix is a feature code and the
-	 * feature codes are themselves that prefix and two digits, so on a two
-	 * digit extension it collides with them: taking *98 for extension 98
-	 * would be taking everybody's voicemail. Short extensions therefore get
-	 * the pseudo extensions and nothing else.
-	 *
-	 * The four pseudo extensions come first, always, in a fixed order, and
-	 * the prefixed number last. Callers rewriting one number into another
-	 * line the two lists up by position, so nothing here may become
-	 * conditional ahead of them.
+	 * The four pseudo extensions Core adds, then the direct dial prefix plus
+	 * the number. An extension under three digits gets no prefixed number:
+	 * *98 would collide with the feature codes. Callers line lists up by
+	 * position, so the pseudo extensions must stay first, unconditional,
+	 * in fixed order.
 	 *
 	 * @param int|string $extension Extension whose mailbox is wanted.
 	 *
@@ -269,10 +249,8 @@ class VoicemailManager extends Service
 	/**
 	 * The prefix that dials a mailbox directly.
 	 *
-	 * This is the voicemail module's own feature code rather than a setting,
-	 * so it is asked for where feature codes live. An administrator can
-	 * change it, and can turn it off, in which case no such numbers were ever
-	 * put in the dialplan and there is nothing of that shape to find.
+	 * The voicemail module's feature code, which an administrator can change
+	 * or disable.
 	 *
 	 * @return string The prefix, or an empty string when there is none.
 	 */

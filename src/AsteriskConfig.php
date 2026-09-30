@@ -8,42 +8,17 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * One Asterisk configuration file, changed without disturbing anything this
  * module did not write.
  *
- * The files under /etc/asterisk ending in `_custom` and `_custom_post` are
- * shared ground. FreePBX generates around them and never rewrites them, so
- * every module that wants a setting applied after the generated
- * configuration writes into the same file, and none of them owns it.
+ * The `_custom` / `_custom_post` files are shared ground (see ARCHITECTURE.md,
+ * "Users"), so this never rebuilds the file: it holds the lines as they are,
+ * changes only the lines it was asked about, and leaves the rest byte for
+ * byte. A value already right is not rewritten, so a no-op save touches
+ * nothing.
  *
- * Reading one with parse_ini_file() and writing it back out would be right
- * about the settings and wrong about everything else: comments, ordering,
- * spacing and every section this module has never heard of would come back
- * rearranged, or not come back at all. The next module to look at the file
- * would not recognise what it left there.
- *
- * So this does not rebuild the file. It holds the file as the lines it
- * actually contains, changes only the lines it was asked about, and leaves
- * the rest byte for byte. A value that is already right is not rewritten at
- * all, which means a save that changes nothing touches nothing.
- *
- * What it understands of the format is what those files use:
- *
- *   sections, with the flags Asterisk allows on them -- `[1001](+)` adds to
- *   a section defined elsewhere, `(!)` declares a template, `(tpl)`
- *   inherits one;
- *
- *   `key = value` lines, and the `key => value` spelling older files use;
- *
- *   `;` comments to the end of a line, and `;-- --;` comment blocks, which
- *   have to be understood rather than ignored: a section header inside one
- *   is not a section, and a key inside one is not set.
- *
- * The same section name may legitimately appear more than once -- that is
- * what `(+)` is for. Reading takes the last value, which is the one
- * Asterisk ends up applying; writing rewrites the first occurrence in place
- * and drops any later duplicate of that same key, so what the file says
- * afterwards is what Asterisk will do either way.
- *
- * Nothing here knows what a setting means. What this module pins on a
- * device is EndpointSettings; this is the file underneath it.
+ * It understands section flags (`(+)`, `(!)`, `(tpl)`), `key = value` and
+ * `key => value`, `;` comments and `;-- --;` blocks -- a header or key inside
+ * a block is not one. A section name may repeat: reads take the last value
+ * (what Asterisk applies); writes rewrite the first occurrence and drop later
+ * duplicates of that key. Setting meanings live in EndpointSettings.
  */
 class AsteriskConfig extends Service
 {
@@ -132,10 +107,7 @@ class AsteriskConfig extends Service
 	}
 
 	/**
-	 * Read the file in.
-	 *
-	 * A file that is not there reads as empty rather than as an error, so a
-	 * first write creates it.
+	 * Read the file in. A missing file reads as empty, so a first write creates it.
 	 *
 	 * @param bool $force Read again even if it has already been read.
 	 *
@@ -280,15 +252,10 @@ class AsteriskConfig extends Service
 	/**
 	 * Write settings into a section, leaving everything else alone.
 	 *
-	 * A setting already in the section is rewritten where it stands, keeping
-	 * its indentation, its separator and any comment after it. One that is
-	 * not there is added after the last setting in the section. A section
-	 * that is not there is added at the end of the file, with the flags
-	 * given.
-	 *
-	 * The flags are only used for a section being created. A section already
-	 * in the file is left with the header it has, because that header may be
-	 * the one another module wrote.
+	 * An existing setting is rewritten in place, keeping its indentation,
+	 * separator and trailing comment; a new one goes after the section's last
+	 * setting; a new section goes at the end. $flags apply only to a section
+	 * being created -- an existing header may be another module's.
 	 *
 	 * @param string               $section Section name.
 	 * @param array<string, mixed> $values  Settings to write.
@@ -341,11 +308,8 @@ class AsteriskConfig extends Service
 	}
 
 	/**
-	 * Take a whole section out of the file.
-	 *
-	 * Every block carrying the name goes, header and all. What is left is
-	 * the file without it: the blank line a removed block was separated by
-	 * is not left doubled up, and nothing else moves.
+	 * Take every block carrying the name out of the file, header and all,
+	 * without leaving a doubled blank line.
 	 *
 	 * @param string $section Section name.
 	 *
@@ -386,16 +350,12 @@ class AsteriskConfig extends Service
 	}
 
 	/**
-	 * Read the file, change it and write it back, with nobody else in it.
+	 * Read the file, change it and write it back under a lock.
 	 *
-	 * This is how the file is meant to be edited. The read and the write are
-	 * one step from the outside: the file is locked, read fresh, handed to
-	 * the callback, and written only if the callback changed something.
-	 *
-	 * Two admins saving two devices at the same moment is the case this is
-	 * for. Without the lock, both would read the file, and the second to
-	 * finish would write back a copy that never had the first one's change
-	 * in it.
+	 * This is how the file is meant to be edited: locked, read fresh, handed
+	 * to the callback, written only if something changed. Without the lock,
+	 * two concurrent saves would each read the file and the second would
+	 * write back a copy without the first one's change.
 	 *
 	 * @param callable $mutator Given this instance; whatever it returns is returned.
 	 *
@@ -425,13 +385,10 @@ class AsteriskConfig extends Service
 	/**
 	 * Write the file out.
 	 *
-	 * The new contents go to a temporary file in the same directory and are
-	 * renamed over the original, so Asterisk and every other module reading
-	 * the file see either what was there before or the whole of what is
-	 * there now, and never a half-written file. Ownership and mode are
-	 * carried over from the file being replaced: this runs as the web user,
-	 * and a configuration file Asterisk can no longer read is a worse
-	 * outcome than a setting that did not get written.
+	 * Written to a temporary file in the same directory and renamed over the
+	 * original, so readers never see a half-written file. Ownership and mode
+	 * are carried over: this runs as the web user, and a file Asterisk can no
+	 * longer read is worse than a setting that did not get written.
 	 *
 	 * @return bool True when the file was written.
 	 *
@@ -679,9 +636,8 @@ class AsteriskConfig extends Service
 	/**
 	 * The file as sections, worked out from the lines it currently has.
 	 *
-	 * Re-read on every call rather than kept, because every change moves the
-	 * line numbers underneath it and an index that has quietly gone stale is
-	 * the way this kind of class corrupts a file.
+	 * Recomputed on every call, never cached: every change moves the line
+	 * numbers, and a stale index is how this kind of class corrupts a file.
 	 *
 	 * @return array<int, array<string, mixed>> Blocks, in file order.
 	 */
@@ -754,10 +710,8 @@ class AsteriskConfig extends Service
 	/**
 	 * The part of a line Asterisk reads as configuration.
 	 *
-	 * Everything from an unescaped `;` to the end of the line is a comment,
-	 * except `;--`, which opens a block that runs until `--;` and may run
-	 * over lines. A header or a setting inside such a block is not one, so
-	 * this has to be understood rather than skipped.
+	 * An unescaped `;` comments out the rest of the line, except `;--`, which
+	 * opens a block running to `--;`, possibly over lines.
 	 *
 	 * @param string $line      The line as it stands.
 	 * @param bool   $commented Whether a comment block was open before it.
@@ -846,14 +800,11 @@ class AsteriskConfig extends Service
 	/**
 	 * Take the lock that makes a read, a change and a write one step.
 	 *
-	 * The lock is its own file rather than the configuration file, because
-	 * the write replaces the configuration file with a different one: a lock
-	 * held on the file being replaced stops meaning anything the moment it
-	 * is.
-	 *
-	 * A lock that cannot be taken is logged and stepped over. Losing a
-	 * setting to a collision that may not happen is better than refusing to
-	 * save a device on a system where the lock directory is not writable.
+	 * The lock is its own file, because the write renames a new file over the
+	 * configuration file. Its name stays `oryk-connect-<md5>.lock` so this
+	 * module and oryk_connect, which write the same file, take the same lock
+	 * while both are installed -- do not rename it. A lock that cannot be
+	 * taken is logged and stepped over rather than refusing the save.
 	 *
 	 * @return resource|null The lock handle, or null when there is none.
 	 */
@@ -897,9 +848,8 @@ class AsteriskConfig extends Service
 	/**
 	 * Check a section name is one that can be written and read back.
 	 *
-	 * Section names reach this from a form, so a name carrying a bracket, a
-	 * comment or a newline is refused rather than written: it would come
-	 * back as something else, or as another section entirely.
+	 * Names come from a form; a bracket, comment or newline is refused, as it
+	 * would read back as something else or as another section.
 	 *
 	 * @param mixed $section Proposed name.
 	 *
@@ -939,10 +889,8 @@ class AsteriskConfig extends Service
 	}
 
 	/**
-	 * Check a value.
-	 *
-	 * A value carrying a newline would be read back as a second setting, or
-	 * as a section, so it is refused here rather than written.
+	 * Check a value. A newline is refused: it would read back as another
+	 * setting or a section.
 	 *
 	 * @param mixed $value Proposed value.
 	 *

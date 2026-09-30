@@ -7,15 +7,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * The User Manager account behind an Extension/User device.
  *
- * One distinction runs through all of this and is the reason it is worth
- * keeping in one place: an account named after the extension is one this
- * module made and owns, and an account that merely has the extension
- * assigned to it belongs to a person who linked it by hand. The first
- * follows the extension wherever it goes and is deleted with it; the second
- * outlives it and must never be renamed or removed, only unassigned.
- *
- * Getting that backwards deletes somebody's login, so every method here
- * that writes checks which of the two it is holding before it does.
+ * An account named after the extension is this module's: it follows the
+ * extension and is deleted with it. An account that merely has the
+ * extension assigned belongs to a person and is only ever unassigned, never
+ * renamed or removed. Getting that backwards deletes somebody's login, so
+ * every write checks which it holds.
  */
 class UsermanManager extends Service
 {
@@ -23,8 +19,7 @@ class UsermanManager extends Service
 	 * Look up the User Manager account tied to an extension.
 	 *
 	 * An account named after the extension is preferred over one that merely
-	 * has the extension assigned to it, so the caller can tell the account
-	 * this module owns from a person's account linked by hand.
+	 * has it assigned.
 	 *
 	 * @param int|string $extension Extension/user number.
 	 *
@@ -53,11 +48,8 @@ class UsermanManager extends Service
 	/**
 	 * The account this module owns for an extension, if it owns one.
 	 *
-	 * An account named after the extension was created here, and is this
-	 * module's to rename and to delete. An account that merely has the
-	 * extension assigned to it belongs to a person who linked it by hand,
-	 * and is not: it outlives the extension and only ever loses the
-	 * assignment. Everything that writes asks this first.
+	 * Owned means named after the extension. Everything that writes asks
+	 * this first.
 	 *
 	 * @param int|string $extension Extension/user number.
 	 *
@@ -78,10 +70,9 @@ class UsermanManager extends Service
 	/**
 	 * Make sure a User Manager account exists for the given extension.
 	 *
-	 * This uses the same entry point as the FreePBX extension screen
-	 * (Userman::processQuickCreate), so the account lands in the default
-	 * directory, gets the extension assigned, and picks up the configured
-	 * groups, UCP template and welcome email.
+	 * Goes through Userman::processQuickCreate, like the extension screen, so
+	 * the account gets the default directory, groups, UCP template and
+	 * welcome email.
 	 *
 	 * @param int|string  $extension   Extension/user number.
 	 * @param string|null $displayname Display name for a new account.
@@ -185,11 +176,9 @@ class UsermanManager extends Service
 	/**
 	 * Carry a User Manager account over to a new extension.
 	 *
-	 * The account is updated rather than replaced, so its password, groups,
-	 * UCP settings and login history survive the renumbering. An account
-	 * named after the old extension is this module's own and is renamed with
-	 * it; one that merely has the extension assigned belongs to a person, so
-	 * only the assignment follows.
+	 * Updated rather than replaced, so password, groups and UCP settings
+	 * survive. This module's own account is renamed; a person's account only
+	 * has the assignment moved.
 	 *
 	 * @param array<string, mixed>|null $account     Account on the old number.
 	 * @param int|string                $old         Number being left behind.
@@ -245,11 +234,9 @@ class UsermanManager extends Service
 	}
 
 	/**
-	 * Delete the User Manager account belonging to an extension.
+	 * Delete the User Manager account this module owns for an extension.
 	 *
-	 * Only an account whose username matches the extension is removed, so an
-	 * account that merely has the extension assigned to it (a real person
-	 * linked by hand) is left alone.
+	 * An account that merely has the extension assigned is left alone.
 	 *
 	 * @param int|string $extension Extension/user number.
 	 *

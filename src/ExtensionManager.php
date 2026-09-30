@@ -8,18 +8,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * The Core extension behind an Extension/User device, and the state
  * Asterisk reads about it.
  *
- * An extension is in two places at once: rows in the database, which are
- * what FreePBX shows, and keys in the Asterisk database, which are what
- * Asterisk acts on. Core normally keeps the two in step, and the places it
- * does not are the reason this class exists.
- *
- * Writing only the name rather than deleting and re-adding the user is one
- * of those places: the extension screen in FreePBX rebuilds the whole
- * extension, which resets voicemail, ring timers and everything else this
- * module does not own. Clearing the Asterisk keys by hand is another: Core
- * skips them in the edit mode a renumbering has to use to protect a
- * mailbox, so a number retired that way keeps its keys unless they are
- * taken out here.
+ * An extension lives in database rows (what FreePBX shows) and Asterisk
+ * database keys (what Asterisk acts on). This covers the places Core does
+ * not keep the two in step: writing only the name, since rebuilding the
+ * extension would reset settings this module does not own, and clearing
+ * the keys Core skips in the edit mode a renumbering uses.
  */
 class ExtensionManager extends Service
 {
@@ -56,11 +49,9 @@ class ExtensionManager extends Service
 	/**
 	 * Write the voicemail context an extension's mailbox is in.
 	 *
-	 * Core::addUser() reads the mailbox before a renumbering has moved it,
-	 * so the extension is left naming a context its mailbox is no longer in,
-	 * or naming none at all. The value has to be written back once the box
-	 * has actually moved, in both of the places Core keeps it: the row
-	 * FreePBX reads, and the Asterisk key the dialplan reads.
+	 * Core::addUser() reads the mailbox before a renumbering moves it, so this
+	 * must run after the box has moved. Writes both the row FreePBX reads and
+	 * the Asterisk key the dialplan reads.
 	 *
 	 * @param int|string $extension Extension to write.
 	 * @param string     $context   Voicemail context the mailbox is in.
@@ -122,9 +113,7 @@ class ExtensionManager extends Service
 	/**
 	 * Keep the user/extension name in step with the device description.
 	 *
-	 * Only the name is touched. Deleting and re-adding the user the way the
-	 * FreePBX extension screen does would reset voicemail, ring timers and
-	 * every other setting this module does not own.
+	 * Only the name is touched, so settings this module does not own survive.
 	 *
 	 * @param int|string $extension Extension/user number.
 	 * @param string     $name      Name to store.
@@ -194,9 +183,8 @@ class ExtensionManager extends Service
 	/**
 	 * Take an extension's Asterisk database entries out.
 	 *
-	 * Core clears these itself when it deletes a user outright, and skips
-	 * them in edit mode. A renumbering that has to use edit mode to protect a
-	 * mailbox still wants them gone, so they are removed here.
+	 * Core skips these in the edit mode a renumbering uses to protect a
+	 * mailbox, so they would otherwise outlive the number.
 	 *
 	 * @param int|string $extension Number being retired.
 	 *

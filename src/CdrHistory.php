@@ -7,20 +7,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * The call history belonging to an extension.
  *
- * Nothing in FreePBX moves or removes this. A call detail record keeps the
- * number as it stood when the call was placed, the CDR module subscribes to
- * no core hook, and there is no renumbering of its own to hook into, so an
- * extension that is renumbered leaves its history on a number that no
- * longer answers, and one that is deleted leaves a set of records belonging
- * to somebody who no longer exists -- records that come back into view the
- * moment the number is reissued.
- *
- * Which tables exist and which columns they have is up to the site: the
- * transient copy only appears once the CDR trigger is set up, channel event
- * logging is optional, and the columns move with the FreePBX version. So
- * both of the operations here work out what is actually in front of them
- * rather than assuming, and step over a statement that names a column this
- * site does not have instead of abandoning the rest of the work.
+ * Nothing in FreePBX moves or removes CDR rows when an extension is
+ * renumbered or deleted. Which tables and columns exist varies by site, so
+ * both operations here discover them and step over a statement naming a
+ * missing column rather than abandoning the rest. See ARCHITECTURE.md,
+ * "Users".
  */
 class CdrHistory extends Service
 {
@@ -53,17 +44,10 @@ class CdrHistory extends Service
 	/**
 	 * Open the CDR database for a job that will take a while.
 	 *
-	 * Both of the operations here begin the same way, and the reason is the
-	 * same for both: the CDR module keeps its own database handle, which may
-	 * be a different server from the one everything else uses, and the site
-	 * may not have the module at all.
-	 *
-	 * The time limit goes with it. Of the columns these statements match on
-	 * only dst and dstchannel are indexed, so on a system with a long history
-	 * they read the table end to end. Being cut off half way through leaves
-	 * the history in a worse state than either finishing or never starting --
-	 * split across two numbers, or half deleted -- so this is allowed to take
-	 * as long as it takes.
+	 * The CDR module keeps its own handle, possibly on another server, and
+	 * may be absent. The time limit is lifted: only dst and dstchannel are
+	 * indexed, so these statements scan the table, and being cut off half
+	 * way leaves history split across two numbers or half deleted.
 	 *
 	 * @param string $doing What is about to be done, for the log.
 	 *
@@ -93,17 +77,9 @@ class CdrHistory extends Service
 	/**
 	 * Carry the call history over to a new extension number.
 	 *
-	 * Nothing in FreePBX does this. A call detail record keeps the number as
-	 * it stood when the call was placed, the CDR module subscribes to no
-	 * core hook, and FreePBX has no renumbering of its own to hook into, so
-	 * the history is rewritten here or it stays behind on a number that no
-	 * longer answers.
-	 *
-	 * What is rewritten is what the reports read: the CDR report matches on
-	 * src, dst, cnum and the two channel names, and displays clid. Recording
-	 * file names carry the extension as well and are deliberately left
-	 * alone, because the name has to keep matching the file on disk or the
-	 * recording stops being playable.
+	 * Rewrites what the CDR report matches on (src, dst, cnum, channel,
+	 * dstchannel) and displays (clid). Recording file names are left alone:
+	 * they must keep matching the file on disk to stay playable.
 	 *
 	 * @param int|string $old Number being left behind.
 	 * @param int|string $new Number being moved to.
@@ -243,28 +219,11 @@ class CdrHistory extends Service
 	/**
 	 * Take an extension's call history out of the CDR database.
 	 *
-	 * A deleted Extension/User leaves its records behind, because nothing in
-	 * FreePBX removes them: the CDR module subscribes to no core hook and
-	 * call detail records outlive the extension that made them. Left alone
-	 * they are a set of records belonging to somebody who no longer exists,
-	 * and they come back into view the moment the number is reissued.
-	 *
-	 * What goes is worked out from the call detail records and applied to
-	 * both tables. The records naming the extension are found first, and the
-	 * call identifiers on them -- the identifier of the record itself, and
-	 * the identifier of the chain it belongs to -- are what everything else
-	 * is deleted by. A call is more than one row in both tables: the sample
-	 * of a plain extension-to-extension call has one call detail record and
-	 * fifteen events across two channels, and only one of those two channels
-	 * carries the record's own identifier. Deleting by the chain is what
-	 * takes the other one with it.
-	 *
-	 * A call between two extensions belongs to both of them, and one of the
-	 * two may still be in service. It is removed all the same: the point of
-	 * this is that the deleted extension leaves nothing behind, and half a
-	 * call naming only the surviving party would be a record of a call with
-	 * nobody. The surviving extension loses those calls from its own history
-	 * as a consequence, and there is no undo.
+	 * Records naming the extension seed the set of calls; every row sharing
+	 * their uniqueid or linkedid then goes from the call detail tables and
+	 * cel. A call between two extensions is removed whole, so a surviving
+	 * extension loses it from its own history too, with no undo. See
+	 * ARCHITECTURE.md, "Users".
 	 *
 	 * @param int|string $extension Number being deleted.
 	 *
@@ -339,11 +298,8 @@ class CdrHistory extends Service
 	/**
 	 * Find the calls an extension was part of.
 	 *
-	 * Both identifiers are collected from every matching record: the
-	 * identifier of the record itself, and the identifier of the chain it
-	 * belongs to. The second is what reaches the other channels of the same
-	 * call, which carry an identifier of their own and would otherwise be
-	 * left behind.
+	 * Both the record's own identifier and its chain identifier are
+	 * collected; the chain is what reaches the call's other channels.
 	 *
 	 * @param object             $cdrdb     CDR database handle.
 	 * @param array<int, string> $tables    Call detail tables to look in.
@@ -430,10 +386,7 @@ class CdrHistory extends Service
 	}
 
 	/**
-	 * Delete every row belonging to a set of calls.
-	 *
-	 * Used for the events and for the records alike: both tables carry the
-	 * same two identifiers, so both are cleared the same way.
+	 * Delete every row belonging to a set of calls, in any table carrying both identifiers.
 	 *
 	 * @param object              $cdrdb    CDR database handle.
 	 * @param string              $table    Table to clear.
@@ -464,11 +417,7 @@ class CdrHistory extends Service
 	}
 
 	/**
-	 * Break a set of calls into conditions a statement can carry.
-	 *
-	 * A busy extension is a great many calls, and one statement naming all
-	 * of them at once is a statement no database will take, so they are
-	 * handed out in batches.
+	 * Break a set of calls into batched conditions a statement can carry.
 	 *
 	 * @param array<string, bool> $calls   Call identifiers, as keys.
 	 * @param array<int, string>  $columns Columns the table has.
@@ -511,11 +460,9 @@ class CdrHistory extends Service
 	/**
 	 * Report whether nothing points at a recording any more.
 	 *
-	 * A recording belongs to a call rather than to one leg of it, and its
-	 * name is written onto every record of that call, so one named by the
-	 * records that have just gone may still be named by a record that stayed.
-	 * Being unable to tell counts as still in use: an orphaned file costs
-	 * disk, and a wrongly deleted one costs the call.
+	 * A recording is named on every record of its call, so a surviving
+	 * record may still name it. Unable to tell counts as in use: an orphaned
+	 * file costs disk, a wrongly deleted one costs the call.
 	 *
 	 * @param object             $cdrdb  CDR database handle.
 	 * @param array<int, string> $tables Call detail tables to look in.
@@ -548,10 +495,8 @@ class CdrHistory extends Service
 	/**
 	 * Delete the audio a call recording left on disk.
 	 *
-	 * Recordings are filed by the date in their own name rather than by the
-	 * call, which is how the CDR module finds them to play. The name is
-	 * taken as a name and nothing else -- the path is built here -- so a row
-	 * carrying something unexpected cannot reach outside the recordings
+	 * The path is built here from the date in the name; the row supplies a
+	 * name only, so an unexpected value cannot reach outside the recordings
 	 * directory.
 	 *
 	 * @param string $file Recording file name from the call detail record.
@@ -591,14 +536,10 @@ class CdrHistory extends Service
 	/**
 	 * List the call detail tables this system keeps.
 	 *
-	 * The main table is named in Advanced Settings, and the name the CDR
-	 * module reports is the one it is currently reading, which on a system
-	 * running the CDR trigger is the transient copy rather than the
-	 * configured table. Both are asked for, and the defaults kept alongside.
-	 *
-	 * The transient copy exists because the trigger behind it only fires on
-	 * insert, so it is a second set of the same rows that nothing else
-	 * maintains and every one of them has to be handled in its own right.
+	 * Both the configured table and the one the CDR module reports are asked
+	 * for: with the CDR trigger running, the latter is the transient copy,
+	 * which the trigger fills on insert only, so it must be handled in its
+	 * own right.
 	 *
 	 * @param object $cdrdb CDR database handle.
 	 *
@@ -628,10 +569,6 @@ class CdrHistory extends Service
 	/**
 	 * Report whether a table is present in the CDR database.
 	 *
-	 * Which of the CDR tables exist depends on the site: the transient copy
-	 * only appears once the CDR trigger has been set up, and channel event
-	 * logging is optional.
-	 *
 	 * @param object $cdrdb CDR database handle.
 	 * @param string $table Table to look for.
 	 *
@@ -652,11 +589,8 @@ class CdrHistory extends Service
 	/**
 	 * List the columns a table actually has.
 	 *
-	 * Which columns are present varies with the FreePBX version and with the
-	 * optional modules a site has installed. A statement naming a column
-	 * that is not there fails as a whole, and unlike the rewrites -- which
-	 * run one column at a time and can afford to lose one -- a match clause
-	 * is a single condition, so it is built from what is really there.
+	 * A match clause is one condition, and naming a missing column fails it
+	 * whole, so it is built only from columns that are really there.
 	 *
 	 * @param object $cdrdb CDR database handle.
 	 * @param string $table Table to describe.
@@ -686,18 +620,11 @@ class CdrHistory extends Service
 	/**
 	 * Build the condition that finds an extension in a call detail record.
 	 *
-	 * Two columns, matched exactly: the two ends of the call. Nothing else a
-	 * record holds is matched on directly, and the reason is that a false
-	 * match here is not one row. Each record found contributes the call it
-	 * is and the chain it belongs to, and everything carrying either is
-	 * deleted from both tables -- so a caller id name that happens to read
-	 * as this number, or an account code a site uses for a tenant, would
-	 * take whole calls belonging to somebody else with it.
-	 *
-	 * The rest of a call is reached through those identifiers rather than by
-	 * matching, which is what makes two columns enough: the other channels
-	 * of the same call carry identifiers of their own and are found through
-	 * the chain, not through the number.
+	 * Only src and dst, matched exactly. A false match is not one row: each
+	 * record found pulls in its whole call and chain from every table, so a
+	 * caller id name or account code that reads as this number would delete
+	 * somebody else's calls. The call's other channels are reached through
+	 * the chain, which is why two columns are enough.
 	 *
 	 * @param int|string         $extension Number to find.
 	 * @param array<int, string> $columns   Columns the table has.
@@ -730,13 +657,10 @@ class CdrHistory extends Service
 	/**
 	 * Swap one number for another inside a channel name column.
 	 *
-	 * A channel name carries the number between the technology and the call
-	 * identifier, in three shapes: `PJSIP/1001-0000abcd`,
-	 * `Local/1001@from-internal-0000abcd`, and the follow-me channel
-	 * `Local/FMPR-1001@findmefollow-ringallv2-0000abcd`, which is the one the
-	 * CDR module's own history query looks for as `%-1001@%`. Matching on the
-	 * delimiters either side is what keeps 1001 from being found inside 11001
-	 * or inside the call identifier that follows it.
+	 * Handles `PJSIP/1001-…`, `Local/1001@…` and `Local/FMPR-1001@…` (the
+	 * form the CDR module's history query looks for as `%-1001@%`). Matching
+	 * on the delimiters keeps 1001 from being found inside 11001 or the call
+	 * identifier.
 	 *
 	 * @param object     $cdrdb  CDR database handle.
 	 * @param string     $t      Quoted table name.
@@ -772,14 +696,9 @@ class CdrHistory extends Service
 	/**
 	 * Run one call history update.
 	 *
-	 * The columns present in the CDR database vary with the FreePBX version
-	 * and with which optional modules the site has installed, so a statement
-	 * naming a column that is not there is logged and stepped over rather
-	 * than being allowed to abandon the rest of the move.
-	 *
-	 * A caller that is deleting rather than rewriting cannot read a return
-	 * of zero as nothing to do, because a statement that failed returns zero
-	 * as well, so it is told which of the two happened.
+	 * A statement naming a missing column is logged and stepped over. A
+	 * failure also returns zero, so $failed tells a deleting caller which
+	 * of the two happened.
 	 *
 	 * @param object                $cdrdb  CDR database handle.
 	 * @param string                $sql    Statement to run.

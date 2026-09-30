@@ -7,18 +7,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Which numbers are free, and what the next one is.
  *
- * An Extension/User device is its own device id, its own extension and its
- * own User Manager account, so a number is only free when all three of
- * those are free. Everything here is in service of that one question, and
- * of never answering it wrongly: a number handed out or accepted while
- * something already holds it does not fail, it overwrites, and what it
- * overwrites is somebody's extension.
- *
- * So the search for a conflict looks in all three places rather than the
- * one the caller happens to be about to write to, and generated ids are
- * taken from above the highest number any of them holds rather than from
- * the first gap, which means a number freed by a deletion is never handed
- * out again.
+ * An Extension/User number is a device id, an extension and a User Manager
+ * account at once, so it is free only when all three are. A number accepted
+ * while something holds it does not fail, it overwrites that extension.
+ * Generated ids come from above the highest number held anywhere, never
+ * from a gap, so a freed number is not handed out again.
  */
 class NumberAllocator extends Service
 {
@@ -53,10 +46,8 @@ class NumberAllocator extends Service
 	/**
 	 * Generate the next sequential device identifier.
 	 *
-	 * Identifiers are NUMBER_LENGTH digits long and always start with
-	 * NUMBER_PREFIX, so the range runs from 9990000001 to 9999999999. The
-	 * highest identifier already taken by a device or a user is incremented,
-	 * which keeps the numbers sequential and never reuses a freed id.
+	 * NUMBER_LENGTH digits starting with NUMBER_PREFIX; the highest id held
+	 * by a device or a user is incremented, so a freed id is never reused.
 	 *
 	 * @return string Device identifier.
 	 *
@@ -96,9 +87,8 @@ class NumberAllocator extends Service
 	/**
 	 * Validate an Extension/User number typed into the form.
 	 *
-	 * An Extension/User device is its own device id, extension and User
-	 * Manager account, so the number has to be digits only and free:
-	 * anything already holding it would otherwise be overwritten.
+	 * Must be digits only and free as device, extension and User Manager
+	 * account: anything already holding it would be overwritten.
 	 *
 	 * @param int|string      $number    Number typed into the form.
 	 * @param int|string|null $currentId Device being edited, if any.

@@ -7,39 +7,13 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Moving an Extension/User device to a different number.
  *
- * A number in FreePBX is not one thing. It is an extension, a User Manager
- * account, a mailbox, the alias that mailbox is reached through, whatever
- * handsets are pointed at it, what a UCP account is allowed to open, and
- * every call ever placed to or from it. Nothing in FreePBX moves that set
- * together, so this does, in the order that matters.
- *
- * The order is the whole of it, and most of it is not obvious:
- *
- *   the extension is created on the new number before the old one is given
- *   up, so a failure leaves the device where it was;
- *
- *   the mailbox moves before the old extension is deleted, and the context
- *   is written back afterwards, because Core reads the mailbox before it
- *   has moved;
- *
- *   the old extension is deleted in edit mode when its mailbox did not
- *   move, to stop Voicemail deleting a mailbox that is still in use, which
- *   then leaves Asterisk keys behind that have to be cleared by hand;
- *
- *   User Manager is moved after the old extension is gone, so it is not
- *   left unassigning the extension it has just been pointed at;
- *
- *   what an account may open moves before the history it opens;
- *
- *   the custom endpoint settings are given up with the old number, since
- *   the save this is part of writes them onto the new one;
- *
- *   provisioner clients follow once the old device has gone, so a phone is
- *   never pointed at a number with no device behind it.
- *
- * This class owns none of those things. It knows what has to happen to
- * each of them and in what sequence, which is a different job from doing
- * any of it, and the reason it is not a method on one of the others.
+ * A number is an extension, a User Manager account, a mailbox, UCP access,
+ * custom endpoint settings, provisioner clients and call history; nothing in
+ * FreePBX moves them together. This class owns none of them, only the order
+ * they move in, and that order is load-bearing: the new extension exists
+ * before the old is given up, the mailbox moves before the old extension is
+ * deleted, and clients are repointed only once the old device is gone. See
+ * ARCHITECTURE.md, "Users".
  */
 class ExtensionRenumberer extends Service
 {
@@ -127,14 +101,9 @@ class ExtensionRenumberer extends Service
 	/**
 	 * Move an Extension/User device to a different number.
 	 *
-	 * The extension, its User Manager account, its mailbox and every handset
-	 * pointed at it follow the device, so the number stays one thing across
-	 * Core, User Manager and Voicemail.
-	 *
-	 * The new number is expected to be free: assertAvailable() is what
-	 * stops a collision and it runs before anything here is written. The old
-	 * number is only given up once the new extension is in place, so a
-	 * failure leaves the device where it was.
+	 * The new number must already have passed assertAvailable(); nothing
+	 * here checks for a collision. The old number is given up only once the
+	 * new extension is in place, so a failure leaves the device where it was.
 	 *
 	 * @param int|string  $old         Number being left behind.
 	 * @param int|string  $new         Number being moved to.

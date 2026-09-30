@@ -7,40 +7,12 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * The pjsip settings this module pins on a device, and where they go.
  *
- * FreePBX generates pjsip.endpoint.conf from the devices table on every
- * reload, so a setting written there does not survive one, and a setting
- * FreePBX has no field for cannot be put there at all. What Asterisk reads
- * after it is pjsip.endpoint_custom_post.conf, and a section spelled
- * `[9990000001](+)` adds to the endpoint of the same name rather than
- * replacing it:
- *
- *     [9990000001](+)
- *     from_domain=oryk.io
- *
- * That file is not this module's. FreePBX never rewrites it, which is the
- * point of it, and any other module wanting an endpoint setting writes into
- * the same file. AsteriskConfig is what keeps that safe; this decides what
- * goes in.
- *
- * There is one setting so far, and where its value comes from is three
- * questions asked in order:
- *
- *   what was typed on the device, for the one endpoint that needs its own;
- *
- *   what the PBX is set to in Settings -> Advanced Settings, which is where
- *   the answer normally comes from and is one value for the whole system;
- *
- *   what the PBX is actually called, so a system nobody has configured
- *   still says something true rather than something wrong.
- *
- * The last of those is deliberately fussy: a hostname that is not a domain
- * name is not used at all. An endpoint with no from_domain behaves as it
- * always did, while one announcing `localhost.localdomain` in the From
- * header is a fault that would take a while to find.
- *
- * A second setting is a line in settings() and nothing else. Everything
- * about which file, which section, how a number that moved takes its
- * section with it and how a deleted device loses its own is already here.
+ * They are written as `[<id>](+)` sections in pjsip.endpoint_custom_post.conf,
+ * which adds to the endpoint FreePBX generates and survives a reload. That
+ * file is shared with other modules; AsteriskConfig keeps it safe, this
+ * decides what goes in. See ARCHITECTURE.md, "Users", for the file and for
+ * the order the from domain is resolved in. A second setting is one line
+ * in settings().
  */
 class EndpointSettings extends Service
 {
@@ -61,11 +33,6 @@ class EndpointSettings extends Service
 
 	/**
 	 * What the PBX-wide from domain is called in Advanced Settings.
-	 *
-	 * It is registered there, in a category of this module's own, rather than
-	 * kept somewhere only this module knows about: an administrator looking
-	 * for a value like this looks in Advanced Settings, and FreePBX already
-	 * has the field, the validation and the audit trail for one.
 	 */
 	const SETTING = 'ORYK_FROM_DOMAIN';
 
@@ -85,10 +52,8 @@ class EndpointSettings extends Service
 	private $config;
 
 	/**
-	 * The domain set for this PBX, once it has been looked up.
-	 *
-	 * Null until it has been: an empty string is an answer, and means the
-	 * PBX has none.
+	 * The domain set for this PBX, or null until looked up; an empty string
+	 * means the PBX has none.
 	 *
 	 * @var string|null
 	 */
@@ -122,12 +87,8 @@ class EndpointSettings extends Service
 	/**
 	 * What this module pins on an endpoint.
 	 *
-	 * This is the list. A setting added here is written on the next save of
-	 * every pjsip device, over whatever the endpoint had before.
-	 *
-	 * A setting that works out to nothing is still named. apply() takes that
-	 * as an instruction to remove it from the endpoint rather than to leave
-	 * whatever was written there last time.
+	 * A setting that works out to nothing is still named: apply() takes that
+	 * as an instruction to remove it from the endpoint.
 	 *
 	 * @param int|string $id Device identifier, which is the endpoint name.
 	 *
@@ -143,8 +104,7 @@ class EndpointSettings extends Service
 	/**
 	 * The domain an endpoint puts in the From header.
 	 *
-	 * What the device was given, or what the PBX is set to, or what the PBX
-	 * is called, or nothing.
+	 * See ARCHITECTURE.md, "Users", for the order it is resolved in.
 	 *
 	 * @param int|string|null $id Device identifier, or null for the PBX-wide
 	 *                            answer on its own.
@@ -171,10 +131,8 @@ class EndpointSettings extends Service
 	/**
 	 * Put the from domain into FreePBX's own settings.
 	 *
-	 * Called from the module's install, and safe to call again on every
-	 * upgrade. The keyword is the one oryk_connect registered, so a value set
-	 * there is the value read here; registering it names this module as the
-	 * owner, and the value already stored is passed back in so that taking
+	 * Safe to call on every install and upgrade. The keyword is the one
+	 * oryk_connect registered; the stored value is passed back in so taking
 	 * the setting over can never blank it.
 	 *
 	 * @return bool True when the setting is registered.
@@ -239,10 +197,8 @@ class EndpointSettings extends Service
 	/**
 	 * Set the from domain for this PBX.
 	 *
-	 * The same value Advanced Settings writes, for the times a script is
-	 * doing the setting up. Every pjsip endpoint without a domain of its own
-	 * picks it up on its next save; nothing already written changes until
-	 * then.
+	 * Endpoints pick it up on their next save; nothing already written
+	 * changes until then.
 	 *
 	 * @param string $domain The domain, or an empty string to clear it.
 	 *
@@ -268,18 +224,10 @@ class EndpointSettings extends Service
 	/**
 	 * Write an endpoint's settings.
 	 *
-	 * Only the settings named are touched. Anything else in the endpoint's
-	 * section, and every other section in the file, is left as it was --
-	 * including the sections another module put there.
-	 *
-	 * A setting that works out to nothing is taken out of the endpoint. A
-	 * device that had a domain and no longer resolves to one should stop
-	 * announcing the old one, not keep it because nothing overwrote it.
-	 *
-	 * A failure is logged and reported rather than thrown: a device that
-	 * saved should not be lost behind a configuration file that could not be
-	 * written, and the Apply Config the caller does next is what would have
-	 * made this live anyway.
+	 * Only the settings named are touched; the rest of the file, including
+	 * other modules' sections, is left as it was. A setting that works out to
+	 * nothing is taken out, so an old domain is not left announced. A failure
+	 * is logged and returned, not thrown, so a saved device is not lost.
 	 *
 	 * @param int|string           $id    Device identifier.
 	 * @param array<string, mixed> $extra Settings for this device alone, which
@@ -321,10 +269,9 @@ class EndpointSettings extends Service
 	/**
 	 * Take an endpoint's section out of the file.
 	 *
-	 * For a device being deleted, and for the number a renumbered device has
-	 * just left: a section naming an endpoint that no longer exists is not an
-	 * error to Asterisk, which is exactly why it would sit there until
-	 * somebody reused the number and wondered where the setting came from.
+	 * For a deleted device and a number a renumbering has left. Asterisk does
+	 * not complain about a section for a missing endpoint, so a stale one
+	 * would silently apply when the number is reused.
 	 *
 	 * @param int|string $id Device identifier.
 	 *
@@ -378,10 +325,8 @@ class EndpointSettings extends Service
 	/**
 	 * The from domain typed on one device.
 	 *
-	 * Devices keep it the way they keep a management link or a model name,
-	 * so it is read back off the device rather than passed around. On a save
-	 * the device has already been written by the time this is asked, which is
-	 * what makes the value that was just typed the value that is used.
+	 * Read back off the device; on a save the device is already written by
+	 * the time this is asked, so the value just typed is the one used.
 	 *
 	 * @param int|string|null $id Device identifier.
 	 *
@@ -407,11 +352,8 @@ class EndpointSettings extends Service
 	/**
 	 * What this PBX calls itself, when that is a domain name.
 	 *
-	 * The last answer before none, and the reason it is last: a hostname is
-	 * only sometimes the name a carrier or a far end knows the system by.
-	 * One that is not a domain name at all -- a bare name, a `.local` a Mac
-	 * picked up off the network, the localhost a fresh install starts with --
-	 * is worse in a From header than nothing, so it is not used.
+	 * A bare name, a `.local` or localhost is worse in a From header than
+	 * nothing, so it is not used.
 	 *
 	 * @return string The hostname, or an empty string when it is not usable.
 	 */
@@ -437,8 +379,7 @@ class EndpointSettings extends Service
 	}
 
 	/**
-	 * Run one change against the file, with the errors turned into a log
-	 * line and a false.
+	 * Run one change against the file, logging any error and returning false.
 	 *
 	 * @param callable $mutator What to change.
 	 * @param string   $subject What it was about, for the log.

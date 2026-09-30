@@ -7,20 +7,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * What an account is allowed to open.
  *
- * User Manager stores the extensions a UCP account may see as a list per
- * module, and Sangoma Connect keeps a row of its own naming the device.
- * Both hold the number outright rather than following the account's own
- * extension, so neither notices when a number moves or goes away.
- *
- * Left behind, the two failures look different to the person and are the
- * same mistake. A stale assignment after a renumber opens the call history
- * and voicemail of an extension that is no longer there, which reads as
- * though the records were lost with the number. A stale assignment after a
- * deletion shows an extension that is not assigned to them rather than one
- * that is gone.
- *
- * These tables are absent on installs without UCP or without Sangoma
- * Connect, which is the usual reason either method does nothing.
+ * User Manager (per-module lists) and Sangoma Connect (a row naming the
+ * device) both store the extension number outright, so neither follows a
+ * renumber or delete; this keeps them in step. Their tables are absent on
+ * installs without UCP or Sangoma Connect, which is the usual reason a
+ * method does nothing. See ARCHITECTURE.md, "Users".
  */
 class UcpAssignments extends Service
 {
@@ -32,15 +23,9 @@ class UcpAssignments extends Service
 	/**
 	 * Move the extension in the settings that decide what an account may see.
 	 *
-	 * User Manager stores the extensions a UCP account is allowed to open as
-	 * a list per module, and Sangoma Connect keeps its own row naming the
-	 * device. Both hold the number outright, so an account left pointing at
-	 * the old one opens its call history and voicemail on an extension that
-	 * is no longer there, which reads to the person as though the records
-	 * were lost along with the number.
-	 *
-	 * Accounts set to follow their own extension rather than a number are
-	 * already correct and are left alone.
+	 * A stale assignment opens the call history and voicemail of an extension
+	 * that no longer exists, which looks like lost records. Accounts set to
+	 * follow their own extension are already right and left alone.
 	 *
 	 * @param int|string $old Number being left behind.
 	 * @param int|string $new Number being moved to.
@@ -111,10 +96,8 @@ class UcpAssignments extends Service
 	/**
 	 * Take an extension out of the settings that decide what an account sees.
 	 *
-	 * An account this module owns goes with the extension, but one belonging
-	 * to a person outlives it with the number still listed among the
-	 * extensions they may open. UCP shows that as an extension that is not
-	 * assigned to them rather than as one that is gone.
+	 * A person's account outlives the extension; left listed, UCP shows it as
+	 * an unassigned extension rather than a gone one.
 	 *
 	 * @param int|string $extension Number being deleted.
 	 *
