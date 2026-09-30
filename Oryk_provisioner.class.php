@@ -9,6 +9,7 @@ use FreePBX_Helpers;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\Counts;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
+use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
@@ -91,6 +92,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Endpoint */
 	private $endpoint;
 
+	/** @var EndpointSettings */
+	private $endpointSettings;
+
 	/** @var FileRepo */
 	private $files;
 
@@ -166,7 +170,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs);
+		$this->endpointSettings = new EndpointSettings($freepbx);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->endpointSettings);
 
 		$this->counts = new Counts($freepbx);
 

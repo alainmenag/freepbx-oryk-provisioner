@@ -172,17 +172,20 @@ class EndpointSettings extends Service
 	 * Put the from domain into FreePBX's own settings.
 	 *
 	 * Called from the module's install, and safe to call again on every
-	 * upgrade: FreePBX keeps the value and the type of a setting it already
-	 * has and takes only the description, the category and the rest of the
-	 * presentation from here, so an administrator's value survives.
+	 * upgrade. The keyword is the one oryk_connect registered, so a value set
+	 * there is the value read here; registering it names this module as the
+	 * owner, and the value already stored is passed back in so that taking
+	 * the setting over can never blank it.
 	 *
 	 * @return bool True when the setting is registered.
 	 */
 	public function register()
 	{
 		try {
+			$current = trim((string) \FreePBX::Config()->get(self::SETTING));
+
 			\FreePBX::Config()->define_conf_setting(self::SETTING, [
-				'value' => '',
+				'value' => $current,
 				'defaultval' => '',
 				'name' => 'From Domain',
 				'description' => 'The domain a PJSIP endpoint puts in the From header. '
@@ -197,9 +200,9 @@ class EndpointSettings extends Service
 				'options' => self::DOMAIN_PATTERN,
 				'emptyok' => 1,
 				'level' => 0,
-				'category' => 'Oryk Connect',
-				// Named so FreePBX takes the setting away with the module
-				'module' => 'oryk_connect',
+				'category' => 'Oryk Provisioner',
+				// FreePBX removes a module's settings when it is uninstalled
+				'module' => 'oryk_provisioner',
 				'sortorder' => 10,
 			], true);
 		} catch (\Throwable $e) {
