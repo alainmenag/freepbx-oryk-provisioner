@@ -115,8 +115,8 @@ class Navigator extends Service
 		$sections = [
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
-			'logs' => _('Logs'),
 			'users' => _('Users'),
+			'logs' => _('Logs'),
 		];
 
 		$options = [];

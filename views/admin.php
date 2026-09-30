@@ -48,15 +48,15 @@ $tabs = [
 		'href' => '?display=oryk_provisioner&tab=profiles',
 		'count' => 'profiles',
 	],
-	'logs' => [
-		'label' => _('Logs'),
-		'href' => '?display=oryk_provisioner&tab=logs',
-		'count' => 'logs',
-	],
 	'users' => [
 		'label' => _('Users'),
 		'href' => '?display=oryk_provisioner&tab=users',
 		'count' => 'users',
+	],
+	'logs' => [
+		'label' => _('Logs'),
+		'href' => '?display=oryk_provisioner&tab=logs',
+		'count' => 'logs',
 	],
 ];
 ?>
