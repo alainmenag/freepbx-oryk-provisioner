@@ -23,9 +23,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * A scope narrows them with the same parameters a list command takes:
  * `profile_id` for the profile editor's tabs and the client editor's
- * Resources, `mac` for a Logs tab. A key that is there is honoured as given
- * rather than falling back to everything -- which is why a client with no
- * profile asks with profile_id=0 and means it.
+ * Resources, `mac` for a Logs tab, `device_id` for a user editor's Clients.
+ * A key that is there is honoured as given rather than falling back to
+ * everything -- which is why a client with no profile asks with profile_id=0
+ * and means it.
  */
 class Counts extends Service
 {
@@ -36,7 +37,8 @@ class Counts extends Service
 	 * the command and the JavaScript agreeing on a list, which is three places for
 	 * a tab to be left out of.
 	 *
-	 * @param array<string, mixed> $scope profile_id, mac: what narrows them.
+	 * @param array<string, mixed> $scope profile_id, mac, device_id: what
+	 *                                    narrows them.
 	 *                                    Anything else in it is ignored, so a
 	 *                                    whole request can be handed over.
 	 *
@@ -47,8 +49,13 @@ class Counts extends Service
 		$profileId = array_key_exists('profile_id', $scope) ? (int) $scope['profile_id'] : null;
 		$mac = array_key_exists('mac', $scope) ? Mac::stored($scope['mac']) : null;
 
+		// A user editor counts the clients pointing at it rather than a profile's.
+		$clients = array_key_exists('device_id', $scope)
+			? $this->rowCount($this->clientsTable, 'device_id', (string) $scope['device_id'])
+			: $this->rowCount($this->clientsTable, 'profile_id', $profileId);
+
 		return [
-			'clients' => $this->rowCount($this->clientsTable, 'profile_id', $profileId),
+			'clients' => $clients,
 			'profiles' => $this->rowCount($this->profilesTable),
 			'resources' => $this->rowCount($this->resourcesTable, 'profile_id', $profileId),
 			'logs' => $this->rowCount($this->logsTable, 'mac', $mac),

@@ -207,6 +207,19 @@ $tabs = [
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block">
 										<?php echo _('The extension this client registers as. Optional: a profile of static configuration renders without one, with the device values left empty.'); ?>
+										<?php
+										// Only a device that is its own extension is a user.
+										$deviceIsUser = false;
+										foreach ($freepbxDevices as $choice) {
+											if ((string) $choice['id'] === $deviceId && (string) ($choice['user'] ?? '') === $deviceId && ($choice['tech'] ?? '') === 'pjsip') {
+												$deviceIsUser = true;
+											}
+										}
+										?>
+										<?php if ($deviceIsUser): ?>
+											<a href="?display=oryk_provisioner&amp;user=<?php echo rawurlencode($deviceId); ?>"><?php echo _('Open this user'); ?></a> &middot;
+										<?php endif; ?>
+										<a href="?display=oryk_provisioner&amp;user="><?php echo _('New user'); ?></a>
 									</span>
 								</div>
 							</div>

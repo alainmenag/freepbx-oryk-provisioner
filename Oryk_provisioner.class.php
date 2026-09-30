@@ -188,11 +188,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources);
-		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->endpointSettings = new EndpointSettings($freepbx);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->endpointSettings);
 
+		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
 		$userman = new UsermanManager($freepbx);
@@ -211,6 +208,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->endpointSettings,
 			$this->clients
 		);
+
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users);
+		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->endpointSettings);
 
 		$this->counts = new Counts($freepbx);
 
@@ -234,7 +235,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->provisioningLog,
 			$this->counts,
 			$this->navigator,
-			$this->logs
+			$this->logs,
+			$this->users,
+			$this->endpointSettings
 		);
 	}
 
