@@ -33,6 +33,17 @@
 // module's functions rather than every module's. Both are read by
 // bootstrap.php, which /etc/freepbx.conf pulls in.
 
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, HEAD, PUT, OPTIONS');
+header('Access-Control-Allow-Headers: Authorization, Content-Type');
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+if ($method === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
+
 $bootstrap_settings = [];
 $bootstrap_settings['freepbx_auth'] = false;
 
@@ -46,7 +57,6 @@ $provisioner = \FreePBX::Oryk_provisioner();
 
 $requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); // /provisioner/00908f3bbcba.cfg
 $requestAgent = $_SERVER['HTTP_USER_AGENT'] ?? ''; // AUDC-IPPhone/2.0.0_build_15 (420HD; 00908F3BBCBA)
-$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // --- MAC ---
 
