@@ -7,9 +7,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * What every part of this module is given when it is built.
  *
- * Every subsystem reaches the same two things -- the FreePBX application and
- * the Asterisk database -- so they are taken apart once, here, along with the
- * four table names every repository needs.
+ * Every subsystem reaches the same three things -- the FreePBX application,
+ * the Asterisk database and the manager connection -- so they are taken apart
+ * once, here, along with the four table names every repository needs.
  *
  * The table names stay **properties rather than class constants**,
  * deliberately: every statement in this module is an interpolated string,
@@ -43,6 +43,9 @@ abstract class Service
 	/** @var \PDO Asterisk database handle. */
 	public $db;
 
+	/** @var object|null Asterisk manager connection; absent while Asterisk is down. */
+	protected $astman;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
@@ -50,6 +53,70 @@ abstract class Service
 	{
 		$this->FreePBX = $freepbx;
 		$this->db = $freepbx->Database;
+		$this->astman = $freepbx->astman ?? null;
+	}
+
+	/**
+	 * Whether a FreePBX module is installed and enabled.
+	 *
+	 * @param string $module Module rawname.
+	 *
+	 * @return bool True when the module can be used.
+	 */
+	protected function moduleActive($module)
+	{
+		try {
+			return (bool) $this->FreePBX->Modules->checkStatus($module);
+		} catch (\Throwable $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Whether the Asterisk manager can be written to. Every astdb write asks
+	 * first: a stopped Asterisk is a normal state during an install.
+	 *
+	 * @return bool True when the manager is connected.
+	 */
+	protected function astmanReady()
+	{
+		return $this->astman && $this->astman->connected();
+	}
+
+	/**
+	 * Log a failure, prefixed so the line can be traced to this module.
+	 *
+	 * @param string $message What happened.
+	 *
+	 * @return void
+	 */
+	protected function logError($message)
+	{
+		$this->log('oryk_provisioner: ' . $message, '', 'ERROR');
+	}
+
+	/**
+	 * Log something that was stepped over rather than failed.
+	 *
+	 * @param string $message What happened.
+	 *
+	 * @return void
+	 */
+	protected function logWarning($message)
+	{
+		$this->log('oryk_provisioner: ' . $message, '', 'WARNING');
+	}
+
+	/**
+	 * Log something worth looking back at.
+	 *
+	 * @param string $message What happened.
+	 *
+	 * @return void
+	 */
+	protected function logInfo($message)
+	{
+		$this->log('oryk_provisioner: ' . $message, '', 'INFO');
 	}
 
 	/**
