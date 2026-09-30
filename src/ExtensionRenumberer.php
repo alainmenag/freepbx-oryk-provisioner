@@ -32,7 +32,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *   what an account may open moves before the history it opens;
  *
  *   the custom endpoint settings are given up with the old number, since
- *   the save this is part of writes them onto the new one.
+ *   the save this is part of writes them onto the new one;
+ *
+ *   provisioner clients follow once the old device has gone, so a phone is
+ *   never pointed at a number with no device behind it.
  *
  * This class owns none of those things. It knows what has to happen to
  * each of them and in what sequence, which is a different job from doing
@@ -84,6 +87,13 @@ class ExtensionRenumberer extends Service
 	private $endpoints;
 
 	/**
+	 * Provisioner clients, which name their device by id.
+	 *
+	 * @var Clients|null
+	 */
+	private $clients;
+
+	/**
 	 * @param object            $freepbx    FreePBX application instance.
 	 * @param ExtensionManager  $extensions Core extensions.
 	 * @param VoicemailManager  $voicemail  Mailboxes.
@@ -91,6 +101,7 @@ class ExtensionRenumberer extends Service
 	 * @param UcpAssignments    $ucp        UCP assignments.
 	 * @param CdrHistory        $cdr        Call history.
 	 * @param EndpointSettings  $endpoints  Custom pjsip endpoint settings.
+	 * @param Clients|null      $clients    Provisioner clients to repoint.
 	 */
 	public function __construct(
 		$freepbx,
@@ -99,7 +110,8 @@ class ExtensionRenumberer extends Service
 		UsermanManager $userman,
 		UcpAssignments $ucp,
 		CdrHistory $cdr,
-		EndpointSettings $endpoints
+		EndpointSettings $endpoints,
+		?Clients $clients = null
 	) {
 		parent::__construct($freepbx);
 
@@ -109,6 +121,7 @@ class ExtensionRenumberer extends Service
 		$this->ucp = $ucp;
 		$this->cdr = $cdr;
 		$this->endpoints = $endpoints;
+		$this->clients = $clients;
 	}
 
 	/**
@@ -233,6 +246,11 @@ class ExtensionRenumberer extends Service
 
 		// Handsets and softphones registered against the old extension follow it
 		$this->extensions->repointDevices($old, $new);
+
+		// So do the phones this module provisions for it
+		if ($this->clients) {
+			$this->clients->repointDevice($old, $new);
+		}
 
 		// What the account is allowed to open, before the history it opens
 		$this->ucp->move($old, $new);
