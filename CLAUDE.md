@@ -78,12 +78,16 @@ diffing. Never rewrite a file wholesale to reword its comments.
 - Tab badges come from `Counts`, never from the table they label.
 - `Schema` steps are additive and ask `information_schema`, never a dbversion.
   `addResourceTypeColumn()` must stay after `addResourceFileColumns()`.
+- `AsteriskConfig`'s lock file stays named `oryk-connect-…` while any PBX may
+  still have `oryk_connect` installed: both write the same file.
 - PHP and views are indented with **tabs**. Operator-facing strings go through
   `_()`.
 
 ## Working practices
 
-- There is no test suite. `php -l` is the check, and it is not always to hand --
-  the sandbox Claude runs commands in on this machine has no PHP -- so lint
-  wherever there is one: a container, or the PBX itself.
+- `php tests/smoke.php` runs standalone checks against stubs, with nothing
+  installed; it covers the Users subsystems, not the provisioning side. `php -l`
+  is the other check. Neither is always to hand -- the sandbox Claude runs
+  commands in on this machine has no PHP -- so run them wherever there is one:
+  a container, or the PBX itself.
 - Branches are named `amena-<topic>` and merged to `main` through a PR.

@@ -52,6 +52,13 @@ and the rendering.
   switch it back on, and nothing about it is lost in the meantime. Switching a
   profile off stops every client assigned to it at once, without touching one
   of them.
+- Manages **users** — an extension, its User Manager account and its SIP
+  device as one number — from a Users tab: create, rename, renumber and delete
+  them, with voicemail, UCP access, call history and the clients provisioned
+  for them following along. This replaces `oryk_connect` for Extension/User
+  devices; see [Users](#users).
+- Sets a **From Domain** on every user's endpoint, from the user, from
+  *Advanced Settings*, or from the PBX hostname.
 - Records every request the endpoint answered — MAC, filename, status, method,
   address, User-Agent — on a Logs tab of its own and on each client's page.
   Metadata only: never the rendered body.
@@ -273,16 +280,17 @@ values rather than a 500.
 
 ## The admin interface
 
-*Oryk → Provisioner*. A list and three editors, told apart by which key the URL
+*Oryk → Provisioner*. A list and four editors, told apart by which key the URL
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 | URL | Page | Tabs |
 | --- | --- | --- |
-| `?display=oryk_provisioner` | the list | Clients, Profiles, Logs |
+| `?display=oryk_provisioner` | the list | Clients, Profiles, Logs, Users |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
+| `&user=<extension>` | one user (`&user=` for a new one) | User, Clients |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor. Save leaves you on
@@ -321,6 +329,71 @@ whose name carries another device's MAC gets its filename and no Render button
 **Deleting a profile** that clients are still assigned to is refused rather than
 cascading; its resources do cascade, since a resource has no existence apart
 from the profile that serves it.
+
+---
+
+## Users
+
+The **Users** tab lists every PJSIP extension that is its own device — the ones
+this module makes, and the ones made in FreePBX's Extensions page, which have
+the same shape. A user is not stored by this module at all: it is the Core
+device, extension, User Manager account and mailbox, kept in step.
+
+| Field | What it is |
+| --- | --- |
+| **Extension** | The device id, the extension and the User Manager username. Blank on a new user: the next free number in the `999…` range, ten digits. Typed: digits only, at most ten, and not held by any device, extension or User Manager account, or the save is refused and nothing is written. Changed: the user is renumbered. |
+| **Name** | The device description, extension name and User Manager display name. Blank: the number. |
+| **Email** | The User Manager account's email (and its welcome email) and the voicemail email. |
+| **From Domain** | See below. Blank follows the PBX; the field shows what blank comes to. |
+| **Secret** | The SIP password. Never shown. Blank on a new user: generated; on an existing one: unchanged. |
+
+Every save turns SDES media encryption on and applies the configuration, so
+it takes as long as *Apply Config*. Settings you gave an extension in FreePBX
+that this form has no field for are kept.
+
+The user's **Clients** tab lists the phones provisioned for it, and its **Add
+Client** opens a new client already pointed at this user. The client editor
+links back to its user.
+
+### Renumbering
+
+Change the Extension and save. The extension keeps its settings, the User
+Manager account keeps its password, groups and UCP settings, the mailbox and
+its messages move, UCP access moves, handsets pointed at the old number and
+**every client pointed at it** are repointed, and the call history is rewritten
+to the new number (`src`, `dst`, `cnum`, `clid`, channel names — recording file
+names are left alone so they still match the file on disk). The old number is
+given up only once the extension exists on the new one. Ring groups, queues and
+other destinations naming the old number are **not** updated.
+
+### Deleting
+
+> [!CAUTION]
+> Deleting a user is permanent. The device goes, and — once no other device
+> points at the extension — the extension, its User Manager account (when this
+> module made it), its UCP assignments, and **its call history and recordings**
+> in `cdr`, `transient_cdr`, `replicate_cdr` and `cel`. A call between two
+> extensions belongs to both, and is removed from the other's history too. Back
+> up `asteriskcdrdb` first if the history matters.
+
+Clients pointed at a deleted user are kept, with no device. Delete asks first,
+and says how many clients that is.
+
+### From Domain
+
+Each user's PJSIP endpoint gets a `from_domain`, written to
+`/etc/asterisk/pjsip.endpoint_custom_post.conf` as a `[<ext>](+)` section that
+adds to the endpoint FreePBX generates. First answer wins:
+
+1. the user's own **From Domain**;
+2. **Settings → Advanced Settings → Oryk Provisioner → From Domain**
+   (`ORYK_FROM_DOMAIN`), the normal place to set it;
+3. the PBX hostname, only when it is a real domain name.
+
+Nothing resolved takes it off the endpoint. A changed PBX-wide value reaches a
+user on its next save. The file is shared with other modules and only this
+module's lines are touched; it has to be writable by the web user, and a
+failure is logged while the user still saves.
 
 ---
 
@@ -387,6 +460,12 @@ at all.
 Install the module as usual (`fwconsole ma install oryk_provisioner`, or upload
 it in Module Admin).
 
+`install()` registers **From Domain** in Advanced Settings (keeping any value
+already there) and adds indexes on `devices.id`, `devices.user` and
+`userman_users.email` for the Users tab. Back up the FreePBX database before
+installing or upgrading. Uninstalling removes the From Domain setting with the
+module, as FreePBX does with every module's settings.
+
 `install()` also symlinks the module's `engine/` directory into the web root:
 
 ```
@@ -408,6 +487,39 @@ http://<pbx>/provisioner/<mac>
 `engine/.htaccess` rewrites everything under the directory to `provisioner.php`,
 so the filename a phone asks for arrives as the request path. `uninstall()`
 removes the symlink — and only if it still resolves to this module's engine.
+
+### Coming from Oryk Connect
+
+This module replaces `oryk_connect` for **Extension/User** devices. Nothing
+moves: users, extensions, accounts and mailboxes are Core's, so every one Connect
+made is already on the Users tab. Both can be installed at once; they write the
+same endpoint file under the same lock.
+
+Before removing Connect, check it has nothing left only it can manage:
+
+```sql
+SELECT id, description FROM devices WHERE tech = 'rtsp';
+SELECT s.data AS kind, COUNT(*) FROM devices d
+  JOIN sip s ON s.id = d.id AND s.keyword = 'kind' GROUP BY s.data;
+```
+
+**RTSP feeds need Connect's driver** — do not remove Connect while any
+`tech = 'rtsp'` device exists. Handsets and softphones are plain PJSIP devices
+and keep working; nothing in Oryk edits them afterwards (a handset's place here
+is a client).
+
+Then:
+
+1. `fwconsole ma upgrade oryk_provisioner` — this takes the From Domain setting
+   over.
+2. `fwconsole setting ORYK_FROM_DOMAIN` — the value you had in Connect.
+3. Save one user from the Users tab, and check its section in
+   `pjsip.endpoint_custom_post.conf` and that nothing else in the file changed.
+4. Remove Connect (`rm -rf /var/www/html/admin/modules/oryk_connect`, since
+   Connect is marked non-uninstallable), then `fwconsole reload`.
+5. `fwconsole setting ORYK_FROM_DOMAIN` again. If it is empty, set it again.
+
+Bookmarks to `?display=oryk_connect` become `?display=oryk_provisioner&tab=users`.
 
 ---
 
@@ -435,6 +547,8 @@ Know what this is before you expose it:
   tell a known one from an unknown one.
 - **Secrets are not masked anywhere in the UI.** The Render links serve the real
   rendered file, secret included.
+- **Deleting a user deletes its call history and recordings** — see
+  [Deleting](#deleting).
 - The provisioning log records metadata only — MAC, file, profile — never the
   rendered body or any parameter value.
 - Sortable columns are whitelisted and mapped to SQL names before being written
@@ -478,7 +592,7 @@ Oryk_provisioner.class.php   BMO: the contract FreePBX calls, an autoloader
                              for src/, and the AJAX dispatch table. Since
                              1.0.13 it is a thin adapter and nothing else
 src/Service.php              what every subsystem is given: FreePBX, the
-                             database, the four table names
+                             database, the manager, the four table names
 src/Clients.php              |
 src/Profiles.php             |  one per table
 src/Resources.php            |
@@ -499,6 +613,17 @@ src/Freepbx.php              the only file that asks FreePBX about a device
 src/Mac.php                  a MAC as written, and as found in a filename
 src/Schema.php               the tables, as they are added to
 src/Installer.php            installing and uninstalling
+src/Users.php                saving, deleting and listing a user
+src/NumberAllocator.php      which numbers are free, and the next one
+src/ExtensionRenumberer.php  moving a user to another number, in order
+src/ExtensionManager.php     the Core extension and its astdb keys
+src/UsermanManager.php       the User Manager account behind a user
+src/VoicemailManager.php     mailboxes, their aliases, what dials them
+src/UcpAssignments.php       what a UCP account may open
+src/CdrHistory.php           moving and removing a number's call history
+src/EndpointSettings.php     the From Domain, and where it is written
+src/AsteriskConfig.php       an Asterisk config file, edited in place
+tests/smoke.php              standalone checks: php tests/smoke.php
 src/Logs.php                 how this module writes to the FreePBX log
 engine/provisioner.php       the endpoint: who is asking and what they asked
                              for, and nothing else
@@ -508,10 +633,11 @@ views/admin.php              the list
 views/client.php             the client editor
 views/profile.php            the profile editor
 views/resource.php           the resource editor
+views/user.php               the user editor
 views/partials/navigator.php the breadcrumb every page is topped with
 views/partials/tabs.php      the tab strip every page is laid out under
 views/partials/counts.php    the badges on those tabs
-views/partials/editor.php    the CSS and JS all three editors share
+views/partials/editor.php    the CSS and JS every editor shares
 views/partials/logs.php      the provisioning log, as a table
 views/partials/placeholders.php   the placeholder reference
 ```
@@ -520,5 +646,6 @@ AJAX commands, all authenticated through `ajax.php`: `listClients`,
 `listProfiles`, `listResources`, `listLogs`, `saveClient`, `saveProfile`,
 `saveResource`, `deleteClient`, `deleteProfile`, `deleteResource`,
 `setClientEnabled`, `setProfileEnabled`, `uploadResourceFile`,
-`deleteResourceFile`, `clearLogs`, `counts`. A new one has to be named in both
+`deleteResourceFile`, `clearLogs`, `counts`, `listUsers`, `saveUser`,
+`deleteUser`. A new one has to be named in both
 `ajaxRequest()` and `ajaxHandler()`.
