@@ -45,10 +45,16 @@ class Pages extends Service
 	/** @var LogRepo */
 	private $logs;
 
+	/** @var Users */
+	private $users;
+
+	/** @var EndpointSettings */
+	private $endpoints;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints)
 	{
 		parent::__construct($freepbx);
 
@@ -61,12 +67,14 @@ class Pages extends Service
 		$this->counts = $counts;
 		$this->navigator = $navigator;
 		$this->logs = $logs;
+		$this->users = $users;
+		$this->endpoints = $endpoints;
 	}
 
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list and three editors, told apart by which key the URL carries.
+	 * A list and four editors, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&client=<id>                one client
@@ -75,6 +83,8 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&profile=                   a new one
 	 *   ?display=oryk_provisioner&profile=<id>&resource=<id> one of its files
 	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
+	 *   ?display=oryk_provisioner&user=<extension>           one user
+	 *   ?display=oryk_provisioner&user=                      a new one
 	 *
 	 * A key present but empty is the same page doing the same thing, minus a row
 	 * to replace.
@@ -85,6 +95,10 @@ class Pages extends Service
 	{
 		// Checked before ?profile= only because neither URL carries the other's
 		// key: a client names its profile in a select, not in the address.
+		if (isset($_REQUEST['user'])) {
+			return $this->showUser(trim((string) $_REQUEST['user']), (string) ($_REQUEST['tab'] ?? ''));
+		}
+
 		if (isset($_REQUEST['client'])) {
 			return $this->showClient(trim((string) $_REQUEST['client']), (string) ($_REQUEST['tab'] ?? ''));
 		}
@@ -159,7 +173,9 @@ class Pages extends Service
 	 */
 	private function showClient($wanted, $tab = '')
 	{
-		$client = ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0, 'enabled' => 1];
+		// A new client can arrive with its device already chosen -- the user
+		// editor's Clients tab links here with it.
+		$client = ['id' => 0, 'mac' => '', 'device_id' => trim((string) ($_REQUEST['device_id'] ?? '')), 'profile_id' => 0, 'enabled' => 1];
 
 		if ($wanted !== '') {
 			$found = $this->clients->clientRow($wanted);
@@ -189,6 +205,63 @@ class Pages extends Service
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'client',
 		]);
+	}
+
+	/**
+	 * Render the user editor.
+	 *
+	 * Keyed by extension rather than by an id of this module's: a user is a
+	 * Core device, and a renumbering save moves it to a new address.
+	 *
+	 * @param string $wanted Extension, or '' for a new one.
+	 * @param string $tab    Tab to open on: user|clients.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showUser($wanted, $tab = '')
+	{
+		$user = ['extension' => '', 'name' => '', 'email' => '', 'from_domain' => '', 'secure' => 1, 'clients' => 0];
+
+		if ($wanted !== '') {
+			$found = $this->users->userRow($wanted);
+
+			// doConfigPageInit() has already bounced a number that is no user.
+			if (!$found) {
+				return $this->showList('users');
+			}
+
+			$user = $found;
+		}
+
+		$extension = (string) $user['extension'];
+		$available = $this->userTabs($user);
+
+		return load_view(dirname(__DIR__) . '/views/user.php', [
+			'user' => $user,
+			'navigator' => $this->navigator->levels('users', [
+				'user' => $extension !== '' ? $extension : 'new',
+			]),
+			// Blank on the form is not nothing: it is this.
+			'pbxDomain' => $this->endpoints->fromDomain(null),
+			'counts' => $this->counts->pageCounts(['device_id' => $extension]),
+			'available' => $available,
+			'tab' => !empty($available[$tab]) ? $tab : 'user',
+		]);
+	}
+
+	/**
+	 * Which of a user's tabs have anything behind them. Shared with
+	 * getActionBar(), which has to agree with the pane rendered.
+	 *
+	 * @param array<string, mixed> $user The user row.
+	 *
+	 * @return array<string, bool> Keyed by tab.
+	 */
+	private function userTabs(array $user)
+	{
+		return [
+			'clients' => (string) ($user['extension'] ?? '') !== '',
+		];
 	}
 
 	/**
@@ -230,6 +303,14 @@ class Pages extends Service
 
 		if ($tab === '') {
 			return '';
+		}
+
+		if (isset($_REQUEST['user'])) {
+			$wanted = trim((string) $_REQUEST['user']);
+			$user = $wanted === '' ? null : $this->users->userRow($wanted);
+			$available = $user ? $this->userTabs($user) : [];
+
+			return !empty($available[$tab]) ? $tab : '';
 		}
 
 		if (isset($_REQUEST['client'])) {
@@ -330,7 +411,7 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
-		$tab = in_array($tab, ['profiles', 'logs'], true) ? $tab : 'clients';
+		$tab = in_array($tab, ['profiles', 'logs', 'users'], true) ? $tab : 'clients';
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
@@ -367,7 +448,9 @@ class Pages extends Service
 	{
 		// Which editor is open, and which of the URL's keys names the row its
 		// buttons act on.
-		if (isset($_REQUEST['client'])) {
+		if (isset($_REQUEST['user'])) {
+			$row = trim((string) $_REQUEST['user']);
+		} elseif (isset($_REQUEST['client'])) {
 			$row = trim((string) $_REQUEST['client']);
 		} elseif (isset($_REQUEST['profile'])) {
 			// On a resource page it is the resource Save and Delete act on; the
@@ -421,6 +504,18 @@ class Pages extends Service
 	 */
 	public function doConfigPageInit($page)
 	{
+		// Empty is the new-user editor. userRow() refuses anything but digits.
+		if (isset($_REQUEST['user'])) {
+			$user = trim((string) $_REQUEST['user']);
+
+			if ($user !== '' && !$this->users->userRow($user)) {
+				header('Location: config.php?display=oryk_provisioner&tab=users');
+				exit;
+			}
+
+			return;
+		}
+
 		// Empty is the new-client editor, not a lookup that failed.
 		if (isset($_REQUEST['client'])) {
 			$client = trim((string) $_REQUEST['client']);

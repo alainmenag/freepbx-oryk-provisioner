@@ -191,6 +191,41 @@ class Schema extends Service
 	}
 
 	/**
+	 * Index the Core columns every Users lookup is made by.
+	 *
+	 * These are FreePBX's tables, not this module's: `devices` ships with no key
+	 * on either column, and User Manager's email is TEXT and so needs a prefix.
+	 * The names are the ones oryk_connect gave them, so a PBX that had it
+	 * installed already has all three and nothing is added twice.
+	 *
+	 * A failure is logged and stepped over -- a duplicate device id would refuse
+	 * the unique key, and that is a Core problem this module should not fail an
+	 * install over. A table that is not there (no User Manager) is the same.
+	 *
+	 * @return void
+	 */
+	public function addCoreIndexes()
+	{
+		$indexes = [
+			['devices', 'id', 'ADD UNIQUE KEY `id` (`id`)'],
+			['devices', 'user', 'ADD KEY `user` (`user`)'],
+			['userman_users', 'oryk_email', 'ADD KEY `oryk_email` (`email`(191))'],
+		];
+
+		foreach ($indexes as list($table, $name, $clause)) {
+			if ($this->schemaHas($table, 'index', $name)) {
+				continue;
+			}
+
+			try {
+				$this->db->exec("ALTER TABLE `$table` $clause");
+			} catch (\Exception $e) {
+				$this->log('oryk_provisioner: could not index ' . $table . '.' . $name, $e->getMessage(), 'WARNING');
+			}
+		}
+	}
+
+	/**
 	 * Give a table the column that says whether the endpoint answers for it.
 	 *
 	 * The same column on two tables: a client and a profile are switched off by

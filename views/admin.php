@@ -1,6 +1,6 @@
 <?php
 /**
- * The module page: a Clients tab, a Profiles tab and a Logs tab.
+ * The module page: Clients, Profiles, Logs and Users tabs.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -24,12 +24,12 @@
  * bare URL: none is the others' default, though a bare
  * ?display=oryk_provisioner still opens Clients.
  *
- * @var string             $tab    Tab to open on: clients|profiles|logs
+ * @var string             $tab    Tab to open on: clients|profiles|logs|users
  * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  */
 
-$tab = in_array($tab ?? '', ['profiles', 'logs'], true) ? $tab : 'clients';
+$tab = in_array($tab ?? '', ['profiles', 'logs', 'users'], true) ? $tab : 'clients';
 
 // Nothing above this page narrows them: every client, every profile, every
 // request the endpoint has answered.
@@ -47,6 +47,11 @@ $tabs = [
 		'label' => _('Profiles'),
 		'href' => '?display=oryk_provisioner&tab=profiles',
 		'count' => 'profiles',
+	],
+	'users' => [
+		'label' => _('Users'),
+		'href' => '?display=oryk_provisioner&tab=users',
+		'count' => 'users',
 	],
 	'logs' => [
 		'label' => _('Logs'),
@@ -156,6 +161,42 @@ $tabs = [
 									<th data-field="name" data-formatter="formatProfileName" data-sortable="true" ><?php echo _('Name'); ?></th>
 									<th data-field="assigned" data-formatter="formatAssignedClients" data-sortable="true"><?php echo _('Clients'); ?></th>
 									<th data-field="actions" data-formatter="formatProfileActions" data-align="right"><?php echo _('Actions'); ?></th>
+								</tr>
+							</thead>
+						</table>
+					</div>
+
+					<?php endif; ?>
+
+					<?php if ($tab === 'users'): ?>
+					<div class="tab-pane active" id="oryk_users">
+						<div id="user_toolbar" class="oryk-toolbar">
+							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;user=">
+								<i class="fa fa-plus"></i> <?php echo _('Add User'); ?>
+							</a>
+						</div>
+
+						<table
+							id="user_table"
+							data-toggle="table"
+							data-url="ajax.php?module=oryk_provisioner&command=listUsers"
+							data-toolbar="#user_toolbar"
+							class="table table-striped"
+							data-side-pagination="server"
+							data-pagination="true"
+							data-search="true"
+							data-show-refresh="true"
+							data-unique-id="extension"
+							data-sort-name="extension"
+							data-sort-order="asc">
+							<thead>
+								<tr>
+									<th data-field="extension" data-formatter="formatUserExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
+									<th data-field="name" data-formatter="formatText" data-sortable="true"><?php echo _('Name'); ?></th>
+									<th data-field="email" data-formatter="formatText" data-sortable="true"><?php echo _('Email'); ?></th>
+									<th data-field="clients" data-formatter="formatUserClients" data-sortable="true"><?php echo _('Clients'); ?></th>
+									<th data-field="secure" data-formatter="formatClientSecure" data-sortable="true"><?php echo _('Secure'); ?></th>
+									<th data-field="actions" data-formatter="formatUserActions" data-align="right"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
@@ -517,6 +558,60 @@ $tabs = [
 		}).fail(function () {
 			button.prop('disabled', false);
 			notie.alert(3, 'Could not change this.', 4);
+		});
+	});
+
+	function formatUserExtension(value) {
+		return value ? `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>` : '-';
+	}
+
+	function formatUserClients(value, row) {
+		return Number(value)
+			? `<a href="?display=oryk_provisioner&user=${encodeURIComponent(row.extension)}&tab=clients">${orykEscape(value)}</a>`
+			: '0';
+	}
+
+	function formatUserActions(value, row) {
+		const extension = encodeURIComponent(row.extension);
+
+		return [
+			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions"><i class="fa fa-external-link" style="margin: 0;"></i></a>`,
+			`<button type="button" class="btn btn-danger btn-sm" name="user_delete" value="${orykEscape(row.extension)}" data-clients="${Number(row.clients) || 0}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
+			`</div>`
+		].join('');
+	}
+
+	// Permanent, and it takes the call history and recordings with it, so it
+	// says so -- and how many clients it leaves without a device.
+	$(document).on('click', '[name="user_delete"]', function () {
+		const clients = Number($(this).data('clients')) || 0;
+		let ask = 'Delete this user? The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently. This cannot be undone.';
+
+		if (clients) {
+			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be left with no device.`;
+		}
+
+		if (!window.confirm(ask)) {
+			return;
+		}
+
+		const button = $(this).prop('disabled', true);
+
+		orykPost('deleteUser', { id: button.val() }).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+				return;
+			}
+
+			$('#user_table').bootstrapTable('refresh');
+			orykCounts();
+			notie.alert(1, 'Deleted.', 2);
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not delete.', 4);
 		});
 	});
 

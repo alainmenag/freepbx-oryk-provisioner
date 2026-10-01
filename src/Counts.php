@@ -13,8 +13,8 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * instead -- once on the way into the page, and again over the `counts`
  * command whenever something on the page has changed one.
  *
- * Four COUNT(*)s and no state: Service already gives every subclass the
- * database and the four table names, and rowCount() is the statement.
+ * Five COUNT(*)s and no state: four are rowCount() over this module's tables,
+ * and the fifth counts users in Core's `devices`.
  *
  * The counts are named for the tables rather than the tabs that show them, and
  * that name is the whole of the contract with views/partials/counts.php: an
@@ -23,20 +23,22 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * A scope narrows them with the same parameters a list command takes:
  * `profile_id` for the profile editor's tabs and the client editor's
- * Resources, `mac` for a Logs tab. A key that is there is honoured as given
- * rather than falling back to everything -- which is why a client with no
- * profile asks with profile_id=0 and means it.
+ * Resources, `mac` for a Logs tab, `device_id` for a user editor's Clients.
+ * A key that is there is honoured as given rather than falling back to
+ * everything -- which is why a client with no profile asks with profile_id=0
+ * and means it.
  */
 class Counts extends Service
 {
 	/**
 	 * Every count a page can label a tab with, for one page's scope.
 	 *
-	 * All four whatever the page is: asking for them by name would mean the page,
+	 * All of them whatever the page is: asking for them by name would mean the page,
 	 * the command and the JavaScript agreeing on a list, which is three places for
 	 * a tab to be left out of.
 	 *
-	 * @param array<string, mixed> $scope profile_id, mac: what narrows them.
+	 * @param array<string, mixed> $scope profile_id, mac, device_id: what
+	 *                                    narrows them.
 	 *                                    Anything else in it is ignored, so a
 	 *                                    whole request can be handed over.
 	 *
@@ -47,12 +49,36 @@ class Counts extends Service
 		$profileId = array_key_exists('profile_id', $scope) ? (int) $scope['profile_id'] : null;
 		$mac = array_key_exists('mac', $scope) ? Mac::stored($scope['mac']) : null;
 
+		// A user editor counts the clients pointing at it rather than a profile's.
+		$clients = array_key_exists('device_id', $scope)
+			? $this->rowCount($this->clientsTable, 'device_id', (string) $scope['device_id'])
+			: $this->rowCount($this->clientsTable, 'profile_id', $profileId);
+
 		return [
-			'clients' => $this->rowCount($this->clientsTable, 'profile_id', $profileId),
+			'clients' => $clients,
 			'profiles' => $this->rowCount($this->profilesTable),
 			'resources' => $this->rowCount($this->resourcesTable, 'profile_id', $profileId),
 			'logs' => $this->rowCount($this->logsTable, 'mac', $mac),
+			'users' => $this->userCount(),
 		];
+	}
+
+	/**
+	 * How many Extension/User devices there are. Not a table of this module's,
+	 * so not rowCount(): the same shape Users lists, never narrowed.
+	 *
+	 * @return int Users counted, or zero when Core could not be asked.
+	 */
+	private function userCount()
+	{
+		try {
+			$stmt = $this->db->prepare('SELECT COUNT(*) FROM devices d WHERE ' . Users::SHAPE);
+			$stmt->execute();
+
+			return (int) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			return 0;
+		}
 	}
 
 	/**

@@ -118,6 +118,12 @@ class Clients extends Service
 			$params[':profile_id'] = (int) $_REQUEST['profile_id'];
 		}
 
+		// The user editor's Clients tab: the phones provisioned for one extension.
+		if (isset($_REQUEST['device_id'])) {
+			$clauses[] = 'pc.device_id = :device_id';
+			$params[':device_id'] = (string) $_REQUEST['device_id'];
+		}
+
 		// Bracketed: an unbracketed OR chain ANDed with the profile would match
 		// every client whose profile name contains the search. The addresses are
 		// searched too -- a MAC off a label or an address off a lease table is
@@ -532,6 +538,48 @@ class Clients extends Service
 		} catch (\Exception $e) {
 			$this->log('oryk_provisioner: could not record when a client was last seen', $e->getMessage(), 'WARNING');
 		}
+	}
+
+	/**
+	 * Point every client of one FreePBX device at another.
+	 *
+	 * A renumbered user is a device id that has changed, and a client names its
+	 * device by id -- without this every phone provisioned for the user is left
+	 * pointing at a number that has gone.
+	 *
+	 * @param string $old Device id being left behind.
+	 * @param string $new Device id being moved to.
+	 *
+	 * @return int Clients moved.
+	 */
+	public function repointDevice($old, $new)
+	{
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->clientsTable}` SET device_id = :new WHERE device_id = :old"
+		);
+		$stmt->execute([':new' => (string) $new, ':old' => (string) $old]);
+
+		return (int) $stmt->rowCount();
+	}
+
+	/**
+	 * Take a deleted device off every client that pointed at it.
+	 *
+	 * The client keeps its MAC, profile and token and has no device, which is
+	 * what saveClient() stores for None.
+	 *
+	 * @param string $deviceId Device id that has gone.
+	 *
+	 * @return int Clients released.
+	 */
+	public function releaseDevice($deviceId)
+	{
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->clientsTable}` SET device_id = NULL WHERE device_id = :id"
+		);
+		$stmt->execute([':id' => (string) $deviceId]);
+
+		return (int) $stmt->rowCount();
 	}
 
 	/**

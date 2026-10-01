@@ -43,16 +43,20 @@ class Navigator extends Service
 	/** @var Resources */
 	private $resources;
 
+	/** @var Users */
+	private $users;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users)
 	{
 		parent::__construct($freepbx);
 
 		$this->clients = $clients;
 		$this->profiles = $profiles;
 		$this->resources = $resources;
+		$this->users = $users;
 	}
 
 	/**
@@ -62,19 +66,23 @@ class Navigator extends Service
 	 * the string 'new' on a page writing a row that does not exist yet. A
 	 * level nothing is open at still draws -- it is how you get to one.
 	 *
-	 * @param string                    $section clients|profiles|logs.
+	 * @param string                    $section clients|profiles|logs|users.
 	 * @param array<string, mixed>      $at      Row open at each level below it.
 	 *
 	 * @return array<int, array<string, mixed>> Levels, outermost first.
 	 */
 	public function levels($section, array $at = [])
 	{
-		$section = in_array($section, ['clients', 'profiles', 'logs'], true) ? $section : 'clients';
+		$section = in_array($section, ['clients', 'profiles', 'logs', 'users'], true) ? $section : 'clients';
 
 		$levels = [$this->sectionLevel($section)];
 
 		if ($section === 'clients') {
 			$levels[] = $this->clientLevel(isset($at['client']) ? $at['client'] : null);
+		}
+
+		if ($section === 'users') {
+			$levels[] = $this->userLevel(isset($at['user']) ? $at['user'] : null);
 		}
 
 		if ($section === 'profiles') {
@@ -93,7 +101,7 @@ class Navigator extends Service
 	}
 
 	/**
-	 * The module's own sections, which are the list page's three tabs.
+	 * The module's own sections, which are the list page's tabs.
 	 *
 	 * This level is never empty and never unchosen: every page in the module
 	 * is in one of them.
@@ -107,6 +115,7 @@ class Navigator extends Service
 		$sections = [
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
+			'users' => _('Users'),
 			'logs' => _('Logs'),
 		];
 
@@ -134,7 +143,7 @@ class Navigator extends Service
 			'prompt' => _('Select a section'),
 			'search' => _('Search sections'),
 			'options' => $options,
-			// The module's sections are the module. There is no writing a fourth one,
+			// The module's sections are the module. There is no writing another one,
 			// so this level draws no add row.
 			'add' => null,
 		];
@@ -193,6 +202,53 @@ class Navigator extends Service
 				'href' => '?display=oryk_provisioner&client=',
 				// On the page writing one, the add row is where you are -- so the level
 				// still has exactly one thing marked active.
+				'active' => $at === 'new',
+			],
+		];
+	}
+
+	/**
+	 * Every user, by number and name.
+	 *
+	 * @param mixed $at Extension open here, 'new', or null.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function userLevel($at)
+	{
+		$options = [];
+		$text = '';
+
+		foreach ($this->users->userChoices() as $row) {
+			$extension = (string) $row['extension'];
+			$active = (string) $at === $extension;
+
+			$options[] = [
+				'text' => $extension,
+				'note' => (string) (isset($row['name']) ? $row['name'] : ''),
+				'href' => '?display=oryk_provisioner&user=' . rawurlencode($extension),
+				'active' => $active,
+			];
+
+			if ($active) {
+				$text = $extension;
+			}
+		}
+
+		return [
+			'key' => 'user',
+			'title' => [
+				'text' => _('Users'),
+				'href' => '?display=oryk_provisioner&tab=users',
+			],
+			'text' => $at === 'new' ? _('New user') : $text,
+			'mono' => true,
+			'prompt' => _('Select a user'),
+			'search' => _('Search users'),
+			'options' => $options,
+			'add' => [
+				'text' => _('New user'),
+				'href' => '?display=oryk_provisioner&user=',
 				'active' => $at === 'new',
 			],
 		];

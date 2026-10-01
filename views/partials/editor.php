@@ -1,10 +1,10 @@
 <?php
 /**
- * views/partials/editor.php -- what the three editors share.
+ * views/partials/editor.php -- what the editors share.
  *
- * views/client.php, views/profile.php and views/resource.php are one page
- * bound to different rows: fields, and an action bar of Save, Delete and
- * Close that posts to ajax.php rather than submitting anything. Everything
+ * views/client.php, views/profile.php, views/resource.php and views/user.php
+ * are one page bound to different rows: fields, and an action bar of Save,
+ * Delete and Close that posts to ajax.php rather than submitting anything. Everything
  * alike about them is here -- orykPost(), orykShowError(), orykEscape(),
  * orykBytes(), formatResourceKind(), the placeholder chips and orykEditor();
  * what is left in each view is its own fields and where Save goes next.
@@ -259,14 +259,20 @@
 		$(document).on('click', '#oryksave', function (event) {
 			event.preventDefault();
 
+			// Held down until the answer: a user's save runs a full reload,
+			// and a second press would post the form again underneath it.
+			var button = $(this).prop('disabled', true);
+
 			orykPost(editor.save, editor.values()).done(function (response) {
 				if (!response || !response.status) {
+					button.prop('disabled', false);
 					orykShowError(response && response.message);
 					return;
 				}
 
 				window.location = editor.page(response.id);
 			}).fail(function () {
+				button.prop('disabled', false);
 				orykShowError('The server could not be reached.');
 			});
 		});

@@ -24,6 +24,10 @@ matches `phone.cfg`, and that resource is rendered and served.
 
 Everything else is that sentence with the edge cases filled in.
 
+A **user** is the other half of the module, and the only part not stored in
+its own tables: a pjsip device that is its own extension, managed from the
+Users tab. A client's device is usually one. See [Users](#users).
+
 ## Request flow
 
 ```
@@ -85,7 +89,8 @@ Oryk_provisioner.class.php   BMO contract, src/ autoloader, AJAX dispatch table.
 page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
-src/                         22 files, namespace FreePBX\Modules\Oryk_Provisioner
+src/                         32 files, namespace FreePBX\Modules\Oryk_Provisioner
+tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
 
@@ -93,7 +98,7 @@ views/                       one view per page, plus views/partials/
 
 | file | what it is |
 | --- | --- |
-| `Service` | base class: FreePBX handle, PDO, the four table names, `rowCount()` |
+| `Service` | base class: FreePBX handle, PDO, manager, the four table names, `rowCount()`, prefixed log helpers |
 | `Repo` | base class for the two file directories |
 | `Logs`, `Enabled` | traits: writing to the FreePBX log; the on/off switch two tables share |
 | `Mac` | a MAC as written, and as found in a filename (static) |
@@ -110,7 +115,16 @@ views/                       one view per page, plus views/partials/
 | `Counts` | how many rows a tab is labelled with |
 | `Endpoint` | answering a provisioning request, and ending it |
 | `Pages` | which URL is which page |
-| `Installer` | install, uninstall, the web-root symlink |
+| `Installer` | install, uninstall, the web-root symlink, the From Domain setting |
+| `AsteriskConfig` | one Asterisk config file, edited without disturbing what others wrote |
+| `EndpointSettings` | the From Domain chain, and `pjsip.endpoint_custom_post.conf` |
+| `NumberAllocator` | which numbers are free, and the next `999…` one |
+| `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
+| `ExtensionRenumberer` | moving a user to another number, in order |
+| `Users` | saving, deleting and listing a user |
+
+The last seven came from `oryk_connect` 1.3.2, which this module replaces for
+Extension/User devices.
 
 `install()` symlinks `engine/` to `<AMPWEBROOT>/provisioner`, which is the short
 URL phones are given. **Nothing about that link is allowed to fail the install**
@@ -177,13 +191,88 @@ migration written for nobody is a migration nobody has run, and a silent one
 would leave every existing profile with a resource nobody wrote. The changelog
 says what to do by hand.
 
+## Users
+
+A user is a row in none of this module's tables. It is a `pjsip` device whose
+id equals its `user` -- `Users::SHAPE` -- so the device id, the extension and
+the User Manager username are one number. Extensions made in FreePBX have the
+same shape and are listed too. Everything about one lives elsewhere:
+
+| | where | written by |
+| --- | --- | --- |
+| device, SIP settings | `devices`, `sip` (incl. `email`, `from_domain`, `kind`) | Core `addDevice()` |
+| extension | `users`, astdb `AMPUSER/` | `ExtensionManager` |
+| User Manager account | `userman_users` | `UsermanManager` |
+| mailbox | `voicemail.conf`, the spool | `VoicemailManager` |
+| UCP access | `userman_*_settings`, `webrtc_clients` | `UcpAssignments` |
+| call history | `asteriskcdrdb` | `CdrHistory` |
+| From Domain | `pjsip.endpoint_custom_post.conf` | `EndpointSettings` |
+| provisioner clients | `oryk_provisioner_clients.device_id` | `Clients` |
+
+**A save** (`Users::store()`) deletes the device and adds it again -- Core has
+no edit -- so it starts from the device's stored settings, not driver defaults:
+only keywords the driver names, plus `Users::CUSTOM`, are carried, so a setting
+made in FreePBX survives and nothing stray is written to `sip`. On every save
+`media_encryption=sdes` and `media_encryption_optimistic=yes` are forced, the
+account, extension name, User Manager name and both emails are synced, EPM is
+run, the endpoint file is written and a full reload runs -- so the AJAX call
+takes as long as Apply Config. A blank number keeps the user's own (a new one
+takes the next free `999…`); a blank secret keeps the stored one. A number held
+by any device, extension or account is refused before anything is written.
+
+**A renumber** is a save whose number changed. The order is the point
+(`ExtensionRenumberer`): the new extension exists before the old is given up,
+so a failure leaves the user where it was; the mailbox moves before the old
+extension is deleted, and that delete is in edit mode when the mailbox did not
+move, so Voicemail cannot delete a box still in use; User Manager moves after
+the old extension is gone; handsets are repointed; **provisioner clients are
+repointed** (`Clients::repointDevice()`); UCP access moves before the history
+it opens; the history is rewritten in place (`src`, `dst`, `cnum`, `clid`, both
+channel names; recording file names are left, since they must match the file).
+
+**A delete** removes the device and its endpoint section and **releases** every
+client pointing at it (`device_id` NULL; MAC, profile and token kept). Once no
+other device points at the extension, the extension, the account this module
+owns, its UCP assignments and its **call history and recordings** go too, only
+after the extension itself is gone. History is found by `src` or `dst` matched
+exactly, then every row sharing a `uniqueid` or `linkedid` with those is
+deleted from `cdr`, `transient_cdr`, `replicate_cdr` and `cel`; a recording is
+unlinked only when no surviving record names it. A queue- or ring-group-
+answered call carries the group in `dst` and is not matched. There is no undo,
+which is why Delete says so before it asks.
+
+**The From Domain** is three questions, first answer wins: the device's own
+`from_domain`; `ORYK_FROM_DOMAIN` in *Advanced Settings → Oryk Provisioner*;
+the PBX hostname, only when it is a domain name (not bare, not `.local`, not
+`localhost`). Nothing resolved takes the setting off the endpoint rather than
+leaving the old one. `ORYK_FROM_DOMAIN` is the keyword `oryk_connect`
+registered: `install()` re-registers it as this module's and passes the stored
+value back in, so taking it over never blanks it. A changed PBX value reaches
+an endpoint on that user's next save.
+
+**`pjsip.endpoint_custom_post.conf` is shared ground.** FreePBX never rewrites
+it and any module may write to it. A `[<id>](+)` section adds to the endpoint
+FreePBX generated. `AsteriskConfig` edits it in place -- a setting rewritten
+where it stands, a missing one added inside its section, every other line and
+section byte for byte, a no-op save writing nothing -- under a lock, via a
+temporary file renamed over it with the old owner and mode. **The lock file is
+named `oryk-connect-<md5>.lock`** so this module and `oryk_connect` take the
+same lock while both are installed. Do not rename it until Connect is gone
+everywhere.
+
+`install()` adds the `devices.id` (unique), `devices.user` and
+`userman_users.email(191)` keys `oryk_connect` added, under the same names.
+`userman`, `voicemail` and `cdr` are soft dependencies: each subsystem asks
+`moduleActive()` and declines rather than throwing.
+
 ## Conventions that hold everywhere
 
 - **Everything the module edits is a page**, told apart by which key the URL
-  carries: `?client=`, `?profile=`, `?profile=<id>&resource=`. The key present
-  and empty is the "new one" editor. `Pages::doConfigPageInit()` bounces an id
-  that names no row *before any markup* -- a redirect out of `showPage()` would
-  be too late to set a header.
+  carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`. The
+  key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
+  bounces an id that names no row *before any markup* -- a redirect out of
+  `showPage()` would be too late to set a header. A user's key is its
+  extension, so a renumbering save lands on a new address.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
   rendered, and `views/partials/tabs.php` draws the rest as links. A tab with
   nothing behind it is not drawn. Nothing about tabs is scripted. The
@@ -267,5 +356,10 @@ bootstrap FreePBX on its own.
 - Copying resources between profiles, or a seeded starting resource. A profile
   is set up one file at a time from empty.
 - No `fwconsole` command. Backup/restore hooks are stubs.
+- Only Connect's Extension/User kind was ported. Handsets are clients here;
+  Connect's softphone and RTSP kinds have no equivalent, and an RTSP device
+  needs Connect's driver installed.
+- Renumbering does not check ring groups, queues or other destinations for the
+  old number. A PBX-wide From Domain change is not pushed to existing endpoints.
 - GraphQL API, per-client parameter overrides, a bundled vendor template
   library, template filters/sections/escaping.
