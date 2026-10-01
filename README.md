@@ -24,7 +24,18 @@ and the rendering.
 
 ## Getting Started
 
-`git clone git@github.com:alainmenag/freepbx-oryk-provisioner.git oryk_provisioner`
+```bash
+cd /var/www/html/admin/modules
+git clone https://github.com/alainmenag/freepbx-oryk-provisioner.git oryk_provisioner
+sudo fwconsole chown
+sudo fwconsole ma install oryk_provisioner
+```
+
+### You can also:
+
+1. Download the latest release from https://github.com/alainmenag/freepbx-oryk-provisioner/releases
+2. Upload it via your FreePBX module admin
+3. Install the module via the moudle admin
 
 ---
 
