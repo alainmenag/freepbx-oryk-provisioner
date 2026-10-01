@@ -90,8 +90,8 @@ class Settings extends Service
 				'type' => 'select',
 				'default' => 'CLOSED',
 				'options' => [
-					'OPEN' => 'Open',
-					'CLOSED' => 'Closed',
+					'OPEN' => 'Open (000000000000 MAC address will login/register automatically)',
+					'CLOSED' => 'Closed (Only existing clients are served)',
 					'DISABLED' => 'Disabled',
 				],
 			],
