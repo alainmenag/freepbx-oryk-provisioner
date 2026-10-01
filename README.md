@@ -40,7 +40,7 @@ The Bans tab needs one extra step as root — see
 1. **Make a profile.** *Oryk → Provisioner → Profiles → Add Profile*, name it
    (`Polycom VVX 500`) and save.
 2. **Add the main config.** On the profile's **Resources** tab, *Add
-   Resource* with filename `.cfg` and a template:
+   Resource* with filename `{{device.mac}}.cfg` and a template:
 
    ```
    reg.1.address="{{extension.number}}"
