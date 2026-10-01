@@ -66,14 +66,14 @@ class Navigator extends Service
 	 * the string 'new' on a page writing a row that does not exist yet. A
 	 * level nothing is open at still draws -- it is how you get to one.
 	 *
-	 * @param string                    $section clients|profiles|logs|users.
+	 * @param string                    $section clients|profiles|logs|users|settings.
 	 * @param array<string, mixed>      $at      Row open at each level below it.
 	 *
 	 * @return array<int, array<string, mixed>> Levels, outermost first.
 	 */
 	public function levels($section, array $at = [])
 	{
-		$section = in_array($section, ['clients', 'profiles', 'logs', 'users'], true) ? $section : 'clients';
+		$section = in_array($section, ['clients', 'profiles', 'logs', 'users', 'settings'], true) ? $section : 'clients';
 
 		$levels = [$this->sectionLevel($section)];
 
@@ -117,6 +117,7 @@ class Navigator extends Service
 			'profiles' => _('Profiles'),
 			'users' => _('Users'),
 			'logs' => _('Logs'),
+			'settings' => _('Settings'),
 		];
 
 		$options = [];

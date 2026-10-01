@@ -89,7 +89,7 @@ Oryk_provisioner.class.php   BMO contract, src/ autoloader, AJAX dispatch table.
 page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
-src/                         32 files, namespace FreePBX\Modules\Oryk_Provisioner
+src/                         33 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -115,7 +115,8 @@ views/                       one view per page, plus views/partials/
 | `Counts` | how many rows a tab is labelled with |
 | `Endpoint` | answering a provisioning request, and ending it |
 | `Pages` | which URL is which page |
-| `Installer` | install, uninstall, the web-root symlink, the From Domain setting |
+| `Installer` | install, uninstall, the web-root symlink, registering the settings |
+| `Settings` | the module's PBX-wide settings: one definition each, registered, drawn on the Settings tab, saved |
 | `AsteriskConfig` | one Asterisk config file, edited without disturbing what others wrote |
 | `EndpointSettings` | the From Domain chain, and `pjsip.endpoint_custom_post.conf` |
 | `NumberAllocator` | which numbers are free, and the next `999…` one |
@@ -191,6 +192,36 @@ migration written for nobody is a migration nobody has run, and a silent one
 would leave every existing profile with a resource nobody wrote. The changelog
 says what to do by hand.
 
+## Settings
+
+A PBX-wide setting is a FreePBX setting -- a row in `freepbx_settings`, filed
+under *Advanced Settings → Oryk Provisioner* -- and the Settings tab
+(`?tab=settings`) is a second view of the same rows, so neither place can be
+out of date with the other. FreePBX removes them when the module is
+uninstalled.
+
+**A new setting is one entry in `Settings::definitions()`**: keyword, name,
+description, type (`text`, `int`, `bool`, `select`) and what bounds it. From
+that entry `install()` registers it, the tab draws and posts it
+(`views/partials/settings.php` names no setting), and `saveSettings` validates
+it. Its consumer reads it with `Settings::get()` or `\FreePBX::Config()->get()`.
+Nothing else is written -- no view, no AJAX command, no schema step -- but it
+appears only after the module is installed or upgraded, since that is what
+registers it.
+
+- **Registering never resets a value.** Every install defines each setting
+  again with its stored value passed back in, which is also how
+  `ORYK_FROM_DOMAIN` was taken over from `oryk_connect` without being blanked.
+- **The keyword is never taken from a request.** A posted keyword is looked up
+  in the definitions; one that is not there is ignored.
+- **A save is all or nothing.** Every posted value is validated before any is
+  written, against the same rule FreePBX applies in Advanced Settings.
+- The tab is the one list tab with fields, so it is the one list tab with a
+  Save in the action bar, and Save reloads the tab.
+- A value is read when it is used. A setting that shapes something already
+  written -- the From Domain on an endpoint -- reaches it on that thing's next
+  save, not when the setting changes.
+
 ## Users
 
 A user is a row in none of this module's tables. It is a `pjsip` device whose
@@ -242,7 +273,8 @@ answered call carries the group in `dst` and is not matched. There is no undo,
 which is why Delete says so before it asks.
 
 **The From Domain** is three questions, first answer wins: the device's own
-`from_domain`; `ORYK_FROM_DOMAIN` in *Advanced Settings → Oryk Provisioner*;
+`from_domain`; `ORYK_FROM_DOMAIN`, the [setting](#settings) in *Advanced Settings → Oryk
+Provisioner* and on the Settings tab;
 the PBX hostname, only when it is a domain name (not bare, not `.local`, not
 `localhost`). Nothing resolved takes the setting off the endpoint rather than
 leaving the old one. `ORYK_FROM_DOMAIN` is the keyword `oryk_connect`
@@ -290,6 +322,11 @@ everywhere.
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.
 - **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, not the
   `submit`/`delete` core wires to a `form.fpbx-submit` none of these pages has.
+- **A field's help is FreePBX's (?) icon.** FreePBX hides every
+  `.fpbx-help-block` until a `<i class="fa fa-question-circle fpbx-help-icon"
+  data-for="<id>">` beside the label is hovered, and then shows the one element
+  with id `<id>-help` -- so help without that pair is never seen. A field with
+  several paragraphs puts them in `.oryk-help-part` spans inside one block.
 - **Tab badges come from `Counts`, never from the table they label** -- a table
   with something in its search box answers with the total of what matched.
 - **A table or column name written into SQL is interpolated, so it may never

@@ -8,6 +8,9 @@
 // what a subsystem tried to do rather than what came of it.
 
 define('CONF_TYPE_TEXT', 'text');
+define('CONF_TYPE_BOOL', 'bool');
+define('CONF_TYPE_INT', 'int');
+define('CONF_TYPE_SELECT', 'select');
 
 define('FPBX_LOG_ERROR', 'ERROR');
 define('FPBX_LOG_WARNING', 'WARNING');
@@ -289,6 +292,11 @@ class StubConfig
 	public function get($keyword, $passthru = false)
 	{
 		return FreePBX::$config[$keyword] ?? '';
+	}
+
+	public function conf_setting_exists($keyword)
+	{
+		return array_key_exists($keyword, FreePBX::$config);
 	}
 
 	public function update($keyword, $value, $commit = true, $override = true)

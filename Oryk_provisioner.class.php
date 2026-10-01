@@ -27,6 +27,7 @@ use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\ProvisioningLog;
 use FreePBX\Modules\Oryk_Provisioner\Resources;
 use FreePBX\Modules\Oryk_Provisioner\Schema;
+use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\Template;
 use FreePBX\Modules\Oryk_Provisioner\Tokens;
 use FreePBX\Modules\Oryk_Provisioner\UcpAssignments;
@@ -79,6 +80,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Counts           how many rows a tab is labelled with
  *   Endpoint         answering a provisioning request, and ending it
  *   Pages            which URL is which page
+ *   Settings         the module's PBX-wide settings, and the Settings tab
  *   Installer        installing and uninstalling
  *
  * and, for the Users tab -- see ARCHITECTURE.md, "Users":
@@ -148,6 +150,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Schema */
 	private $schema;
 
+	/** @var Settings */
+	private $settings;
+
 	/** @var Template */
 	private $template;
 
@@ -189,6 +194,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 
+		$this->settings = new Settings($freepbx);
 		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
@@ -211,7 +217,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->endpointSettings);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings);
 
 		$this->counts = new Counts($freepbx);
 
@@ -237,7 +243,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->navigator,
 			$this->logs,
 			$this->users,
-			$this->endpointSettings
+			$this->endpointSettings,
+			$this->settings
 		);
 	}
 
@@ -440,6 +447,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listUsers':
 			case 'saveUser':
 			case 'deleteUser':
+			case 'saveSettings':
 				return true;
 			default:
 				return false;
@@ -548,6 +556,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteUser':
 				return $this->users->deleteUser($_REQUEST['id'] ?? null);
+
+			case 'saveSettings':
+				return $this->settings->saveSettings($_REQUEST);
 
 			default:
 				return null;

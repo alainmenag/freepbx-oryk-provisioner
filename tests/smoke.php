@@ -27,6 +27,7 @@ use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
+use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\Tokens;
 use FreePBX\Modules\Oryk_Provisioner\UcpAssignments;
 use FreePBX\Modules\Oryk_Provisioner\UsermanManager;
@@ -649,9 +650,10 @@ echo "\n  the PBX-wide answer is a FreePBX setting, in Advanced Settings:\n";
 
 $s = build();
 $endpoints = new EndpointSettings($s['app'], new AsteriskConfig($s['app'], scratch_file()));
+$settings = new Settings($s['app']);
 
-$endpoints->register();
-$defined = FreePBX::Config()->defined[EndpointSettings::SETTING] ?? [];
+$settings->register();
+$defined = FreePBX::Config()->defined[Settings::FROM_DOMAIN] ?? [];
 
 is_eq('it is registered where an administrator would look for it',
 	[$defined['category'] ?? null, $defined['type'] ?? null, $defined['module'] ?? null],
@@ -665,7 +667,12 @@ is_eq('and what is typed there has to look like a domain',
 	],
 	[true, false]);
 
-$endpoints->setPbxDomain('set-in-advanced.example.net');
+is_eq('the Settings tab refuses what Advanced Settings would',
+	$settings->set(Settings::FROM_DOMAIN, 'not a domain') !== null, true);
+is_eq('and leaves the value as it was',
+	FreePBX::Config()->get(Settings::FROM_DOMAIN), '');
+
+$settings->set(Settings::FROM_DOMAIN, 'set-in-advanced.example.net');
 
 is_eq('what is set there is what an endpoint gets',
 	$endpoints->fromDomain('1002'), 'set-in-advanced.example.net');
@@ -675,10 +682,25 @@ $fresh = new EndpointSettings($s['app'], new AsteriskConfig($s['app'], scratch_f
 is_eq('and it is read from the setting, not remembered from the setting call',
 	$fresh->fromDomain('1002'), 'set-in-advanced.example.net');
 
-$endpoints->register();
+$settings->register();
 
 is_eq('registering again on an upgrade leaves it where it is',
-	FreePBX::Config()->get(EndpointSettings::SETTING), 'set-in-advanced.example.net');
+	FreePBX::Config()->get(Settings::FROM_DOMAIN), 'set-in-advanced.example.net');
+
+$fields = $settings->fields([Settings::FROM_DOMAIN => 'pbx.example.net']);
+
+is_eq('the Settings tab draws it with its value and what blank comes to',
+	[$fields[0]['keyword'], $fields[0]['value'], $fields[0]['placeholder']],
+	[Settings::FROM_DOMAIN, 'set-in-advanced.example.net', 'pbx.example.net']);
+
+is_eq('a keyword that is not a setting is ignored, not written',
+	[$settings->saveSettings(['settings' => ['AMPWEBROOT' => '/tmp']])['status'], FreePBX::Config()->get('AMPWEBROOT')],
+	[true, '']);
+
+$settings->set(Settings::FROM_DOMAIN, '');
+
+is_eq('and blank is saved as blank',
+	FreePBX::Config()->get(Settings::FROM_DOMAIN), '');
 
 echo "\n  a setting that works out to nothing is taken off the endpoint:\n";
 
@@ -709,14 +731,14 @@ class ResettingConfig extends StubConfig
 
 $s = build();
 FreePBX::$conf = new ResettingConfig();
-FreePBX::$config[EndpointSettings::SETTING] = 'set-in-connect.example.net';
+FreePBX::$config[Settings::FROM_DOMAIN] = 'set-in-connect.example.net';
 
-$s['endpoints']->register();
+(new Settings($s['app']))->register();
 
 is_eq('the value set under Connect survives being registered here',
-	FreePBX::Config()->get(EndpointSettings::SETTING), 'set-in-connect.example.net');
+	FreePBX::Config()->get(Settings::FROM_DOMAIN), 'set-in-connect.example.net');
 is_eq('and the setting now belongs to this module',
-	FreePBX::Config()->defined[EndpointSettings::SETTING]['module'] ?? null, 'oryk_provisioner');
+	FreePBX::Config()->defined[Settings::FROM_DOMAIN]['module'] ?? null, 'oryk_provisioner');
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);

@@ -26,6 +26,11 @@
  *
  * Both views render an alert with id `oryk_error` for orykShowError() to fill.
  *
+ * A field's help follows FreePBX's own convention, which is the only one its
+ * CSS shows: a `.fpbx-help-block` is hidden until the
+ * `<i class="fa fa-question-circle fpbx-help-icon" data-for="<id>">` after the
+ * label is hovered, and then the element with id `<id>-help` is shown.
+ *
  * The placeholder chips below the template are copied by clicking one, which
  * is wired here because both editors include the same list.
  */
@@ -74,6 +79,17 @@
 	}
 	.oryk-tab-section {
 		padding-top: 15px;
+	}
+	/*
+	 * A field's help is one block, because FreePBX's (?) icon shows exactly
+	 * one: the element with id "<field>-help". A field with more to say puts
+	 * each paragraph in one of these inside it.
+	 */
+	.oryk-help-part {
+		display: block;
+	}
+	.oryk-help-part + .oryk-help-part {
+		margin-top: 6px;
 	}
 	.flex {
 		display: flex;
