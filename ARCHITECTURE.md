@@ -37,7 +37,9 @@ phone
   -> engine/.htaccess          rewrites anything under engine/ to provisioner.php
   -> engine/provisioner.php    who is asking (MAC) + what they asked for (last
                                path segment). Bootstraps FreePBX directly:
-                               freepbx_auth=false, restrict_mods=true
+                               freepbx_auth=false, restrict_mods=true.
+                               MAC 000000000000 with ORYK_PROVISIONING=OPEN:
+                               answered {"mac":"000000000000"} here, and ends
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
   -> Endpoint::resolveRequest()                   decides
   -> Endpoint::answer()                           logs, sets status, sends, exits

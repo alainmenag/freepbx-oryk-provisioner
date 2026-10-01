@@ -28,6 +28,13 @@ class Settings extends Service
 	const FAIL2BAN = 'ORYK_FAIL2BAN';
 
 	/**
+	 * Whether the endpoint answers the all-zero MAC with that MAC as JSON.
+	 * OPEN, CLOSED or DISABLED (every request refused with a 503); CLOSED
+	 * unless an admin changes it.
+	 */
+	const PROVISIONING = 'ORYK_PROVISIONING';
+
+	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
@@ -73,6 +80,20 @@ class Settings extends Service
 					. 'sudo rule the setup script installed stay in place until it is run with --remove.',
 				'type' => 'bool',
 				'default' => true,
+			],
+			self::PROVISIONING => [
+				'name' => 'Provisioning',
+				'description' => 'Open: a request for the MAC address 000000000000 is answered with '
+					. '{"mac":"000000000000"} and nothing else. Closed: that request is handled like '
+					. 'any other MAC, and refused when no client has it. Disabled: every request to the '
+					. 'provisioning endpoint is refused with a 503.',
+				'type' => 'select',
+				'default' => 'CLOSED',
+				'options' => [
+					'OPEN' => 'Open',
+					'CLOSED' => 'Closed',
+					'DISABLED' => 'Disabled',
+				],
 			],
 		];
 	}
@@ -239,6 +260,17 @@ class Settings extends Service
 				$this->logError('unable to store ' . $keyword . ': ' . $e->getMessage());
 
 				return ['status' => false, 'message' => sprintf(_('Could not save %s.'), _($this->definitions()[$keyword]['name']))];
+			}
+
+			// FreePBX validates against the definition it stored at install, not
+			// this one, and on a mismatch keeps the old value without throwing.
+			if ($this->get($keyword) !== $value) {
+				$this->logError('FreePBX did not store ' . $keyword . '; its registered definition is older than this one');
+
+				return ['status' => false, 'message' => sprintf(
+					_('%s was not saved: FreePBX does not accept that value yet. Run "fwconsole ma install oryk_provisioner" and save again.'),
+					_($this->definitions()[$keyword]['name'])
+				)];
 			}
 		}
 

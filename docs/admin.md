@@ -62,3 +62,4 @@ any, and stays on the tab.
 | --- | --- |
 | **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](users.md#from-domain). Blank: the PBX hostname, when that is a domain name; the field shows what blank comes to. |
 | **Fail2ban Bans** (`ORYK_FAIL2BAN`) | Yes (the default): the [Bans](fail2ban.md) tab is shown. No: the tab, its pages and its commands are gone and the module asks fail2ban nothing. Switching it off does not uninstall the helper — see [Uninstalling fail2ban access](fail2ban.md#uninstalling-fail2ban-access). |
+| **Provisioning** (`ORYK_PROVISIONING`) | Closed (the default): a request for MAC `000000000000` is treated like any other MAC. Open: the endpoint answers it with `{"mac":"000000000000"}` and nothing else, without logging it. Disabled: every request to the endpoint is refused with a 503, unlogged. |

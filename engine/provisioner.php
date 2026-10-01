@@ -55,6 +55,14 @@ require '/etc/freepbx.conf';
 $freepbx = \FreePBX::Create();
 $provisioner = \FreePBX::Oryk_provisioner();
 
+// Read after the bootstrap: before it there is no $freepbx and no autoloader.
+$provisioning = (new \FreePBX\Modules\Oryk_Provisioner\Settings($freepbx))->get(\FreePBX\Modules\Oryk_Provisioner\Settings::PROVISIONING);
+
+if ($provisioning === 'DISABLED') {
+	http_response_code(503);
+	exit;
+}
+
 $requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); // /provisioner/00908f3bbcba.cfg
 $requestAgent = $_SERVER['HTTP_USER_AGENT'] ?? ''; // AUDC-IPPhone/2.0.0_build_15 (420HD; 00908F3BBCBA)
 
@@ -100,6 +108,26 @@ $token = null;
 
 if ($user !== null && $pass !== null) {
 	$token = $user . ':' . $pass;
+}
+
+// --- OPEN PROVISIONING ---
+
+// The all-zero MAC is answered here, before any client is looked up, and only
+// while ORYK_PROVISIONING is OPEN. Settings::get() falls back to CLOSED when
+// the setting is not registered yet, so this fails closed.
+if (
+	$mac === '000000000000'
+) {
+	header('Content-Type: application/json');
+
+	$provisioner->log('asdfasfasf', [
+		'mac' => $mac,
+		'requestPath' => $requestPath,
+		'requestAgent' => $requestAgent,
+		'token' => $token,
+	], 'DEBUG');
+
+	die(json_encode(['mac' => $mac]));
 }
 
 // --- SERVE ---
