@@ -13,7 +13,8 @@ Guidance for Claude Code working in this repository.
 | you want | read |
 | --- | --- |
 | how the system fits together, the schema, why a decision was made | `ARCHITECTURE.md` |
-| what it does, from an operator's side | `README.md` |
+| what it does, from an operator's side | `README.md`, then `docs/` |
+| how a release is tagged | `docs/releasing.md` |
 | what one function guarantees or gets wrong | the docblock on it |
 
 **Read `ARCHITECTURE.md` before changing behaviour.** It carries the request

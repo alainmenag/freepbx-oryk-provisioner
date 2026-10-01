@@ -1,8 +1,8 @@
 # Architecture
 
-How the module is put together, and why. `README.md` is the operator-facing
-account of what it does; `CLAUDE.md` is the working brief for an agent editing
-it. This file is the one to read before changing behaviour.
+How the module is put together, and why. `README.md` and `docs/` are the
+operator-facing account of what it does; `CLAUDE.md` is the working brief for
+an agent editing it. This file is the one to read before changing behaviour.
 
 The source carries the *local* half of this: an invariant a caller can get
 wrong, a consequence worth knowing, the reason two expressions must agree. The
@@ -445,8 +445,8 @@ bootstrap FreePBX on its own.
 
 ## Not built yet
 
-- The README's `token=…&filename=…` URL scheme. Tokens are opt-in per client
-  and nothing makes you set one.
+- A token that *identifies* a client, as `/provisioner/{token}/{file}` would.
+  Tokens are opt-in per client and nothing makes you set one.
 - Uniform refusals. A failure still says which kind of failure it was, so a
   caller probing MACs can tell a known one from an unknown one. Closing that is
   the token scheme's job and is a change to all the messages at once.
