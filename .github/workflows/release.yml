@@ -1,0 +1,48 @@
+# Packages the module as oryk_provisioner-<version>.zip and attaches it to a
+# GitHub Release whenever a tag is pushed. The tag (with or without a leading
+# "v") must equal <version> in module.xml, or nothing is published.
+# What goes in the zip is decided by export-ignore in .gitattributes.
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag against module.xml
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -m1 -oP '(?<=<version>)[^<]+' module.xml)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match module.xml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Lint PHP
+        run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Build zip
+        run: |
+          git archive --format=zip --prefix=oryk_provisioner/ \
+            -o "oryk_provisioner-${{ steps.version.outputs.version }}.zip" "$GITHUB_REF_NAME"
+          unzip -l "oryk_provisioner-${{ steps.version.outputs.version }}.zip"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "oryk_provisioner-${{ steps.version.outputs.version }}.zip" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
