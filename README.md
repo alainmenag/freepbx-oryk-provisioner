@@ -474,6 +474,11 @@ at all.
 Install the module as usual (`fwconsole ma install oryk_provisioner`, or upload
 it in Module Admin).
 
+Each tagged version is published as `oryk_provisioner-<version>.zip` on the
+repository's Releases page, ready to upload in Module Admin. To cut one, bump
+`<version>` in `module.xml`, merge, then push a tag of the same number
+(`1.1.2` or `v1.1.2`); the build refuses a tag that does not match.
+
 `install()` registers the module's settings in Advanced Settings (keeping any
 value already there) and adds indexes on `devices.id`, `devices.user` and
 `userman_users.email` for the Users tab. Back up the FreePBX database before
