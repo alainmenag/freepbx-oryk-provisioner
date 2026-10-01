@@ -13,8 +13,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * instead -- once on the way into the page, and again over the `counts`
  * command whenever something on the page has changed one.
  *
- * Five COUNT(*)s and no state: four are rowCount() over this module's tables,
- * and the fifth counts users in Core's `devices`.
+ * Five COUNT(*)s and one question to fail2ban, and no state: four are
+ * rowCount() over this module's tables, the fifth counts users in Core's
+ * `devices`, and bans are asked of the helper. That last is a sudo call and
+ * two Python start-ups, so it is made only for the unnarrowed scope -- the
+ * module page, the one strip with a Bans tab on it.
  *
  * The counts are named for the tables rather than the tabs that show them, and
  * that name is the whole of the contract with views/partials/counts.php: an
@@ -30,6 +33,20 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  */
 class Counts extends Service
 {
+	/** @var Fail2ban */
+	private $fail2ban;
+
+	/**
+	 * @param object   $freepbx  FreePBX application instance.
+	 * @param Fail2ban $fail2ban What the bans count is asked of.
+	 */
+	public function __construct($freepbx, Fail2ban $fail2ban)
+	{
+		parent::__construct($freepbx);
+
+		$this->fail2ban = $fail2ban;
+	}
+
 	/**
 	 * Every count a page can label a tab with, for one page's scope.
 	 *
@@ -54,13 +71,19 @@ class Counts extends Service
 			? $this->rowCount($this->clientsTable, 'device_id', (string) $scope['device_id'])
 			: $this->rowCount($this->clientsTable, 'profile_id', $profileId);
 
-		return [
+		$counts = [
 			'clients' => $clients,
 			'profiles' => $this->rowCount($this->profilesTable),
 			'resources' => $this->rowCount($this->resourcesTable, 'profile_id', $profileId),
 			'logs' => $this->rowCount($this->logsTable, 'mac', $mac),
 			'users' => $this->userCount(),
 		];
+
+		if ($profileId === null && $mac === null && !array_key_exists('device_id', $scope)) {
+			$counts['bans'] = $this->fail2ban->count();
+		}
+
+		return $counts;
 	}
 
 	/**

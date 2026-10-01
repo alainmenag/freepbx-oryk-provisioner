@@ -1,6 +1,6 @@
 <?php
 /**
- * The module page: Clients, Profiles, Users, Logs and Settings tabs.
+ * The module page: Clients, Profiles, Users, Logs, Bans and Settings tabs.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -27,13 +27,19 @@
  * Settings is the one tab with fields rather than a table, drawn by
  * partials/settings.php and saved by the action bar's Save.
  *
- * @var string             $tab    Tab to open on: clients|profiles|logs|users|settings
+ * Bans is fail2ban's, read through the sudo helper. Until that is set up the
+ * tab draws what is missing and the command that fixes it instead of a table
+ * -- see ARCHITECTURE.md, "Bans".
+ *
+ * @var string             $tab    Tab to open on: clients|profiles|logs|users|bans|settings
  * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
+ * @var array<string, mixed>              $fail2ban  Fail2ban::status() and its setup command, on the Bans tab
  */
 
-$tab = in_array($tab ?? '', ['profiles', 'logs', 'users', 'settings'], true) ? $tab : 'clients';
+$tab = in_array($tab ?? '', ['profiles', 'logs', 'users', 'bans', 'settings'], true) ? $tab : 'clients';
+$fail2ban = isset($fail2ban) && is_array($fail2ban) ? $fail2ban : [];
 
 // Nothing above this page narrows them: every client, every profile, every
 // request the endpoint has answered.
@@ -62,6 +68,11 @@ $tabs = [
 		'href' => '?display=oryk_provisioner&tab=logs',
 		'count' => 'logs',
 	],
+	'bans' => [
+		'label' => _('Bans'),
+		'href' => '?display=oryk_provisioner&tab=bans',
+		'count' => 'bans',
+	],
 	'settings' => [
 		'label' => _('Settings'),
 		'href' => '?display=oryk_provisioner&tab=settings',
@@ -86,6 +97,11 @@ $tabs = [
 	tr.oryk-disabled > td,
 	tr.oryk-disabled > td a:not(.btn) {
 		color: #999;
+	}
+	.oryk-setup pre {
+		user-select: all;
+		white-space: pre-wrap;
+		word-break: break-all;
 	}
 </style>
 
@@ -220,6 +236,83 @@ $tabs = [
 						$logMac = '';
 						include __DIR__ . '/partials/logs.php';
 						?>
+					</div>
+					<?php endif; ?>
+
+					<?php if ($tab === 'bans'): ?>
+					<div class="tab-pane active" id="oryk_bans">
+						<?php if (($fail2ban['state'] ?? '') !== 'ok'): ?>
+						<div class="oryk-setup" style="padding-top: 15px;">
+							<div class="alert alert-warning">
+								<strong><?php echo _('Fail2ban is not set up for this module yet.'); ?></strong>
+								<?php echo htmlspecialchars((string) ($fail2ban['message'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
+								<?php if (!empty($fail2ban['detail'])): ?>
+								<br><small class="text-muted"><?php echo htmlspecialchars((string) $fail2ban['detail'], ENT_QUOTES, 'UTF-8'); ?></small>
+								<?php endif; ?>
+							</div>
+
+							<?php
+							$setupLines = [];
+
+							if (($fail2ban['state'] ?? '') === 'fail2ban') {
+								$setupLines[] = 'sudo apt install fail2ban';
+								$setupLines[] = 'sudo systemctl enable --now fail2ban';
+							}
+
+							$setupLines[] = (string) ($fail2ban['command'] ?? '');
+							?>
+							<p><?php echo (($fail2ban['state'] ?? '') === 'fail2ban')
+								? _('Install and start fail2ban on the PBX, then run the setup script, as root:')
+								: _('Run this once on the PBX, as root:'); ?></p>
+							<pre id="oryk_setup_command"><?php echo htmlspecialchars(implode("\n", $setupLines), ENT_QUOTES, 'UTF-8'); ?></pre>
+							<p>
+								<button type="button" class="btn btn-default" id="oryk_setup_copy"><i class="fa fa-clipboard"></i> <?php echo _('Copy'); ?></button>
+								<a class="btn btn-primary" href="?display=oryk_provisioner&amp;tab=bans"><i class="fa fa-refresh"></i> <?php echo _('Check again'); ?></a>
+							</p>
+							<p class="help-block">
+								<?php echo _('The script installs two things and nothing else: a root-owned copy of the module\'s fail2ban helper at /usr/local/sbin/oryk-fail2ban, which can only list jails and bans and ban or unban one address, and /etc/sudoers.d/oryk_provisioner, which lets the web server run that one file as root. It checks the rule with visudo before it is used, then tests it as the web server and says OK. It is safe to run again, and needs running again after an upgrade that changes the helper. '); ?>
+								<?php echo sprintf(_('Add %s to see what is in place without changing anything, or %s to undo it.'), '<code>--check</code>', '<code>--remove</code>'); ?>
+							</p>
+
+							<p><strong><?php echo _('If the script stops'); ?></strong></p>
+							<ul class="help-block">
+								<li><?php echo sprintf(_('At %s: install it with %s, or start it with %s, then run the script again.'), '<em>fail2ban installed</em> / <em>fail2ban running</em>', '<code>sudo apt install fail2ban</code>', '<code>sudo systemctl enable --now fail2ban</code>'); ?></li>
+								<li><?php echo sprintf(_('At %s: another file in /etc/sudoers.d is broken, and sudo will not take a new rule until it is fixed. A wrong mode or owner is fixed by the script itself (the same as %s) and listed as fixed. Anything else is printed with its file and line: correct it with %s, check with %s, and run the script again.'), '<em>existing sudo configuration</em>', '<code>sudo chmod 0440 /etc/sudoers.d/&lt;file&gt;</code>', '<code>sudo visudo -f /etc/sudoers.d/&lt;file&gt;</code>', '<code>sudo visudo -c</code>'); ?></li>
+								<li><?php echo sprintf(_('At %s: the line it prints is what sudo said. Run %s to see every check at once.'), '<em>the web user can reach fail2ban</em>', '<code>--check</code>'); ?></li>
+							</ul>
+						</div>
+						<?php else: ?>
+						<div id="ban_toolbar" class="oryk-toolbar">
+							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;ban=">
+								<i class="fa fa-plus"></i> <?php echo _('Add Ban'); ?>
+							</a>
+						</div>
+
+						<table
+							id="ban_table"
+							data-toggle="table"
+							data-url="ajax.php?module=oryk_provisioner&command=listBans"
+							data-toolbar="#ban_toolbar"
+							class="table table-striped"
+							data-side-pagination="server"
+							data-pagination="true"
+							data-search="true"
+							data-show-refresh="true"
+							data-unique-id="id"
+							data-sort-name="banned_at"
+							data-sort-order="desc">
+							<thead>
+								<tr>
+									<th data-field="ip" data-formatter="formatBanIp" data-sortable="true"><?php echo _('IP Address'); ?></th>
+									<th data-field="jail" data-formatter="formatText" data-sortable="true"><?php echo _('Jail'); ?></th>
+									<th data-field="client" data-formatter="formatBanClient" data-sortable="true"><?php echo _('Client'); ?></th>
+									<th data-field="banned_at" data-formatter="formatBanBanned" data-sortable="true"><?php echo _('Banned'); ?></th>
+									<th data-field="expires_at" data-formatter="formatBanExpires" data-sortable="true"><?php echo _('Expires'); ?></th>
+									<th data-field="actions" data-formatter="formatBanActions" data-align="right"><?php echo _('Actions'); ?></th>
+								</tr>
+							</thead>
+						</table>
+						<?php endif; ?>
 					</div>
 					<?php endif; ?>
 
@@ -627,6 +720,114 @@ $tabs = [
 			button.prop('disabled', false);
 			notie.alert(3, 'Could not delete.', 4);
 		});
+	});
+
+	// A ban's own page, at the two keys that name it.
+	function orykBanUrl(row) {
+		return `?display=oryk_provisioner&jail=${encodeURIComponent(row.jail)}&ban=${encodeURIComponent(row.ip)}`;
+	}
+
+	function formatBanIp(value, row) {
+		return value ? `<a class="oryk-name" href="${orykBanUrl(row)}">${orykEscape(value)}</a>` : '-';
+	}
+
+	// The client whose public address was banned -- usually a site whose
+	// phones failed to register, and the reason anyone opens this tab.
+	function formatBanClient(value, row) {
+		return value
+			? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.client_id)}">${orykEscape(value)}</a>`
+			: '-';
+	}
+
+	function formatBanBanned(value, row) {
+		return row.banned ? `<span title="${orykEscape(row.banned)}">${orykEscape(orykSince(row.banned_age))}</span>` : '-';
+	}
+
+	// Ages are the server's subtraction, on fail2ban's clock -- see Bans::rows().
+	function formatBanExpires(value, row) {
+		if (row.permanent) {
+			return 'Never';
+		}
+
+		if (row.expires_in === null || row.expires_in === undefined) {
+			return '-';
+		}
+
+		return `<span title="${orykEscape(row.expires)}">${orykEscape(orykIn(row.expires_in))}</span>`;
+	}
+
+	// orykSince() the other way: how long until.
+	function orykIn(seconds) {
+		const left = Number(seconds) || 0;
+
+		if (left < 60) {
+			return 'any moment';
+		}
+
+		return orykSince(left).replace(/ ago$/, '').replace(/^/, 'in ');
+	}
+
+	function formatBanActions(value, row) {
+		return [
+			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<button type="button" class="btn btn-danger btn-sm" name="ban_delete" value="${orykEscape(row.id)}"`,
+			` data-ip="${orykEscape(row.ip)}" data-jail="${orykEscape(row.jail)}" title="Unban">`,
+			`<i class="fa fa-unlock" style="margin: 0;"></i></button>`,
+			`<a class="btn btn-primary btn-sm" href="${orykBanUrl(row)}">Open</a>`,
+			`</div>`
+		].join('');
+	}
+
+	$(document).on('click', '[name="ban_delete"]', function () {
+		const button = $(this);
+
+		if (!window.confirm(`Unban ${button.data('ip')} from ${button.data('jail')}?`)) {
+			return;
+		}
+
+		button.prop('disabled', true);
+
+		orykPost('deleteBan', { id: button.val() }).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				notie.alert(3, (response && response.message) || 'Could not unban.', 4);
+				return;
+			}
+
+			$('#ban_table').bootstrapTable('refresh');
+			orykCounts();
+			notie.alert(1, 'Unbanned.', 2);
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not unban.', 4);
+		});
+	});
+
+	// The setup command, onto the clipboard. A GUI on plain http has no
+	// navigator.clipboard, hence the selection fallback.
+	$(document).on('click', '#oryk_setup_copy', function () {
+		const text = $('#oryk_setup_command').text();
+		const said = (copied) => notie.alert(copied ? 1 : 3, copied ? 'Copied.' : 'Select the command and copy it.', 2);
+
+		if (window.isSecureContext && navigator.clipboard) {
+			navigator.clipboard.writeText(text).then(() => said(true), () => said(false));
+			return;
+		}
+
+		const range = document.createRange();
+		range.selectNodeContents(document.getElementById('oryk_setup_command'));
+		window.getSelection().removeAllRanges();
+		window.getSelection().addRange(range);
+
+		let copied = false;
+
+		try {
+			copied = document.execCommand('copy');
+		} catch (error) {
+			copied = false;
+		}
+
+		said(copied);
 	});
 
 	$(document).on('click', '[name="profile_delete"]', function () {

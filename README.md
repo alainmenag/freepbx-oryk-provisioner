@@ -291,17 +291,18 @@ values rather than a 500.
 
 ## The admin interface
 
-*Oryk → Provisioner*. A list and four editors, told apart by which key the URL
+*Oryk → Provisioner*. A list and five editors, told apart by which key the URL
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 | URL | Page | Tabs |
 | --- | --- | --- |
-| `?display=oryk_provisioner` | the list | Clients, Profiles, Logs, Users |
+| `?display=oryk_provisioner` | the list | Clients, Profiles, Users, Logs, Bans, Settings |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 | `&user=<extension>` | one user (`&user=` for a new one) | User, Clients |
+| `&jail=<jail>&ban=<ip>` | one fail2ban ban (`&ban=` for a new one) | Ban |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor. Save leaves you on
@@ -422,6 +423,139 @@ failure is logged while the user still saves.
 
 ---
 
+## Bans
+
+The **Bans** tab lists what fail2ban has banned, in every jail — on a FreePBX
+box usually `asterisk` (SIP) and `sshd`. Each row is one address in one jail,
+with when it was banned, when it expires, and the **client** whose Public IP it
+is, when it is one: a site whose phones keep failing to register is the usual
+reason anyone opens this tab. **Unban** lifts a ban now. **Add Ban** bans one
+address in one jail for that jail's own bantime, as though fail2ban had banned
+it. A ban cannot be edited; its page shows it, with Unban and Close.
+
+Adding a ban refuses the address you are connected from, loopback, and the
+PBX's own addresses. One written on a client as its Public IP is allowed after
+a warning, since it blocks every phone at that site. One address at a time; no
+ranges.
+
+### Installing fail2ban access
+
+fail2ban only answers root, and the GUI runs as the web user, so the module
+reaches it through a small helper that sudo lets the web user run. Until that
+is in place the Bans tab shows what is missing and the command to run instead of
+a table.
+
+1. fail2ban has to be installed and running:
+
+   ```bash
+   sudo apt install fail2ban
+   sudo systemctl enable --now fail2ban
+   sudo fail2ban-client status          # lists the jails, e.g. asterisk, sshd
+   ```
+
+2. Put your own address in `ignoreip` in `/etc/fail2ban/jail.local`, so a wrong
+   ban on `sshd` cannot lock you out, and `sudo systemctl reload fail2ban`.
+
+3. Once on each PBX, as root:
+
+   ```bash
+   sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup
+   ```
+
+4. Open the Bans tab, or press **Check again** on it. The list appears.
+
+The script checks fail2ban, Python, sudo and the web user
+(`AMPASTERISKWEBUSER`, normally `asterisk`), then installs two things and
+nothing else:
+
+| | |
+| --- | --- |
+| `/usr/local/sbin/oryk-fail2ban` | a root-owned copy of the module's `bin/oryk-fail2ban`. It can list jails and bans and ban or unban one address in one jail, and refuses anything else |
+| `/etc/sudoers.d/oryk_provisioner` | `asterisk ALL=(root) NOPASSWD: /usr/local/sbin/oryk-fail2ban` — that one file, and nothing else, as root. Checked with `visudo` before it is used |
+
+It then runs the helper as the web user and prints **OK** with the jails it
+found:
+
+```
+  existing sudo configuration                  ok
+  installing /etc/sudoers.d/oryk_provisioner   ok
+  ...
+  the web user can reach fail2ban              ok (asterisk, sshd)
+
+OK. Reload the Bans tab.
+```
+
+It is safe to run again, and has to be run again after a module upgrade that
+changes the helper — the tab says so (*not the one this version of the module
+ships*). `fwconsole ma install` or `upgrade`, run as root, runs the script for
+you and prints what it said; from Module Admin in the GUI it cannot (no root),
+and the install message gives the command instead.
+
+If it stops, it says at which step and why, and changes nothing after it:
+
+| stops at | what to do |
+| --- | --- |
+| *fail2ban installed* / *fail2ban running* | `sudo apt install fail2ban`, `sudo systemctl enable --now fail2ban`, run it again |
+| *existing sudo configuration* | another file in `/etc/sudoers.d` fails `visudo -c`, and sudo takes no new rule until it passes. A wrong mode or owner (`bad permissions, should be mode 0440`) is fixed by the script — the same as `sudo chmod 0440 /etc/sudoers.d/<file>` — and listed as `fixed:`. Anything else is printed with its file and line: correct it with `sudo visudo -f /etc/sudoers.d/<file>`, check with `sudo visudo -c`, run it again |
+| *the web user can reach fail2ban* | the line printed is what sudo said; `--check` shows every check at once |
+
+### Checking fail2ban access
+
+```bash
+sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup --check
+```
+
+Runs every check and changes nothing: fail2ban, the whole sudo configuration,
+the installed helper (present, owned by root, the version this module ships),
+the sudo rule, and a call as the web user. Ends with **OK**, or with how many
+problems there are — running the script without `--check` fixes them.
+
+By hand, as the web user would:
+
+```bash
+sudo -u asterisk sudo -n /usr/local/sbin/oryk-fail2ban check
+sudo -u asterisk sudo -n /usr/local/sbin/oryk-fail2ban list asterisk
+```
+
+### Uninstalling fail2ban access
+
+```bash
+sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup --remove
+```
+
+Deletes `/usr/local/sbin/oryk-fail2ban` and `/etc/sudoers.d/oryk_provisioner`,
+and nothing else: fail2ban, its jails and every ban stay exactly as they are,
+and the web user can no longer reach it. The Bans tab goes back to the setup
+instructions. `fwconsole ma uninstall oryk_provisioner`, run as root, does the
+same; uninstalled from the GUI it cannot, so run `--remove` first — the script
+is inside the module directory, and goes with it.
+
+Any file the script fixed the mode or owner of (`fixed:` in its output) is left
+fixed: that is the mode sudo expects, and `--remove` does not put it back.
+
+### Testing the setup from scratch
+
+Keep a root shell (`sudo -i`) open in another window while you do this.
+
+```bash
+S=/var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup
+
+sudo bash $S --remove          # the tab: helper not installed
+sudo bash $S --check           # every missing piece listed, nothing changed
+sudo bash $S                   # installed; ends with OK
+sudo bash $S --check           # every line ok
+```
+
+Then from the tab: **Add Ban** `203.0.113.7` in `asterisk` (a documentation
+address, so nobody real), see it with `sudo fail2ban-client status asterisk`,
+**Unban** it, and check it has gone. Banning the address you are connected from
+is refused.
+
+Every load of the module page asks fail2ban for the badge, so each writes a sudo
+line to the auth log.
+
+---
+
 ## Database
 
 Four tables, all created by `install()` with `CREATE TABLE IF NOT EXISTS`.
@@ -518,6 +652,11 @@ http://<pbx>/provisioner/<mac>
 so the filename a phone asks for arrives as the request path. `uninstall()`
 removes the symlink — and only if it still resolves to this module's engine.
 
+The **Bans** tab needs one more step, as root, that a module install from the
+GUI cannot do — see [Installing fail2ban access](#installing-fail2ban-access). Uninstalling from the
+GUI leaves the fail2ban helper and its sudo rule in place: run
+[`--remove`](#uninstalling-fail2ban-access) first.
+
 ### Coming from Oryk Connect
 
 This module replaces `oryk_connect` for **Extension/User** devices. Nothing
@@ -583,6 +722,11 @@ Know what this is before you expose it:
   rendered body or any parameter value.
 - Sortable columns are whitelisted and mapped to SQL names before being written
   into a statement; everything else is bound.
+- **The Bans tab is root access, narrowed.** The sudo rule lets the web user run
+  one root-owned file, which checks every argument itself and can do nothing
+  but list, ban and unban. Anyone who can use the FreePBX admin GUI can ban or
+  unban any address — including on `sshd`. Put your own address in `ignoreip`
+  in `/etc/fail2ban/jail.local`.
 
 ---
 
@@ -654,6 +798,10 @@ src/UcpAssignments.php       what a UCP account may open
 src/CdrHistory.php           moving and removing a number's call history
 src/EndpointSettings.php     the From Domain, and where it is written
 src/AsteriskConfig.php       an Asterisk config file, edited in place
+src/Fail2ban.php             the only file that asks fail2ban, through the helper
+src/Bans.php                 listing, adding and lifting a ban
+bin/oryk-fail2ban            the root helper the sudo rule allows
+bin/oryk-fail2ban-setup      installs that helper and the rule; --check, --remove
 tests/smoke.php              standalone checks: php tests/smoke.php
 src/Logs.php                 how this module writes to the FreePBX log
 engine/provisioner.php       the endpoint: who is asking and what they asked
@@ -665,6 +813,7 @@ views/client.php             the client editor
 views/profile.php            the profile editor
 views/resource.php           the resource editor
 views/user.php               the user editor
+views/ban.php                one ban, or a new one
 views/partials/navigator.php the breadcrumb every page is topped with
 views/partials/tabs.php      the tab strip every page is laid out under
 views/partials/counts.php    the badges on those tabs
@@ -679,5 +828,6 @@ AJAX commands, all authenticated through `ajax.php`: `listClients`,
 `saveResource`, `deleteClient`, `deleteProfile`, `deleteResource`,
 `setClientEnabled`, `setProfileEnabled`, `uploadResourceFile`,
 `deleteResourceFile`, `clearLogs`, `counts`, `listUsers`, `saveUser`,
-`deleteUser`, `saveSettings`. A new one has to be named in both
+`deleteUser`, `saveSettings`, `listBans`, `saveBan`, `deleteBan`. A new one
+has to be named in both
 `ajaxRequest()` and `ajaxHandler()`.
