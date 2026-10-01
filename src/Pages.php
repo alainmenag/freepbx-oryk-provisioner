@@ -54,10 +54,16 @@ class Pages extends Service
 	/** @var Settings */
 	private $settings;
 
+	/** @var Bans */
+	private $bans;
+
+	/** @var Fail2ban */
+	private $fail2ban;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban)
 	{
 		parent::__construct($freepbx);
 
@@ -73,12 +79,14 @@ class Pages extends Service
 		$this->users = $users;
 		$this->endpoints = $endpoints;
 		$this->settings = $settings;
+		$this->bans = $bans;
+		$this->fail2ban = $fail2ban;
 	}
 
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list and four editors, told apart by which key the URL carries.
+	 * A list and five editors, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&client=<id>                one client
@@ -89,6 +97,8 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
 	 *   ?display=oryk_provisioner&user=<extension>           one user
 	 *   ?display=oryk_provisioner&user=                      a new one
+	 *   ?display=oryk_provisioner&jail=<jail>&ban=<ip>       one ban
+	 *   ?display=oryk_provisioner&ban=                       a new one
 	 *
 	 * A key present but empty is the same page doing the same thing, minus a row
 	 * to replace.
@@ -97,6 +107,10 @@ class Pages extends Service
 	 */
 	public function showPage()
 	{
+		if (isset($_REQUEST['ban'])) {
+			return $this->showBan((string) ($_REQUEST['jail'] ?? ''), trim((string) $_REQUEST['ban']));
+		}
+
 		// Checked before ?profile= only because neither URL carries the other's
 		// key: a client names its profile in a select, not in the address.
 		if (isset($_REQUEST['user'])) {
@@ -250,6 +264,44 @@ class Pages extends Service
 			'counts' => $this->counts->pageCounts(['device_id' => $extension]),
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
+		]);
+	}
+
+	/**
+	 * Render the ban editor: a new ban's two fields, or one ban's facts.
+	 *
+	 * A ban cannot be edited, only lifted, so an existing one is read-only and
+	 * its action bar is Unban and Close. A new one may arrive with its address
+	 * already filled in, as `&ip=`.
+	 *
+	 * @param string $jail Jail of the ban open, or '' for a new one.
+	 * @param string $ip   Its address, or '' for a new one.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showBan($jail, $ip)
+	{
+		$jails = $this->bans->jailChoices();
+		$ban = null;
+
+		if ($ip !== '') {
+			// doConfigPageInit() has already bounced one that is not banned.
+			$ban = $this->bans->banRow($jail, $ip);
+
+			if (!$ban) {
+				return $this->showList('bans');
+			}
+		}
+
+		return load_view(dirname(__DIR__) . '/views/ban.php', [
+			'ban' => $ban,
+			'jails' => $jails,
+			'prefill' => (string) Bans::canonical($_REQUEST['ip'] ?? ''),
+			'clients' => $this->bans->clientAddresses(),
+			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
+			'navigator' => $this->navigator->levels('bans', [
+				'ban' => $ban ? $ban['id'] : 'new',
+			]),
 		]);
 	}
 
@@ -417,12 +469,21 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
-		$tab = in_array($tab, ['profiles', 'logs', 'users', 'settings'], true) ? $tab : 'clients';
+		$tabs = $this->bans->enabled()
+			? ['profiles', 'logs', 'users', 'bans', 'settings']
+			: ['profiles', 'logs', 'users', 'settings'];
+		$tab = in_array($tab, $tabs, true) ? $tab : 'clients';
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
+				: [],
+			// Off on the Settings tab, the Bans tab is not drawn at all.
+			'bansEnabled' => $this->bans->enabled(),
+			// What the Bans tab draws in place of its table until fail2ban can be asked.
+			'fail2ban' => $tab === 'bans'
+				? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()]
 				: [],
 			// Nothing above this page to narrow them by.
 			'counts' => $this->counts->pageCounts(),
@@ -456,6 +517,15 @@ class Pages extends Service
 	 */
 	public function getActionBar($request)
 	{
+		// A ban has nothing to edit: a new one is Save, an existing one Unban.
+		if (isset($_REQUEST['ban'])) {
+			$bar = trim((string) $_REQUEST['ban']) === ''
+				? ['oryksave' => ['name' => 'oryksave', 'id' => 'oryksave', 'value' => _('Save')]]
+				: ['orykdelete' => ['name' => 'orykdelete', 'id' => 'orykdelete', 'value' => _('Unban')]];
+
+			return $bar + ['orykclose' => ['name' => 'orykclose', 'id' => 'orykclose', 'value' => _('Close')]];
+		}
+
 		// Which editor is open, and which of the URL's keys names the row its
 		// buttons act on.
 		if (isset($_REQUEST['user'])) {
@@ -523,6 +593,25 @@ class Pages extends Service
 	 */
 	public function doConfigPageInit($page)
 	{
+		// No ban page opens until fail2ban can be asked; the tab says why. An
+		// address that is not banned in that jail -- often one that has just
+		// expired -- goes back to the list. Switched off, there is no tab.
+		if (isset($_REQUEST['ban'])) {
+			$ban = trim((string) $_REQUEST['ban']);
+
+			if (!$this->bans->enabled()) {
+				header('Location: config.php?display=oryk_provisioner');
+				exit;
+			}
+
+			if (!$this->bans->ready() || ($ban !== '' && !$this->bans->banRow((string) ($_REQUEST['jail'] ?? ''), $ban))) {
+				header('Location: config.php?display=oryk_provisioner&tab=bans');
+				exit;
+			}
+
+			return;
+		}
+
 		// Empty is the new-user editor. userRow() refuses anything but digits.
 		if (isset($_REQUEST['user'])) {
 			$user = trim((string) $_REQUEST['user']);

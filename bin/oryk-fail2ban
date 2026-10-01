@@ -1,0 +1,228 @@
+#!/usr/bin/python3 -I
+"""oryk-fail2ban -- what the Oryk Provisioner module may ask of fail2ban.
+
+Runs as root: bin/oryk-fail2ban-setup installs a root-owned copy at
+/usr/local/sbin/oryk-fail2ban and one sudo rule letting the web user run it.
+**This file is the privilege boundary**, so every argument is checked here
+whatever the module checked first. See ARCHITECTURE.md, "Bans".
+
+    oryk-fail2ban check               the helper's version, and is fail2ban up
+    oryk-fail2ban jails               the jail names
+    oryk-fail2ban count               how many addresses are banned, per jail
+    oryk-fail2ban list [<jail>]       the bans, with their times
+    oryk-fail2ban ban <jail> <ip>     ban one address in one jail
+    oryk-fail2ban unban <jail> <ip>   lift it; an address not banned is not an error
+
+Every answer is one line of JSON on stdout. Exit 0 is success, 64 a refused
+argument, 69 fail2ban not installed or not answering, 70 anything else.
+"""
+
+import ast
+import ipaddress
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+# Bump whenever this file changes: the Bans tab compares it with the
+# installed copy and asks for setup to be run again when they differ.
+HELPER_VERSION = 1
+
+CLIENTS = ('/usr/bin/fail2ban-client', '/usr/local/bin/fail2ban-client', '/bin/fail2ban-client')
+JAIL = re.compile(r'\A[A-Za-z0-9_.-]{1,64}\Z')
+ADDRESS = re.compile(r'\A[0-9A-Fa-f:.]{2,45}\Z')
+STAMP = r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)'
+WITH_TIME = re.compile(r'\A(\S+)\s+' + STAMP + r'\s*\+\s*(-?\d+)\s*=\s*' + STAMP)
+
+EX_USAGE, EX_UNAVAILABLE, EX_SOFTWARE = 64, 69, 70
+
+
+class Refused(Exception):
+	"""An answer that is not a success, and the exit code that says which kind."""
+
+	def __init__(self, message, code):
+		super().__init__(message)
+		self.code = code
+
+
+def fail2ban(*args):
+	"""Run fail2ban-client with a fixed argument list and return what it printed."""
+	client = next((path for path in CLIENTS if os.access(path, os.X_OK)), None)
+
+	if client is None:
+		raise Refused('fail2ban-client is not installed', EX_UNAVAILABLE)
+
+	try:
+		done = subprocess.run(
+			[client] + list(args),
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE,
+			universal_newlines=True,
+			timeout=20,
+			env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'},
+		)
+	except subprocess.TimeoutExpired:
+		raise Refused('fail2ban did not answer in time', EX_UNAVAILABLE)
+
+	if done.returncode != 0:
+		message = (done.stderr or done.stdout).strip().splitlines()
+		raise Refused(message[-1] if message else 'fail2ban-client failed', EX_SOFTWARE)
+
+	return done.stdout
+
+
+def jails():
+	"""The jail names, from `status`."""
+	match = re.search(r'Jail list:\s*(.*)$', fail2ban('status'), re.MULTILINE)
+	names = [name.strip() for name in (match.group(1) if match else '').split(',')]
+
+	return [name for name in names if JAIL.match(name)]
+
+
+def jail(name):
+	"""A jail name that is well formed and is one of fail2ban's own."""
+	if not JAIL.match(name) or name not in jails():
+		raise Refused('no such jail: ' + name[:64], EX_USAGE)
+
+	return name
+
+
+def address(text):
+	"""One IPv4 or IPv6 address, in its canonical spelling. No ranges, no zone ids."""
+	try:
+		if not ADDRESS.match(text):
+			raise ValueError
+
+		return str(ipaddress.ip_address(text))
+	except ValueError:
+		raise Refused('not a single IP address: ' + text[:45], EX_USAGE)
+
+
+def epoch(stamp):
+	"""A fail2ban timestamp -- the system's local time -- as seconds since 1970."""
+	return int(time.mktime(time.strptime(stamp, '%Y-%m-%d %H:%M:%S')))
+
+
+def bans(name):
+	"""Every ban in one jail. The times are fail2ban's, read in this clock."""
+	found = []
+
+	for line in fail2ban('get', name, 'banip', '--with-time').splitlines():
+		match = WITH_TIME.match(line.strip())
+
+		if not match:
+			continue
+
+		ip, banned, bantime, expires = match.groups()
+		bantime = int(bantime)
+		permanent = bantime < 0
+
+		found.append({
+			'jail': name,
+			'ip': ip,
+			'banned': banned,
+			'banned_at': epoch(banned),
+			'bantime': bantime,
+			'permanent': permanent,
+			'expires': None if permanent else expires,
+			'expires_at': None if permanent else epoch(expires),
+		})
+
+	return found
+
+
+def banned_ips(name):
+	"""The addresses banned in one jail, without their times."""
+	return [ban['ip'] for ban in bans(name)]
+
+
+def counts():
+	"""Addresses banned per jail, in one fail2ban-client call where it can."""
+	try:
+		answer = ast.literal_eval(fail2ban('banned').strip())
+
+		return {
+			str(name): len(ips)
+			for entry in answer
+			for name, ips in entry.items()
+		}
+	except (Refused, ValueError, SyntaxError, AttributeError, TypeError):
+		return {name: len(banned_ips(name)) for name in jails()}
+
+
+def run(argv):
+	"""Answer one command line."""
+	verb = argv[0] if argv else ''
+	args = argv[1:]
+
+	if verb == 'check' and not args:
+		answer = {'version': HELPER_VERSION}
+
+		try:
+			fail2ban('ping')
+			answer['fail2ban'] = fail2ban('version').strip()
+		except Refused as refused:
+			print(json.dumps(dict(answer, ok=False, error=str(refused))))
+			return EX_UNAVAILABLE
+
+		return answer
+
+	if verb == 'jails' and not args:
+		return {'jails': jails()}
+
+	if verb == 'count' and not args:
+		per_jail = counts()
+		return {'count': sum(per_jail.values()), 'jails': per_jail}
+
+	if verb == 'list' and len(args) <= 1:
+		names = [jail(args[0])] if args else jails()
+		return {'now': int(time.time()), 'bans': [ban for name in names for ban in bans(name)]}
+
+	if verb == 'ban' and len(args) == 2:
+		name, ip = jail(args[0]), address(args[1])
+		fail2ban('set', name, 'banip', ip)
+		return {'jail': name, 'ip': ip}
+
+	if verb == 'unban' and len(args) == 2:
+		name, ip = jail(args[0]), address(args[1])
+
+		try:
+			fail2ban('set', name, 'unbanip', ip)
+		except Refused:
+			# Asked to be in the state it is already in: gone.
+			if ip in banned_ips(name):
+				raise
+
+		return {'jail': name, 'ip': ip}
+
+	raise Refused('usage: oryk-fail2ban check|jails|count|list [jail]|ban <jail> <ip>|unban <jail> <ip>', EX_USAGE)
+
+
+def main():
+	try:
+		answer = run(sys.argv[1:])
+	except Refused as refused:
+		code = refused.code
+
+		# A command that failed because fail2ban is down says so, rather than
+		# whatever fail2ban-client printed on its way out.
+		if code == EX_SOFTWARE:
+			try:
+				fail2ban('ping')
+			except Refused:
+				code = EX_UNAVAILABLE
+
+		print(json.dumps({'ok': False, 'error': str(refused)}))
+		return code
+
+	if isinstance(answer, int):
+		return answer
+
+	print(json.dumps(dict(answer, ok=True)))
+	return 0
+
+
+if __name__ == '__main__':
+	sys.exit(main())

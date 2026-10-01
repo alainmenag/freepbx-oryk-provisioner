@@ -46,10 +46,13 @@ class Navigator extends Service
 	/** @var Users */
 	private $users;
 
+	/** @var Bans */
+	private $bans;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, Bans $bans)
 	{
 		parent::__construct($freepbx);
 
@@ -57,6 +60,7 @@ class Navigator extends Service
 		$this->profiles = $profiles;
 		$this->resources = $resources;
 		$this->users = $users;
+		$this->bans = $bans;
 	}
 
 	/**
@@ -66,14 +70,20 @@ class Navigator extends Service
 	 * the string 'new' on a page writing a row that does not exist yet. A
 	 * level nothing is open at still draws -- it is how you get to one.
 	 *
-	 * @param string                    $section clients|profiles|logs|users|settings.
+	 * @param string                    $section clients|profiles|logs|users|bans|settings.
 	 * @param array<string, mixed>      $at      Row open at each level below it.
 	 *
 	 * @return array<int, array<string, mixed>> Levels, outermost first.
 	 */
 	public function levels($section, array $at = [])
 	{
-		$section = in_array($section, ['clients', 'profiles', 'logs', 'users', 'settings'], true) ? $section : 'clients';
+		$sections = ['clients', 'profiles', 'logs', 'users', 'bans', 'settings'];
+
+		if (!$this->bans->enabled()) {
+			$sections = array_diff($sections, ['bans']);
+		}
+
+		$section = in_array($section, $sections, true) ? $section : 'clients';
 
 		$levels = [$this->sectionLevel($section)];
 
@@ -83,6 +93,10 @@ class Navigator extends Service
 
 		if ($section === 'users') {
 			$levels[] = $this->userLevel(isset($at['user']) ? $at['user'] : null);
+		}
+
+		if ($section === 'bans') {
+			$levels[] = $this->banLevel(isset($at['ban']) ? $at['ban'] : null);
 		}
 
 		if ($section === 'profiles') {
@@ -117,8 +131,14 @@ class Navigator extends Service
 			'profiles' => _('Profiles'),
 			'users' => _('Users'),
 			'logs' => _('Logs'),
+			'bans' => _('Bans'),
 			'settings' => _('Settings'),
 		];
+
+		// Switched off on the Settings tab, Bans is not a section.
+		if (!$this->bans->enabled()) {
+			unset($sections['bans']);
+		}
 
 		$options = [];
 
@@ -252,6 +272,53 @@ class Navigator extends Service
 				'href' => '?display=oryk_provisioner&user=',
 				'active' => $at === 'new',
 			],
+		];
+	}
+
+	/**
+	 * Every ban, by address and jail. Empty, and with nowhere to add one, until
+	 * fail2ban can be asked.
+	 *
+	 * @param mixed $at Ban key (`jail/ip`) open here, 'new', or null.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function banLevel($at)
+	{
+		$options = [];
+		$text = '';
+
+		foreach ($this->bans->banChoices() as $row) {
+			$active = (string) $at === $row['id'];
+
+			$options[] = [
+				'text' => $row['ip'],
+				'note' => $row['jail'],
+				'href' => '?display=oryk_provisioner&jail=' . rawurlencode($row['jail']) . '&ban=' . rawurlencode($row['ip']),
+				'active' => $active,
+			];
+
+			if ($active) {
+				$text = $row['ip'];
+			}
+		}
+
+		return [
+			'key' => 'ban',
+			'title' => [
+				'text' => _('Bans'),
+				'href' => '?display=oryk_provisioner&tab=bans',
+			],
+			'text' => $at === 'new' ? _('New ban') : $text,
+			'mono' => true,
+			'prompt' => _('Select a ban'),
+			'search' => _('Search bans'),
+			'options' => $options,
+			'add' => $this->bans->ready() ? [
+				'text' => _('New ban'),
+				'href' => '?display=oryk_provisioner&ban=',
+				'active' => $at === 'new',
+			] : null,
 		];
 	}
 

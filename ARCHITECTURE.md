@@ -24,9 +24,11 @@ matches `phone.cfg`, and that resource is rendered and served.
 
 Everything else is that sentence with the edge cases filled in.
 
-A **user** is the other half of the module, and the only part not stored in
-its own tables: a pjsip device that is its own extension, managed from the
-Users tab. A client's device is usually one. See [Users](#users).
+A **user** is the other half of the module: a pjsip device that is its own
+extension, managed from the Users tab. A client's device is usually one. See
+[Users](#users). A **ban** is fail2ban's -- one address in one jail -- shown
+and changed from the Bans tab. See [Bans](#bans). Neither is stored in this
+module's tables.
 
 ## Request flow
 
@@ -89,7 +91,8 @@ Oryk_provisioner.class.php   BMO contract, src/ autoloader, AJAX dispatch table.
 page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
-src/                         33 files, namespace FreePBX\Modules\Oryk_Provisioner
+bin/                         the fail2ban helper and its setup script -- see Bans
+src/                         35 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -123,6 +126,8 @@ views/                       one view per page, plus views/partials/
 | `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
 | `ExtensionRenumberer` | moving a user to another number, in order |
 | `Users` | saving, deleting and listing a user |
+| `Fail2ban` | the only file that asks fail2ban, through the sudo helper |
+| `Bans` | listing, adding and lifting a ban |
 
 The last seven came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
@@ -297,10 +302,66 @@ everywhere.
 `userman`, `voicemail` and `cdr` are soft dependencies: each subsystem asks
 `moduleActive()` and declines rather than throwing.
 
+## Bans
+
+A ban is a row in none of this module's tables: it is one (jail, address) pair
+in fail2ban, asked for every time it is shown, and named `jail/ip` wherever one
+string has to name it (a jail cannot hold a slash; an address does not). Its
+page is `?jail=<jail>&ban=<ip>`, the way a resource hangs off its profile. A
+ban cannot be edited, so an existing one has Unban and Close and no Save.
+
+**`ORYK_FAIL2BAN`** (a [setting](#settings), on by default) switches the whole
+thing. `Fail2ban::enabled()` is the one place it is read: off, every call
+answers not-ok without running sudo and `status()` is `disabled`, and `Pages`,
+`Navigator` and `views/admin.php` leave the tab and the section out. It does
+not touch the helper or the sudo rule; `--remove` does. `Settings::get()`
+answers a setting's default until install has registered it, so new files on a
+box not yet upgraded do not read it as off.
+
+**The privilege boundary.** fail2ban's socket answers root only, and the GUI
+runs as the web user. `Fail2ban` -- the only file that asks -- runs
+`sudo -n /usr/local/sbin/oryk-fail2ban <verb> …` with an argument array, never
+a shell string. The helper is Python because fail2ban already needs it, and it
+is the boundary: it accepts `check`, `jails`, `count`, `list [jail]`,
+`ban <jail> <ip>` and `unban <jail> <ip>`, re-checks every argument (a jail
+fail2ban has; one address, no range, no zone id), runs `fail2ban-client` with a
+fixed argument list, and answers one line of JSON. Exit 64 is a refused
+argument, 69 fail2ban down.
+
+- **The helper sudo runs is a root-owned copy, never the module's file.** The
+  module directory is writable by the web user, so a sudo rule pointing into it
+  would be root for anyone who can write there.
+- **One way to install it:** `bin/oryk-fail2ban-setup`, run as root by hand, or
+  by `install()` when that runs as root. It writes the sudoers file under a
+  dotted name, which `includedir` skips, and renames it into place only after
+  `visudo -c`. It checks the whole sudo configuration first, so a problem
+  already there is reported as that; a wrong mode or owner on another file in
+  `/etc/sudoers.d` -- which sudo tolerates and `visudo -c` does not -- it fixes
+  and says so, and anything else it prints and stops. Nothing about it fails
+  an install; `uninstall()` as root runs `--remove`.
+- **`HELPER_VERSION` is how a stale copy is found.** The tab and the setup
+  script read the same line from both copies; bump it whenever the helper
+  changes.
+- **The tab says what is wrong, in order:** `missing` (no helper), `sudo` (sudo
+  refuses -- no JSON came back), `stale`, `fail2ban` (the helper answers,
+  fail2ban does not), `ok`. Anything but `ok` draws the setup command, built from
+  this module's real path, in place of the table; no ban page opens.
+- **Times are fail2ban's local time**, turned into epochs by the helper, and
+  every age is subtracted on the helper's `now` -- the same reasoning as Last
+  Seen: the browser's clock is not the PBX's.
+- **Each helper call costs a sudo and two Python start-ups.** `Fail2ban` asks
+  each read once per request, and `Counts` asks for the ban count only for the
+  unnarrowed scope -- the module page, the one strip with a Bans tab.
+- **A ban refuses** the requester's own address, loopback and unspecified
+  addresses, and the PBX's own; a client's public address is warned about in
+  the browser, not refused. **Unbanning** an address no longer banned succeeds:
+  the request says the state wanted, as the enabled switch does.
+
 ## Conventions that hold everywhere
 
 - **Everything the module edits is a page**, told apart by which key the URL
-  carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`. The
+  carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
+  `?jail=<jail>&ban=`. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
   `showPage()` would be too late to set a header. A user's key is its

@@ -17,11 +17,13 @@ require_once __DIR__ . '/stubs.php';
 require_once __DIR__ . '/namespacing.php';
 
 use FreePBX\Modules\Oryk_Provisioner\AsteriskConfig;
+use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionRenumberer;
+use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
@@ -739,6 +741,91 @@ is_eq('the value set under Connect survives being registered here',
 	FreePBX::Config()->get(Settings::FROM_DOMAIN), 'set-in-connect.example.net');
 is_eq('and the setting now belongs to this module',
 	FreePBX::Config()->defined[Settings::FROM_DOMAIN]['module'] ?? null, 'oryk_provisioner');
+
+
+echo "\n  fail2ban: what the helper's answer to check means:\n";
+
+is_eq('no helper installed is missing', Fail2ban::state('missing', null, 1)['state'], 'missing');
+is_eq('no JSON at all is sudo refusing',
+	Fail2ban::state(null, ['ok' => false, 'exit' => 1, 'error' => 'sudo: a password is required'], 1)['state'], 'sudo');
+is_eq('and what sudo said is passed on',
+	Fail2ban::state(null, ['ok' => false, 'exit' => 1, 'error' => 'sudo: a password is required'], 1)['detail'], 'sudo: a password is required');
+is_eq('another version installed is stale',
+	Fail2ban::state(null, ['ok' => true, 'version' => 1, 'exit' => 0], 2)['state'], 'stale');
+is_eq('stale even while fail2ban is down',
+	Fail2ban::state(null, ['ok' => false, 'version' => 1, 'exit' => 69], 2)['state'], 'stale');
+is_eq('a current helper with fail2ban down is fail2ban',
+	Fail2ban::state(null, ['ok' => false, 'version' => 2, 'exit' => 69, 'error' => 'not running'], 2)['state'], 'fail2ban');
+is_eq('a current helper with fail2ban up is ok',
+	Fail2ban::state(null, ['ok' => true, 'version' => 2, 'fail2ban' => '1.0.2', 'exit' => 0], 2)['state'], 'ok');
+is_eq('the shipped helper has a version line',
+	Fail2ban::helperVersion(file_get_contents(__DIR__ . '/../bin/oryk-fail2ban')) > 0, true);
+is_eq('a file without one has none', Fail2ban::helperVersion("#!/bin/sh\n"), null);
+
+echo "\n  bans: rows, keys and addresses:\n";
+
+$answer = [
+	'ok' => true,
+	'now' => 1000,
+	'bans' => [
+		['jail' => 'asterisk', 'ip' => '188.165.236.15', 'banned' => '2026-10-01 00:32:58', 'banned_at' => 400, 'bantime' => 3600, 'permanent' => false, 'expires' => '2026-10-01 01:32:58', 'expires_at' => 4000],
+		['jail' => 'asterisk', 'ip' => '51.68.19.88', 'banned' => '2026-10-01 00:39:48', 'banned_at' => 900, 'bantime' => 3600, 'permanent' => false, 'expires' => '2026-10-01 01:39:48', 'expires_at' => 4500],
+		['jail' => 'sshd', 'ip' => '2001:DB8::0001', 'banned' => '2026-10-01 00:10:00', 'banned_at' => 100, 'bantime' => -1, 'permanent' => true, 'expires' => null, 'expires_at' => null],
+		['jail' => 'sshd', 'ip' => 'not an address', 'banned_at' => 1],
+	],
+];
+$rows = Bans::rows($answer);
+
+is_eq('a row that is not an address is dropped', count($rows), 3);
+is_eq('a row is keyed jail/ip', $rows[0]['id'], 'asterisk/188.165.236.15');
+is_eq('ages are on the helper clock', [$rows[0]['banned_age'], $rows[0]['expires_in']], [600, 3000]);
+is_eq('an IPv6 address is spelled canonically', $rows[2]['ip'], '2001:db8::1');
+is_eq('a permanent ban has no expiry', [$rows[2]['permanent'], $rows[2]['expires_in']], [true, null]);
+
+$page = Bans::page($rows, 'ip', 'asc', '', 0, 10);
+is_eq('addresses sort by their bytes, IPv4 first',
+	array_column($page['rows'], 'ip'), ['51.68.19.88', '188.165.236.15', '2001:db8::1']);
+is_eq('a permanent ban expires last',
+	array_column(Bans::page($rows, 'expires_at', 'asc', '', 0, 10)['rows'], 'ip'), ['188.165.236.15', '51.68.19.88', '2001:db8::1']);
+is_eq('an unknown sort key sorts by address',
+	array_column(Bans::page($rows, 'nope; DROP', 'asc', '', 0, 10)['rows'], 'ip'), ['51.68.19.88', '188.165.236.15', '2001:db8::1']);
+is_eq('search finds the jail', Bans::page($rows, 'ip', 'asc', 'SSH', 0, 10)['total'], 1);
+is_eq('the total is of what matched, the rows one page of it',
+	[Bans::page($rows, 'ip', 'asc', '', 1, 1)['total'], count(Bans::page($rows, 'ip', 'asc', '', 1, 1)['rows'])], [3, 1]);
+
+is_eq('a key splits into jail and address', Bans::splitKey('asterisk/2001:DB8::1'), ['asterisk', '2001:db8::1']);
+is_eq('a key with a bad jail is refused', Bans::splitKey('ast;erisk/1.2.3.4'), null);
+is_eq('a key with a range is refused', Bans::splitKey('asterisk/10.0.0.0/8'), null);
+is_eq('a key with no slash is refused', Bans::splitKey('1.2.3.4'), null);
+is_eq('canonical refuses a range', Bans::canonical('10.0.0.0/8'), null);
+is_eq('canonical refuses a zone id', Bans::canonical('fe80::1%eth0'), null);
+
+is_eq('your own address is refused', Bans::refusal('203.0.113.9', '203.0.113.9', []) !== null, true);
+is_eq('loopback is refused', Bans::refusal('127.0.0.2', '198.51.100.1', []) !== null, true);
+is_eq('IPv6 loopback is refused', Bans::refusal('::1', '198.51.100.1', []) !== null, true);
+is_eq('the PBX\'s own address is refused', Bans::refusal('192.0.2.10', '198.51.100.1', ['192.0.2.10']) !== null, true);
+is_eq('anything else is allowed', Bans::refusal('203.0.113.7', '198.51.100.1', ['192.0.2.10']), null);
+
+echo "\n  fail2ban: the Settings tab switches the Bans tab on and off:\n";
+
+$s = build();
+FreePBX::$conf = new StubConfig();
+unset(FreePBX::$config[Settings::FAIL2BAN]);
+$settings = new Settings($s['app']);
+$fail2ban = new Fail2ban($s['app'], $settings);
+
+is_eq('before an install has registered it, it is on', $fail2ban->enabled(), true);
+
+$settings->register();
+
+is_eq('registered, it starts on', FreePBX::Config()->get(Settings::FAIL2BAN), true);
+is_eq('switched off from the tab it is off',
+	[$settings->set(Settings::FAIL2BAN, '0'), $fail2ban->enabled()], [null, false]);
+is_eq('off, the state is disabled without asking sudo', $fail2ban->status()['state'], 'disabled');
+is_eq('off, every question answers not-ok', [$fail2ban->jails(), $fail2ban->count(), $fail2ban->bans()['ok']], [[], 0, false]);
+is_eq('off, a ban is refused', (new Bans($s['app'], $fail2ban))->saveBan(['jail' => 'asterisk', 'ip' => '203.0.113.7'])['status'], false);
+is_eq('off, an unban is refused', (new Bans($s['app'], $fail2ban))->deleteBan('asterisk/203.0.113.7')['status'], false);
+is_eq('and on again', [$settings->set(Settings::FAIL2BAN, '1'), $settings->get(Settings::FAIL2BAN)], [null, true]);
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);

@@ -23,6 +23,11 @@ class Settings extends Service
 	const FROM_DOMAIN = 'ORYK_FROM_DOMAIN';
 
 	/**
+	 * Whether the Bans tab is shown and fail2ban is asked anything at all.
+	 */
+	const FAIL2BAN = 'ORYK_FAIL2BAN';
+
+	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
@@ -60,6 +65,14 @@ class Settings extends Service
 				'default' => '',
 				'pattern' => EndpointSettings::DOMAIN_PATTERN,
 				'emptyok' => true,
+			],
+			self::FAIL2BAN => [
+				'name' => 'Fail2ban Bans',
+				'description' => 'Show the Bans tab, where fail2ban bans are listed, added and lifted. '
+					. 'Off hides the tab and the module stops asking fail2ban anything. The helper and '
+					. 'sudo rule the setup script installed stay in place until it is run with --remove.',
+				'type' => 'bool',
+				'default' => true,
 			],
 		];
 	}
@@ -116,7 +129,9 @@ class Settings extends Service
 	 * @param string $keyword A keyword from definitions().
 	 *
 	 * @return mixed The value -- bool for a bool, string otherwise -- or the
-	 *               default when FreePBX cannot be asked.
+	 *               default when FreePBX cannot be asked or the setting has
+	 *               not been registered yet (the module's files are newer
+	 *               than its last install).
 	 */
 	public function get($keyword)
 	{
@@ -127,7 +142,10 @@ class Settings extends Service
 		}
 
 		try {
-			$value = \FreePBX::Config()->get($keyword);
+			$config = \FreePBX::Config();
+			$value = $config->conf_setting_exists($keyword)
+				? $config->get($keyword)
+				: $definitions[$keyword]['default'];
 		} catch (\Throwable $e) {
 			$value = $definitions[$keyword]['default'];
 		}
