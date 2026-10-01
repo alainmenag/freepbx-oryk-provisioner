@@ -24,7 +24,7 @@ class Tokens extends Service
 	 * hashed twice gives two different strings. That is the right trade because a
 	 * request already says who is asking -- the MAC is in the path -- and the
 	 * token only has to say whether it is really them. A token meant to *identify*
-	 * a client instead, the way the README's /provisioner/{token}/{file} would,
+	 * a client instead, the way a /provisioner/{token}/{file} scheme would,
 	 * has to be a digest of something random, and would be a second column.
 	 *
 	 * @param string $token Token as typed.
