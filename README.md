@@ -354,6 +354,7 @@ any, and stays on the tab.
 | Setting | What it is |
 | --- | --- |
 | **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](#from-domain). Blank: the PBX hostname, when that is a domain name; the field shows what blank comes to. |
+| **Fail2ban Bans** (`ORYK_FAIL2BAN`) | Yes (the default): the [Bans](#bans) tab is shown. No: the tab, its pages and its commands are gone and the module asks fail2ban nothing. Switching it off does not uninstall the helper — see [Uninstalling fail2ban access](#uninstalling-fail2ban-access). |
 
 ---
 
@@ -432,6 +433,12 @@ is, when it is one: a site whose phones keep failing to register is the usual
 reason anyone opens this tab. **Unban** lifts a ban now. **Add Ban** bans one
 address in one jail for that jail's own bantime, as though fail2ban had banned
 it. A ban cannot be edited; its page shows it, with Unban and Close.
+
+The tab can be switched off — and back on — with **Fail2ban Bans** on the
+[Settings](#settings) tab (`ORYK_FAIL2BAN`, also in Advanced Settings). Off, the
+tab is not drawn, a ban's page goes back to the module page, the AJAX commands
+refuse, and nothing calls sudo. It is on by default; a PBX that has the new
+files but has not had `fwconsole ma install` run yet treats it as on.
 
 Adding a ban refuses the address you are connected from, loopback, and the
 PBX's own addresses. One written on a client as its Public IP is allowed after
@@ -526,7 +533,9 @@ sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup -
 Deletes `/usr/local/sbin/oryk-fail2ban` and `/etc/sudoers.d/oryk_provisioner`,
 and nothing else: fail2ban, its jails and every ban stay exactly as they are,
 and the web user can no longer reach it. The Bans tab goes back to the setup
-instructions. `fwconsole ma uninstall oryk_provisioner`, run as root, does the
+instructions. To hide the tab as well, set **Fail2ban Bans** to No on the
+Settings tab; switching it off alone leaves the helper and sudo rule installed,
+unused. `fwconsole ma uninstall oryk_provisioner`, run as root, does the
 same; uninstalled from the GUI it cannot, so run `--remove` first — the script
 is inside the module directory, and goes with it.
 

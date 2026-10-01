@@ -310,6 +310,14 @@ string has to name it (a jail cannot hold a slash; an address does not). Its
 page is `?jail=<jail>&ban=<ip>`, the way a resource hangs off its profile. A
 ban cannot be edited, so an existing one has Unban and Close and no Save.
 
+**`ORYK_FAIL2BAN`** (a [setting](#settings), on by default) switches the whole
+thing. `Fail2ban::enabled()` is the one place it is read: off, every call
+answers not-ok without running sudo and `status()` is `disabled`, and `Pages`,
+`Navigator` and `views/admin.php` leave the tab and the section out. It does
+not touch the helper or the sudo rule; `--remove` does. `Settings::get()`
+answers a setting's default until install has registered it, so new files on a
+box not yet upgraded do not read it as off.
+
 **The privilege boundary.** fail2ban's socket answers root only, and the GUI
 runs as the web user. `Fail2ban` -- the only file that asks -- runs
 `sudo -n /usr/local/sbin/oryk-fail2ban <verb> …` with an argument array, never

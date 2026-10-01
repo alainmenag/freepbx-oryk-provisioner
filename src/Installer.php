@@ -235,12 +235,18 @@ class Installer extends Service
 	 *
 	 * As root -- `fwconsole ma install/upgrade` -- this runs the same setup script
 	 * an operator would, and reports what it said. Otherwise it says what to run,
-	 * unless the helper is already in place and current.
+	 * unless the helper is already in place and current. Not at all while
+	 * ORYK_FAIL2BAN is off.
 	 *
 	 * @return void
 	 */
 	private function setUpFail2ban()
 	{
+		// Switched off on the Settings tab: nothing to set up, and nothing said.
+		if (!$this->fail2ban->enabled()) {
+			return;
+		}
+
 		if ($this->runningAsRoot()) {
 			$this->runSetup([]);
 

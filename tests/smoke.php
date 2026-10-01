@@ -806,6 +806,27 @@ is_eq('IPv6 loopback is refused', Bans::refusal('::1', '198.51.100.1', []) !== n
 is_eq('the PBX\'s own address is refused', Bans::refusal('192.0.2.10', '198.51.100.1', ['192.0.2.10']) !== null, true);
 is_eq('anything else is allowed', Bans::refusal('203.0.113.7', '198.51.100.1', ['192.0.2.10']), null);
 
+echo "\n  fail2ban: the Settings tab switches the Bans tab on and off:\n";
+
+$s = build();
+FreePBX::$conf = new StubConfig();
+unset(FreePBX::$config[Settings::FAIL2BAN]);
+$settings = new Settings($s['app']);
+$fail2ban = new Fail2ban($s['app'], $settings);
+
+is_eq('before an install has registered it, it is on', $fail2ban->enabled(), true);
+
+$settings->register();
+
+is_eq('registered, it starts on', FreePBX::Config()->get(Settings::FAIL2BAN), true);
+is_eq('switched off from the tab it is off',
+	[$settings->set(Settings::FAIL2BAN, '0'), $fail2ban->enabled()], [null, false]);
+is_eq('off, the state is disabled without asking sudo', $fail2ban->status()['state'], 'disabled');
+is_eq('off, every question answers not-ok', [$fail2ban->jails(), $fail2ban->count(), $fail2ban->bans()['ok']], [[], 0, false]);
+is_eq('off, a ban is refused', (new Bans($s['app'], $fail2ban))->saveBan(['jail' => 'asterisk', 'ip' => '203.0.113.7'])['status'], false);
+is_eq('off, an unban is refused', (new Bans($s['app'], $fail2ban))->deleteBan('asterisk/203.0.113.7')['status'], false);
+is_eq('and on again', [$settings->set(Settings::FAIL2BAN, '1'), $settings->get(Settings::FAIL2BAN)], [null, true]);
+
 foreach ($TEMPORARY as $path) {
 	@unlink($path);
 }

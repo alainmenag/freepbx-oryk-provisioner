@@ -14,6 +14,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  */
 class Fail2ban extends Service
 {
+	/** @var Settings Whose ORYK_FAIL2BAN says whether fail2ban is asked at all. */
+	private $settings;
+
 	/** @var string Where the setup script installs the helper. */
 	const HELPER = '/usr/local/sbin/oryk-fail2ban';
 
@@ -33,10 +36,33 @@ class Fail2ban extends Service
 	private $answers = [];
 
 	/**
+	 * @param object   $freepbx  FreePBX application instance.
+	 * @param Settings $settings The module's settings.
+	 */
+	public function __construct($freepbx, Settings $settings)
+	{
+		parent::__construct($freepbx);
+
+		$this->settings = $settings;
+	}
+
+	/**
+	 * Whether the Bans tab is switched on (ORYK_FAIL2BAN). Off, nothing here
+	 * calls sudo: status() is `disabled` and every question answers not-ok.
+	 *
+	 * @return bool True when it is on.
+	 */
+	public function enabled()
+	{
+		return (bool) $this->settings->get(Settings::FAIL2BAN);
+	}
+
+	/**
 	 * Whether the module can manage fail2ban, and if not, why not.
 	 *
-	 * The state is the first of these that is true, which is also the order
-	 * they have to be fixed in: missing, sudo, stale, fail2ban, ok.
+	 * `disabled` when ORYK_FAIL2BAN is off, without asking anything. Otherwise
+	 * the first of these that is true, which is also the order they have to be
+	 * fixed in: missing, sudo, stale, fail2ban, ok.
 	 *
 	 * @return array<string, mixed> See state().
 	 */
@@ -44,6 +70,10 @@ class Fail2ban extends Service
 	{
 		if ($this->status !== null) {
 			return $this->status;
+		}
+
+		if (!$this->enabled()) {
+			return $this->status = self::state('disabled', null, $this->bundledVersion());
 		}
 
 		if (!is_file(self::HELPER)) {
@@ -88,6 +118,7 @@ class Fail2ban extends Service
 			'sudo' => _('The fail2ban helper is installed, but the web server is not allowed to run it: the sudo rule is missing or wrong.'),
 			'stale' => _('The fail2ban helper installed on this PBX is not the one this version of the module ships. Run setup again to update it.'),
 			'fail2ban' => _('The helper works, but fail2ban is not installed or not running.'),
+			'disabled' => _('Fail2ban Bans is switched off on the Settings tab.'),
 			'ok' => '',
 		];
 
@@ -167,7 +198,7 @@ class Fail2ban extends Service
 	 */
 	public function count()
 	{
-		if (!is_file(self::HELPER)) {
+		if (!$this->enabled() || !is_file(self::HELPER)) {
 			return 0;
 		}
 
@@ -244,6 +275,10 @@ class Fail2ban extends Service
 	 */
 	private function run(array $args)
 	{
+		if (!$this->enabled()) {
+			return ['ok' => false, 'exit' => 0, 'error' => _('Fail2ban Bans is switched off on the Settings tab.')];
+		}
+
 		$key = implode(' ', $args);
 		$reads = in_array($args[0], ['check', 'jails', 'count', 'list'], true);
 

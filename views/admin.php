@@ -36,10 +36,16 @@
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
  * @var array<string, mixed>              $fail2ban  Fail2ban::status() and its setup command, on the Bans tab
+ * @var bool                              $bansEnabled ORYK_FAIL2BAN: whether the Bans tab is drawn at all
  */
 
 $tab = in_array($tab ?? '', ['profiles', 'logs', 'users', 'bans', 'settings'], true) ? $tab : 'clients';
 $fail2ban = isset($fail2ban) && is_array($fail2ban) ? $fail2ban : [];
+$bansEnabled = !isset($bansEnabled) || $bansEnabled;
+
+if ($tab === 'bans' && !$bansEnabled) {
+	$tab = 'clients';
+}
 
 // Nothing above this page narrows them: every client, every profile, every
 // request the endpoint has answered.
@@ -78,6 +84,10 @@ $tabs = [
 		'href' => '?display=oryk_provisioner&tab=settings',
 	],
 ];
+
+if (!$bansEnabled) {
+	unset($tabs['bans']);
+}
 ?>
 <?php include __DIR__ . '/partials/counts.php'; ?>
 <style>

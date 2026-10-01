@@ -469,13 +469,18 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
-		$tab = in_array($tab, ['profiles', 'logs', 'users', 'bans', 'settings'], true) ? $tab : 'clients';
+		$tabs = $this->bans->enabled()
+			? ['profiles', 'logs', 'users', 'bans', 'settings']
+			: ['profiles', 'logs', 'users', 'settings'];
+		$tab = in_array($tab, $tabs, true) ? $tab : 'clients';
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
 				: [],
+			// Off on the Settings tab, the Bans tab is not drawn at all.
+			'bansEnabled' => $this->bans->enabled(),
 			// What the Bans tab draws in place of its table until fail2ban can be asked.
 			'fail2ban' => $tab === 'bans'
 				? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()]
@@ -590,9 +595,14 @@ class Pages extends Service
 	{
 		// No ban page opens until fail2ban can be asked; the tab says why. An
 		// address that is not banned in that jail -- often one that has just
-		// expired -- goes back to the list.
+		// expired -- goes back to the list. Switched off, there is no tab.
 		if (isset($_REQUEST['ban'])) {
 			$ban = trim((string) $_REQUEST['ban']);
+
+			if (!$this->bans->enabled()) {
+				header('Location: config.php?display=oryk_provisioner');
+				exit;
+			}
 
 			if (!$this->bans->ready() || ($ban !== '' && !$this->bans->banRow((string) ($_REQUEST['jail'] ?? ''), $ban))) {
 				header('Location: config.php?display=oryk_provisioner&tab=bans');

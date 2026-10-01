@@ -77,7 +77,13 @@ class Navigator extends Service
 	 */
 	public function levels($section, array $at = [])
 	{
-		$section = in_array($section, ['clients', 'profiles', 'logs', 'users', 'bans', 'settings'], true) ? $section : 'clients';
+		$sections = ['clients', 'profiles', 'logs', 'users', 'bans', 'settings'];
+
+		if (!$this->bans->enabled()) {
+			$sections = array_diff($sections, ['bans']);
+		}
+
+		$section = in_array($section, $sections, true) ? $section : 'clients';
 
 		$levels = [$this->sectionLevel($section)];
 
@@ -128,6 +134,11 @@ class Navigator extends Service
 			'bans' => _('Bans'),
 			'settings' => _('Settings'),
 		];
+
+		// Switched off on the Settings tab, Bans is not a section.
+		if (!$this->bans->enabled()) {
+			unset($sections['bans']);
+		}
 
 		$options = [];
 

@@ -228,7 +228,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->clients
 		);
 
-		$this->fail2ban = new Fail2ban($freepbx);
+		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
 		$this->bans = new Bans($freepbx, $this->fail2ban);
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->bans);

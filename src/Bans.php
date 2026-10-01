@@ -168,6 +168,16 @@ class Bans extends Service
 	}
 
 	/**
+	 * Whether the Bans tab is switched on (ORYK_FAIL2BAN), set up or not.
+	 *
+	 * @return bool True when it is drawn.
+	 */
+	public function enabled()
+	{
+		return $this->fail2ban->enabled();
+	}
+
+	/**
 	 * Whether bans can be listed and written at all.
 	 *
 	 * @return bool True when the helper is set up and fail2ban answers.
@@ -370,6 +380,10 @@ class Bans extends Service
 	 */
 	public function deleteBan($id)
 	{
+		if (!$this->fail2ban->ready()) {
+			return ['status' => false, 'message' => $this->fail2ban->status()['message']];
+		}
+
 		$parts = self::splitKey($id);
 
 		if ($parts === null || !in_array($parts[0], $this->jailChoices(), true)) {
