@@ -119,7 +119,7 @@ $tabs = [
 										<label class="control-label" for="profile_name">
 											<?php echo _('Name'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-										</label>
+										</label> <i class="fa fa-question-circle fpbx-help-icon" data-for="profile_name"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="profile_name"
@@ -130,7 +130,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="profile_name-help">
 										<?php echo _('How the profile is named in the client list. Must be unique.'); ?>
 									</span>
 								</div>
@@ -141,7 +141,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="profile_enabled"><?php echo _('Status'); ?></label>
+										<label class="control-label" for="profile_enabled"><?php echo _('Status'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="profile_enabled"></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="profile_enabled">
@@ -153,7 +153,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="profile_enabled-help">
 										<?php echo _('Whether this profile serves anything. Disabled, every client assigned to it is refused -- its files, and anything of its own served by name -- without any of those clients being changed, so switching it back on serves them again exactly as before. Use it to take a whole fleet out of service while its files are being rewritten. The same switch is on the row on the Profiles list, and what the refused phones asked for is on the Logs tab.'); ?>
 									</span>
 								</div>

@@ -57,8 +57,8 @@ and the rendering.
   them, with voicemail, UCP access, call history and the clients provisioned
   for them following along. This replaces `oryk_connect` for Extension/User
   devices; see [Users](#users).
-- Sets a **From Domain** on every user's endpoint, from the user, from
-  *Advanced Settings*, or from the PBX hostname.
+- Sets a **From Domain** on every user's endpoint, from the user, from the
+  **Settings** tab (also in *Advanced Settings*), or from the PBX hostname.
 - Records every request the endpoint answered — MAC, filename, status, method,
   address, User-Agent — on a Logs tab of its own and on each client's page.
   Metadata only: never the rendered body.
@@ -332,6 +332,19 @@ from the profile that serves it.
 
 ---
 
+## Settings
+
+The **Settings** tab holds the module's PBX-wide settings. They are the same
+settings as **Settings → Advanced Settings → Oryk Provisioner**: change one in
+either place and the other shows it. Save checks every value before writing
+any, and stays on the tab.
+
+| Setting | What it is |
+| --- | --- |
+| **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](#from-domain). Blank: the PBX hostname, when that is a domain name; the field shows what blank comes to. |
+
+---
+
 ## Users
 
 The **Users** tab lists every PJSIP extension that is its own device — the ones
@@ -386,8 +399,9 @@ Each user's PJSIP endpoint gets a `from_domain`, written to
 adds to the endpoint FreePBX generates. First answer wins:
 
 1. the user's own **From Domain**;
-2. **Settings → Advanced Settings → Oryk Provisioner → From Domain**
-   (`ORYK_FROM_DOMAIN`), the normal place to set it;
+2. the PBX-wide **From Domain** (`ORYK_FROM_DOMAIN`), the normal place to set
+   it — on the provisioner's **Settings** tab, or in **Settings → Advanced
+   Settings → Oryk Provisioner**, which is the same setting;
 3. the PBX hostname, only when it is a real domain name.
 
 Nothing resolved takes it off the endpoint. A changed PBX-wide value reaches a
@@ -460,10 +474,10 @@ at all.
 Install the module as usual (`fwconsole ma install oryk_provisioner`, or upload
 it in Module Admin).
 
-`install()` registers **From Domain** in Advanced Settings (keeping any value
-already there) and adds indexes on `devices.id`, `devices.user` and
+`install()` registers the module's settings in Advanced Settings (keeping any
+value already there) and adds indexes on `devices.id`, `devices.user` and
 `userman_users.email` for the Users tab. Back up the FreePBX database before
-installing or upgrading. Uninstalling removes the From Domain setting with the
+installing or upgrading. Uninstalling removes the module's settings with the
 module, as FreePBX does with every module's settings.
 
 `install()` also symlinks the module's `engine/` directory into the web root:
@@ -576,7 +590,7 @@ The larger design this is working towards, none of which exists in the code:
   profiles.
 - **Copying resources between profiles, or seeding a new one.** A profile is
   set up one file at a time from empty.
-- **A GraphQL API**, a `fwconsole` command, and module settings.
+- **A GraphQL API** and a `fwconsole` command.
 - **Pruning the provisioning log.** It grows by a row per file per boot per
   phone and nothing trims it; the Clear button on the Logs tabs is all there
   is.
@@ -613,6 +627,7 @@ src/Freepbx.php              the only file that asks FreePBX about a device
 src/Mac.php                  a MAC as written, and as found in a filename
 src/Schema.php               the tables, as they are added to
 src/Installer.php            installing and uninstalling
+src/Settings.php             the module's PBX-wide settings, and the Settings tab
 src/Users.php                saving, deleting and listing a user
 src/NumberAllocator.php      which numbers are free, and the next one
 src/ExtensionRenumberer.php  moving a user to another number, in order
@@ -637,6 +652,7 @@ views/user.php               the user editor
 views/partials/navigator.php the breadcrumb every page is topped with
 views/partials/tabs.php      the tab strip every page is laid out under
 views/partials/counts.php    the badges on those tabs
+views/partials/settings.php  the Settings tab, drawn from Settings::fields()
 views/partials/editor.php    the CSS and JS every editor shares
 views/partials/logs.php      the provisioning log, as a table
 views/partials/placeholders.php   the placeholder reference
@@ -647,5 +663,5 @@ AJAX commands, all authenticated through `ajax.php`: `listClients`,
 `saveResource`, `deleteClient`, `deleteProfile`, `deleteResource`,
 `setClientEnabled`, `setProfileEnabled`, `uploadResourceFile`,
 `deleteResourceFile`, `clearLogs`, `counts`, `listUsers`, `saveUser`,
-`deleteUser`. A new one has to be named in both
+`deleteUser`, `saveSettings`. A new one has to be named in both
 `ajaxRequest()` and `ajaxHandler()`.

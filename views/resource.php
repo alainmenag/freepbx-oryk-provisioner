@@ -150,7 +150,7 @@ $tabs = [
 										<label class="control-label" for="resource_name">
 											<?php echo _('Filename'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-										</label>
+										</label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_name"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="resource_name"
@@ -161,21 +161,23 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
-										<?php echo _('The filename a phone asks for. It is a template like the body below, so <code>{{device.mac}}-phone.cfg</code> covers every client on this profile, and a vendor that names its files some other way can be matched exactly. A name with no placeholders in it -- <code>phone.cfg</code> -- is matched against the request with the client\'s MAC taken off the front, so either way of writing it works. Unique within this profile.'); ?>
-									</span>
-									<span class="help-block fpbx-help-block">
-										<?php echo _('The main configuration file is a resource like any other. Name it <code>.cfg</code>: written that way it is matched against the request with the MAC taken off the front, so it answers whichever separator style the phone asks in. <code>{{device.mac}}.cfg</code> works too, but it renders without separators and so only answers a phone that asks that way. A profile with neither serves nothing for <code>[mac].cfg</code>.'); ?>
-									</span>
-									<?php if ($isNew): ?>
-										<span class="help-block fpbx-help-block">
-											<?php echo _('Save it, and this page will then take what it holds -- a template to write, or a file to upload.'); ?>
+									<div class="help-block fpbx-help-block" id="resource_name-help">
+										<span class="oryk-help-part">
+											<?php echo _('The filename a phone asks for. It is a template like the body below, so <code>{{device.mac}}-phone.cfg</code> covers every client on this profile, and a vendor that names its files some other way can be matched exactly. A name with no placeholders in it -- <code>phone.cfg</code> -- is matched against the request with the client\'s MAC taken off the front, so either way of writing it works. Unique within this profile.'); ?>
 										</span>
-									<?php else: ?>
-										<span class="help-block fpbx-help-block">
-											<?php echo _('What that comes to for each client on this profile is on the Clients tab.'); ?>
+										<span class="oryk-help-part">
+											<?php echo _('The main configuration file is a resource like any other. Name it <code>.cfg</code>: written that way it is matched against the request with the MAC taken off the front, so it answers whichever separator style the phone asks in. <code>{{device.mac}}.cfg</code> works too, but it renders without separators and so only answers a phone that asks that way. A profile with neither serves nothing for <code>[mac].cfg</code>.'); ?>
 										</span>
-									<?php endif; ?>
+										<?php if ($isNew): ?>
+											<span class="oryk-help-part">
+												<?php echo _('Save it, and this page will then take what it holds -- a template to write, or a file to upload.'); ?>
+											</span>
+										<?php else: ?>
+											<span class="oryk-help-part">
+												<?php echo _('What that comes to for each client on this profile is on the Clients tab.'); ?>
+											</span>
+										<?php endif; ?>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -187,7 +189,7 @@ $tabs = [
 										<label class="control-label" for="resource_type">
 											<?php echo _('Type'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-										</label>
+										</label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_type"></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="resource_type">
@@ -202,12 +204,14 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
-										<?php echo _('What this resource is. <strong>Template</strong> is text rendered for the client that asks for it -- a configuration file, a directory, anything with placeholders in it. <strong>File</strong> is something uploaded here and handed over exactly as it was stored -- firmware, a ringtone, anything nothing should be rewriting. <strong>Log</strong> is the other direction: a file the phone sends back rather than one it fetches.'); ?>
-									</span>
-									<span class="help-block fpbx-help-block">
-										<?php echo _('This is the only thing that says which. Changing it changes what a phone asking for this filename is answered with, and changing it away from File removes the uploaded file, since nothing would serve it afterwards.'); ?>
-									</span>
+									<div class="help-block fpbx-help-block" id="resource_type-help">
+										<span class="oryk-help-part">
+											<?php echo _('What this resource is. <strong>Template</strong> is text rendered for the client that asks for it -- a configuration file, a directory, anything with placeholders in it. <strong>File</strong> is something uploaded here and handed over exactly as it was stored -- firmware, a ringtone, anything nothing should be rewriting. <strong>Log</strong> is the other direction: a file the phone sends back rather than one it fetches.'); ?>
+										</span>
+										<span class="oryk-help-part">
+											<?php echo _('This is the only thing that says which. Changing it changes what a phone asking for this filename is answered with, and changing it away from File removes the uploaded file, since nothing would serve it afterwards.'); ?>
+										</span>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -218,7 +222,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="resource_file"><?php echo _('File'); ?></label>
+										<label class="control-label" for="resource_file"><?php echo _('File'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_file"></i>
 									</div>
 									<div class="col-md-8">
 										<div id="resource_file_present" class="<?php echo $hasFile ? '' : 'hidden'; ?>">
@@ -242,19 +246,21 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
-										<?php echo _('What this resource serves, sent exactly as it was stored, under the filename above -- firmware, a ringtone, anything a phone fetches that nothing here should be rewriting. A resource set to File with nothing uploaded to it yet is answered as a missing file rather than as a template, so upload one or put the type back.'); ?>
-									</span>
-									<span class="help-block fpbx-help-block">
-										<?php echo _('A phone fetching firmware sends no MAC address at all, so an uploaded file is also found by its name alone, across every profile. Name it exactly what the vendor asks for -- <code>3111-44500-001.sip.ld</code> -- and it will be served to a request that says nothing about who is asking, which also means to anyone who can reach the provisioning URL and knows that name.'); ?>
-									</span>
-									<span class="help-block fpbx-help-block">
-										<?php echo sprintf(
-											_('This server takes a file of up to %1$s, in a request body of up to %2$s -- <code>upload_max_filesize</code> and <code>post_max_size</code> in its php.ini, which have to be raised together. A firmware image is larger than either default.'),
-											$h(ini_get('upload_max_filesize')),
-											$h(ini_get('post_max_size'))
-										); ?>
-									</span>
+									<div class="help-block fpbx-help-block" id="resource_file-help">
+										<span class="oryk-help-part">
+											<?php echo _('What this resource serves, sent exactly as it was stored, under the filename above -- firmware, a ringtone, anything a phone fetches that nothing here should be rewriting. A resource set to File with nothing uploaded to it yet is answered as a missing file rather than as a template, so upload one or put the type back.'); ?>
+										</span>
+										<span class="oryk-help-part">
+											<?php echo _('A phone fetching firmware sends no MAC address at all, so an uploaded file is also found by its name alone, across every profile. Name it exactly what the vendor asks for -- <code>3111-44500-001.sip.ld</code> -- and it will be served to a request that says nothing about who is asking, which also means to anyone who can reach the provisioning URL and knows that name.'); ?>
+										</span>
+										<span class="oryk-help-part">
+											<?php echo sprintf(
+												_('This server takes a file of up to %1$s, in a request body of up to %2$s -- <code>upload_max_filesize</code> and <code>post_max_size</code> in its php.ini, which have to be raised together. A firmware image is larger than either default.'),
+												$h(ini_get('upload_max_filesize')),
+												$h(ini_get('post_max_size'))
+											); ?>
+										</span>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -263,7 +269,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label"><?php echo _('Log'); ?></label>
+										<label class="control-label"><?php echo _('Log'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_log"></i>
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static">
@@ -274,15 +280,17 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
-										<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s id. So a log belongs to a client, and everything one phone has ever sent is in one place -- including after somebody corrects the MAC, which is why the directory is the id and not the MAC. Deleting the client takes the directory with it.'); ?>
-									</span>
-									<span class="help-block fpbx-help-block">
-										<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>
-									</span>
-									<span class="help-block fpbx-help-block">
-										<?php echo _('A PUT to a filename no Log resource answers to is refused, which is what keeps this from being an open upload to the PBX. Every PUT is recorded on the Logs tab either way, taken or refused.'); ?>
-									</span>
+									<div class="help-block fpbx-help-block" id="resource_log-help">
+										<span class="oryk-help-part">
+											<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s id. So a log belongs to a client, and everything one phone has ever sent is in one place -- including after somebody corrects the MAC, which is why the directory is the id and not the MAC. Deleting the client takes the directory with it.'); ?>
+										</span>
+										<span class="oryk-help-part">
+											<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>
+										</span>
+										<span class="oryk-help-part">
+											<?php echo _('A PUT to a filename no Log resource answers to is refused, which is what keeps this from being an open upload to the PBX. Every PUT is recorded on the Logs tab either way, taken or refused.'); ?>
+										</span>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -291,7 +299,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="resource_template"><?php echo _('Template'); ?></label>
+										<label class="control-label" for="resource_template"><?php echo _('Template'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_template"></i>
 									</div>
 									<div class="col-md-8">
 										<textarea class="form-control oryk-template" id="resource_template"
@@ -302,7 +310,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="resource_template-help">
 										<?php echo _('What is served under that filename, stored as typed. Names in double braces are replaced when a client asks for the file; a name nothing answers to is replaced with nothing. The content type is taken from the extension: .xml is served as XML, .json as JSON, anything else as plain text.'); ?>
 									</span>
 								</div>

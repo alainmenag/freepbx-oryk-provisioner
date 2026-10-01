@@ -84,7 +84,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_extension"><?php echo _('Extension'); ?></label>
+										<label class="control-label" for="user_extension"><?php echo _('Extension'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_extension"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="user_extension"
@@ -96,7 +96,7 @@ if ($clientCount > 0) {
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="user_extension-help">
 										<?php echo _('The device, the extension and the User Manager account are one number. Left blank on a new user, the next free number in the 999… range is used. Digits only, at most ten, and not already held by a device, an extension or a User Manager account. Changing it renumbers the user: the extension settings, User Manager account, mailbox and messages, UCP access, call history and any client pointing at it move with it.'); ?>
 									</span>
 								</div>
@@ -107,7 +107,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_name"><?php echo _('Name'); ?></label>
+										<label class="control-label" for="user_name"><?php echo _('Name'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_name"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="user_name" maxlength="255"
@@ -118,7 +118,7 @@ if ($clientCount > 0) {
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="user_name-help">
 										<?php echo _('The device description, the extension name and the User Manager display name, kept in step on every save. Left blank, the number.'); ?>
 									</span>
 								</div>
@@ -129,7 +129,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_email"><?php echo _('Email'); ?></label>
+										<label class="control-label" for="user_email"><?php echo _('Email'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_email"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="email" class="form-control" id="user_email" maxlength="255"
@@ -140,7 +140,7 @@ if ($clientCount > 0) {
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="user_email-help">
 										<?php echo _('Used for the User Manager account and its welcome email, and for voicemail.'); ?>
 									</span>
 								</div>
@@ -151,7 +151,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_from_domain"><?php echo _('From Domain'); ?></label>
+										<label class="control-label" for="user_from_domain"><?php echo _('From Domain'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_from_domain"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="user_from_domain" maxlength="255"
@@ -163,8 +163,8 @@ if ($clientCount > 0) {
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
-										<?php echo _('The domain this endpoint puts in the From header. Left blank, it follows the From Domain in Settings -> Advanced Settings -> Oryk Provisioner, or the PBX hostname when that is a domain name -- the grey value is what blank comes to right now.'); ?>
+									<span class="help-block fpbx-help-block" id="user_from_domain-help">
+										<?php echo _('The domain this endpoint puts in the From header. Left blank, it follows the From Domain on the Settings tab (also in Advanced Settings), or the PBX hostname when that is a domain name -- the grey value is what blank comes to right now.'); ?>
 									</span>
 								</div>
 							</div>
@@ -174,7 +174,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_secret"><?php echo _('Secret'); ?></label>
+										<label class="control-label" for="user_secret"><?php echo _('Secret'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_secret"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="password" class="form-control" id="user_secret" maxlength="255"
@@ -186,7 +186,7 @@ if ($clientCount > 0) {
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="user_secret-help">
 										<?php echo _('The SIP password. Never shown; type one to replace it. Media encryption (SDES) is switched on for every user on every save.'); ?>
 									</span>
 								</div>

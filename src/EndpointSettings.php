@@ -32,14 +32,9 @@ class EndpointSettings extends Service
 	const FROM_DOMAIN = 'from_domain';
 
 	/**
-	 * What the PBX-wide from domain is called in Advanced Settings.
-	 */
-	const SETTING = 'ORYK_FROM_DOMAIN';
-
-	/**
 	 * What a domain name is allowed to look like.
 	 *
-	 * Used both to validate what is typed into Advanced Settings and to
+	 * Used both to validate the PBX-wide From Domain (see Settings) and to
 	 * decide whether this machine's hostname is a domain name at all.
 	 */
 	const DOMAIN_PATTERN = '/^[A-Za-z0-9]([A-Za-z0-9\-.]*[A-Za-z0-9])?$/';
@@ -129,51 +124,8 @@ class EndpointSettings extends Service
 	}
 
 	/**
-	 * Put the from domain into FreePBX's own settings.
-	 *
-	 * Safe to call on every install and upgrade. The keyword is the one
-	 * oryk_connect registered; the stored value is passed back in so taking
-	 * the setting over can never blank it.
-	 *
-	 * @return bool True when the setting is registered.
-	 */
-	public function register()
-	{
-		try {
-			$current = trim((string) \FreePBX::Config()->get(self::SETTING));
-
-			\FreePBX::Config()->define_conf_setting(self::SETTING, [
-				'value' => $current,
-				'defaultval' => '',
-				'name' => 'From Domain',
-				'description' => 'The domain a PJSIP endpoint puts in the From header. '
-					. 'It is written to pjsip.endpoint_custom_post.conf on the next save of each '
-					. 'device, and a device given a From Domain of its own uses that instead. '
-					. 'Left blank, the hostname of this PBX is used when that is a domain name, '
-					. 'and nothing is written when it is not.',
-				'type' => \CONF_TYPE_TEXT,
-				// For a text setting this is the pattern the value has to
-				// match. An empty value is allowed and is what asks for the
-				// hostname, so it is not validated against this.
-				'options' => self::DOMAIN_PATTERN,
-				'emptyok' => 1,
-				'level' => 0,
-				'category' => 'Oryk Provisioner',
-				// FreePBX removes a module's settings when it is uninstalled
-				'module' => 'oryk_provisioner',
-				'sortorder' => 10,
-			], true);
-		} catch (\Throwable $e) {
-			$this->logError('unable to register ' . self::SETTING . ': ' . $e->getMessage());
-
-			return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * The from domain set for this PBX, in Settings -> Advanced Settings.
+	 * The from domain set for this PBX, in Advanced Settings or on the
+	 * Settings tab.
 	 *
 	 * @return string The domain, or an empty string when none is set.
 	 */
@@ -186,39 +138,12 @@ class EndpointSettings extends Service
 		$this->domain = '';
 
 		try {
-			$this->domain = trim((string) \FreePBX::Config()->get(self::SETTING));
+			$this->domain = trim((string) \FreePBX::Config()->get(Settings::FROM_DOMAIN));
 		} catch (\Throwable $e) {
 			$this->domain = '';
 		}
 
 		return $this->domain;
-	}
-
-	/**
-	 * Set the from domain for this PBX.
-	 *
-	 * Endpoints pick it up on their next save; nothing already written
-	 * changes until then.
-	 *
-	 * @param string $domain The domain, or an empty string to clear it.
-	 *
-	 * @return bool True when it was stored.
-	 */
-	public function setPbxDomain($domain)
-	{
-		$domain = trim((string) $domain);
-
-		try {
-			\FreePBX::Config()->update(self::SETTING, $domain);
-		} catch (\Throwable $e) {
-			$this->logError('unable to store ' . self::SETTING . ': ' . $e->getMessage());
-
-			return false;
-		}
-
-		$this->domain = $domain;
-
-		return true;
 	}
 
 	/**
@@ -357,7 +282,7 @@ class EndpointSettings extends Service
 	 *
 	 * @return string The hostname, or an empty string when it is not usable.
 	 */
-	private function hostname()
+	public function hostname()
 	{
 		$name = strtolower(trim((string) gethostname()));
 

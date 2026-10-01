@@ -1,6 +1,6 @@
 <?php
 /**
- * The module page: Clients, Profiles, Logs and Users tabs.
+ * The module page: Clients, Profiles, Users, Logs and Settings tabs.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -24,12 +24,16 @@
  * bare URL: none is the others' default, though a bare
  * ?display=oryk_provisioner still opens Clients.
  *
- * @var string             $tab    Tab to open on: clients|profiles|logs|users
+ * Settings is the one tab with fields rather than a table, drawn by
+ * partials/settings.php and saved by the action bar's Save.
+ *
+ * @var string             $tab    Tab to open on: clients|profiles|logs|users|settings
  * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
  */
 
-$tab = in_array($tab ?? '', ['profiles', 'logs', 'users'], true) ? $tab : 'clients';
+$tab = in_array($tab ?? '', ['profiles', 'logs', 'users', 'settings'], true) ? $tab : 'clients';
 
 // Nothing above this page narrows them: every client, every profile, every
 // request the endpoint has answered.
@@ -57,6 +61,10 @@ $tabs = [
 		'label' => _('Logs'),
 		'href' => '?display=oryk_provisioner&tab=logs',
 		'count' => 'logs',
+	],
+	'settings' => [
+		'label' => _('Settings'),
+		'href' => '?display=oryk_provisioner&tab=settings',
 	],
 ];
 ?>
@@ -212,6 +220,12 @@ $tabs = [
 						$logMac = '';
 						include __DIR__ . '/partials/logs.php';
 						?>
+					</div>
+					<?php endif; ?>
+
+					<?php if ($tab === 'settings'): ?>
+					<div class="tab-pane oryk-tab-section active" id="oryk_settings">
+						<?php include __DIR__ . '/partials/settings.php'; ?>
 					</div>
 					<?php endif; ?>
 

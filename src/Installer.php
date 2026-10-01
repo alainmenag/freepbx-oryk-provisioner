@@ -7,7 +7,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Installing and uninstalling the module.
  *
- * The tables, the From Domain setting, the repo directory, and the web-root
+ * The tables, the module's settings, the repo directory, and the web-root
  * symlink that gives a phone a short URL. Nothing about the symlink fails the install: a module
  * that could not write to the web root is still a working module minus a
  * friendly URL.
@@ -23,20 +23,20 @@ class Installer extends Service
 	/** @var LogRepo */
 	private $logs;
 
-	/** @var EndpointSettings */
-	private $endpoints;
+	/** @var Settings */
+	private $settings;
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, EndpointSettings $endpoints)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings)
 	{
 		parent::__construct($freepbx);
 
 		$this->schema = $schema;
 		$this->files = $files;
 		$this->logs = $logs;
-		$this->endpoints = $endpoints;
+		$this->settings = $settings;
 	}
 
 	/**
@@ -176,10 +176,10 @@ class Installer extends Service
 		$this->schema->relaxClientMacColumn();
 		$this->schema->addCoreIndexes();
 
-		// Settings -> Advanced Settings -> From Domain. Registering it again on an
-		// upgrade keeps whatever is set there.
-		if (!$this->endpoints->register()) {
-			$this->installMessage('Provisioner: could not register the From Domain setting; see the FreePBX log.');
+		// Advanced Settings -> Oryk Provisioner. Registering again on an upgrade
+		// keeps whatever is set there.
+		if (!$this->settings->register()) {
+			$this->installMessage('Provisioner: could not register every module setting; see the FreePBX log.');
 		}
 
 		$this->linkEngine();

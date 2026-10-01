@@ -160,7 +160,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_mac"><?php echo _('MAC Address'); ?></label>
+										<label class="control-label" for="client_mac"><?php echo _('MAC Address'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_mac"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="client_mac"
@@ -171,7 +171,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_mac-help">
 										<?php echo _('The address the client provisions with. Stored as 12 lowercase hexadecimal characters; separators are removed. Unique -- a MAC is associated once. Optional: a client can be written before anybody has read the label off the handset, and one without a MAC is simply never reached -- the endpoint finds a client by the MAC in the path a phone asks with, so there is nothing that could arrive for it until one is filled in. Typing something that is not a MAC is still refused; it is the empty box that is allowed.'); ?>
 									</span>
 								</div>
@@ -182,7 +182,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_device_id"><?php echo _('Device'); ?></label>
+										<label class="control-label" for="client_device_id"><?php echo _('Device'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_device_id"></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="client_device_id">
@@ -205,7 +205,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_device_id-help">
 										<?php echo _('The extension this client registers as. Optional: a profile of static configuration renders without one, with the device values left empty.'); ?>
 										<?php
 										// Only a device that is its own extension is a user.
@@ -229,7 +229,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_profile_id"><?php echo _('Profile'); ?></label>
+										<label class="control-label" for="client_profile_id"><?php echo _('Profile'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_profile_id"></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="client_profile_id">
@@ -253,7 +253,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_profile_id-help">
 										<?php echo _('What this client is served. Until one is assigned there is nothing to provision, and the client is asked for a configuration it has none of. A profile marked disabled is switched off and serves nothing, however this client is set.'); ?>
 									</span>
 								</div>
@@ -264,7 +264,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_private_ip"><?php echo _('Private IP'); ?></label>
+										<label class="control-label" for="client_private_ip"><?php echo _('Private IP'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_private_ip"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="client_private_ip"
@@ -275,7 +275,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_private_ip-help">
 										<?php echo _('Where this phone is on the local network. Optional, and written down here rather than discovered -- nothing in the module reaches a phone, so nothing can fill it in. Given one, the Clients list grows a button on this row that opens the phone\'s own web interface at that address in a new tab, which is the page you want when a handset needs looking at directly. An IPv4 or IPv6 address; anything else is refused, since the address goes into a link.'); ?>
 									</span>
 								</div>
@@ -286,7 +286,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_public_ip"><?php echo _('Public IP'); ?></label>
+										<label class="control-label" for="client_public_ip"><?php echo _('Public IP'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_public_ip"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="client_public_ip"
@@ -297,7 +297,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_public_ip-help">
 										<?php echo _('The address the site this phone sits behind is reached at from outside. Optional, and kept for reference: nothing is served differently because of it and there is no button for it -- a public address is usually the router rather than the handset. Both addresses are searched on the Clients list, and both can be rendered into a configuration as {{client.public_ip}} and {{client.private_ip}}.'); ?>
 									</span>
 								</div>
@@ -308,7 +308,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_token"><?php echo _('Token'); ?></label>
+										<label class="control-label" for="client_token"><?php echo _('Token'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_token"></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-token" id="client_token"
@@ -320,7 +320,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_token-help">
 										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. Empty the box to take the token away. While one is set, the endpoint answers this client nothing until it presents those credentials: a request without them, or with the wrong ones, is a 401. A client with no token is served to anyone who knows its MAC address.'); ?>
 									</span>
 								</div>
@@ -331,7 +331,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_enabled"><?php echo _('Status'); ?></label>
+										<label class="control-label" for="client_enabled"><?php echo _('Status'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_enabled"></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="client_enabled">
@@ -343,7 +343,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_enabled-help">
 										<?php echo _('Whether the endpoint answers this client. Disabled, every request it makes is refused -- its profile\'s files, anything served by name, and any log it tries to send -- without the client being deleted or its configuration touched. What it asks for while it is off is still recorded on the Logs tab, which is usually the point of switching it off. The same switch is on the row on the Clients list.'); ?>
 									</span>
 								</div>
@@ -355,7 +355,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label"><?php echo _('Last Seen'); ?></label>
+										<label class="control-label"><?php echo _('Last Seen'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_last_seen"></i>
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static">
@@ -370,7 +370,7 @@ $tabs = [
 							</div>
 							<div class="row">
 								<div class="col-md-12">
-									<span class="help-block fpbx-help-block">
+									<span class="help-block fpbx-help-block" id="client_last_seen-help">
 										<?php echo _('The last time this client asked the endpoint for something and was given it -- a file served, a configuration rendered, or a log received. A refused request does not count: a phone that is switched off, or asking for a file its profile does not serve, is reaching the PBX and getting nothing, and those are on the Logs tab. Never means nothing has been served to this client since it was written.'); ?>
 									</span>
 								</div>

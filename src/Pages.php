@@ -51,10 +51,13 @@ class Pages extends Service
 	/** @var EndpointSettings */
 	private $endpoints;
 
+	/** @var Settings */
+	private $settings;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings)
 	{
 		parent::__construct($freepbx);
 
@@ -69,6 +72,7 @@ class Pages extends Service
 		$this->logs = $logs;
 		$this->users = $users;
 		$this->endpoints = $endpoints;
+		$this->settings = $settings;
 	}
 
 	/**
@@ -399,8 +403,10 @@ class Pages extends Service
 	/**
 	 * Render the list page.
 	 *
-	 * All three tables are filled over AJAX and no row is edited here, so the view
-	 * is handed which tab to open on and the counts its tabs are labelled with.
+	 * Every table is filled over AJAX and no row is edited here, so the view is
+	 * handed which tab to open on and the counts its tabs are labelled with --
+	 * and, on Settings, the module's settings, which are fields rather than a
+	 * table.
 	 * Nothing arrives from a save: an editor's Save stays on the row it wrote, and
 	 * only Close and a finished Delete come back here.
 	 *
@@ -411,10 +417,13 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
-		$tab = in_array($tab, ['profiles', 'logs', 'users'], true) ? $tab : 'clients';
+		$tab = in_array($tab, ['profiles', 'logs', 'users', 'settings'], true) ? $tab : 'clients';
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
+			'settings' => $tab === 'settings'
+				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
+				: [],
 			// Nothing above this page to narrow them by.
 			'counts' => $this->counts->pageCounts(),
 			// The section is the tab this page opens on, and nothing under it is open:
@@ -427,8 +436,9 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors have any: the list's tabs carry their own controls, and a
-	 * single button in the header could not say which tab it meant.
+	 * Only the editors and the Settings tab have any: the list's other tabs
+	 * carry their own controls, and a single button in the header could not say
+	 * which tab it meant.
 	 *
 	 * Deliberately not the usual submit/delete names -- core wires those to a
 	 * `form.fpbx-submit`, and none of these pages has a form. These are ours, and
@@ -458,6 +468,15 @@ class Pages extends Service
 			$row = isset($_REQUEST['resource'])
 				? trim((string) $_REQUEST['resource'])
 				: trim((string) $_REQUEST['profile']);
+		} elseif (($_REQUEST['tab'] ?? '') === 'settings') {
+			// Fields, but no row: nothing to delete, and nowhere to close to.
+			return [
+				'oryksave' => [
+					'name' => 'oryksave',
+					'id' => 'oryksave',
+					'value' => _('Save'),
+				],
+			];
 		} else {
 			return [];
 		}
