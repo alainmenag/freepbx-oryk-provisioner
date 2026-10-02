@@ -110,10 +110,6 @@ if ($user !== null && $pass !== null) {
 	$token = $user . ':' . $pass;
 }
 
-// $provisioner->log('asdfadfasf', [
-// 	'$_SERVER' => $_SERVER,
-// ], 'ERROR');
-
 // --- OPEN PROVISIONING ---
 
 // The all-zero MAC is answered here, before any client is looked up, and only
@@ -127,63 +123,17 @@ if ($user !== null && $pass !== null) {
 // that MAC is what the phone asks with from then on. The password is never
 // logged.
 if ($mac === '000000000000' && $provisioning === 'OPEN') {
-	header('Content-Type: application/json');
-
-	if ($user === null || $pass === null) {
-		http_response_code(401);
-		header('WWW-Authenticate: Basic realm="oryk_provisioner"');
-		die(json_encode(['mac' => $mac, 'message' => 'Credentials are required.']));
-	}
-
-	try {
-		$found = $provisioner->findOrCreateUser($user, $pass);
-	} catch (\InvalidArgumentException $e) {
-		http_response_code(400);
-		die(json_encode(['mac' => $mac, 'message' => $e->getMessage()]));
-	} catch (\RuntimeException $e) {
-		http_response_code(409);
-		die(json_encode(['mac' => $mac, 'message' => $e->getMessage()]));
-	} catch (\Throwable $e) {
-		http_response_code(500);
-		die(json_encode(['mac' => $mac, 'message' => 'The user could not be saved.']));
-	}
-
-	if ($found === null) {
-		http_response_code(401);
-		header('WWW-Authenticate: Basic realm="oryk_provisioner"');
-		die(json_encode(['mac' => $mac, 'message' => 'Invalid credentials.']));
-	}
-
-	try {
-		$client = $provisioner->findOrCreateClient($found['extension'], $token);
-	} catch (\Throwable $e) {
-		$provisioner->logRequest($mac, $filename, 500, 'Client could not be saved: ' . $e->getMessage());
-		http_response_code(500);
-		die(json_encode(['mac' => $mac, 'message' => 'The client could not be saved.']));
-	}
-
-	$created = $found['created'] || $client['created'];
-	$reason = sprintf(
-		'User %s %s; client %s %s.',
-		$found['extension'],
-		$found['created'] ? 'created' : 'found',
-		$client['mac'],
-		$client['created'] ? 'created' : 'found'
-	);
-	$provisioner->logRequest($mac, $filename, $created ? 201 : 200, $reason);
-
-	http_response_code($created ? 201 : 200);
-	die(json_encode([
-		'mac' => $mac,
-		'extension' => $found['extension'],
-		'created' => $found['created'],
-		'client' => [
-			'id' => $client['id'],
-			'mac' => $client['mac'],
-			'created' => $client['created'],
-		],
-	]));
+	$found = $user && $pass ? $provisioner->findOrCreateUser($user, $pass) : null;
+	$client = $found ? $provisioner->findOrCreateClient($found['extension'], $token) : null;
+	$filename = $client ? str_replace($mac, $client['mac'], $filename) : $filename;
+	$mac = $client ? $client['mac'] : $mac;
 }
+
+// $provisioner->log('asdfadfasf', [
+// 	'$mac' => $mac,
+// 	'$filename' => $filename,
+// 	'$token' => $token,
+// ], 'ERROR');
 
 // --- SERVE ---
 

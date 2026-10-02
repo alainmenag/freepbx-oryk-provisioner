@@ -531,7 +531,7 @@ class Endpoint extends Service
 	 *
 	 * @return void Never returns.
 	 */
-	private function sendText($code, $body, $type = 'text/plain')
+	public function sendText($code, $body, $type = 'text/plain')
 	{
 		$body = (string) $body;
 
