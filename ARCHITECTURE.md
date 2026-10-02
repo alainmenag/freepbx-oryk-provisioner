@@ -41,7 +41,9 @@ phone
                                MAC 000000000000 with ORYK_PROVISIONING=OPEN:
                                Basic credentials are a User Manager login;
                                they find or make a user (custom username on
-                               its account) via Users::findOrCreate(); answered
+                               its account) via Users::findOrCreate(), then its
+                               internal-MAC client via
+                               Clients::findOrCreateForDevice(); answered
                                with its extension as JSON here, and ends
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
   -> Endpoint::resolveRequest()                   decides

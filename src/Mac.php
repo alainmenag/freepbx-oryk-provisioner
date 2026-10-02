@@ -28,6 +28,22 @@ class Mac
 	}
 
 	/**
+	 * The MAC a client saved without one is given.
+	 *
+	 * Locally administered (`02` prefix) and built from the client id, so it
+	 * cannot collide with a real phone or another client. Clients::INTERNAL_EXPR
+	 * is the same thing in SQL; the two must agree.
+	 *
+	 * @param int $id Client id.
+	 *
+	 * @return string The MAC, normalised.
+	 */
+	public static function internal($id)
+	{
+		return '02' . str_pad((string) (int) $id, 10, '0', STR_PAD_LEFT);
+	}
+
+	/**
 	 * A MAC as the provisioning log stores it.
 	 *
 	 * Normalised when it is a MAC, so a row can be read back by what asked for it,

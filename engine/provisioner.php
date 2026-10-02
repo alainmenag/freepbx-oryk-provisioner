@@ -122,7 +122,10 @@ if ($user !== null && $pass !== null) {
 //
 // The Basic credentials are a User Manager login: they find the user it
 // belongs to, or make one the way the Users editor does with a blank
-// Extension and give its account that username and password. No client is made. The password is never logged.
+// Extension and give its account that username and password. Then the user's
+// internal-MAC client is found, or made with the credentials as its token, and
+// that MAC is what the phone asks with from then on. The password is never
+// logged.
 if ($mac === '000000000000' && $provisioning === 'OPEN') {
 	header('Content-Type: application/json');
 
@@ -151,14 +154,34 @@ if ($mac === '000000000000' && $provisioning === 'OPEN') {
 		die(json_encode(['mac' => $mac, 'message' => 'Invalid credentials.']));
 	}
 
-	$reason = $found['created'] ? 'User created.' : 'User found.';
-	$provisioner->logRequest($mac, $filename, $found['created'] ? 201 : 200, $reason);
+	try {
+		$client = $provisioner->findOrCreateClient($found['extension'], $token);
+	} catch (\Throwable $e) {
+		$provisioner->logRequest($mac, $filename, 500, 'Client could not be saved: ' . $e->getMessage());
+		http_response_code(500);
+		die(json_encode(['mac' => $mac, 'message' => 'The client could not be saved.']));
+	}
 
-	http_response_code($found['created'] ? 201 : 200);
+	$created = $found['created'] || $client['created'];
+	$reason = sprintf(
+		'User %s %s; client %s %s.',
+		$found['extension'],
+		$found['created'] ? 'created' : 'found',
+		$client['mac'],
+		$client['created'] ? 'created' : 'found'
+	);
+	$provisioner->logRequest($mac, $filename, $created ? 201 : 200, $reason);
+
+	http_response_code($created ? 201 : 200);
 	die(json_encode([
 		'mac' => $mac,
 		'extension' => $found['extension'],
 		'created' => $found['created'],
+		'client' => [
+			'id' => $client['id'],
+			'mac' => $client['mac'],
+			'created' => $client['created'],
+		],
 	]));
 }
 

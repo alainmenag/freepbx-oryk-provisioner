@@ -416,6 +416,24 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * The client a device is provisioned as, made when it has none.
+	 *
+	 * Called by engine/provisioner.php after findOrCreateUser(). See
+	 * Clients::findOrCreateForDevice().
+	 *
+	 * @param string      $deviceId FreePBX device id.
+	 * @param string|null $token    Token as typed, user:password; null for none.
+	 *
+	 * @return array{id: int, mac: string, created: bool} The client.
+	 *
+	 * @throws \Exception When the client could not be saved.
+	 */
+	public function findOrCreateClient($deviceId, $token = null)
+	{
+		return $this->clients->findOrCreateForDevice($deviceId, $token);
+	}
+
+	/**
 	 * Record one provisioning request.
 	 *
 	 * Public because the endpoint logs the requests that never reach serve()

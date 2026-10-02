@@ -42,6 +42,9 @@ class Clients extends Service
 	 */
 	const SEEN_AGE_EXPR = 'TIMESTAMPDIFF(SECOND, pc.last_seen, NOW())';
 
+	/** Whether a client's MAC is the internal one Mac::internal() gave it. */
+	const INTERNAL_EXPR = "(pc.mac = CONCAT('02', LPAD(pc.id, 10, '0')))";
+
 	/** @var Freepbx */
 	private $pbx;
 
@@ -258,6 +261,53 @@ class Clients extends Service
 	}
 
 	/**
+	 * The client a device is provisioned as, made when it has none.
+	 *
+	 * Only a client on an internal MAC counts: one on a real phone's MAC
+	 * stands for that phone and is not handed to anything else asking. A new
+	 * one is made by saveClient() as the editor makes one with a blank MAC --
+	 * enabled, no profile -- and given $token, so the internal MAC is served
+	 * only to whoever holds it.
+	 *
+	 * @param string      $deviceId FreePBX device id.
+	 * @param string|null $token    Token as typed, user:password; null for none.
+	 *
+	 * @return array{id: int, mac: string, created: bool} The client.
+	 *
+	 * @throws \Exception When saveClient() refuses.
+	 */
+	public function findOrCreateForDevice($deviceId, $token = null)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT pc.id, pc.mac
+			FROM `{$this->clientsTable}` pc
+			WHERE pc.device_id = :device_id AND " . self::INTERNAL_EXPR . "
+			ORDER BY pc.id
+			LIMIT 1"
+		);
+		$stmt->execute([':device_id' => (string) $deviceId]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		if ($row) {
+			return ['id' => (int) $row['id'], 'mac' => (string) $row['mac'], 'created' => false];
+		}
+
+		$saved = $this->saveClient([
+			'mac' => '',
+			'device_id' => (string) $deviceId,
+			'token' => (string) $token,
+		]);
+
+		if (empty($saved['status'])) {
+			throw new \Exception((string) ($saved['message'] ?? 'The client could not be saved.'));
+		}
+
+		$id = (int) $saved['id'];
+
+		return ['id' => $id, 'mac' => Mac::internal($id), 'created' => true];
+	}
+
+	/**
 	 * Create or update a client.
 	 *
 	 * `token` is the field here that is not simply written: what arrives is either
@@ -302,7 +352,7 @@ class Clients extends Service
 		}
 
 		if (!$mac) {
-			$mac = '02' . str_pad((string) $id, 10, '0', STR_PAD_LEFT);
+			$mac = Mac::internal($id);
 		}
 
 		if (!$mac) {
