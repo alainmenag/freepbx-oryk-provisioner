@@ -280,8 +280,9 @@ repointed** (`Clients::repointDevice()`); UCP access moves before the history
 it opens; the history is rewritten in place (`src`, `dst`, `cnum`, `clid`, both
 channel names; recording file names are left, since they must match the file).
 
-**A delete** removes the device and its endpoint section and **releases** every
-client pointing at it (`device_id` NULL; MAC, profile and token kept). Once no
+**A delete** removes the device and its endpoint section and **deletes** every
+client pointing at it (`Clients::deleteForDevice()`, each with its stored logs;
+its provisioning-log rows stay, as for any deleted client). Once no
 other device points at the extension, the extension, the account this module
 owns, its UCP assignments and its **call history and recordings** go too, only
 after the extension itself is gone. History is found by `src` or `dst` matched

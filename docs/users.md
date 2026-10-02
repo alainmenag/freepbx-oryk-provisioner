@@ -42,8 +42,8 @@ other destinations naming the old number are **not** updated.
 > extensions belongs to both, and is removed from the other's history too. Back
 > up `asteriskcdrdb` first if the history matters.
 
-Clients pointed at a deleted user are kept, with no device. Delete asks first,
-and says how many clients that is.
+Clients pointed at a deleted user are deleted with it, along with the logs they
+sent. Delete asks first, and says how many clients that is.
 
 ## From Domain
 

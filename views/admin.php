@@ -701,13 +701,13 @@ if (!$bansEnabled) {
 	}
 
 	// Permanent, and it takes the call history and recordings with it, so it
-	// says so -- and how many clients it leaves without a device.
+	// says so -- and how many clients go with it.
 	$(document).on('click', '[name="user_delete"]', function () {
 		const clients = Number($(this).data('clients')) || 0;
 		let ask = 'Delete this user? The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently. This cannot be undone.';
 
 		if (clients) {
-			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be left with no device.`;
+			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be deleted too.`;
 		}
 
 		if (!window.confirm(ask)) {

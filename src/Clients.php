@@ -613,23 +613,27 @@ class Clients extends Service
 	}
 
 	/**
-	 * Take a deleted device off every client that pointed at it.
+	 * Delete every client that pointed at a deleted device.
 	 *
-	 * The client keeps its MAC, profile and token and has no device, which is
-	 * what saveClient() stores for None.
+	 * One by one through deleteClient(), so each one's stored logs go with it.
 	 *
 	 * @param string $deviceId Device id that has gone.
 	 *
-	 * @return int Clients released.
+	 * @return int Clients deleted.
 	 */
-	public function releaseDevice($deviceId)
+	public function deleteForDevice($deviceId)
 	{
 		$stmt = $this->db->prepare(
-			"UPDATE `{$this->clientsTable}` SET device_id = NULL WHERE device_id = :id"
+			"SELECT id FROM `{$this->clientsTable}` WHERE device_id = :id"
 		);
 		$stmt->execute([':id' => (string) $deviceId]);
+		$ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
-		return (int) $stmt->rowCount();
+		foreach ($ids as $id) {
+			$this->deleteClient($id);
+		}
+
+		return count($ids);
 	}
 
 	/**

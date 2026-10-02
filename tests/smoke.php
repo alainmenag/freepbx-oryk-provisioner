@@ -361,15 +361,15 @@ is_eq('the secret came with it', $settings['secret']['value'], 'stored-secret');
 is_eq('an emergency cid that was the old number is the new one', $settings['emergency_cid']['value'], '2002');
 is_eq('the clients pointing at it were repointed', count($repointed), 1);
 
-echo "\n  deleting a user releases its clients:\n";
+echo "\n  deleting a user deletes its clients:\n";
 
 $s = build();
 stored_user('1001');
 is_eq('remove() says it deleted', $s['users']->remove('1001'), true);
 is_eq('the device went', FreePBX::$core->deleted, [['1001', false]]);
-is_eq('the clients pointing at it were released',
+is_eq('the clients pointing at it were looked up to be deleted',
 	(bool) array_filter($s['app']->Database->seen, function ($q) {
-		return strpos($q, 'SET device_id = NULL WHERE device_id = :id') !== false;
+		return strpos($q, 'SELECT id FROM `oryk_provisioner_clients` WHERE device_id = :id') !== false;
 	}), true);
 
 $s = build();
