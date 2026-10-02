@@ -393,6 +393,29 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * The user a phone's credentials name, made from them when there is none.
+	 *
+	 * Called by engine/provisioner.php for the all-zero MAC while
+	 * ORYK_PROVISIONING is OPEN. See Users::findOrCreate().
+	 *
+	 * @param mixed $username Username offered.
+	 * @param mixed $password Password offered.
+	 *
+	 * @return array{extension: string, created: bool}|null The user, or null
+	 *                                                       when the username
+	 *                                                       is held under
+	 *                                                       another password.
+	 *
+	 * @throws \InvalidArgumentException When the username or password is unusable.
+	 * @throws \RuntimeException         When the login cannot be used.
+	 * @throws \Exception                When the user could not be saved.
+	 */
+	public function findOrCreateUser($username, $password)
+	{
+		return $this->users->findOrCreate($username, $password);
+	}
+
+	/**
 	 * Record one provisioning request.
 	 *
 	 * Public because the endpoint logs the requests that never reach serve()

@@ -28,7 +28,7 @@ class Settings extends Service
 	const FAIL2BAN = 'ORYK_FAIL2BAN';
 
 	/**
-	 * Whether the endpoint answers the all-zero MAC with that MAC as JSON.
+	 * Whether the all-zero MAC logs in, or creates a user, with its credentials.
 	 * OPEN, CLOSED or DISABLED (every request refused with a 503); CLOSED
 	 * unless an admin changes it.
 	 */
@@ -83,8 +83,9 @@ class Settings extends Service
 			],
 			self::PROVISIONING => [
 				'name' => 'Provisioning',
-				'description' => 'Open: a request for the MAC address 000000000000 is answered with '
-					. '{"mac":"000000000000"} and nothing else. Closed: that request is handled like '
+				'description' => 'Open: a request for the MAC address 000000000000 logs in with its '
+					. 'credentials as a User Manager login, and a user is created for a username no account '
+					. 'has. Closed: that request is handled like '
 					. 'any other MAC, and refused when no client has it. Disabled: every request to the '
 					. 'provisioning endpoint is refused with a 503.',
 				'type' => 'select',

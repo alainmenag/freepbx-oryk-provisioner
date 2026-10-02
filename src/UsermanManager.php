@@ -7,14 +7,127 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * The User Manager account behind an Extension/User device.
  *
- * An account named after the extension is this module's: it follows the
- * extension and is deleted with it. An account that merely has the
- * extension assigned belongs to a person and is only ever unassigned, never
- * renamed or removed. Getting that backwards deletes somebody's login, so
- * every write checks which it holds.
+ * An account named after the extension, or carrying OWNER, is this
+ * module's: it follows the extension and is deleted with it. An account that
+ * merely has the extension assigned belongs to a person and is only ever
+ * unassigned, never renamed or removed. Getting that backwards deletes
+ * somebody's login, so every write checks which it holds.
  */
 class UsermanManager extends Service
 {
+	/**
+	 * The User Manager module setting that marks an account this module made
+	 * under a custom username, so it is still owned once it is not named after
+	 * the extension.
+	 */
+	const OWNER = ['oryk_provisioner', 'owned'];
+
+	/**
+	 * Whether User Manager is installed and enabled.
+	 *
+	 * @return bool True when accounts can be read and written.
+	 */
+	public function available()
+	{
+		return $this->moduleActive('userman');
+	}
+
+	/**
+	 * The account a username and password log in as.
+	 *
+	 * Checked by User Manager against the account's directory, so the stored
+	 * hash is never read here.
+	 *
+	 * @param string $username Username offered.
+	 * @param string $password Password offered.
+	 *
+	 * @return array<string, mixed>|null The account, or null when they do not log in.
+	 */
+	public function authenticate($username, $password)
+	{
+		if (!$this->available()) {
+			return null;
+		}
+
+		try {
+			$userman = \FreePBX::Userman();
+			$id = $userman->checkCredentials($username, $password);
+
+			if (!$id) {
+				return null;
+			}
+
+			$user = $userman->getUserByID($id);
+		} catch (\Exception $e) {
+			return null;
+		}
+
+		return empty($user['id']) ? null : $user;
+	}
+
+	/**
+	 * Whether any account holds a username.
+	 *
+	 * @param string $username Username to look for.
+	 *
+	 * @return bool True when it is taken.
+	 */
+	public function usernameTaken($username)
+	{
+		if (!$this->available()) {
+			return false;
+		}
+
+		try {
+			$user = \FreePBX::Userman()->getUserByUsername($username);
+		} catch (\Exception $e) {
+			return false;
+		}
+
+		return !empty($user['id']);
+	}
+
+	/**
+	 * Give the account this module owns for an extension a custom username
+	 * and password -- the extension form's "Use Custom Username" -- and mark
+	 * it OWNER so it stays owned once renamed.
+	 *
+	 * @param int|string $extension Extension/user number.
+	 * @param string     $username  Username to log in with.
+	 * @param string     $password  Password, as typed; User Manager hashes it.
+	 *
+	 * @return void
+	 *
+	 * @throws \Exception When there is no owned account or User Manager refuses.
+	 */
+	public function setLogin($extension, $username, $password)
+	{
+		$user = $this->ownedAccount($extension);
+
+		if ($user === null) {
+			throw new \Exception(sprintf('no User Manager account owned for %s', $extension));
+		}
+
+		$userman = \FreePBX::Userman();
+
+		// Marked first: renamed and unmarked, the account would no longer be ours
+		$userman->setModuleSettingByID($user['id'], self::OWNER[0], self::OWNER[1], '1');
+
+		$status = $userman->updateUser(
+			$user['id'],
+			$user['username'],
+			$username,
+			$user['default_extension'] ?? $extension,
+			$user['description'] ?? null,
+			[],
+			$password,
+			true
+		);
+
+		if (is_array($status) && isset($status['status']) && !$status['status']) {
+			throw new \Exception(trim(strip_tags((string) ($status['message'] ?? ''))));
+		}
+	}
 	/**
 	 * Look up the User Manager account tied to an extension.
 	 *
@@ -48,8 +161,8 @@ class UsermanManager extends Service
 	/**
 	 * The account this module owns for an extension, if it owns one.
 	 *
-	 * Owned means named after the extension. Everything that writes asks
-	 * this first.
+	 * Owned means named after the extension, or marked OWNER. Everything that
+	 * writes asks this first.
 	 *
 	 * @param int|string $extension Extension/user number.
 	 *
@@ -60,11 +173,21 @@ class UsermanManager extends Service
 	{
 		$user = $this->findByExtension($extension);
 
-		if (empty($user['id']) || (string) $user['username'] !== (string) $extension) {
+		if (empty($user['id'])) {
 			return null;
 		}
 
-		return $user;
+		if ((string) $user['username'] === (string) $extension) {
+			return $user;
+		}
+
+		try {
+			$marked = \FreePBX::Userman()->getModuleSettingByID($user['id'], self::OWNER[0], self::OWNER[1]);
+		} catch (\Exception $e) {
+			$marked = false;
+		}
+
+		return (string) $marked === '1' ? $user : null;
 	}
 
 	/**
@@ -114,9 +237,9 @@ class UsermanManager extends Service
 	/**
 	 * Keep the User Manager display name in step with the device description.
 	 *
-	 * Only an account whose username matches the extension is touched, and
-	 * only its display name: every field left out of the update is carried
-	 * over by User Manager, so email, groups and the rest survive.
+	 * Only an account this module owns is touched, and only its display
+	 * name and email: every field left out of the update is carried
+	 * over by User Manager, so groups and the rest survive.
 	 *
 	 * @param int|string  $extension   Extension/user number.
 	 * @param string      $displayname Display name to store.

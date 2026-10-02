@@ -266,6 +266,82 @@ class Users extends Service
 	}
 
 	/**
+	 * The user a phone's credentials name, made from them when there is none.
+	 *
+	 * The credentials are a User Manager login. One that logs in answers with
+	 * the account's default extension. A username no account holds makes a
+	 * user the way the editor does with a blank Extension -- next free
+	 * number, device, extension, account and mailbox -- and gives that account
+	 * the username and password, as the extension form's "Use Custom
+	 * Username" does. The SIP secret is Core's generated one, not the
+	 * password. A username held under another password is refused.
+	 *
+	 * @param mixed $username Username offered.
+	 * @param mixed $password Password offered.
+	 *
+	 * @return array{extension: string, created: bool}|null The user, or null
+	 *                                                       when the username
+	 *                                                       is held under
+	 *                                                       another password.
+	 *
+	 * @throws \InvalidArgumentException When the username or password is unusable.
+	 * @throws \RuntimeException         When User Manager is not available, or
+	 *                                   the account has no Extension/User.
+	 * @throws \Exception                When the user could not be saved.
+	 */
+	public function findOrCreate($username, $password)
+	{
+		$username = (string) $username;
+		$password = (string) $password;
+
+		if ($username === '' || $username !== trim($username)) {
+			throw new \InvalidArgumentException(_('The username may not be blank or begin or end with a space.'));
+		}
+
+		if ($password === '') {
+			throw new \InvalidArgumentException(_('The password may not be blank.'));
+		}
+
+		// Without it no login is ever found, and every request would make a user
+		if (!$this->userman->available()) {
+			throw new \RuntimeException(_('User Manager is not available.'));
+		}
+
+		$account = $this->userman->authenticate($username, $password);
+
+		if ($account) {
+			$extension = (string) ($account['default_extension'] ?? '');
+
+			if (!$this->userRow($extension)) {
+				throw new \RuntimeException(_('That login has no Extension/User.'));
+			}
+
+			return ['extension' => $extension, 'created' => false];
+		}
+
+		if ($this->userman->usernameTaken($username)) {
+			return null;
+		}
+
+		$extension = $this->store([
+			'extension' => '',
+			'name' => '',
+			'email' => filter_var($username, FILTER_VALIDATE_EMAIL) !== false ? $username : '',
+		]);
+
+		// A user whose login could not be set is one nobody can provision as
+		try {
+			$this->userman->setLogin($extension, $username, $password);
+		} catch (\Exception $e) {
+			$this->remove($extension);
+
+			throw $e;
+		}
+
+		return ['extension' => $extension, 'created' => true];
+	}
+
+	/**
 	 * Store or update a user.
 	 *
 	 * $input is a copy and nothing here reads the request. A number that is

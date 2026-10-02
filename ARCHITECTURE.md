@@ -39,7 +39,10 @@ phone
                                path segment). Bootstraps FreePBX directly:
                                freepbx_auth=false, restrict_mods=true.
                                MAC 000000000000 with ORYK_PROVISIONING=OPEN:
-                               answered {"mac":"000000000000"} here, and ends
+                               Basic credentials are a User Manager login;
+                               they find or make a user (custom username on
+                               its account) via Users::findOrCreate(); answered
+                               with its extension as JSON here, and ends
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
   -> Endpoint::resolveRequest()                   decides
   -> Endpoint::answer()                           logs, sets status, sends, exits
@@ -257,6 +260,13 @@ run, the endpoint file is written and a full reload runs -- so the AJAX call
 takes as long as Apply Config. A blank number keeps the user's own (a new one
 takes the next free `999…`); a blank secret keeps the stored one. A number held
 by any device, extension or account is refused before anything is written.
+
+**A custom username** -- given by open provisioning, as the extension form's
+"Use Custom Username" gives one -- leaves the account no longer named after the
+extension, so `UsermanManager::setLogin()` marks it with the User Manager module
+setting `oryk_provisioner/owned` first. `ownedAccount()` counts either as this
+module's: it is synced, moved with a renumber (keeping its username) and deleted
+with the user.
 
 **A renumber** is a save whose number changed. The order is the point
 (`ExtensionRenumberer`): the new extension exists before the old is given up,

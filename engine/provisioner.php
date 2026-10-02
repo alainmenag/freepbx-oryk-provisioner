@@ -110,24 +110,56 @@ if ($user !== null && $pass !== null) {
 	$token = $user . ':' . $pass;
 }
 
+// $provisioner->log('asdfadfasf', [
+// 	'$_SERVER' => $_SERVER,
+// ], 'ERROR');
+
 // --- OPEN PROVISIONING ---
 
 // The all-zero MAC is answered here, before any client is looked up, and only
 // while ORYK_PROVISIONING is OPEN. Settings::get() falls back to CLOSED when
 // the setting is not registered yet, so this fails closed.
-if (
-	$mac === '000000000000'
-) {
+//
+// The Basic credentials are a User Manager login: they find the user it
+// belongs to, or make one the way the Users editor does with a blank
+// Extension and give its account that username and password. No client is made. The password is never logged.
+if ($mac === '000000000000' && $provisioning === 'OPEN') {
 	header('Content-Type: application/json');
 
-	$provisioner->log('asdfasfasf', [
-		'mac' => $mac,
-		'requestPath' => $requestPath,
-		'requestAgent' => $requestAgent,
-		'token' => $token,
-	], 'DEBUG');
+	if ($user === null || $pass === null) {
+		http_response_code(401);
+		header('WWW-Authenticate: Basic realm="oryk_provisioner"');
+		die(json_encode(['mac' => $mac, 'message' => 'Credentials are required.']));
+	}
 
-	die(json_encode(['mac' => $mac]));
+	try {
+		$found = $provisioner->findOrCreateUser($user, $pass);
+	} catch (\InvalidArgumentException $e) {
+		http_response_code(400);
+		die(json_encode(['mac' => $mac, 'message' => $e->getMessage()]));
+	} catch (\RuntimeException $e) {
+		http_response_code(409);
+		die(json_encode(['mac' => $mac, 'message' => $e->getMessage()]));
+	} catch (\Throwable $e) {
+		http_response_code(500);
+		die(json_encode(['mac' => $mac, 'message' => 'The user could not be saved.']));
+	}
+
+	if ($found === null) {
+		http_response_code(401);
+		header('WWW-Authenticate: Basic realm="oryk_provisioner"');
+		die(json_encode(['mac' => $mac, 'message' => 'Invalid credentials.']));
+	}
+
+	$reason = $found['created'] ? 'User created.' : 'User found.';
+	$provisioner->logRequest($mac, $filename, $found['created'] ? 201 : 200, $reason);
+
+	http_response_code($found['created'] ? 201 : 200);
+	die(json_encode([
+		'mac' => $mac,
+		'extension' => $found['extension'],
+		'created' => $found['created'],
+	]));
 }
 
 // --- SERVE ---
