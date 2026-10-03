@@ -1,0 +1,328 @@
+#!/bin/bash
+#
+# oryk-fail2ban-setup -- let the Oryk Provisioner module sync its bans with fail2ban.
+#
+#   sudo bash <module>/bin/oryk-fail2ban-setup            install, or bring up to date
+#   sudo bash <module>/bin/oryk-fail2ban-setup --check    report, change nothing
+#   sudo bash <module>/bin/oryk-fail2ban-setup --remove   undo
+#
+# Installs three things and nothing else: a root-owned copy of bin/oryk-fail2ban
+# at /usr/local/sbin/oryk-fail2ban; /etc/sudoers.d/oryk_provisioner letting the
+# FreePBX web user run that one file as root; and the permanent `deny` jail the
+# module's Deny bans are kept in. Safe to run again; run it after an upgrade
+# that changes the helper. See ARCHITECTURE.md, "Syncing with fail2ban".
+
+set -u
+umask 022
+
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+SOURCE="$HERE/oryk-fail2ban"
+HELPER=/usr/local/sbin/oryk-fail2ban
+SUDOERS=/etc/sudoers.d/oryk_provisioner
+JAIL_CONF=/etc/fail2ban/jail.d/deny.conf
+FILTER_CONF=/etc/fail2ban/filter.d/deny.conf
+JAIL_LOG=/var/log/fail2ban-deny.log
+MARK="# Managed by Oryk Provisioner (oryk-fail2ban-setup)."
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+MODE=install
+
+case "${1:-}" in
+	'') ;;
+	--check) MODE=check ;;
+	--remove) MODE=remove ;;
+	*)
+		echo "usage: $0 [--check|--remove]" >&2
+		exit 64
+		;;
+esac
+
+PROBLEMS=0
+
+step() { printf '  %-44s ' "$1"; }
+ok() { echo "ok${1:+ ($1)}"; }
+
+# In --check a failed step is counted and the next one still runs; otherwise
+# the first failure ends the run, since every later step depends on it.
+fail() {
+	echo "FAILED"
+	echo "      $1"
+	PROBLEMS=$((PROBLEMS + 1))
+
+	if [ "$MODE" != check ]; then
+		echo
+		echo "Stopped. Nothing after this step was changed."
+		exit 1
+	fi
+}
+
+# The version line of a copy of the helper, so two copies can be compared.
+helper_version() {
+	sed -n 's/^HELPER_VERSION *= *\([0-9][0-9]*\).*/\1/p' "$1" 2>/dev/null | head -n 1
+}
+
+# The whole of what the web user is allowed: this one file, as root.
+sudo_rule() {
+	printf '%s\n' \
+		"# Written by oryk-fail2ban-setup (Oryk Provisioner). Lets the FreePBX" \
+		"# web user run the fail2ban helper, and nothing else, as root." \
+		"# Remove with: bash $HERE/oryk-fail2ban-setup --remove" \
+		"Defaults!$HELPER !requiretty" \
+		"$WEBUSER ALL=(root) NOPASSWD: $HELPER"
+}
+
+# The permanent jail Deny bans live in. Its filter never matches, so nothing
+# but the module ever bans in it; bantime -1, so nothing but the module lifts.
+jail_conf() {
+	printf '%s\n' \
+		"$MARK" \
+		"# Holds the Deny bans of the Bans tab, permanently. Remove with:" \
+		"#   bash $HERE/oryk-fail2ban-setup --remove" \
+		"[deny]" \
+		"enabled   = true" \
+		"filter    = deny" \
+		"logpath   = $JAIL_LOG" \
+		"backend   = polling" \
+		"maxretry  = 1" \
+		"bantime   = -1" \
+		"port      = 0:65535" \
+		"banaction = %(banaction_allports)s"
+}
+
+filter_conf() {
+	printf '%s\n' \
+		"$MARK" \
+		"[Definition]" \
+		"failregex = ^oryk-provisioner-deny-never-matches <HOST>$" \
+		"ignoreregex ="
+}
+
+# Whether a file is one this script wrote.
+ours() {
+	[ -f "$1" ] && head -n 1 "$1" | grep -qxF "$MARK"
+}
+
+echo "Oryk Provisioner: fail2ban sync ($MODE)"
+echo
+
+step "running as root"
+[ "$(id -u)" -eq 0 ] && ok || fail "Run it with sudo, or as root."
+
+if [ "$MODE" = remove ]; then
+	step "removing $SUDOERS"
+	rm -f "$SUDOERS" && ok || fail "Could not remove it."
+
+	step "removing $HELPER"
+	rm -f "$HELPER" && ok || fail "Could not remove it."
+
+	# Only files this script wrote; a [deny] jail of someone else's stays.
+	step "removing the deny jail"
+	for FILE in "$JAIL_CONF" "$FILTER_CONF"; do
+		if ours "$FILE"; then rm -f "$FILE"; fi
+	done
+	rm -f "$JAIL_LOG"
+	ok
+
+	step "reloading fail2ban"
+	if fail2ban-client ping >/dev/null 2>&1; then
+		fail2ban-client reload >/dev/null 2>&1 && ok || fail "fail2ban-client reload failed."
+	else
+		ok "not running"
+	fi
+
+	echo
+	echo "Removed. The bans table is untouched; the Bans tab shows how to set this up again."
+	exit 0
+fi
+
+step "fail2ban-client installed"
+command -v fail2ban-client >/dev/null 2>&1 && ok \
+	|| fail "Install fail2ban first: apt install fail2ban (or dnf/yum install fail2ban)."
+
+step "fail2ban running"
+fail2ban-client ping >/dev/null 2>&1 && ok "$(fail2ban-client version 2>/dev/null)" \
+	|| fail "Start it: systemctl enable --now fail2ban"
+
+step "python3 at /usr/bin/python3"
+[ -x /usr/bin/python3 ] && ok || fail "The helper runs on /usr/bin/python3, which fail2ban itself needs."
+
+step "sudo and visudo installed"
+command -v sudo >/dev/null 2>&1 && command -v visudo >/dev/null 2>&1 && ok \
+	|| fail "Install sudo: apt install sudo (or dnf/yum install sudo)."
+
+step "helper source in the module"
+[ -r "$SOURCE" ] && ok "version $(helper_version "$SOURCE")" || fail "$SOURCE is missing; reinstall the module."
+
+# The web user is FreePBX's, asked of FreePBX; asterisk is its default.
+WEBUSER=$(fwconsole setting AMPASTERISKWEBUSER 2>/dev/null | sed -n 's/.*\[\(.*\)\].*/\1/p' | head -n 1)
+WEBUSER=${WEBUSER:-asterisk}
+
+step "web user"
+if ! [[ "$WEBUSER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || ! id -u "$WEBUSER" >/dev/null 2>&1; then
+	fail "AMPASTERISKWEBUSER is \"$WEBUSER\", which is not a user on this system."
+else
+	ok "$WEBUSER"
+fi
+
+if [ "$MODE" = install ]; then
+	step "installing $HELPER"
+
+	# Written beside the target and renamed over it, so the helper sudo runs is
+	# never half a file. A copy, never a link: the module directory is
+	# writable by the web user, and sudo must only ever run a file root owns.
+	mkdir -p "$(dirname "$HELPER")" \
+		&& TMP=$(mktemp "$(dirname "$HELPER")/.oryk-fail2ban.XXXXXX") \
+		&& cat "$SOURCE" > "$TMP" \
+		&& chown root:root "$TMP" \
+		&& chmod 0755 "$TMP" \
+		&& mv -f "$TMP" "$HELPER" \
+		&& ok \
+		|| { rm -f "${TMP:-}"; fail "Could not write $HELPER."; }
+
+	if ! grep -Eq '^[#@]includedir[[:space:]]+/etc/sudoers.d' /etc/sudoers 2>/dev/null; then
+		step "/etc/sudoers reads /etc/sudoers.d"
+		fail "Add this line to /etc/sudoers with visudo: @includedir /etc/sudoers.d"
+	fi
+
+	# A file in /etc/sudoers.d with the wrong mode or owner fails visudo -c for
+	# everything, though sudo itself still reads it. That much is fixed here --
+	# mode and owner only, never a line of anyone's rule -- and said.
+	FIXED=()
+
+	while IFS= read -r LINE; do
+		FILE=${LINE%%:*}
+
+		case "$FILE" in
+			/etc/sudoers.d/*) ;;
+			*) continue ;;
+		esac
+
+		[ -f "$FILE" ] && [ ! -L "$FILE" ] || continue
+
+		case "$LINE" in
+			*"bad permissions, should be mode 0440"*)
+				WAS=$(stat -c '%a' "$FILE")
+				chmod 0440 "$FILE" && FIXED+=("$FILE was mode $WAS, now 0440") ;;
+			*"owned by uid"*"should be 0"*)
+				chown root "$FILE" && FIXED+=("$FILE is now owned by root") ;;
+		esac
+	done < <(visudo -c 2>&1)
+
+	step "existing sudo configuration"
+
+	# Checked before ours is added, so a problem already in the sudo
+	# configuration is reported as that rather than blamed on this rule.
+	if ! CHECKED=$(visudo -c 2>&1); then
+		fail "visudo -c fails before this rule is added. Fix what it says with visudo, then run this again:
+$(printf '%s\n' "$CHECKED" | grep -vi 'parsed OK' | sed 's/^/        /')"
+	fi
+
+	ok
+	for LINE in "${FIXED[@]}"; do
+		echo "      fixed: $LINE"
+	done
+
+	step "installing $SUDOERS"
+
+	# A name with a dot in it is skipped by sudo's includedir, so the file is
+	# inert until it has passed visudo and been renamed into place.
+	TMP=$(mktemp /etc/sudoers.d/.oryk_provisioner.XXXXXX) || fail "Could not write in /etc/sudoers.d."
+	sudo_rule > "$TMP" && chown root:root "$TMP" && chmod 0440 "$TMP" || { rm -f "$TMP"; fail "Could not write $TMP."; }
+
+	if ! CHECKED=$(visudo -cf "$TMP" 2>&1); then
+		rm -f "$TMP"
+		fail "visudo refused the rule, so nothing was installed:
+$(printf '%s\n' "$CHECKED" | sed 's/^/        /')"
+	fi
+
+	mv -f "$TMP" "$SUDOERS" || { rm -f "$TMP"; fail "Could not move the rule into place."; }
+
+	if ! CHECKED=$(visudo -c 2>&1); then
+		rm -f "$SUDOERS"
+		fail "With the rule in place visudo -c fails, so it was taken out again:
+$(printf '%s\n' "$CHECKED" | grep -vi 'parsed OK' | sed 's/^/        /')"
+	fi
+
+	ok
+
+	step "installing the deny jail"
+
+	# Never over a [deny] jail this script did not write.
+	if [ -f "$JAIL_CONF" ] && ! ours "$JAIL_CONF"; then
+		fail "$JAIL_CONF exists and was not written by this script. Rename that jail, then run this again."
+	elif ! ours "$JAIL_CONF" && fail2ban-client status deny >/dev/null 2>&1; then
+		fail "fail2ban already has a jail named deny, defined somewhere else. Rename it, then run this again."
+	elif [ -f "$FILTER_CONF" ] && ! ours "$FILTER_CONF"; then
+		fail "$FILTER_CONF exists and was not written by this script."
+	fi
+
+	touch "$JAIL_LOG" \
+		&& jail_conf > "$JAIL_CONF" \
+		&& filter_conf > "$FILTER_CONF" \
+		&& chmod 0644 "$JAIL_CONF" "$FILTER_CONF" \
+		&& ok \
+		|| fail "Could not write $JAIL_CONF and $FILTER_CONF."
+
+	step "reloading fail2ban"
+	fail2ban-client reload >/dev/null 2>&1 && ok || fail "fail2ban-client reload failed; check fail2ban-client -t."
+fi
+
+step "$HELPER"
+if [ ! -f "$HELPER" ]; then
+	fail "Not installed. Run this script without --check."
+elif [ "$(stat -c '%u:%g' "$HELPER")" != "0:0" ]; then
+	fail "Not owned by root:root. Run this script without --check."
+elif [ "$(helper_version "$HELPER")" != "$(helper_version "$SOURCE")" ]; then
+	fail "Version $(helper_version "$HELPER") installed, the module ships $(helper_version "$SOURCE"). Run this script without --check."
+else
+	ok "version $(helper_version "$HELPER")"
+fi
+
+step "sudo configuration (visudo -c)"
+if CHECKED=$(visudo -c 2>&1); then
+	ok
+else
+	fail "visudo -c fails; setup fixes a wrong mode or owner in /etc/sudoers.d itself:
+$(printf '%s\n' "$CHECKED" | grep -vi 'parsed OK' | sed 's/^/        /')"
+fi
+
+step "$SUDOERS"
+if [ ! -f "$SUDOERS" ]; then
+	fail "Not installed. Run this script without --check."
+elif ! visudo -cqf "$SUDOERS"; then
+	fail "visudo does not accept it. Run this script without --check."
+else
+	ok
+fi
+
+step "the deny jail"
+if ! ours "$JAIL_CONF"; then
+	fail "Not installed. Run this script without --check."
+elif ! fail2ban-client status deny >/dev/null 2>&1; then
+	fail "Installed but not loaded. Run: fail2ban-client reload"
+else
+	ok
+fi
+
+step "the asterisk jail"
+fail2ban-client status asterisk >/dev/null 2>&1 && ok \
+	|| fail "fail2ban has no asterisk jail; Banned bans have nowhere to go. Enable it in FreePBX (or jail.local)."
+
+step "the web user can reach fail2ban"
+ANSWER=$(sudo -u "$WEBUSER" -- sudo -n "$HELPER" check 2>&1)
+
+if [ $? -eq 0 ]; then
+	ok "$(printf '%s' "$ANSWER" | python3 -c 'import json, sys; print(", ".join(json.load(sys.stdin)["jails"]) or "no jails")' 2>/dev/null)"
+else
+	fail "$ANSWER"
+fi
+
+echo
+
+if [ "$PROBLEMS" -gt 0 ]; then
+	echo "$PROBLEMS problem(s). Run without --check to fix them."
+	exit 1
+fi
+
+echo "OK. Bans now sync with fail2ban every minute; reload the Bans tab."
+exit 0

@@ -191,6 +191,38 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a bans table written before 1.3.0 up to date.
+	 *
+	 * The current ban period, how many times it has come back into force, when
+	 * fail2ban last had it, and whether the sync manages it -- see
+	 * ARCHITECTURE.md, "Syncing with fail2ban". A row written before has no
+	 * period yet, so `started_at` and `synced_at` start NULL and `times` at 1.
+	 * `managed` is backfilled once, on the pass that adds it: a row the sync
+	 * imported is one it manages.
+	 *
+	 * @return void
+	 */
+	public function addBanSyncColumns()
+	{
+		$columns = [
+			'started_at' => 'ADD COLUMN `started_at` DATETIME NULL DEFAULT NULL AFTER `last_hit_at`',
+			'times' => 'ADD COLUMN `times` INT(10) UNSIGNED NOT NULL DEFAULT 1 AFTER `started_at`',
+			'synced_at' => 'ADD COLUMN `synced_at` DATETIME NULL DEFAULT NULL AFTER `times`',
+			'managed' => 'ADD COLUMN `managed` TINYINT(1) NOT NULL DEFAULT 0 AFTER `synced_at`',
+		];
+
+		foreach ($columns as $column => $clause) {
+			if (!$this->schemaHas($this->bansTable, 'column', $column)) {
+				$this->db->exec("ALTER TABLE `{$this->bansTable}` $clause");
+
+				if ($column === 'managed') {
+					$this->db->exec("UPDATE `{$this->bansTable}` SET managed = 1, updated_at = updated_at WHERE source = 'fail2ban'");
+				}
+			}
+		}
+	}
+
+	/**
 	 * Index the Core columns every Users lookup is made by.
 	 *
 	 * These are FreePBX's tables, not this module's: `devices` ships with no key

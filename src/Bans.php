@@ -22,6 +22,20 @@ class Bans extends Service
 	/** @var array<int, true> Rows already counted a hit in this PHP request. */
 	private $counted = [];
 
+	/** @var BanSync|null What carries a save to fail2ban at once; null for none. */
+	private $sync;
+
+	/**
+	 * @param object       $freepbx FreePBX application instance.
+	 * @param BanSync|null $sync    The fail2ban sync, or null to leave fail2ban alone.
+	 */
+	public function __construct($freepbx, ?BanSync $sync = null)
+	{
+		parent::__construct($freepbx);
+
+		$this->sync = $sync;
+	}
+
 	/**
 	 * Subject => column, most specific first: the order decide() ranks by.
 	 *
@@ -82,6 +96,7 @@ class Bans extends Service
 			'state' => 'b.state',
 			'created_at' => 'b.created_at',
 			'hits' => 'b.hits',
+			'times' => 'b.times',
 			// A permanent row has no expiry and sorts after every temporary one.
 			'expires_at' => 'b.expires_at IS NULL, b.expires_at',
 		];
@@ -375,6 +390,10 @@ class Bans extends Service
 			return ['status' => false, 'message' => _('Choose Banned, Deny or Allow.')];
 		}
 
+		if ($state !== 'allow' && $values['ip'] !== null && self::loopback($values['ip'])) {
+			return ['status' => false, 'message' => _('A loopback or unspecified address cannot be banned: it is the PBX talking to itself.')];
+		}
+
 		$minutes = null;
 
 		if ($state === 'banned') {
@@ -397,6 +416,17 @@ class Bans extends Service
 			$columns[":$column"] = $values[$column] ?? $any;
 		}
 
+		// Whether the row was in force before this save, read inside the
+		// statement. Assigned before state and expiry, which MySQL applies left
+		// to right, so it sees the old ones: a ban back in force counts again
+		// and starts a new period; one already in force keeps its own.
+		$was = str_replace('b.', '', self::ACTIVE_EXPR);
+		$period = "times = times + IF($was, 0, 1), started_at = IF($was, started_at, NOW())";
+
+		// Saved here, a ban is a person's: the fail2ban sync stops managing it,
+		// whatever its source says. See ARCHITECTURE.md, "Syncing with fail2ban".
+		$before = $id ? $this->banRow($id) : null;
+
 		try {
 			if ($values['client_id'] !== null && !$this->rowCount($this->clientsTable, 'id', (int) $values['client_id'])) {
 				return ['status' => false, 'message' => _('That client no longer exists.')];
@@ -418,7 +448,12 @@ class Bans extends Service
 				}
 			}
 
-			$reopened = !$id && $this->scopeHolder($columns, 0);
+			$holder = $id ? 0 : $this->scopeHolder($columns, 0);
+			$reopened = (bool) $holder;
+
+			if ($holder) {
+				$before = $this->banRow($holder);
+			}
 
 			// NOW() rather than PHP's clock: expiry is compared with NOW() too.
 			$expires = $minutes === null ? 'NULL' : 'NOW() + INTERVAL :minutes MINUTE';
@@ -436,8 +471,9 @@ class Bans extends Service
 			if ($id) {
 				$stmt = $this->db->prepare(
 					"UPDATE `{$this->bansTable}`
-					SET client_id = :client_id, extension = :extension, mac = :mac, profile_id = :profile_id, ip = :ip,
-						state = :state, note = :note, expires_at = $expires, source = :source, jail = :jail
+					SET $period, client_id = :client_id, extension = :extension, mac = :mac, profile_id = :profile_id,
+						ip = :ip, state = :state, note = :note, expires_at = $expires, source = :source, jail = :jail,
+						managed = 0
 					WHERE id = :id"
 				);
 				$stmt->execute($params + [':id' => $id]);
@@ -445,10 +481,12 @@ class Bans extends Service
 				// The key decides, not the look-up above: two saves at once still make
 				// one row. LAST_INSERT_ID(id) makes lastInsertId() the row reopened.
 				$stmt = $this->db->prepare(
-					"INSERT INTO `{$this->bansTable}` (client_id, extension, mac, profile_id, ip, state, note, expires_at, source, jail)
-					VALUES (:client_id, :extension, :mac, :profile_id, :ip, :state, :note, $expires, :source, :jail)
+					"INSERT INTO `{$this->bansTable}` (client_id, extension, mac, profile_id, ip, state, note, expires_at, source, jail, started_at)
+					VALUES (:client_id, :extension, :mac, :profile_id, :ip, :state, :note, $expires, :source, :jail, NOW())
 					ON DUPLICATE KEY UPDATE
 						id = LAST_INSERT_ID(id),
+						$period,
+						managed = 0,
 						state = VALUES(state),
 						expires_at = VALUES(expires_at),
 						note = COALESCE(VALUES(note), note)"
@@ -472,6 +510,10 @@ class Bans extends Service
 		}
 
 		$this->logInfo("ban #$id " . ($reopened ? 'reopened' : 'saved') . ': ' . self::summary($values) . " is $state" . ($minutes === null ? '' : " for $minutes minutes"));
+
+		if ($this->sync) {
+			$this->sync->afterSave($before, $this->banRow($id));
+		}
 
 		return ['status' => true, 'id' => $id, 'reopened' => $reopened];
 	}
@@ -535,6 +577,11 @@ class Bans extends Service
 	 */
 	public function deleteBan($id)
 	{
+		// Its copy in fail2ban first: once the row is gone nothing says it was ours.
+		if ($this->sync) {
+			$this->sync->lift($this->banRow($id));
+		}
+
 		try {
 			$stmt = $this->db->prepare("DELETE FROM `{$this->bansTable}` WHERE id = :id");
 			$stmt->execute([':id' => (int) $id]);
@@ -631,6 +678,20 @@ class Bans extends Service
 	}
 
 	/**
+	 * Whether an address is loopback or unspecified: the PBX talking to itself.
+	 *
+	 * @param string $ip Canonical address.
+	 *
+	 * @return bool True when it is.
+	 */
+	public static function loopback($ip)
+	{
+		$ip = (string) self::canonical($ip);
+
+		return $ip !== '' && (strpos($ip, '127.') === 0 || in_array($ip, ['::1', '0.0.0.0', '::'], true));
+	}
+
+	/**
 	 * One address in the spelling this module stores and compares by.
 	 *
 	 * @param mixed $ip An address, however it is written.
@@ -721,7 +782,7 @@ class Bans extends Service
 	{
 		return "SELECT
 			b.id, b.client_id, b.extension, b.mac, b.profile_id, b.ip, b.state, b.note, b.created_at, b.expires_at,
-			b.hits, b.last_hit_at, b.source, b.jail, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
+			b.hits, b.last_hit_at, b.source, b.jail, b.started_at, b.times, b.synced_at, b.managed, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
 			" . self::CREATED_AGE_EXPR . " AS created_age,
 			" . self::EXPIRES_IN_EXPR . " AS expires_in,
 			" . self::ACTIVE_EXPR . " AS active,

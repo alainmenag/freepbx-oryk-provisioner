@@ -54,10 +54,13 @@ class Pages extends Service
 	/** @var Bans */
 	private $bans;
 
+	/** @var BanSync */
+	private $banSync;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, BanSync $banSync)
 	{
 		parent::__construct($freepbx);
 
@@ -73,6 +76,7 @@ class Pages extends Service
 		$this->endpoints = $endpoints;
 		$this->settings = $settings;
 		$this->bans = $bans;
+		$this->banSync = $banSync;
 	}
 
 	/**
@@ -470,6 +474,8 @@ class Pages extends Service
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
 				: [],
+			// The fail2ban sync's one line over the Bans table.
+			'sync' => $tab === 'bans' ? $this->banSync->status() : [],
 			'sections' => $this->navigator->sections($tab),
 			// Nothing is viewed, so nothing is scoped: every dropdown lists all of its
 			// kind, which is how somebody gets to a row without reading the table.

@@ -33,6 +33,12 @@ class Settings extends Service
 	const PROVISIONING = 'ORYK_PROVISIONING';
 
 	/**
+	 * Whether bans are synced with fail2ban. Off pauses it: nothing is read
+	 * from or written to fail2ban, and nothing already there is undone.
+	 */
+	const FAIL2BAN_SYNC = 'ORYK_FAIL2BAN_SYNC';
+
+	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
@@ -101,6 +107,15 @@ class Settings extends Service
 					'CLOSED' => 'Closed (only existing clients are served)',
 					'DISABLED' => 'Disabled (every request is refused)',
 				],
+			],
+			self::FAIL2BAN_SYNC => [
+				'name' => 'Fail2ban Sync',
+				'description' => 'Keep IP bans in step with fail2ban, both ways, every minute: fail2ban\'s bans '
+					. 'appear on the Bans tab, Banned and Deny bans made there are banned in the asterisk and '
+					. 'deny jails, and Allow puts the address on every jail\'s ignore list. Needs the setup '
+					. 'script run once as root. Off pauses it; nothing already in fail2ban is undone.',
+				'type' => 'bool',
+				'default' => true,
 			],
 		];
 	}
