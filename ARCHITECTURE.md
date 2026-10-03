@@ -45,7 +45,8 @@ phone
                                                   credentials log in as, then
                                                   serve()s / receive()s as it
   -> Endpoint::resolveRequest()                   decides
-  -> Endpoint::answer()                           logs, sets status, sends, exits
+  -> Endpoint::answer()                           transcodes by Accept, logs, sets
+                                                  status, sends, exits
 ```
 
 `resolveRequest()` is the whole of the decision and is deliberately callable
@@ -116,6 +117,28 @@ same thinking backwards and is what every Render link is drawn from -- a name
 carrying *another* device's MAC gets no link, because the endpoint reads the MAC
 out of the path in preference to `?mac=`, so the link would answer for the wrong
 phone.
+
+## Asking for another format
+
+`Endpoint::answer()` first runs the result through `transcoded()`: a template or
+uploaded file goes out as stored unless the `Accept` header names a format
+(`Transcoder::target()`) and nothing else. Any wildcard means no transcoding,
+so a phone is never rewritten by accident. Already in that format: sent byte for
+byte, and a file keeps its ETag/304. Otherwise it is rewritten and sent as text;
+binary, over `Transcoder::MAX_BYTES`, or undetectable is a 406. Logs are never
+transcoded.
+
+Every format is read into one tree (ordered arrays of name => string, tree or
+list) and written out of it:
+
+| format | read | written |
+| --- | --- | --- |
+| JSON | decoded, scalars to strings | pretty-printed object |
+| XML | `{root: node}`; attributes `@name`, children by tag (repeats a list), text `#text` or the node itself | the inverse; more than one top key goes in `<config>`; a key that is no XML name is `<item key="...">` |
+| plain | flat `key=value`, keys kept whole, `[section]` prefixes, comments dropped | flattened, path joined with `.`, `@`/`#text` dropped |
+
+Detection runs on the rendered text, never the raw template. A DOCTYPE is
+refused. Plain is a reading, not a copy: XML -> plain -> XML does not come back.
 
 ## Files
 

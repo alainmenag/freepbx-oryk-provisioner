@@ -33,6 +33,7 @@ use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\Tokens;
+use FreePBX\Modules\Oryk_Provisioner\Transcoder;
 use FreePBX\Modules\Oryk_Provisioner\UcpAssignments;
 use FreePBX\Modules\Oryk_Provisioner\UsermanManager;
 use FreePBX\Modules\Oryk_Provisioner\Users;
@@ -990,6 +991,100 @@ $s['clients']->findOrCreateForDevice('1001', 'bob:new');
 
 is_eq('a token that still verifies is left alone',
 	(bool) array_filter($db->seen, function ($q) { return strpos($q, 'SET token = :token') !== false; }), false);
+
+echo "\ntranscoding by Accept:\n";
+
+echo "\n  what a header asks for:\n";
+
+foreach ([
+	'(no header)' => ['', null],
+	'*/*' => ['*/*', null],
+	'text/*' => ['text/*', null],
+	'json with a low-q wildcard' => ['application/json, */*;q=0.1', null],
+	'text/html alone' => ['text/html', null],
+	'json at q=0' => ['application/json;q=0', null],
+	'application/json' => ['application/json', ['format' => Transcoder::JSON, 'type' => 'application/json']],
+	'text/xml, as written' => ['Text/XML', ['format' => Transcoder::XML, 'type' => 'text/xml']],
+	'application/xml' => ['application/xml', ['format' => Transcoder::XML, 'type' => 'application/xml']],
+	'highest q wins' => ['application/json;q=0.5, text/plain', ['format' => Transcoder::PLAIN, 'type' => 'text/plain']],
+	'a tie goes to the first' => ['text/plain, application/json', ['format' => Transcoder::PLAIN, 'type' => 'text/plain']],
+] as $label => $case) {
+	is_eq($label, Transcoder::target($case[0]), $case[1]);
+}
+
+$polycom = '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+	. '<polycomConfig><reg reg.1.address="1001" reg.1.label="Front &amp; Back"/></polycomConfig>';
+$grandstream = "\xEF\xBB\xBF<gs_provision version=\"1\"><config><P47>pbx.example</P47><P35>1001</P35></config></gs_provision>";
+$yealink = "#!version:1.0.0.1\n# account\naccount.1.enable = 1\naccount.1.label = \"Front Desk\"\n\n[extra]\nlang=en";
+$json = '{"account": {"1": {"enable": true, "label": "Front"}}, "lines": ["a", "b"]}';
+
+echo "\n  what a config is written in:\n";
+
+is_eq('Polycom XML', Transcoder::detect($polycom), Transcoder::XML);
+is_eq('Grandstream XML behind a BOM', Transcoder::detect($grandstream), Transcoder::XML);
+is_eq('Yealink key=value with #!version', Transcoder::detect($yealink), Transcoder::PLAIN);
+is_eq('JSON', Transcoder::detect($json), Transcoder::JSON);
+is_eq('broken XML is nothing', Transcoder::detect('<a><b></a>'), null);
+is_eq('prose is nothing', Transcoder::detect("hello there\nthis is not a config"), null);
+is_eq('empty is nothing', Transcoder::detect("  \n"), null);
+
+echo "\n  rewritten:\n";
+
+is_eq('XML to JSON keeps attributes as @',
+	json_decode(Transcoder::transcode($polycom, Transcoder::XML, Transcoder::JSON), true),
+	['polycomConfig' => ['reg' => ['@reg.1.address' => '1001', '@reg.1.label' => 'Front & Back']]]);
+is_eq('XML to plain',
+	Transcoder::transcode($polycom, Transcoder::XML, Transcoder::PLAIN),
+	"polycomConfig.reg.reg.1.address=1001\npolycomConfig.reg.reg.1.label=Front & Back");
+is_eq('Grandstream to plain',
+	Transcoder::transcode($grandstream, Transcoder::XML, Transcoder::PLAIN),
+	"gs_provision.version=1\ngs_provision.config.P47=pbx.example\ngs_provision.config.P35=1001");
+is_eq('plain to JSON keeps dotted keys whole, drops comments',
+	json_decode(Transcoder::transcode($yealink, Transcoder::PLAIN, Transcoder::JSON), true),
+	['account.1.enable' => '1', 'account.1.label' => 'Front Desk', 'extra.lang' => 'en']);
+is_eq('plain to XML',
+	Transcoder::transcode("account.1.enable=1\n1st=x", Transcoder::PLAIN, Transcoder::XML),
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n  <account.1.enable>1</account.1.enable>\n  <item key=\"1st\">x</item>\n</config>");
+is_eq('JSON to plain flattens, lists by index',
+	Transcoder::transcode($json, Transcoder::JSON, Transcoder::PLAIN),
+	"account.1.enable=true\naccount.1.label=Front\nlines.0=a\nlines.1=b");
+is_eq('JSON to XML repeats a list',
+	Transcoder::transcode('{"phone": {"line": ["a", "b"], "@id": "7"}}', Transcoder::JSON, Transcoder::XML),
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<phone id=\"7\">\n  <line>a</line>\n  <line>b</line>\n</phone>");
+is_eq('XML to JSON to XML comes back',
+	Transcoder::transcode(Transcoder::transcode($polycom, Transcoder::XML, Transcoder::JSON), Transcoder::JSON, Transcoder::XML),
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<polycomConfig>\n  <reg reg.1.address=\"1001\" reg.1.label=\"Front &amp; Back\"/>\n</polycomConfig>");
+is_eq('XML output escapes', strpos(Transcoder::transcode('{"a": "<&\">"}', Transcoder::JSON, Transcoder::XML), '<a>&lt;&amp;"&gt;</a>') !== false, true);
+is_eq('a DOCTYPE is refused',
+	Transcoder::transcode('<!DOCTYPE a [<!ENTITY x "y">]><a>&x;</a>', Transcoder::XML, Transcoder::JSON), null);
+
+echo "\n  what the endpoint answers with:\n";
+
+$transcoded = new \ReflectionMethod(Endpoint::class, 'transcoded');
+$transcoded->setAccessible(true);
+$asked = function ($result, $accept) use ($transcoded, $endpoint) {
+	return $transcoded->invoke($endpoint, $result, Transcoder::target($accept));
+};
+$template = ['status' => true, 'kind' => 'template', 'type' => 'template', 'resource' => 'phone.cfg', 'config' => $yealink];
+
+is_eq('no header leaves it alone', $asked($template, ''), $template);
+is_eq('already that format leaves it alone', $asked($template, 'text/plain'), $template);
+is_eq('another format is rewritten', array_intersect_key($asked($template, 'application/json'), ['kind' => 1, 'contentType' => 1]),
+	['kind' => 'template', 'contentType' => 'application/json']);
+is_eq('one that cannot be read is a 406',
+	$asked(['config' => 'not a config'] + $template, 'application/json')['code'] ?? null, 406);
+
+$uploaded = scratch_file();
+file_put_contents($uploaded, $polycom);
+$file = ['status' => true, 'kind' => 'file', 'type' => 'file', 'resource' => 'phone.xml', 'path' => $uploaded];
+
+is_eq('an uploaded file that is already that format streams as stored', $asked($file, 'text/xml'), $file);
+is_eq('an uploaded file is rewritten too', $asked($file, 'text/plain')['config'] ?? null,
+	"polycomConfig.reg.reg.1.address=1001\npolycomConfig.reg.reg.1.label=Front & Back\n");
+
+file_put_contents($uploaded, "\x7fELF\0\0binary");
+is_eq('a binary file is a 406', $asked($file, 'application/json')['code'] ?? null, 406);
+is_eq('a log upload is never touched', $asked(['status' => true, 'kind' => 'log', 'path' => $uploaded], 'application/json')['kind'], 'log');
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);
