@@ -451,18 +451,11 @@ $tabs = [
 		return value ? `<a href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
-	// Edit is the resource's own page under its profile, the same link that
-	// profile's Resources tab draws -- a resource is edited in one place
-	// wherever it is reached from. Render is this file as this client receives
-	// it, absent when the rendered name carries somebody else's MAC
-	// (000000000000-directory.xml and the like), since the endpoint reads the
-	// client out of the path and such a URL would answer for another client.
+	// Render, Download and Open: see orykRenderButtons(). Edit is the resource's own
+	// page under its profile, the same link that profile's Resources tab draws
+	// -- a resource is edited in one place wherever it is reached from.
 	function formatResourceActions(value, row) {
-		const actions = [];
-
-		if (row.url) {
-			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this client receives it">Render</a>`);
-		}
+		const actions = orykRenderButtons(row, orykClientId, row.id);
 
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`);
 

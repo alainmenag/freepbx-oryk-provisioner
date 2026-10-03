@@ -285,7 +285,7 @@ $tabs = [
 											<?php echo _('A phone PUTs its boot and app logs back to the provisioning URL when it has finished starting up -- a Polycom sends <code>[mac]-boot.log</code>. Name a resource what it sends, set it to Log, and what arrives is written under <em>this</em> filename -- the resource\'s own name, rendered for the client that sent it -- in a directory named after that client\'s id. So a log belongs to a client, and everything one phone has ever sent is in one place -- including after somebody corrects the MAC, which is why the directory is the id and not the MAC. Deleting the client takes the directory with it.'); ?>
 										</span>
 										<span class="oryk-help-part">
-											<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>
+											<?php echo _('There is nothing to write here -- the phone writes it. Fetching the same URL reads back what it last sent, so Render or Open on the Clients tab shows one phone\'s log, exactly as it arrived and not rendered: a boot log with braces in it is a boot log, not a template. A client that has sent nothing yet has nothing to show.'); ?>
 										</span>
 										<span class="oryk-help-part">
 											<?php echo _('A PUT to a filename no Log resource answers to is refused, which is what keeps this from being an open upload to the PBX. Every PUT is recorded on the Logs tab either way, taken or refused.'); ?>
@@ -386,10 +386,9 @@ $tabs = [
 		return value ? `<a href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>` : '-';
 	}
 
-	// A client that has been switched off is greyed here too. The Render link
-	// beside it still points where it always did, and following it now gets
-	// the refusal the phone gets -- which is the honest answer to what this
-	// client receives.
+	// A client that has been switched off is greyed here too. Open beside it
+	// now gets the refusal the phone gets; Render still shows what it would
+	// be sent.
 	function formatClientRow(row) {
 		return Number(row.enabled) ? {} : { classes: 'oryk-disabled' };
 	}
@@ -416,18 +415,10 @@ $tabs = [
 		return `<a href="?display=extensions&extdisplay=${encodeURIComponent(row.extension)}">${extension}</a>`;
 	}
 
-	// Edit is the client's own page, the same link the profile's Clients
-	// tab and the list both draw. Render is this resource as that client
-	// receives it -- absent when the rendered name carries somebody else's
-	// MAC (000000000000-directory.xml and the like), since the endpoint reads
-	// the client out of the path and such a URL would answer for the wrong
-	// phone.
+	// Render, Download and Open: see orykRenderButtons(). Edit is the client's own
+	// page, the same link the profile's Clients tab and the list both draw.
 	function formatClientActions(value, row) {
-		const actions = [];
-
-		if (row.url) {
-			actions.push(`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="View this resource as this client receives it">Render</a>`);
-		}
+		const actions = orykRenderButtons(row, row.id, orykResourceId);
 
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 

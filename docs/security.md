@@ -20,7 +20,7 @@ Know what this is before you expose it:
   ("… is not associated with anything", "… has no profile assigned",
   "… is disabled", "The … profile is disabled"), so a caller probing MACs can
   tell a known one from an unknown one.
-- **Secrets are not masked anywhere in the UI.** The Render links serve the real
+- **Secrets are not masked anywhere in the UI.** Open, Render and Download give the real
   rendered file, secret included.
 - **Open provisioning creates PBX users from an unauthenticated request.**
   With **Provisioning** Open, anyone who reaches the endpoint, from any address,

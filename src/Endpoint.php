@@ -9,7 +9,8 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * resolveRequest() decides; serve(), receive() and openProvision() are the only
  * things that end the request. Anything that wants the answer without the exit -- a preview, a
- * console command -- calls resolveRequest().
+ * console command -- calls resolveRequest(), or previewResource() when an admin
+ * is asking.
  */
 class Endpoint extends Service
 {
@@ -571,6 +572,126 @@ class Endpoint extends Service
 	}
 
 	/**
+	 * One resource as one client is sent it, for an admin to read.
+	 *
+	 * The Render button. A file is read only when Transcoder::readText() would:
+	 * a firmware image is answered with its size, not its bytes. Not transcoded.
+	 *
+	 * @param mixed $clientId   Client id.
+	 * @param mixed $resourceId Resource id.
+	 *
+	 * @return array<string, mixed> status; on success type, filename and either
+	 *                              body or size; message on a refusal.
+	 */
+	public function previewResource($clientId, $resourceId)
+	{
+		$result = $this->adminResult($clientId, $resourceId);
+
+		if (!$result['status']) {
+			return $result;
+		}
+
+		$answer = [
+			'status' => true,
+			'type' => (string) $result['type'],
+			'filename' => (string) $result['filename'],
+		];
+
+		if ($result['kind'] === 'template') {
+			return $answer + ['body' => (string) $result['config']];
+		}
+
+		$body = Transcoder::readText((string) $result['path']);
+
+		return $body === null
+			? $answer + ['size' => (int) @filesize((string) $result['path'])]
+			: $answer + ['body' => $body];
+	}
+
+	/**
+	 * One resource as one client is sent it, as a download, and end the request.
+	 *
+	 * The Download button: the same body as Render, any size, saved under the
+	 * filename this client asks for it by. A refusal is sent as text with its
+	 * status, since there is no page to show it on.
+	 *
+	 * @param mixed $clientId   Client id.
+	 * @param mixed $resourceId Resource id.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	public function downloadResource($clientId, $resourceId)
+	{
+		$result = $this->adminResult($clientId, $resourceId);
+
+		if (!$result['status']) {
+			$this->sendText($result['code'] ?? 404, $result['message'] . "\n");
+		}
+
+		if ($result['kind'] === 'file') {
+			$this->sendFile((string) $result['path'], (string) $result['filename'], (string) $result['type'], 'attachment');
+		}
+
+		header('Content-Disposition: attachment; ' . $this->filenameParameter((string) $result['filename']));
+		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['filename'], 'template'));
+	}
+
+	/**
+	 * What resourceResult() answers one client's request for one resource with,
+	 * asked by id from the admin.
+	 *
+	 * Behind Render and Download. What guards the endpoint is not applied: the
+	 * caller is a logged-in admin, so no token is asked for, and a disabled
+	 * client or profile is answered all the same. Nothing is logged and the
+	 * client is not marked as seen -- Open, the endpoint URL itself, is the
+	 * request that counts.
+	 *
+	 * @param mixed $clientId   Client id.
+	 * @param mixed $resourceId Resource id.
+	 *
+	 * @return array<string, mixed> resourceResult()'s answer plus the filename
+	 *                              this client asks for it by, or a refusal.
+	 */
+	private function adminResult($clientId, $resourceId)
+	{
+		$row = $this->clients->clientRow($clientId);
+		$client = $row ? $this->clients->clientByMac((string) $row['mac']) : null;
+
+		if (!$client) {
+			return ['status' => false, 'code' => 404, 'message' => _('That client does not exist.')];
+		}
+
+		$stmt = $this->db->prepare(
+			"SELECT id, profile_id, name, type, template, file_size
+			FROM `{$this->resourcesTable}`
+			WHERE id = :id"
+		);
+		$stmt->execute([':id' => (int) $resourceId]);
+		$resource = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+		if (!$resource) {
+			return ['status' => false, 'code' => 404, 'message' => _('That resource does not exist.')];
+		}
+
+		// The same test Previews applies before it draws the buttons.
+		if ($client['profile_id'] === null || (int) $client['profile_id'] !== (int) $resource['profile_id']) {
+			return [
+				'status' => false,
+				'code' => 404,
+				'message' => sprintf(_('%s is not served to this client.'), (string) $resource['name']),
+			];
+		}
+
+		$values = $this->template->provisioningValues($client);
+		$request = $this->matcher->resourceRequest((string) $resource['name'], $values, (string) $client['mac']);
+		$result = $this->resourceResult($resource, $values, (int) $client['id']);
+
+		return $result['status']
+			? $result + ['filename' => (string) $request['filename']]
+			: $result + ['code' => 404];
+	}
+
+	/**
 	 * A matched resource as the thing that answers a request for it.
 	 *
 	 * The one place that knows what the kinds of resource are: a template is
@@ -769,11 +890,12 @@ class Endpoint extends Service
 	 *
 	 * @param string $path Absolute path to the stored file.
 	 * @param string $name Resource name, which is the filename it is served as.
-	 * @param string $type The resource's type -- 'file' or 'log'.
+	 * @param string $type        The resource's type -- 'file' or 'log'.
+	 * @param string $disposition inline, or attachment for a download.
 	 *
 	 * @return void Never returns.
 	 */
-	private function sendFile($path, $name, $type = 'file')
+	private function sendFile($path, $name, $type = 'file', $disposition = 'inline')
 	{
 		$size = (int) @filesize($path);
 		$modified = (int) @filemtime($path);
@@ -785,7 +907,7 @@ class Endpoint extends Service
 		// resource's name is what the file is; the MAC in front of it belongs to
 		// the request. A phone ignores the header either way, so this is the whole
 		// of the difference in a browser.
-		header('Content-Disposition: inline; ' . $this->filenameParameter($name));
+		header('Content-Disposition: ' . $disposition . '; ' . $this->filenameParameter($name));
 		header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $modified) . ' GMT');
 		header('ETag: ' . $etag);
 		header('Cache-Control: no-cache');

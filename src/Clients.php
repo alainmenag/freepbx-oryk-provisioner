@@ -563,9 +563,10 @@ class Clients extends Service
 	 * ON UPDATE CURRENT_TIMESTAMP, so without assigning it to itself every phone
 	 * that booted would read as a client somebody had just edited.
 	 *
-	 * A Render link clicked in the admin counts, because it is the same request;
+	 * An Open link clicked in the admin counts, because it is the same request;
 	 * the provisioning log row carries the browser's User-Agent for anyone who
-	 * needs to tell the two apart.
+	 * needs to tell the two apart. Render does not reach the endpoint and does not
+	 * count.
 	 *
 	 * A MAC that is not one, or one no client answers to, writes nothing -- a
 	 * phone fetching firmware by name has no client behind it at all.
