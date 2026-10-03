@@ -25,18 +25,27 @@ field left empty matches anything. So:
   when it comes from there.
 
 A file fetched by name with no client behind it (firmware, usually) has no
-profile, so a Profile ban does not stop it. One address at a time; no ranges. Two bans naming exactly the same fields and
-values are not allowed — the second is refused and points you at the first.
+profile, so a Profile ban does not stop it. One address at a time; no ranges.
+
+There is only ever one ban for the same fields and values. **Add Ban** with
+exactly what an existing ban names reopens that ban — its state, minutes and
+note (when you give one) replace the old ones, even if it had expired — and
+takes you to it. Editing a ban so it names exactly what another one does is
+refused; open the other one instead.
 
 ## What it does
 
 | State | Does | Until |
 | --- | --- | --- |
-| **Banned** | refuses | the minutes you give it run out; the row is then deleted |
-| **Deny** | refuses | the row is deleted |
-| **Allow** | serves in spite of a less specific ban | the row is deleted |
+| **Banned** | refuses | the minutes you give it run out |
+| **Deny** | refuses | the ban is deleted |
+| **Allow** | serves in spite of a less specific ban | the ban is deleted |
 
-Saving a Banned row again starts its time over from that save.
+An expired ban is not deleted: it stays on the list, greyed and marked
+**expired**, and refuses nothing until it is deleted or saved again. Saving a
+Banned ban again starts its time over from that save, which is also how an
+expired one is put back in force — from its own page, or by adding the same
+ban again.
 
 ## When bans disagree
 
@@ -64,11 +73,20 @@ The caller's address, and its username when it is a number, are checked before
 any user or client is looked up or made — a refused caller creates nothing. The
 client it is answered as is then checked like any other.
 
+## Hits
+
+**Hits** counts the requests each ban decided — refused, or let through for an
+Allow — with when the last one was on hover, and on the ban's own page. Only
+the ban that decided a request is counted, not every ban that matched it.
+Editing a ban, or reopening it by adding the same one again, keeps its count;
+deleting it is the only reset.
+
 ## Keeping it tidy
 
 Deleting a client or a profile deletes every ban naming it. A ban naming a user keeps the
 number when the user is deleted or renumbered; a ban naming a MAC stays when its
-client is deleted. Expired Banned rows disappear from the list on their own.
+client is deleted. Nothing else removes a ban: expired ones stay until you
+delete them.
 
 The editor warns before banning an address on its own when it is the address
 you are connected from, or one written on a client as its Public IP — both stop

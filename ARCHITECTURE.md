@@ -253,14 +253,18 @@ file (1.0.7).
 **`oryk_provisioner_bans`** -- `client_id`, `extension`, `mac`, `profile_id`,
 `ip`, `state`, `expires_at`, `note`.
 
-- **The five subjects are five nullable columns**, and NULL is "any". A row
-  matches a request when every column it sets equals one of the request's, so
-  one row can say "user 1001, but only from this address". Each is stored in
-  the one spelling `Bans::value()` gives it -- a canonical address, a bare
-  lowercase MAC, digits -- because it is compared with `=`, not parsed.
-- **No unique key.** MySQL counts NULLs as distinct, so a key over the five
-  would admit two identical rules. `Bans::saveBan()` refuses one with `<=>`
-  instead. An index on each column, since a request names any of them.
+- **The five subjects are five columns, and "any" is `0` or `''`**
+  (`Bans::ANY`). A row matches a request when every column it sets equals one
+  of the request's, so one row can say "user 1001, but only from this
+  address". Each is stored in the one spelling `Bans::value()` gives it -- a
+  canonical address, a bare lowercase MAC, digits -- because it is compared
+  with `=`, not parsed.
+- **One row per set of subjects, held by the unique key `scope`** over all
+  five. This is why "any" is not NULL -- the opposite of the clients table's
+  `mac`: there NULL is wanted so empty values never collide; here an empty
+  value has to collide, or two rules naming the same things could both exist.
+  `Bans::described()` hands "any" out as null, so views test for one thing.
+  An index on each other column, since a request names any of them.
 - `state` is VARCHAR(16) rather than an ENUM, for the reason a resource's
   `type` is one.
 - `expires_at` is set on a `banned` row and nothing else. Written and compared
@@ -268,6 +272,10 @@ file (1.0.7).
 - A row naming a client or a profile goes with it, since the next one written
   can be given the same id. A user is a number and its rows outlive it; a MAC
   names a handset and its rows outlive any client.
+- `hits` and `last_hit_at` count the requests a row *decided* -- the one row
+  `decide()` picked, allow or not, not every row that matched. A hit assigns
+  `updated_at = updated_at`, as a sighting does, so it never reads as an edit.
+  Editing or reopening a ban keeps its count.
 
 ### Migrations deliberately not written
 
@@ -399,7 +407,7 @@ user (an extension), MAC, profile, address -- each empty for "any", and a
 
 | state | does | until |
 | --- | --- | --- |
-| `banned` | refuses | `expires_at`; the row is then deleted |
+| `banned` | refuses | `expires_at`; the row then stays, expired, until deleted |
 | `deny` | refuses | the row is deleted |
 | `allow` | answers in spite of a less specific ban | the row is deleted |
 
@@ -418,7 +426,10 @@ client behind it has no profile, so a profile ban does not stop it. A subject th
 leave it empty. Open provisioning is asked before `openClient()`, so a refused
 caller never makes a user; the client it is answered as is checked again by
 `serve()`. A refusal is a 403 through `answer()`, so it is logged like any other
-request, and touches nothing else -- no `last_seen`.
+request, and touches nothing else -- no `last_seen`. The deciding row is counted
+a hit (`Bans::hit()`), once per PHP request, so open provisioning asking twice
+counts once; that UPDATE is the only write on the request path, and one that
+fails is a count lost, never a request refused.
 
 **The most specific row decides** (`Bans::decide()`): the one whose most
 specific subject comes first in `Bans::SUBJECTS` -- client, user, MAC,
@@ -437,12 +448,19 @@ profile still decide afterwards as they always do.
 
 - **It fails open.** A table that cannot be read refuses nothing, so new files
   on a PBX not yet upgraded keep provisioning.
-- **An expired ban is never in force.** `check()` filters on
-  `Bans::ACTIVE_EXPR`; the list and the editor delete expired rows first
-  (`prune()`), so the table holds what is in force. Nothing writes on the
-  request path.
-- **Nothing is refused on save** but a subject that is not one of its kind, a
-  row naming nothing, and a row naming exactly what another does. A ban only
+- **An expired ban is never in force, and never deleted for it.**
+  `Bans::ACTIVE_EXPR` is the one test: `check()` filters on it, and the list
+  reads it as `active` to grey the row and mark it expired. A row goes only
+  when someone deletes it; saving it again with minutes puts it back in force.
+- **A ban for the same subjects is reopened, never duplicated.** A new ban
+  naming exactly what a row already names is an
+  `INSERT … ON DUPLICATE KEY UPDATE` that writes its state, expiry and note
+  (when one is given) over that row, expired or not, and answers with its id,
+  so the editor lands on it. The key decides, so two saves at once still make
+  one row. An existing ban edited onto another row's subjects is refused: that
+  would be two rows becoming one.
+- **Nothing else is refused on save** but a subject that is not one of its
+  kind and a row naming nothing. A ban only
   touches the provisioning endpoint, never the admin GUI, so banning your own
   address costs you nothing but your phones. The editor warns when an address
   on its own is yours or a client's public address.

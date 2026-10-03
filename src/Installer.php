@@ -162,25 +162,29 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
-		// One rule per row: up to five subjects, each NULL for "any", in the
-		// spelling Bans::value() stores, and a state. Only a `banned` row has an
-		// expires_at. No unique key -- one would count NULLs as distinct -- so
-		// Bans::saveBan() refuses a duplicate itself. See ARCHITECTURE.md, "Bans".
+		// One rule per row: up to five subjects in the spelling Bans::value()
+		// stores, and a state. "Any" is 0 or '' and never NULL, so the unique key
+		// over the five admits one row per set of subjects -- MySQL counts NULLs
+		// as distinct, and would admit any number. Only a `banned` row has an
+		// expires_at. `hits` counts the requests the row decided. See
+		// ARCHITECTURE.md, "Bans".
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->bansTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
-				`client_id` INT(11) NULL DEFAULT NULL,
-				`extension` VARCHAR(20) NULL DEFAULT NULL,
-				`mac` VARCHAR(12) NULL DEFAULT NULL,
-				`profile_id` INT(11) NULL DEFAULT NULL,
-				`ip` VARCHAR(45) NULL DEFAULT NULL,
+				`client_id` INT(11) NOT NULL DEFAULT 0,
+				`extension` VARCHAR(20) NOT NULL DEFAULT '',
+				`mac` VARCHAR(12) NOT NULL DEFAULT '',
+				`profile_id` INT(11) NOT NULL DEFAULT 0,
+				`ip` VARCHAR(45) NOT NULL DEFAULT '',
 				`state` VARCHAR(16) NOT NULL DEFAULT 'banned',
 				`expires_at` DATETIME NULL DEFAULT NULL,
 				`note` VARCHAR(255) NULL DEFAULT NULL,
+				`hits` INT(10) UNSIGNED NOT NULL DEFAULT 0,
+				`last_hit_at` DATETIME NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
-				KEY `client_id` (`client_id`),
+				UNIQUE KEY `scope` (`client_id`, `extension`, `mac`, `profile_id`, `ip`),
 				KEY `extension` (`extension`),
 				KEY `mac` (`mac`),
 				KEY `profile_id` (`profile_id`),

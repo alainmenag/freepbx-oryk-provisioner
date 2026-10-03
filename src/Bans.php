@@ -10,20 +10,31 @@ use PDO;
  * Who the provisioning endpoint refuses, and who it answers in spite of a ban.
  *
  * One row is up to five subjects -- client, user, MAC, profile, address -- and
- * a state:
- * `banned` until `expires_at`, or `deny` / `allow` for good. A row matches a
+ * one row only for any one set of them; a state:
+ * `banned` until `expires_at`, or `deny` / `allow` for good. An expired ban
+ * stays in the table, out of force, until it is deleted. A row matches a
  * request when every subject it sets matches; a subject left empty matches
  * anything. The endpoint asks check() before it answers anything. See
  * ARCHITECTURE.md, "Bans".
  */
 class Bans extends Service
 {
+	/** @var array<int, true> Rows already counted a hit in this PHP request. */
+	private $counted = [];
+
 	/**
 	 * Subject => column, most specific first: the order decide() ranks by.
 	 *
 	 * The columns are interpolated into SQL, so they are only ever read from here.
 	 */
 	const SUBJECTS = ['client' => 'client_id', 'user' => 'extension', 'mac' => 'mac', 'profile' => 'profile_id', 'ip' => 'ip'];
+
+	/**
+	 * Column => what it stores for "any": 0 or '' rather than NULL, so the
+	 * unique key over the five counts two rows naming the same subjects as one.
+	 * Written into SQL as literals, so they are only ever read from here.
+	 */
+	const ANY = ['client_id' => 0, 'extension' => '', 'mac' => '', 'profile_id' => 0, 'ip' => ''];
 
 	/**
 	 * What a ban does. Only `banned` expires.
@@ -39,20 +50,24 @@ class Bans extends Service
 	/** Seconds since a ban was written, on the same clock. */
 	const CREATED_AGE_EXPR = 'TIMESTAMPDIFF(SECOND, b.created_at, NOW())';
 
-	/** A row that is in force: anything but a temporary ban that has run out. */
+	/** Seconds since a ban last decided a request. */
+	const LAST_HIT_AGE_EXPR = 'TIMESTAMPDIFF(SECOND, b.last_hit_at, NOW())';
+
+	/**
+	 * A row that is in force: anything but a temporary ban that has run out. The
+	 * one test of expiry; nothing deletes a row because it has expired.
+	 */
 	const ACTIVE_EXPR = "(b.state <> 'banned' OR b.expires_at > NOW())";
 
 	/**
 	 * One page of the Bans tab, the way bootstrap-table asks for it.
 	 *
-	 * Expired temporary bans are deleted first, so the list is what is in force.
+	 * Expired bans are listed too, with `active` 0.
 	 *
 	 * @return array<string, mixed> total, rows.
 	 */
 	public function listBans()
 	{
-		$this->prune();
-
 		// Interpolated, so looked up rather than taken from the request. An empty
 		// subject sorts first ascending: it is the wider rule.
 		$sortable = [
@@ -63,6 +78,7 @@ class Bans extends Service
 			'profile' => 'p.name',
 			'state' => 'b.state',
 			'created_at' => 'b.created_at',
+			'hits' => 'b.hits',
 			// A permanent row has no expiry and sorts after every temporary one.
 			'expires_at' => 'b.expires_at IS NULL, b.expires_at',
 		];
@@ -133,8 +149,6 @@ class Bans extends Service
 			return null;
 		}
 
-		$this->prune();
-
 		try {
 			$stmt = $this->db->prepare("{$this->select()} {$this->from()} WHERE b.id = :id");
 			$stmt->execute([':id' => (int) $id]);
@@ -151,8 +165,10 @@ class Bans extends Service
 	 *
 	 * Every row in force that matches is read in one query -- each subject a row
 	 * sets is one of the request's, each it leaves empty is anything -- and
-	 * decide() picks the one that counts. Fails open: a table that cannot be read
-	 * refuses nothing, so new files on a PBX not yet upgraded keep provisioning.
+	 * decide() picks the one that counts. That row -- allow or not -- is counted
+	 * a hit, once per PHP request however often this is asked (open provisioning
+	 * asks twice). Fails open: a table that cannot be read refuses nothing, so new
+	 * files on a PBX not yet upgraded keep provisioning.
 	 *
 	 * @param array<string, mixed> $subjects What the request is: ip, mac, client
 	 *                                       and profile (ids), user (an
@@ -170,8 +186,10 @@ class Bans extends Service
 		$params = [];
 
 		foreach (self::SUBJECTS as $subject => $column) {
+			$any = self::anyLiteral($column);
+
 			if (empty($subjects[$subject])) {
-				$clauses[] = "b.$column IS NULL";
+				$clauses[] = "b.$column = $any";
 
 				continue;
 			}
@@ -183,7 +201,7 @@ class Bans extends Service
 				$params[":{$subject}_$i"] = $value;
 			}
 
-			$clauses[] = "(b.$column IS NULL OR b.$column IN (" . implode(', ', $names) . '))';
+			$clauses[] = "(b.$column = $any OR b.$column IN (" . implode(', ', $names) . '))';
 		}
 
 		try {
@@ -200,6 +218,10 @@ class Bans extends Service
 
 		$row = self::decide($rows);
 
+		if ($row) {
+			$this->hit((int) $row['id']);
+		}
+
 		return ($row && $row['state'] !== 'allow') ? $row : null;
 	}
 
@@ -207,8 +229,7 @@ class Bans extends Service
 	 * The row that counts among the matching rows in force.
 	 *
 	 * Ranked by the most specific subject each sets (client, user, MAC, profile,
-	 * address),
-	 * then by how many it sets -- so "allow user 1001 from this address" beats
+	 * address), then by how many it sets -- so "allow user 1001 from this address" beats
 	 * "deny user 1001". A tie goes to the refusal.
 	 *
 	 * @param array<int, array<string, mixed>> $rows Matching rows: the subject
@@ -290,14 +311,18 @@ class Bans extends Service
 	 * Write a ban, new or existing.
 	 *
 	 * At least one subject; the rest left empty match anything. A temporary ban
-	 * runs `minutes` from this save, so saving one again restarts its clock. A
-	 * row with exactly these subjects already is refused: one rule per set of
-	 * subjects.
+	 * runs `minutes` from this save, so saving one again restarts its clock.
+	 *
+	 * There is one row per set of subjects, held by the unique key. A new ban
+	 * naming exactly what a row already does reopens that row -- its state,
+	 * minutes and, when one is given, note are written over it -- and answers
+	 * with its id. An existing ban edited to name what another row does is
+	 * refused, since that would be two rows becoming one.
 	 *
 	 * @param array<string, mixed> $request id, ip, mac, user, client, profile,
 	 *                                      state, minutes, note.
 	 *
-	 * @return array<string, mixed> status, id or message.
+	 * @return array<string, mixed> status, id and reopened, or message.
 	 */
 	public function saveBan($request)
 	{
@@ -347,13 +372,11 @@ class Bans extends Service
 			return ['status' => false, 'message' => _('The note is limited to 255 characters.')];
 		}
 
-		$columns = [
-			':client_id' => $values['client_id'],
-			':extension' => $values['extension'],
-			':mac' => $values['mac'],
-			':profile_id' => $values['profile_id'],
-			':ip' => $values['ip'],
-		];
+		$columns = [];
+
+		foreach (self::ANY as $column => $any) {
+			$columns[":$column"] = $values[$column] ?? $any;
+		}
 
 		try {
 			if ($values['client_id'] !== null && !$this->rowCount($this->clientsTable, 'id', (int) $values['client_id'])) {
@@ -364,23 +387,19 @@ class Bans extends Service
 				return ['status' => false, 'message' => _('That profile no longer exists.')];
 			}
 
-			// <=> is equality that counts two NULLs as equal, which a unique key does not.
-			$stmt = $this->db->prepare(
-				"SELECT id FROM `{$this->bansTable}`
-				WHERE client_id <=> :client_id AND extension <=> :extension AND mac <=> :mac
-					AND profile_id <=> :profile_id AND ip <=> :ip
-					AND id <> :id"
-			);
-			$stmt->execute($columns + [':id' => $id]);
-			$taken = $stmt->fetchColumn();
+			if ($id) {
+				if (!$this->rowCount($this->bansTable, 'id', $id)) {
+					return ['status' => false, 'message' => _('That ban has been deleted.')];
+				}
 
-			if ($taken) {
-				return ['status' => false, 'message' => sprintf(_('Ban #%d already covers exactly that. Open it to change it.'), (int) $taken)];
+				$taken = $this->scopeHolder($columns, $id);
+
+				if ($taken) {
+					return ['status' => false, 'message' => sprintf(_('Ban #%d already names exactly that. Open it instead, or delete one of the two.'), $taken)];
+				}
 			}
 
-			if ($id && !$this->rowCount($this->bansTable, 'id', $id)) {
-				return ['status' => false, 'message' => _('That ban has expired or been deleted.')];
-			}
+			$reopened = !$id && $this->scopeHolder($columns, 0);
 
 			// NOW() rather than PHP's clock: expiry is compared with NOW() too.
 			$expires = $minutes === null ? 'NULL' : 'NOW() + INTERVAL :minutes MINUTE';
@@ -402,22 +421,88 @@ class Bans extends Service
 				);
 				$stmt->execute($params + [':id' => $id]);
 			} else {
+				// The key decides, not the look-up above: two saves at once still make
+				// one row. LAST_INSERT_ID(id) makes lastInsertId() the row reopened.
 				$stmt = $this->db->prepare(
 					"INSERT INTO `{$this->bansTable}` (client_id, extension, mac, profile_id, ip, state, note, expires_at)
-					VALUES (:client_id, :extension, :mac, :profile_id, :ip, :state, :note, $expires)"
+					VALUES (:client_id, :extension, :mac, :profile_id, :ip, :state, :note, $expires)
+					ON DUPLICATE KEY UPDATE
+						id = LAST_INSERT_ID(id),
+						state = VALUES(state),
+						expires_at = VALUES(expires_at),
+						note = COALESCE(VALUES(note), note)"
 				);
 				$stmt->execute($params);
 				$id = (int) $this->db->lastInsertId();
 			}
+		} catch (\PDOException $e) {
+			// 23000: an edit that raced another save onto the same subjects.
+			if ($e->getCode() === '23000') {
+				return ['status' => false, 'message' => _('Another ban already names exactly that.')];
+			}
+
+			$this->logError('could not save a ban: ' . $e->getMessage());
+
+			return ['status' => false, 'message' => _('The ban could not be saved. Has the module been upgraded?')];
 		} catch (\Exception $e) {
 			$this->logError('could not save a ban: ' . $e->getMessage());
 
 			return ['status' => false, 'message' => _('The ban could not be saved. Has the module been upgraded?')];
 		}
 
-		$this->logInfo("ban #$id: " . self::summary($values) . " is $state" . ($minutes === null ? '' : " for $minutes minutes"));
+		$this->logInfo("ban #$id " . ($reopened ? 'reopened' : 'saved') . ': ' . self::summary($values) . " is $state" . ($minutes === null ? '' : " for $minutes minutes"));
 
-		return ['status' => true, 'id' => $id];
+		return ['status' => true, 'id' => $id, 'reopened' => $reopened];
+	}
+
+	/**
+	 * Count one request decided by a row.
+	 *
+	 * Assigns `updated_at = updated_at`, as Clients::touchClient() does, so a hit
+	 * does not read as an edit. Never throws: a count that fails is a count lost.
+	 *
+	 * @param int $id Ban id.
+	 *
+	 * @return void
+	 */
+	private function hit($id)
+	{
+		if (isset($this->counted[$id])) {
+			return;
+		}
+
+		$this->counted[$id] = true;
+
+		try {
+			$stmt = $this->db->prepare(
+				"UPDATE `{$this->bansTable}`
+				SET hits = hits + 1, last_hit_at = NOW(), updated_at = updated_at
+				WHERE id = :id"
+			);
+			$stmt->execute([':id' => $id]);
+		} catch (\Exception $e) {
+			// Counting is the one thing here allowed to go missing.
+		}
+	}
+
+	/**
+	 * The id of the row naming exactly these subjects, other than one.
+	 *
+	 * @param array<string, mixed> $columns Bound values, `:column` => stored or ANY.
+	 * @param int                  $except  Row to leave out, or 0.
+	 *
+	 * @return int Its id, or 0 when no other row does.
+	 */
+	private function scopeHolder(array $columns, $except)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id FROM `{$this->bansTable}`
+			WHERE client_id = :client_id AND extension = :extension AND mac = :mac
+				AND profile_id = :profile_id AND ip = :ip AND id <> :id"
+		);
+		$stmt->execute($columns + [':id' => (int) $except]);
+
+		return (int) $stmt->fetchColumn();
 	}
 
 	/**
@@ -575,6 +660,18 @@ class Bans extends Service
 	}
 
 	/**
+	 * A column's "any" as SQL.
+	 *
+	 * @param string $column A key of ANY.
+	 *
+	 * @return string `0` or `''`.
+	 */
+	private static function anyLiteral($column)
+	{
+		return self::ANY[$column] === 0 ? '0' : "''";
+	}
+
+	/**
 	 * The subjects a row sets, most specific first.
 	 *
 	 * @param array<string, mixed> $row The subject columns.
@@ -586,28 +683,12 @@ class Bans extends Service
 		$set = [];
 
 		foreach (self::SUBJECTS as $subject => $column) {
-			if (isset($row[$column]) && (string) $row[$column] !== '') {
+			if (isset($row[$column]) && (string) $row[$column] !== (string) self::ANY[$column]) {
 				$set[] = $subject;
 			}
 		}
 
 		return $set;
-	}
-
-	/**
-	 * Delete the temporary bans that have run out.
-	 *
-	 * @return void
-	 */
-	private function prune()
-	{
-		try {
-			$this->db->exec(
-				"DELETE FROM `{$this->bansTable}` WHERE state = 'banned' AND expires_at <= NOW()"
-			);
-		} catch (\Exception $e) {
-			// No table yet: listBans() says so.
-		}
 	}
 
 	/**
@@ -619,8 +700,10 @@ class Bans extends Service
 	{
 		return "SELECT
 			b.id, b.client_id, b.extension, b.mac, b.profile_id, b.ip, b.state, b.note, b.created_at, b.expires_at,
+			b.hits, b.last_hit_at, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
 			" . self::CREATED_AGE_EXPR . " AS created_age,
 			" . self::EXPIRES_IN_EXPR . " AS expires_in,
+			" . self::ACTIVE_EXPR . " AS active,
 			c.mac AS client_mac, cd.description AS client_description,
 			ud.id AS user_device, ud.description AS user_name,
 			mc.id AS mac_client_id, p.name AS profile_name";
@@ -644,7 +727,8 @@ class Bans extends Service
 
 	/**
 	 * Rows with what their subjects name put into words: client_label, user_name
-	 * (null when no user has that number), ip_client and ip_client_id.
+	 * (null when no user has that number), ip_client and ip_client_id. A subject
+	 * stored as ANY is handed out as null, the one "any" a view tests for.
 	 *
 	 * @param array<int, array<string, mixed>> $rows Rows from select().
 	 *
@@ -655,6 +739,12 @@ class Bans extends Service
 		$addresses = null;
 
 		foreach ($rows as &$row) {
+			foreach (self::ANY as $column => $any) {
+				if ((string) $row[$column] === (string) $any) {
+					$row[$column] = null;
+				}
+			}
+
 			$row['client_label'] = $row['client_id'] === null ? null : self::clientLabel([
 				'id' => $row['client_id'],
 				'mac' => $row['client_mac'],

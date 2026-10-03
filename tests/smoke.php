@@ -832,10 +832,18 @@ is_eq('an allow lets it through', $bans->check(['ip' => '203.0.113.7', 'user' =>
 $db->fetchAlls = ['oryk_provisioner_bans' => []];
 $bans->check(['ip' => '203.0.113.7', 'user' => ['1001', '1001']]);
 $sql = end($db->seen);
-is_eq('a subject the request has matches it or anything', strpos($sql, 'b.ip IS NULL OR b.ip IN (:ip_0)') !== false, true);
+is_eq('a subject the request has matches it or anything', strpos($sql, "b.ip = '' OR b.ip IN (:ip_0)") !== false, true);
 is_eq('a subject it does not have matches only rows leaving it empty',
-	[strpos($sql, 'AND b.mac IS NULL') !== false, strpos($sql, 'b.client_id IS NULL AND') !== false], [true, true]);
+	[strpos($sql, "AND b.mac = ''") !== false, strpos($sql, 'b.client_id = 0 AND') !== false], [true, true]);
 is_eq('and an expired temporary ban is not in force', strpos($sql, Bans::ACTIVE_EXPR) !== false, true);
+
+$db->seen = [];
+$_REQUEST = ['limit' => 10];
+$bans->listBans();
+$bans->banRow('1');
+$_REQUEST = [];
+is_eq('reading bans deletes nothing, expired or not',
+	array_values(array_filter($db->seen, function ($q) { return stripos($q, 'DELETE') !== false; })), []);
 
 echo "\n  what saveBan() refuses before writing:\n";
 
@@ -853,17 +861,26 @@ is_eq('a temporary ban with no length', $saved(['minutes' => '']), false);
 is_eq('or one too long', $saved(['minutes' => (string) (Bans::MAX_MINUTES + 1)]), false);
 is_eq('a client that is not there', $saved(['client' => '5']), false);
 
-$db->answers = ['client_id <=> :client_id' => '7'];
-is_eq('exactly the subjects another row has', $bans->saveBan(['ip' => '203.0.113.7', 'state' => 'deny'])['message'] ?? null,
-	'Ban #7 already covers exactly that. Open it to change it.');
+$db->answers = ['FROM `oryk_provisioner_bans`' => '7', 'FROM `oryk_provisioner_bans` WHERE `id`' => '1'];
+$db->insertId = 7;
+$db->seen = [];
+is_eq('a new ban naming what a row already does reopens that row',
+	$bans->saveBan(['ip' => '203.0.113.7', 'state' => 'deny']), ['status' => true, 'id' => 7, 'reopened' => true]);
+is_eq('through the unique key, so two saves at once still make one row',
+	strpos(end($db->seen), 'ON DUPLICATE KEY UPDATE') !== false, true);
+is_eq('an existing ban edited onto another row\'s subjects is refused',
+	$bans->saveBan(['id' => '3', 'ip' => '203.0.113.7', 'state' => 'deny'])['message'] ?? null,
+	'Ban #7 already names exactly that. Open it instead, or delete one of the two.');
 
 $db->answers = [];
 $db->insertId = 9;
 $db->params = [];
-is_eq('a deny needs no length, and is written', $bans->saveBan(['mac' => '00-04-F2-82-E8-24', 'user' => '1001', 'state' => 'deny', 'minutes' => '']), ['status' => true, 'id' => 9]);
-is_eq('with each subject as it is stored, the rest empty',
+is_eq('a deny needs no length, and is written', $bans->saveBan(['mac' => '00-04-F2-82-E8-24', 'user' => '1001', 'state' => 'deny', 'minutes' => '']), ['status' => true, 'id' => 9, 'reopened' => false]);
+is_eq('with each subject as it is stored, the rest as "any"',
 	array_intersect_key(end($db->params)[1], array_flip([':client_id', ':extension', ':mac', ':profile_id', ':ip'])),
-	[':client_id' => null, ':extension' => '1001', ':mac' => '0004f282e824', ':profile_id' => null, ':ip' => null]);
+	[':client_id' => 0, ':extension' => '1001', ':mac' => '0004f282e824', ':profile_id' => 0, ':ip' => '']);
+is_eq('and a row storing "any" as 0 or \'\' sets nothing there',
+	Bans::summary(['client_id' => '0', 'extension' => '1001', 'mac' => '', 'profile_id' => '0', 'ip' => '']), 'user 1001');
 
 echo "\n  the endpoint asks before it answers:\n";
 
@@ -882,8 +899,16 @@ $db->fetches = ['WHERE pc.mac = :mac' => [['id' => '5', 'device_id' => '1001', '
 $db->fetchAlls = ['oryk_provisioner_bans' => [$site]];
 $db->params = [];
 is_eq('a banned address is a 403', $banned->invoke($endpoint, '0004f282e824')['code'] ?? null, 403);
+$asked = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'b.state') !== false; }));
+$hits = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'hits = hits + 1') !== false; }));
 is_eq('asked of the address, the MAC, the client and its user',
-	end($db->params)[1], [':client_0' => '5', ':user_0' => '1001', ':mac_0' => '0004f282e824', ':ip_0' => '203.0.113.7']);
+	end($asked)[1], [':client_0' => '5', ':user_0' => '1001', ':mac_0' => '0004f282e824', ':ip_0' => '203.0.113.7']);
+is_eq('and the row that decided is counted a hit', end($hits)[1] ?? null, [':id' => 1]);
+
+$db->params = [];
+$banned->invoke($endpoint, '0004f282e824');
+is_eq('once per request, however often it is asked',
+	array_filter($db->params, function ($p) { return strpos($p[0], 'hits = hits + 1') !== false; }), []);
 
 $db->fetches = ['WHERE pc.mac = :mac' => [['id' => '5', 'device_id' => '1001', 'extension' => '1001', 'profile_id' => '3']]];
 $db->params = [];

@@ -216,6 +216,7 @@ $tab = (string) ($tab ?? 'users');
 							data-search="true"
 							data-show-refresh="true"
 							data-unique-id="id"
+							data-row-style="orykBanRowClasses"
 							data-sort-name="created_at"
 							data-sort-order="desc">
 							<thead>
@@ -226,6 +227,7 @@ $tab = (string) ($tab ?? 'users');
 									<th data-field="client" data-formatter="formatBanClient" data-sortable="true"><?php echo _('Client'); ?></th>
 									<th data-field="profile" data-formatter="formatBanProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
 									<th data-field="state" data-formatter="formatBanState" data-sortable="true"><?php echo _('State'); ?></th>
+									<th data-field="hits" data-formatter="formatBanHits" data-sortable="true" data-align="right"><?php echo _('Hits'); ?></th>
 									<th data-field="created_at" data-formatter="formatBanCreated" data-sortable="true"><?php echo _('Created'); ?></th>
 									<th data-field="expires_at" data-formatter="formatBanExpires" data-sortable="true"><?php echo _('Expires'); ?></th>
 									<th data-field="actions" data-formatter="formatBanActions" data-align="right"><?php echo _('Actions'); ?></th>
@@ -691,13 +693,33 @@ $tab = (string) ($tab ?? 'users');
 			: orykBanAny;
 	}
 
-	function formatBanState(value) {
+	// An expired ban is kept until it is deleted, and says it is out of force.
+	function formatBanState(value, row) {
 		const labels = { banned: 'label-warning', deny: 'label-danger', allow: 'label-success' };
+
+		if (!Number(row.active)) {
+			return `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired</span>`;
+		}
 
 		return `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)}</span>`;
 	}
 
+	function orykBanRowClasses(row) {
+		return Number(row.active) ? {} : { classes: 'oryk-disabled' };
+	}
+
 	// Ages are the server's subtraction, on the database's clock -- see Bans.
+	// Requests this ban decided, allowed or refused; when the last was is the title.
+	function formatBanHits(value, row) {
+		const hits = Number(value) || 0;
+
+		if (!hits) {
+			return '<span class="text-muted">0</span>';
+		}
+
+		return `<span title="Last hit ${orykEscape(orykSince(row.last_hit_age))} (${orykEscape(row.last_hit_at)})">${hits}</span>`;
+	}
+
 	function formatBanCreated(value, row) {
 		return value ? `<span title="${orykEscape(value)}">${orykEscape(orykSince(row.created_age))}</span>` : '-';
 	}
@@ -707,7 +729,9 @@ $tab = (string) ($tab ?? 'users');
 			return 'Never';
 		}
 
-		return `<span title="${orykEscape(value)}">${orykEscape(orykIn(row.expires_in))}</span>`;
+		const when = Number(row.expires_in) <= 0 ? orykSince(-Number(row.expires_in)) : orykIn(row.expires_in);
+
+		return `<span title="${orykEscape(value)}">${orykEscape(when)}</span>`;
 	}
 
 	// orykSince() the other way: how long until.

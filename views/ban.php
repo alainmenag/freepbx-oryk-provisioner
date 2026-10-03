@@ -158,7 +158,7 @@ foreach ($profiles as $profile) {
 								'deny' => _('Deny (until deleted)'),
 								'allow' => _('Allow (until deleted)'),
 							], $state) . '</select>',
-							'<span class="oryk-help-part">' . $h(_('Banned and Deny refuse every request that matches with a 403, written to the Logs tab. Banned lifts itself when its time is up and the row is deleted; Deny stays until it is deleted.')) . '</span>'
+							'<span class="oryk-help-part">' . $h(_('Banned and Deny refuse every request that matches with a 403, written to the Logs tab. Banned stops refusing when its minutes are up; the row stays, expired, until it is deleted, and saving it again with minutes starts it over. Deny stays in force until it is deleted.')) . '</span>'
 							. '<span class="oryk-help-part">' . $h(_('Allow wins over every less specific ban that matches: an allowed client is served from a banned address, and allowing user 1001 from one address beats denying user 1001. It changes nothing else -- a disabled client, a token or a profile still decide as they do.')) . '</span>'
 						);
 
@@ -175,9 +175,13 @@ foreach ($profiles as $profile) {
 
 						if ($banId) {
 							$fact(_('Created'), $h($ban['created_at']) . ' <span class="text-muted" data-oryk-since="' . (int) $ban['created_age'] . '"></span>');
+							$fact(_('Hits'), (int) $ban['hits'] . ($ban['last_hit_at'] === null
+								? ' <span class="text-muted">' . $h(_('never hit')) . '</span>'
+								: ' <span class="text-muted">' . $h(_('last')) . ' ' . $h($ban['last_hit_at']) . '</span> <span class="text-muted" data-oryk-since="' . (int) $ban['last_hit_age'] . '"></span>'));
 
 							if ($state === 'banned') {
-								$fact(_('Expires'), $h($ban['expires_at']) . ' <span class="text-muted" data-oryk-in="' . (int) $ban['expires_in'] . '"></span>');
+								$fact(_('Expires'), $h($ban['expires_at']) . ' <span class="text-muted" data-oryk-in="' . (int) $ban['expires_in'] . '"></span>'
+									. ((int) $ban['expires_in'] <= 0 ? ' <span class="label label-default">' . $h(_('expired')) . '</span>' : ''));
 							}
 
 							if (!empty($ban['ip_client'])) {
@@ -222,7 +226,14 @@ foreach ($profiles as $profile) {
 	});
 
 	$('[data-oryk-in]').each(function () {
-		const left = orykBanAge($(this).data('oryk-in'));
+		const seconds = Number($(this).data('oryk-in')) || 0;
+		const left = orykBanAge(seconds);
+
+		if (seconds <= 0) {
+			$(this).text(left ? `(${left} ago)` : '(just now)');
+			return;
+		}
+
 		$(this).text(left ? `(in ${left})` : '(any moment)');
 	});
 

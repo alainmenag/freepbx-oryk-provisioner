@@ -597,8 +597,7 @@ class Pages extends Service
 	 */
 	public function doConfigPageInit($page)
 	{
-		// Empty is the new-ban editor. A temporary ban that has just expired is
-		// gone, and goes back to the list like any id that names nothing.
+		// Empty is the new-ban editor. An expired ban is still a row and opens.
 		if (isset($_REQUEST['ban'])) {
 			$ban = trim((string) $_REQUEST['ban']);
 
