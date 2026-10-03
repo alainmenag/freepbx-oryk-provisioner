@@ -27,27 +27,6 @@ $logNarrowed = $logMac !== '';
 $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	. ($logNarrowed ? '&mac=' . rawurlencode($logMac) : '');
 ?>
-<style>
-	.oryk-log-detail {
-		display: block;
-		color: #a94442;
-		font-size: 11px;
-		line-height: 15px;
-	}
-	.oryk-log-agent {
-		display: block;
-		max-width: 260px;
-		overflow: hidden;
-		color: #777;
-		font-size: 11px;
-		line-height: 15px;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-	.oryk-log-time {
-		white-space: nowrap;
-	}
-</style>
 
 <p class="help-block fpbx-help-block">
 	<?php echo $logNarrowed
@@ -102,8 +81,11 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	var orykLogUnknown = <?php echo json_encode(_('Not associated')); ?>;
 	var orykLogMainConfig = <?php echo json_encode(_('(main config)')); ?>;
 
-	function formatLogTime(value) {
-		return value ? `<span class="oryk-log-time">${orykEscape(value)}</span>` : '-';
+	// The time is the link to the entry's own page.
+	function formatLogTime(value, row) {
+		const time = value ? orykEscape(value) : '-';
+
+		return `<a class="oryk-log-time" href="?display=oryk_provisioner&log=${encodeURIComponent(row.id)}">${time}</a>`;
 	}
 
 	// The MAC links to the client it belongs to *now*. One that belongs to

@@ -508,12 +508,12 @@ class Clients extends Service
 	 * there is.
 	 *
 	 * @return array<int, array<string, mixed>> Client rows: id, mac, description,
-	 *                                          profile_id, device_id.
+	 *                                          profile_id, device_id, public_ip.
 	 */
 	public function clientChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, d.description
+			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description
 				FROM `{$this->clientsTable}` pc
 				LEFT JOIN devices d ON d.id = pc.device_id
 				ORDER BY pc.mac"

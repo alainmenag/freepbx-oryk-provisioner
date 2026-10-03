@@ -26,63 +26,6 @@ $sectionEscape = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 ?>
-<style>
-	/*
-	 * A flat band with an underline under the active section, so it never
-	 * reads as the row's `nav-tabs` strip further down the page. Wraps rather
-	 * than scrolls on a narrow screen.
-	 */
-	.oryk-sections {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: flex-end;
-		gap: 4px 24px;
-		margin-bottom: 20px;
-		border-bottom: 3px solid #ddd;
-	}
-	.oryk-sections .oryk-sections-home {
-		padding: 8px 0;
-		font-size: 20px;
-		line-height: 26px;
-		font-weight: 700;
-		text-decoration: none;
-	}
-	.oryk-sections .oryk-sections-version {
-		display: block;
-		font-size: 11px;
-		line-height: 14px;
-		font-weight: 400;
-		color: #999;
-	}
-	.oryk-sections ul {
-		display: flex;
-		flex-wrap: wrap;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		margin-bottom: -2px;
-	}
-	.oryk-sections ul > li > a {
-		display: block;
-		margin-bottom: -1px;
-		padding: 10px 14px 9px;
-		border-bottom: 3px solid transparent;
-		font-size: 15px;
-		line-height: 22px;
-		text-decoration: none;
-		font-weight: 700;
-		color: #0f5a59;
-	}
-	.oryk-sections ul > li > a:hover,
-	.oryk-sections ul > li > a:focus {
-		border-bottom-color: #ccc;
-		background: #f7f7f7;
-	}
-	.oryk-sections ul > li.active > a {
-		border-bottom-color: currentColor;
-		color: currentColor;
-	}
-</style>
 
 <nav class="oryk-sections" aria-label="<?php echo $sectionEscape(_('Provisioner sections')); ?>">
 	<a class="oryk-sections-home" href="?display=oryk_provisioner">

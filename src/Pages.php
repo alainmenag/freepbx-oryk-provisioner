@@ -82,7 +82,7 @@ class Pages extends Service
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list and five editors, told apart by which key the URL carries.
+	 * A list, five editors and a log entry, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&client=<id>                one client
@@ -95,6 +95,7 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&user=                      a new one
 	 *   ?display=oryk_provisioner&ban=<id>                   one ban
 	 *   ?display=oryk_provisioner&ban=                       a new one
+	 *   ?display=oryk_provisioner&log=<id>                   one log entry
 	 *
 	 * A key present but empty is the same page doing the same thing, minus a row
 	 * to replace.
@@ -103,6 +104,10 @@ class Pages extends Service
 	 */
 	public function showPage()
 	{
+		if (isset($_REQUEST['log'])) {
+			return $this->showLog(trim((string) $_REQUEST['log']));
+		}
+
 		if (isset($_REQUEST['ban'])) {
 			return $this->showBan(trim((string) $_REQUEST['ban']));
 		}
@@ -295,8 +300,34 @@ class Pages extends Service
 			'addresses' => $this->bans->clientAddresses(),
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections('bans'),
-			// A ban is not one of the four, so it scopes nothing.
-			'navigator' => $this->navigator->levels(),
+			// An unwritten ban names nothing yet, so it scopes nothing.
+			'navigator' => $this->navigator->levels([
+				'ban' => $ban['id'] ? (int) $ban['id'] : 'new',
+			]),
+		]);
+	}
+
+	/**
+	 * Render one provisioning log entry. There is no new one: the endpoint is
+	 * the only thing that writes them.
+	 *
+	 * @param string $wanted Entry id.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showLog($wanted)
+	{
+		// doConfigPageInit() has already bounced one that has gone.
+		$entry = $this->requestLog->logRow($wanted);
+
+		if (!$entry) {
+			return $this->showList('logs');
+		}
+
+		return $this->view('log', [
+			'entry' => $entry,
+			'sections' => $this->navigator->sections('logs'),
+			'navigator' => $this->navigator->levels(['log' => (int) $entry['id']]),
 		]);
 	}
 
@@ -495,7 +526,33 @@ class Pages extends Service
 	 */
 	private function view($name, array $vars)
 	{
-		return load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+		return $this->stylesheet() . load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+	}
+
+	/**
+	 * The module's stylesheet, assets/oryk_provisioner.css, for the top of a page.
+	 *
+	 * Linked through the admin/assets/oryk_provisioner symlink `fwconsole reload`
+	 * makes, versioned by the file's mtime so an edit is never served from cache.
+	 * Before that symlink exists it is inlined instead, so a module copied up
+	 * and not yet reloaded is still styled.
+	 *
+	 * @return string A <link>, a <style>, or '' when the file is missing.
+	 */
+	private function stylesheet()
+	{
+		$file = dirname(__DIR__) . '/assets/oryk_provisioner.css';
+
+		if (!is_file($file)) {
+			return '';
+		}
+
+		// admin/modules/oryk_provisioner/assets -> admin/assets/oryk_provisioner.
+		if (is_dir(dirname(__DIR__, 3) . '/assets/oryk_provisioner')) {
+			return '<link rel="stylesheet" type="text/css" href="assets/oryk_provisioner/oryk_provisioner.css?v=' . (int) filemtime($file) . '">';
+		}
+
+		return '<style>' . file_get_contents($file) . '</style>';
 	}
 
 	/**
@@ -516,7 +573,7 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors and the Settings tab have any: the list's other tabs
+	 * Only the editors, a log entry and the Settings tab have any: the list's other tabs
 	 * carry their own controls, and a single button in the header could not say
 	 * which tab it meant.
 	 *
@@ -536,6 +593,22 @@ class Pages extends Service
 	 */
 	public function getActionBar($request)
 	{
+		// A log entry is read, not edited: Delete and Close, never Save.
+		if (isset($_REQUEST['log'])) {
+			return [
+				'orykdelete' => [
+					'name' => 'orykdelete',
+					'id' => 'orykdelete',
+					'value' => _('Delete'),
+				],
+				'orykclose' => [
+					'name' => 'orykclose',
+					'id' => 'orykclose',
+					'value' => _('Close'),
+				],
+			];
+		}
+
 		// Which editor is open, and which of the URL's keys names the row its
 		// buttons act on.
 		if (isset($_REQUEST['ban'])) {
@@ -605,6 +678,16 @@ class Pages extends Service
 	 */
 	public function doConfigPageInit($page)
 	{
+		// There is no new entry, so empty is as stale as an id that has gone.
+		if (isset($_REQUEST['log'])) {
+			if (!$this->requestLog->logRow(trim((string) $_REQUEST['log']))) {
+				header('Location: config.php?display=oryk_provisioner&tab=logs');
+				exit;
+			}
+
+			return;
+		}
+
 		// Empty is the new-ban editor. An expired ban is still a row and opens.
 		if (isset($_REQUEST['ban'])) {
 			$ban = trim((string) $_REQUEST['ban']);

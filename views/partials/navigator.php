@@ -2,8 +2,8 @@
 /**
  * views/partials/navigator.php -- the row of dropdowns under the section bar.
  *
- * Users, Clients, Profiles, Resources, each scoped by the row the page is
- * viewing: on a profile, Clients lists that profile's clients. What is in
+ * Users, Clients, Profiles, Resources, Logs, Bans, each scoped by the row the
+ * page is viewing: on a profile, Clients lists that profile's clients. What is in
  * scope is Navigator's business (see src/Navigator.php); this only draws it.
  *
  * Every level is the same control: what it is now, and a searchable list of
@@ -38,7 +38,8 @@
  *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
  *                                       Each: key, title of text and href,
- *                                       text, mono, prompt, search,
+ *                                       text, href (the chosen row's
+ *                                       page, or ''), mono, prompt, search,
  *                                       options[] of text, note, href, active,
  *                                       empty (what a menu with no options
  *                                       says), count (the title's badge, or
@@ -52,197 +53,6 @@ $e = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 ?>
-<style>
-	/*
-	 * A crumb has to read as a crumb rather than as a form: no border, no
-	 * background, the page's own heading type -- and then all three on hover,
-	 * which is what says it can be clicked at all.
-	 *
-	 * The heading type is set on the crumb links and never on the <ol> or the
-	 * <li>, because a dropdown menu is a child of its crumb and inherits
-	 * whatever either of those carries. An 18px/28px heading inherited into a
-	 * list of options is what made the first cut of this look stretched.
-	 */
-	.oryk-nav .breadcrumb {
-		margin: 0;
-		padding: 0;
-		background: none;
-		gap: 10px;
-	}
-	.oryk-nav .breadcrumb > li {
-		display: flex;
-		flex-direction: column;
-	}
-	.oryk-nav .breadcrumb > li > a {
-		display: inline-block;
-		padding: 1px 6px;
-		border: 1px solid transparent;
-		border-radius: 3px;
-		font-size: 18px;
-		line-height: 26px;
-		text-decoration: none;
-	}
-	.oryk-nav .breadcrumb > li > a.oryk-nav-toggle:hover,
-	.oryk-nav .breadcrumb > li > a.oryk-nav-toggle:focus,
-	.oryk-nav .breadcrumb > li.open > a.oryk-nav-toggle {
-		border-color: #ddd;
-		background: #f7f7f7;
-	}
-
-	/*
-	 * The level's title, over the crumb: small, muted, and a link to the list
-	 * it names. Its own font-size rule, because the heading type above is set
-	 * on every direct link of a crumb and this is not the heading.
-	 *
-	 * `align-self` because the <li> is a flex column, which would otherwise
-	 * stretch the link -- and its underline -- the full width of the crumb
-	 * under it. What it points at is one word, so one word is what it is.
-	 */
-	.oryk-nav .breadcrumb > li > .oryk-nav-title {
-		padding: 0 7px;
-		border: 0;
-		font-size: 12px;
-		line-height: 17px;
-		color: #999;
-	}
-
-	/* How many the level lists here -- the options in its menu, not a
-	   module-wide total. Sized to the title, not to the crumb. */
-	.oryk-nav .oryk-nav-title .badge {
-		margin-left: 3px;
-		padding: 1px 5px;
-		font-size: 10px;
-		line-height: 12px;
-		vertical-align: 1px;
-	}
-
-	/* A name that is typed exactly -- a filename, twelve hex digits -- is
-	   shown as it is spelled, here as everywhere else in the module. */
-	.oryk-nav-mono {
-		font-family: monospace;
-	}
-
-	/* Nothing chosen at this level yet. An invitation, not a value. */
-	.oryk-nav-prompt {
-		color: #999;
-		font-style: italic;
-	}
-
-	/*
-	 * The menu states all of its own type, padding and spacing rather than
-	 * taking any of it from somewhere else. Every rule is specific enough to
-	 * beat both Bootstrap's defaults and whatever the admin theme has to say
-	 * about a link sitting inside a page heading -- which is what the first
-	 * cut lost its left padding to.
-	 */
-	.oryk-nav .oryk-nav-menu {
-		min-width: 240px;
-		max-width: 380px;
-		max-height: 320px;
-		overflow-y: auto;
-		padding: 0;
-		font-size: 13px;
-		line-height: 1.4;
-	}
-	.oryk-nav .oryk-nav-menu > li > a {
-		display: block;
-		padding: 5px 14px;
-		font-size: 13px;
-		line-height: 17px;
-		white-space: normal;
-	}
-	.oryk-nav .oryk-nav-menu > li > a:hover,
-	.oryk-nav .oryk-nav-menu > li > a:focus,
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-here > a {
-		background: #f5f5f5;
-		text-decoration: none;
-	}
-
-	/* The one you are already on. Bootstrap draws this white-on-blue, which
-	   its own background rule here would leave white-on-grey, so the colour
-	   is stated too. */
-	.oryk-nav .oryk-nav-menu > li.active > a {
-		background: #eef2f0;
-		color: #333;
-		font-weight: 600;
-	}
-	.oryk-nav .oryk-nav-menu .oryk-nav-label {
-		display: block;
-	}
-
-	/* The second line of an option -- a client's device description under its
-	   MAC. Tight to the line above it, so the pair reads as one row. */
-	.oryk-nav .oryk-nav-menu .oryk-nav-note {
-		display: block;
-		margin-top: 1px;
-		color: #999;
-		font-size: 12px;
-		line-height: 15px;
-	}
-
-	/* The filter stays put while the list scrolls under it: a search box that
-	   scrolls away is one you have to find again to fix a typo. */
-	.oryk-nav .oryk-nav-filter {
-		position: sticky;
-		top: 0;
-		z-index: 1;
-		padding: 6px 8px;
-		background: #fff;
-		border-bottom: 1px solid #eee;
-	}
-	.oryk-nav .oryk-nav-filter input {
-		height: 28px;
-		padding: 3px 8px;
-		font-size: 13px;
-		line-height: 20px;
-		box-shadow: none;
-	}
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-empty {
-		padding: 6px 14px;
-		color: #999;
-		font-size: 13px;
-		line-height: 17px;
-	}
-
-	/*
-	 * Where a new one is written. Pinned to the foot of the menu the way the
-	 * filter is pinned to its head -- a list long enough to scroll is exactly
-	 * the list where you may give up on finding one and write it instead, and
-	 * having to scroll to the end to do that is the wrong way round.
-	 *
-	 * The rule above it is the whole distinction being drawn: everything over
-	 * the line is somewhere that exists.
-	 */
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-add {
-		position: sticky;
-		bottom: 0;
-		z-index: 1;
-		background: #fff;
-		border-bottom: 1px solid #eee;
-	}
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a {
-		color: #555;
-	}
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-add .oryk-nav-plus {
-		display: inline-block;
-		width: 12px;
-		margin-right: 4px;
-		font-weight: 700;
-		color: #999;
-	}
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a:hover .oryk-nav-plus,
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a:focus .oryk-nav-plus,
-	.oryk-nav .oryk-nav-menu > li.oryk-nav-add.active .oryk-nav-plus {
-		color: inherit;
-	}
-
-	.oryk-tab-section .btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-	}
-</style>
 
 <nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>" style="margin-bottom: 25px;">
 	<ol class="breadcrumb">
@@ -269,11 +79,16 @@ $e = function ($value) {
 					<span class="oryk-nav-title"><?php echo $e($titleText); ?><?php echo $count; ?></span>
 				<?php endif; ?>
 
-				<a href="#" class="oryk-nav-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
-					<span class="oryk-nav-text<?php echo $chosen ? $mono : ' oryk-nav-prompt'; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>">
-						<?php echo $e($chosen ? $level['text'] : $level['prompt']); ?>
-					</span>
-				</a>
+				<?php $link = $chosen && !empty($level['href']) ? (string) $level['href'] : ''; ?>
+				<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+					<?php
+					// One line, so the link's underline is the name and nothing either side of it.
+					$crumb = '<span class="oryk-nav-text' . ($chosen ? $mono : ' oryk-nav-prompt') . '" data-oryk-nav-text="' . $e($key) . '" data-oryk-nav-mono="' . ($mono === '' ? '0' : '1') . '">'
+						. $e($chosen ? $level['text'] : $level['prompt']) . '</span>';
+					echo $link !== '' ? '<a class="oryk-nav-link" href="' . $e($link) . '">' . $crumb . '</a>' : $crumb;
+					?>
+					<svg class="oryk-nav-caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5 3.5 5 7l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</div>
 
 				<ul class="dropdown-menu oryk-nav-menu">
 
@@ -323,7 +138,7 @@ $e = function ($value) {
 	 * the resource editor's file actions do -- and a crumb still saying the
 	 * old name is the page contradicting itself.
 	 *
-	 * @param string key  Level to write: user, client, profile, resource.
+	 * @param string key  Level to write: user, client, profile, resource, log, ban.
 	 * @param string text What it is called now.
 	 */
 	function orykNavText(key, text) {
@@ -343,6 +158,23 @@ $e = function ($value) {
 	// last time -- the list you are shown is the whole list, every time.
 	$(document).on('shown.bs.dropdown', '.oryk-nav-level', function () {
 		$(this).find('.oryk-nav-filter input').val('').trigger('input').focus();
+	});
+
+	// The chosen row's name is a link to it, inside the box that opens the
+	// menu: following it must not also toggle the dropdown, whose handler
+	// cancels the navigation. Bound on the link itself, not delegated --
+	// Bootstrap 4 binds its toggle handler on the box once a dropdown has
+	// opened, and only a handler below the box runs before that one.
+	$('.oryk-nav-link').on('click', function (event) {
+		event.stopPropagation();
+	});
+
+	// The box is a div, so Enter and Space are what open it from the keyboard.
+	$(document).on('keydown', '.oryk-nav-toggle', function (event) {
+		if (event.target === this && (event.which === 13 || event.which === 32)) {
+			event.preventDefault();
+			$(this).dropdown('toggle');
+		}
 	});
 
 	// Clicking into the filter must not count as clicking away from the menu,

@@ -20,15 +20,6 @@ $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 ?>
-<style>
-	.oryk-tab-section {
-		padding-top: 15px;
-	}
-	.oryk-setting-keyword {
-		font-family: monospace;
-		color: #777;
-	}
-</style>
 
 <?php foreach ($settings as $setting): ?>
 	<?php

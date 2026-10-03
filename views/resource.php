@@ -120,14 +120,14 @@ $tabs = [
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 
-<div class="container-fluid">
+<div class="provisioner container-fluid">
 	<div class="fpbx-container">
-		<div class="display full-border">
+		<div class="display no-border">
 
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section" style="padding: 0;">
+			<div class="section no-border" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -136,7 +136,7 @@ $tabs = [
 				<div class="tab-content" style="display: flex; flex-direction: row; flex-wrap: wrap;">
 
 					<?php if ($tab === 'resource'): ?>
-					<div class="tab-pane oryk-tab-section active" id="oryk_resource" style="flex: auto;">
+					<div class="tab-pane oryk-tab-section active" id="oryk_resource" style="flex: auto; padding: 15px;">
 
 						<div class="element-container">
 							<div class="row">
