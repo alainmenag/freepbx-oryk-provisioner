@@ -707,7 +707,7 @@ if (!$bansEnabled) {
 		let ask = 'Delete this user? The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently. This cannot be undone.';
 
 		if (clients) {
-			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user. Any without a MAC of its own is deleted; any on a phone's MAC is left with no device.`;
+			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be deleted too, with the logs ${clients === 1 ? 'it' : 'they'} sent.`;
 		}
 
 		if (!window.confirm(ask)) {

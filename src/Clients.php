@@ -624,23 +624,19 @@ class Clients extends Service
 	}
 
 	/**
-	 * Take a deleted device off every client that pointed at it.
+	 * Delete every client that pointed at a deleted device.
 	 *
-	 * A client on an internal MAC has no phone of its own to be pointed
-	 * elsewhere -- open provisioning makes them -- so it is deleted, with its
-	 * stored logs (deleteClient()). One on a real phone's MAC keeps its MAC,
-	 * profile and token and has no device, which is what saveClient() stores
-	 * for None.
+	 * Whatever its MAC: a phone of a user that is gone is pointed at nothing.
+	 * One by one through deleteClient(), so each one's stored logs go with it.
 	 *
 	 * @param string $deviceId Device id that has gone.
 	 *
-	 * @return array{deleted: int, released: int} Clients deleted and released.
+	 * @return int Clients deleted.
 	 */
-	public function releaseDevice($deviceId)
+	public function deleteForDevice($deviceId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id FROM `{$this->clientsTable}` pc
-			WHERE pc.device_id = :id AND " . self::INTERNAL_EXPR
+			"SELECT id FROM `{$this->clientsTable}` WHERE device_id = :id"
 		);
 		$stmt->execute([':id' => (string) $deviceId]);
 		$ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
@@ -649,12 +645,7 @@ class Clients extends Service
 			$this->deleteClient($id);
 		}
 
-		$stmt = $this->db->prepare(
-			"UPDATE `{$this->clientsTable}` SET device_id = NULL WHERE device_id = :id"
-		);
-		$stmt->execute([':id' => (string) $deviceId]);
-
-		return ['deleted' => count($ids), 'released' => (int) $stmt->rowCount()];
+		return count($ids);
 	}
 
 	/**

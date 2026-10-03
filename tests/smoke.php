@@ -364,20 +364,21 @@ is_eq('the secret came with it', $settings['secret']['value'], 'stored-secret');
 is_eq('an emergency cid that was the old number is the new one', $settings['emergency_cid']['value'], '2002');
 is_eq('the clients pointing at it were repointed', count($repointed), 1);
 
-echo "\n  deleting a user deletes its internal clients and releases the rest:\n";
+echo "\n  deleting a user deletes every client pointing at it:\n";
 
 $s = build();
 stored_user('1001');
+$s['app']->Database->fetchAlls = ['SELECT id FROM `oryk_provisioner_clients` WHERE device_id = :id' => ['5', '6']];
 is_eq('remove() says it deleted', $s['users']->remove('1001'), true);
 is_eq('the device went', FreePBX::$core->deleted, [['1001', false]]);
-is_eq('its clients on an internal MAC were looked up to be deleted',
+is_eq('both its clients were deleted, whatever their MAC',
+	array_values(array_map(function ($p) { return $p[1][':id']; }, array_filter($s['app']->Database->params, function ($p) {
+		return strpos($p[0], 'DELETE FROM `oryk_provisioner_clients` WHERE id = :id') !== false;
+	}))), [5, 6]);
+is_eq('and none was left with no device',
 	(bool) array_filter($s['app']->Database->seen, function ($q) {
-		return strpos($q, 'WHERE pc.device_id = :id AND ' . Clients::INTERNAL_EXPR) !== false;
-	}), true);
-is_eq('and the rest were released',
-	(bool) array_filter($s['app']->Database->seen, function ($q) {
-		return strpos($q, 'SET device_id = NULL WHERE device_id = :id') !== false;
-	}), true);
+		return strpos($q, 'SET device_id = NULL') !== false;
+	}), false);
 
 $s = build();
 FreePBX::$core->devices['9990000101'] = ['id' => '9990000101', 'tech' => 'pjsip', 'user' => '1001'];

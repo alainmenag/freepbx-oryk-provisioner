@@ -94,6 +94,8 @@ class StubDatabase
 	public $answers = [];
 	/** @var array<string, array> Fragment => rows fetch() hands back, in turn. */
 	public $fetches = [];
+	/** @var array<string, array> Fragment => what fetchAll() hands back. */
+	public $fetchAlls = [];
 	public $seen = [];
 	public $params = [];
 	public $insertId = 0;
@@ -109,6 +111,14 @@ class StubDatabase
 		foreach ($this->answers as $fragment => $value) {
 			if (strpos($sql, $fragment) !== false) {
 				$statement->column = $value;
+
+				break;
+			}
+		}
+
+		foreach ($this->fetchAlls as $fragment => $rows) {
+			if (strpos($sql, $fragment) !== false) {
+				$statement->rows = $rows;
 
 				break;
 			}
@@ -368,11 +378,13 @@ class StubApp
 	public $Modules;
 	public $Database;
 	public $Logger;
+	public $Config;
 	public $astman;
 
 	public function __construct()
 	{
 		$this->Modules = new StubModules();
+		$this->Config = new StubConfig();
 		$this->Database = new StubDatabase();
 		$this->Logger = new StubLogger();
 		$this->astman = null;

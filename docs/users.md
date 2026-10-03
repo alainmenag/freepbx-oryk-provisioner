@@ -42,10 +42,9 @@ other destinations naming the old number are **not** updated.
 > extensions belongs to both, and is removed from the other's history too. Back
 > up `asteriskcdrdb` first if the history matters.
 
-Clients pointed at a deleted user are kept, with no device -- except one with
-no MAC of its own (an internal `02…` MAC, which open provisioning makes), which
-is deleted along with the logs it sent. Delete asks first, and says how many
-clients point at the user.
+Every client pointed at a deleted user is deleted with it, whatever its MAC,
+along with the logs it sent. Delete asks first, and says how many clients that
+is.
 
 ## From Domain
 
