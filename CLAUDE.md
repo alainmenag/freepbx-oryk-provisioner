@@ -83,6 +83,8 @@ diffing. Never rewrite a file wholesale to reword its comments.
   tabs and the section bar carry none.
 - `Schema` steps are additive and ask `information_schema`, never a dbversion.
   `addResourceTypeColumn()` must stay after `addResourceFileColumns()`.
+- `bin/oryk-fail2ban` is the root privilege boundary: it re-checks every
+  argument, and `HELPER_VERSION` is bumped whenever it changes.
 - `AsteriskConfig`'s lock file stays named `oryk-connect-…` while any PBX may
   still have `oryk_connect` installed: both write the same file.
 - PHP and views are indented with **tabs**. Operator-facing strings go through

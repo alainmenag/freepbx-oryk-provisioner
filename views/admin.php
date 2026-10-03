@@ -37,9 +37,12 @@
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
  * @var string                            $version  Module version -- see partials/sections.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
+ * @var array<string, mixed>              $sync      Fail2ban::status(), on the Bans tab
+ * @var string                            $remote    The address this page was asked from, canonical
  */
 
 $tab = (string) ($tab ?? 'users');
+$sync = isset($sync) && is_array($sync) ? $sync : [];
 ?>
 <style>
 	.flex {
@@ -47,6 +50,19 @@ $tab = (string) ($tab ?? 'users');
 	}
 	.gap-3 {
 		gap: 3px;
+	}
+	/* The State column's label is the toggle of its menu. */
+	.oryk-ban-state > [data-toggle="dropdown"],
+	.oryk-ban-state > [data-toggle="dropdown"]:hover,
+	.oryk-ban-state > [data-toggle="dropdown"]:focus {
+		text-decoration: none;
+	}
+	.oryk-ban-state .fa-caret-down {
+		margin: 0 0 0 2px;
+	}
+	/* bootstrap-table's empty clearfix after the Bans table: the sync line under it clears the floats itself. */
+	#oryk_bans > .bootstrap-table + .clearfix {
+		display: none;
 	}
 	/*
 	 * A disabled row stays on the list -- a client or a profile that has been
@@ -228,12 +244,35 @@ $tab = (string) ($tab ?? 'users');
 									<th data-field="profile" data-formatter="formatBanProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
 									<th data-field="state" data-formatter="formatBanState" data-sortable="true"><?php echo _('State'); ?></th>
 									<th data-field="hits" data-formatter="formatBanHits" data-sortable="true" data-align="right"><?php echo _('Hits'); ?></th>
+									<th data-field="times" data-formatter="formatBanTimes" data-sortable="true" data-align="right"><?php echo _('Times'); ?></th>
 									<th data-field="created_at" data-formatter="formatBanCreated" data-sortable="true"><?php echo _('Created'); ?></th>
 									<th data-field="expires_at" data-formatter="formatBanExpires" data-sortable="true"><?php echo _('Expires'); ?></th>
 									<th data-field="actions" data-formatter="formatBanActions" data-align="right"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
+						<?php
+						// The fail2ban sync in one line, under the table: what it is doing, or what stops it.
+						$syncState = (string) ($sync['state'] ?? '');
+						$syncClass = ['ok' => 'success', 'disabled' => 'info'][$syncState] ?? 'warning';
+						?>
+						<?php if ($syncState !== ''): ?>
+						<div class="alert alert-<?php echo $syncClass; ?>" style="margin: 0; clear: both;">
+							<i class="fa fa-shield"></i>
+							<?php if ($syncState === 'ok'): ?>
+								<?php echo htmlspecialchars(sprintf(_('IP bans sync with fail2ban every minute (fail2ban %s): Banned into the banned jail, Deny into deny (both every port), Allow onto every ignore list.'), (string) ($sync['fail2ban'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>
+							<?php else: ?>
+								<strong><?php echo htmlspecialchars((string) ($sync['message'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></strong>
+								<?php if (!empty($sync['detail'])): ?>
+								<small class="text-muted"><?php echo htmlspecialchars((string) $sync['detail'], ENT_QUOTES, 'UTF-8'); ?></small>
+								<?php endif; ?>
+								<?php if (in_array($syncState, ['missing', 'sudo', 'stale', 'nojail'], true)): ?>
+								<br><?php echo _('Run this once on the PBX, as root:'); ?>
+								<code style="user-select: all;"><?php echo htmlspecialchars((string) ($sync['command'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></code>
+								<?php endif; ?>
+							<?php endif; ?>
+						</div>
+						<?php endif; ?>
 					</div>
 					<?php endif; ?>
 
@@ -646,6 +685,7 @@ $tab = (string) ($tab ?? 'users');
 
 	// A subject a ban leaves empty matches anything, and says so.
 	const orykBanAny = '<span class="text-muted">any</span>';
+	const orykBanRemote = <?php echo json_encode((string) ($remote ?? '')); ?>;
 
 	// The address links to the ban; the client whose public address it is, when
 	// one is, is its title.
@@ -693,15 +733,40 @@ $tab = (string) ($tab ?? 'users');
 			: orykBanAny;
 	}
 
-	// An expired ban is kept until it is deleted, and says it is out of force.
+	// What the State column offers. A Banned ban needs a length, so it is
+	// offered at three; the ban's page takes any other.
+	const orykBanStates = [
+		{ state: 'banned', minutes: 60, label: 'Banned for 1 hour' },
+		{ state: 'banned', minutes: 1440, label: 'Banned for 1 day' },
+		{ state: 'banned', minutes: 10080, label: 'Banned for 1 week' },
+		{ state: 'deny', label: 'Deny' },
+		{ state: 'allow', label: 'Allow' }
+	];
+
+	// The state is a menu: the label says what the ban is, and opening it changes
+	// it. An expired ban is kept until it is deleted, and says it is out of force.
 	function formatBanState(value, row) {
 		const labels = { banned: 'label-warning', deny: 'label-danger', allow: 'label-success' };
+		const active = Number(row.active);
+		const label = active
+			? `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)} <i class="fa fa-caret-down"></i></span>`
+			: `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired <i class="fa fa-caret-down"></i></span>`;
+		const items = orykBanStates
+			.filter(function (choice) {
+				// What it already is, in force, is not a change -- but a Banned
+				// ban can always be given a new length.
+				return !active || choice.state !== value || choice.state === 'banned';
+			})
+			.map(function (choice) {
+				return `<li><a href="#" class="dropdown-item" data-ban="${orykEscape(row.id)}" data-state="${choice.state}" data-minutes="${choice.minutes || ''}">${orykEscape(choice.label)}</a></li>`;
+			});
 
-		if (!Number(row.active)) {
-			return `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired</span>`;
-		}
-
-		return `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)}</span>`;
+		return [
+			'<div class="dropdown oryk-ban-state">',
+			`<a href="#" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false" title="Change the state">${label}</a>`,
+			`<ul class="dropdown-menu">${items.join('')}</ul>`,
+			'</div>'
+		].join('');
 	}
 
 	function orykBanRowClasses(row) {
@@ -710,6 +775,14 @@ $tab = (string) ($tab ?? 'users');
 
 	// Ages are the server's subtraction, on the database's clock -- see Bans.
 	// Requests this ban decided, allowed or refused; when the last was is the title.
+	// How many times the ban has been in force; when the current time began is the title.
+	function formatBanTimes(value, row) {
+		const times = Number(value) || 1;
+		const title = row.started_at ? ` title="In force since ${orykEscape(row.started_at)}"` : '';
+
+		return `<span${title}>${times}</span>`;
+	}
+
 	function formatBanHits(value, row) {
 		const hits = Number(value) || 0;
 
@@ -795,6 +868,67 @@ $tab = (string) ($tab ?? 'users');
 		modal.find('.oryk-ban-note').text(row.note);
 		modal.find('.oryk-ban-note-edit').attr('href', orykBanUrl(row));
 		modal.modal('show');
+	});
+
+	// bootstrap-table scrolls its body, which would clip a menu opened near the
+	// bottom, so an open state menu is placed against the window instead, and
+	// closed when the page moves under it.
+	$(document).on('shown.bs.dropdown', '.oryk-ban-state', function () {
+		const box = this.getBoundingClientRect();
+		const menu = $(this).find('.dropdown-menu');
+		const height = menu.outerHeight();
+		// Upwards when there is no room for it below.
+		const top = box.bottom + 2 + height > window.innerHeight && box.top - 2 - height > 0
+			? box.top - 2 - height
+			: box.bottom + 2;
+
+		menu.css({ position: 'fixed', top: top, left: box.left, right: 'auto', bottom: 'auto', transform: 'none' });
+	});
+
+	$(window).on('scroll resize', function () {
+		$('.oryk-ban-state.open, .oryk-ban-state.show').find('[data-toggle="dropdown"]').dropdown('toggle');
+	});
+
+	// A state picked from the menu is saved at once, with everything else about
+	// the ban as it is; refusing an address on its own that is yours, or a
+	// client's, is asked first, as the ban's page does.
+	$(document).on('click', '.oryk-ban-state [data-state]', function (event) {
+		event.preventDefault();
+
+		const choice = $(this);
+		const row = $('#ban_table').bootstrapTable('getRowByUniqueId', choice.data('ban'));
+		const state = String(choice.data('state'));
+
+		if (!row) {
+			return;
+		}
+
+		const alone = row.ip && !row.mac && !row.extension && !row.client_id && !row.profile_id;
+		let ask = '';
+
+		if (state !== 'allow' && alone && row.ip === orykBanRemote) {
+			ask = `${row.ip} is the address you are connected from. Phones at your site will not be provisioned, and with Fail2ban Sync on, fail2ban blocks it on every port -- this page included. Change it anyway?`;
+		} else if (state !== 'allow' && alone && row.ip_client) {
+			ask = `${row.ip} is the public address of ${row.ip_client}. Every phone at that site will be refused. Change it anyway?`;
+		}
+
+		if (ask && !window.confirm(ask)) {
+			return;
+		}
+
+		orykPost('setBanState', { id: row.id, state: state, minutes: choice.data('minutes') || '' }).done(function (response) {
+			if (!response || !response.status) {
+				notie.alert(3, (response && response.message) || 'Could not change the state.', 4);
+				return;
+			}
+
+			$('#ban_table').bootstrapTable('refresh', { silent: true });
+			notie.alert(1, response.escalated
+				? `Ban #${row.id} has been in force as often as Deny After allows, so it is now deny.`
+				: `Ban #${row.id} is now ${choice.text().toLowerCase()}.`, response.escalated ? 4 : 2);
+		}).fail(function () {
+			notie.alert(3, 'Could not change the state.', 4);
+		});
 	});
 
 	$(document).on('click', '[name="ban_delete"]', function () {

@@ -35,6 +35,14 @@ http://<pbx>/provisioner/<mac>
 so the filename a phone asks for arrives as the request path. `uninstall()`
 removes the symlink — and only if it still resolves to this module's engine.
 
+Install also schedules the fail2ban sync with FreePBX's scheduler (every
+minute). Its root half — a helper, one sudo rule and the `banned` and `deny` jails — is set up
+by `fwconsole ma install` when run as root; from Module Admin in the GUI the
+install prints the command instead. See
+[Syncing with fail2ban](fail2ban.md#setting-it-up). Uninstalling as root
+removes them again; uninstalled from the GUI, run
+[`--remove`](fail2ban.md#removing-it) first.
+
 ## Coming from Oryk Connect
 
 This module replaces `oryk_connect` for **Extension/User** devices. Nothing

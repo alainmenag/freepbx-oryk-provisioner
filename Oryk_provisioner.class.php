@@ -6,6 +6,8 @@ namespace FreePBX\modules;
 
 use BMO;
 use FreePBX_Helpers;
+use FreePBX\Modules\Oryk_Provisioner\BanEscalation;
+use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
@@ -13,6 +15,7 @@ use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionRenumberer;
+use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
@@ -94,6 +97,13 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  * and, for the Bans tab -- see ARCHITECTURE.md, "Bans":
  *
  *   Bans             who the endpoint refuses, or answers in spite of a ban
+ *   BanEscalation    a repeat Banned ban made Deny (ORYK_BAN_DENY_AFTER)
+ *
+ * and, keeping IP bans in step with fail2ban -- see ARCHITECTURE.md, "Syncing
+ * with fail2ban":
+ *
+ *   Fail2ban         the only file that asks fail2ban, through the sudo helper
+ *   BanSync          the minute job, and a save carried to fail2ban at once
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
@@ -107,6 +117,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Bans */
 	private $bans;
+
+	/** @var BanSync */
+	private $banSync;
+
+	/** @var Fail2ban */
+	private $fail2ban;
 
 	/** @var Clients */
 	private $clients;
@@ -218,11 +234,14 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->clients
 		);
 
-		$this->bans = new Bans($freepbx);
+		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
+		$escalation = new BanEscalation($freepbx, $this->settings);
+		$this->banSync = new BanSync($freepbx, $this->fail2ban, $escalation);
+		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban);
 
 		$this->endpoint = new Endpoint(
 			$freepbx,
@@ -250,7 +269,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->users,
 			$this->endpointSettings,
 			$this->settings,
-			$this->bans
+			$this->bans,
+			$this->fail2ban
 		);
 	}
 
@@ -398,6 +418,17 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * One run of the fail2ban sync. Called every minute by bin/oryk-fail2ban-sync,
+	 * which FreePBX's scheduler runs.
+	 *
+	 * @return array<string, mixed> ok, and what was done, or error.
+	 */
+	public function syncFail2ban()
+	{
+		return $this->banSync->run();
+	}
+
+	/**
 	 * Record one provisioning request.
 	 *
 	 * Public because the endpoint logs the requests that never reach serve()
@@ -474,6 +505,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveSettings':
 			case 'listBans':
 			case 'saveBan':
+			case 'setBanState':
 			case 'deleteBan':
 				return true;
 			default:
@@ -598,6 +630,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'saveBan':
 				return $this->bans->saveBan($_REQUEST);
+
+			case 'setBanState':
+				return $this->bans->setBanState($_REQUEST);
 
 			case 'deleteBan':
 				return $this->bans->deleteBan($_REQUEST['id'] ?? null);

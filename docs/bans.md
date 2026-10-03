@@ -2,8 +2,10 @@
 
 The **Bans** tab says what the provisioning endpoint does with requests that
 match a rule. Bans are checked before the endpoint answers anything, and a
-refusal is a **403**, written to the Logs tab like any other request. Bans touch
-only the provisioning endpoint — not SIP, not the admin GUI.
+refusal is a **403**, written to the Logs tab like any other request. On their
+own, bans touch only the provisioning endpoint. A ban naming an IP address and
+nothing else is also kept in step with fail2ban, when that is set up — see
+[Syncing with fail2ban](fail2ban.md).
 
 ## What a ban matches
 
@@ -47,6 +49,12 @@ Banned ban again starts its time over from that save, which is also how an
 expired one is put back in force — from its own page, or by adding the same
 ban again.
 
+The **State** label in the table is also a menu: pick Banned for 1 hour, 1 day
+or 1 week, Deny or Allow to change that ban there and then, with everything
+else about it kept. It counts as saving the ban — a fail2ban ban changed this way
+becomes yours — and banning your own address or a client's public address
+asks first, as the ban's page does. Any other length is set on the ban's page.
+
 ## When bans disagree
 
 The most specific ban decides. A ban naming a **Client** beats one naming a
@@ -89,14 +97,34 @@ the ban that decided a request is counted, not every ban that matched it.
 Editing a ban, or reopening it by adding the same one again, keeps its count;
 deleting it is the only reset.
 
+**Times** counts the separate periods a ban has been in force — a save or a
+fail2ban ban that puts it back in force after it lapsed starts a new one —
+next to Hits in the table and on the ban's page, with when the current period
+began (on hover in the table).
+
+## Repeat bans
+
+With **Settings → Deny After** (`ORYK_BAN_DENY_AFTER`) set, a Banned ban that
+comes into force that many times becomes a **Deny** on the spot — the third
+time fail2ban bans the same address, say, with Deny After at 3. With fail2ban
+syncing, it moves into the `deny` jail and stays there until you delete it, and
+it is yours from then on, as if you had saved it.
+
+It is decided only at the moment a ban comes back into force. Setting a ban
+back to Banned yourself is not overruled; it becomes a Deny again only the next
+time it comes back into force. Blank turns it off.
+
 ## Keeping it tidy
 
 Deleting a client or a profile deletes every ban naming it. A ban naming a user keeps the
 number when the user is deleted or renumbered; a ban naming a MAC stays when its
 client is deleted. Nothing else removes a ban: expired ones stay until you
-delete them.
+delete them. A ban synced with fail2ban that can't be taken out of fail2ban when
+you delete it is finished off by the sync — see
+[Syncing with fail2ban](fail2ban.md#deleting-a-ban).
 
-The editor warns before banning an address on its own when it is the address
-you are connected from, or one written on a client as its Public IP — both stop
-phones you probably care about. Neither is refused: a ban never locks you out
-of the GUI.
+A loopback address (127.x.x.x, ::1) or the unspecified address can't be banned
+at all. The editor warns before banning an address on its own when it is the
+address you are connected from, or one written on a client as its Public IP —
+both stop phones you probably care about, and with fail2ban syncing, a Deny on
+your own address blocks you from the PBX entirely.

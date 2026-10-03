@@ -54,10 +54,13 @@ class Pages extends Service
 	/** @var Bans */
 	private $bans;
 
+	/** @var Fail2ban */
+	private $fail2ban;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban)
 	{
 		parent::__construct($freepbx);
 
@@ -73,6 +76,7 @@ class Pages extends Service
 		$this->endpoints = $endpoints;
 		$this->settings = $settings;
 		$this->bans = $bans;
+		$this->fail2ban = $fail2ban;
 	}
 
 	/**
@@ -468,8 +472,12 @@ class Pages extends Service
 		return $this->view('admin', [
 			'tab' => $tab,
 			'settings' => $tab === 'settings'
-				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
+				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname(), Settings::BAN_DENY_AFTER => _('off')])
 				: [],
+			// The fail2ban sync's one line under the Bans table.
+			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
+			// What the State column warns with before refusing your own address.
+			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),
 			// Nothing is viewed, so nothing is scoped: every dropdown lists all of its
 			// kind, which is how somebody gets to a row without reading the table.

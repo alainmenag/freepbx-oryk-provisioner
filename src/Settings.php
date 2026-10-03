@@ -33,6 +33,18 @@ class Settings extends Service
 	const PROVISIONING = 'ORYK_PROVISIONING';
 
 	/**
+	 * Whether bans are synced with fail2ban. Off pauses it: nothing is read
+	 * from or written to fail2ban, and nothing already there is undone.
+	 */
+	const FAIL2BAN_SYNC = 'ORYK_FAIL2BAN_SYNC';
+
+	/**
+	 * How many times a Banned ban may come into force before it is made Deny.
+	 * Blank is off. See BanEscalation.
+	 */
+	const BAN_DENY_AFTER = 'ORYK_BAN_DENY_AFTER';
+
+	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
@@ -101,6 +113,27 @@ class Settings extends Service
 					'CLOSED' => 'Closed (only existing clients are served)',
 					'DISABLED' => 'Disabled (every request is refused)',
 				],
+			],
+			self::FAIL2BAN_SYNC => [
+				'name' => 'Fail2ban Sync',
+				'description' => 'Keep IP bans in step with fail2ban, both ways, every minute: fail2ban\'s bans '
+					. 'appear on the Bans tab, Banned and Deny bans made there are banned (every port) in the '
+					. 'banned and deny jails, and Allow puts the address on every jail\'s ignore list. Needs the setup '
+					. 'script run once as root. Off pauses it; nothing already in fail2ban is undone.',
+				'type' => 'bool',
+				'default' => true,
+			],
+			self::BAN_DENY_AFTER => [
+				'name' => 'Deny After',
+				'description' => 'Turn a Banned ban into a Deny when it comes into force this many times -- the '
+					. 'Times column -- whether fail2ban banned the address again or it was banned again here. '
+					. 'From 2 to 1000; blank is off. Changing a ban back to Banned by hand is not overruled '
+					. 'until it comes back into force again.',
+				'type' => 'int',
+				'emptyok' => true,
+				'min' => 2,
+				'max' => 1000,
+				'default' => '',
 			],
 		];
 	}
