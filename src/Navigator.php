@@ -22,9 +22,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * level knows what they cost:
  *
  *   - 'title': what this level is, plural, and the list it is drawn from -- the
- *     scoped one where there is one (a profile's Clients tab), else the module's.
- *     Its badge is 'count', the options the level lists, so it always agrees
- *     with the menu under it.
+ *     viewed row's own tab where there is one (a profile's Clients tab), else
+ *     the module's list narrowed the same way (`&scope=`, see scope()), else
+ *     the whole list where the level is not scoped. Its badge is 'count', the
+ *     options the level lists, so it always agrees with the menu under it.
  *   - 'add': where a *new* one is written, or null where that is not a thing
  *     you can do here. Creating is not navigating, so it is not an option.
  */
@@ -94,6 +95,138 @@ class Navigator extends Service
 		foreach ($this->profiles->profileChoices() as $row) {
 			$profileNames[(int) $row['id']] = (string) $row['name'];
 		}
+
+		$scope = $this->scoped($at, $clientRows, $banRows);
+		$from = $this->scopeKey($at);
+
+		return [
+			$this->userLevel($scope['users'], $user, $from),
+			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile, $from),
+			$this->profileLevel($profileNames, $scope['profiles'], $profile, $from),
+			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
+			$this->logLevel($scope['logs'], $scope['ip'], $log, $scope['entry'], $client, $from),
+			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $scope['entry'], $from),
+		];
+	}
+
+	/**
+	 * What each level is narrowed to by the row `$at` names, as levels() narrows it.
+	 *
+	 * The one computation behind both a dropdown's options and its title's
+	 * list, so the badge and the table that title opens count the same rows.
+	 * Logs, whose badge stops at LOG_LIMIT, are the exception: the table does not.
+	 *
+	 * @param array<string, mixed> $at Row being viewed, as levels() takes it.
+	 *
+	 * @return array<string, mixed> users, clients, profiles, files, bans: ids
+	 *                              or null for unscoped; logs: MACs or null;
+	 *                              ip: address or null; entry: the viewed log
+	 *                              entry's logRow() or null.
+	 */
+	public function scope(array $at)
+	{
+		if ($this->scopeKey($at) === '') {
+			return $this->scoped([], [], []);
+		}
+
+		return $this->scoped($at, $this->clients->clientChoices(), $this->bans->banChoices());
+	}
+
+	/**
+	 * The `&scope=` value naming the row `$at` scopes by, or '' when it scopes nothing.
+	 *
+	 * The row levels() reads first: a resource page scopes by its profile.
+	 *
+	 * @param array<string, mixed> $at Row being viewed.
+	 *
+	 * @return string `<kind>:<id>`, or ''.
+	 */
+	public function scopeKey(array $at)
+	{
+		foreach (['client', 'user', 'profile', 'log', 'ban'] as $kind) {
+			if (isset($at[$kind]) && $this->written((string) $at[$kind])) {
+				return $kind . ':' . (string) $at[$kind];
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * The row a `&scope=` value names, as levels() and scope() take it.
+	 *
+	 * Anything that is not `<kind>:<id>` with a kind listed here names nothing.
+	 *
+	 * @param string $key `&scope=` from the request.
+	 *
+	 * @return array<string, string> One kind and its id, or empty.
+	 */
+	public static function scopeAt($key)
+	{
+		$parts = explode(':', (string) $key, 2);
+
+		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban'], true)) {
+			return [];
+		}
+
+		$id = trim($parts[1]);
+
+		return ($id === '' || $id === 'new') ? [] : [$parts[0] => $id];
+	}
+
+	/**
+	 * A section's list, narrowed to what a scope key scopes when `$scoped`.
+	 *
+	 * @param string $section Section key.
+	 * @param string $from    scopeKey(), or ''.
+	 * @param bool   $scoped  Whether the level this is the title of is scoped.
+	 *
+	 * @return string Its address.
+	 */
+	public static function listHref($section, $from, $scoped = true)
+	{
+		$href = '?display=oryk_provisioner&tab=' . rawurlencode((string) $section);
+
+		if ($scoped && $from !== '') {
+			$href .= '&scope=' . implode(':', array_map('rawurlencode', explode(':', $from, 2)));
+		}
+
+		return $href;
+	}
+
+	/**
+	 * Whether a section's list is narrowed by a scope(), and so drawn with `&scope=`.
+	 *
+	 * @param string               $section users|clients|profiles|logs|bans.
+	 * @param array<string, mixed> $scope   scope().
+	 *
+	 * @return bool Narrowed.
+	 */
+	public static function narrows($section, array $scope)
+	{
+		if ($section === 'logs') {
+			return $scope['logs'] !== null || $scope['ip'] !== null;
+		}
+
+		return in_array($section, ['users', 'clients', 'profiles', 'bans'], true) && $scope[$section] !== null;
+	}
+
+	/**
+	 * scope(), from the rows levels() has already read.
+	 *
+	 * @param array<string, mixed>             $at         Row being viewed.
+	 * @param array<int, array<string, mixed>> $clientRows clientChoices().
+	 * @param array<int, array<string, mixed>> $banRows    Bans::banChoices().
+	 *
+	 * @return array<string, mixed> As scope() returns it.
+	 */
+	private function scoped(array $at, array $clientRows, array $banRows)
+	{
+		$user = isset($at['user']) ? (string) $at['user'] : null;
+		$client = isset($at['client']) ? (string) $at['client'] : null;
+		$profile = isset($at['profile']) ? (string) $at['profile'] : null;
+		$log = isset($at['log']) ? (string) $at['log'] : null;
+		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 
 		// null is "not scoped": the level lists everything. An array is the ids
 		// linked to the row being viewed, and may be empty. Logs are scoped by
@@ -203,14 +336,7 @@ class Navigator extends Service
 			}
 		}
 
-		return [
-			$this->userLevel($scope['users'], $user),
-			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile),
-			$this->profileLevel($profileNames, $scope['profiles'], $profile),
-			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
-			$this->logLevel($scope['logs'], $ip, $log, $entry, $client, $clientRows),
-			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $entry),
-		];
+		return $scope + ['ip' => $ip, 'entry' => $entry];
 	}
 
 	/**
@@ -281,10 +407,11 @@ class Navigator extends Service
 	 *
 	 * @param array<int, string>|null $scope Extensions linked, or null for all.
 	 * @param string|null             $at    Extension being viewed, 'new', or null.
+	 * @param string                  $from  scopeKey() of the viewed row, or ''.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function userLevel($scope, $at)
+	private function userLevel($scope, $at, $from)
 	{
 		$rows = [];
 
@@ -301,7 +428,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'user',
-			'title' => ['text' => _('Users'), 'href' => '?display=oryk_provisioner&tab=users'],
+			'title' => ['text' => _('Users'), 'href' => self::listHref('users', $from, $scope !== null)],
 			'mono' => true,
 			'new' => _('New user'),
 			'search' => _('Search users'),
@@ -321,10 +448,11 @@ class Navigator extends Service
 	 * @param string|null                      $at         Client being viewed, 'new', or null.
 	 * @param string|null                      $user       Extension being viewed, or null.
 	 * @param string|null                      $profile    Profile being viewed, or null.
+	 * @param string                           $from       scopeKey() of the viewed row, or ''.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function clientLevel(array $clientRows, $scope, $at, $user, $profile)
+	private function clientLevel(array $clientRows, $scope, $at, $user, $profile, $from)
 	{
 		$rows = [];
 
@@ -340,7 +468,7 @@ class Navigator extends Service
 		}
 
 		// The list this level is drawn from: the viewed row's own Clients tab.
-		$list = '?display=oryk_provisioner&tab=clients';
+		$list = self::listHref('clients', $from, $scope !== null);
 		$add = '?display=oryk_provisioner&client=';
 
 		if ($this->written($user)) {
@@ -367,10 +495,11 @@ class Navigator extends Service
 	 * @param array<int, string>   $profileNames Every profile's name, by id.
 	 * @param array<int, int>|null $scope        Ids linked, or null for all.
 	 * @param string|null          $at           Profile being viewed, 'new', or null.
+	 * @param string               $from         scopeKey() of the viewed row, or ''.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function profileLevel(array $profileNames, $scope, $at)
+	private function profileLevel(array $profileNames, $scope, $at, $from)
 	{
 		$rows = [];
 
@@ -385,7 +514,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'profile',
-			'title' => ['text' => _('Profiles'), 'href' => '?display=oryk_provisioner&tab=profiles'],
+			'title' => ['text' => _('Profiles'), 'href' => self::listHref('profiles', $from, $scope !== null)],
 			'mono' => false,
 			'new' => _('New profile'),
 			'search' => _('Search profiles'),
@@ -564,11 +693,11 @@ class Navigator extends Service
 	 * @param string|null                       $at         Entry being viewed, or null.
 	 * @param array<string, mixed>|null         $entry      That entry's logRow(), or null.
 	 * @param string|null                       $client     Client being viewed, or null.
-	 * @param array<int, array<string, mixed>>  $clientRows clientChoices().
+	 * @param string                            $from       scopeKey() of the viewed row, or ''.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function logLevel($macs, $ip, $at, $entry, $client, array $clientRows)
+	private function logLevel($macs, $ip, $at, $entry, $client, $from)
 	{
 		$found = $this->requestLog->logChoices($macs, $ip, self::LOG_LIMIT);
 		$listed = array_map(function ($row) {
@@ -602,7 +731,7 @@ class Navigator extends Service
 			];
 		}
 
-		$list = '?display=oryk_provisioner&tab=logs';
+		$list = self::listHref('logs', $from, $macs !== null || $ip !== null);
 
 		// A client's Logs tab is drawn only for a client with a MAC.
 		if ($this->written($client) && $macs) {
@@ -634,10 +763,11 @@ class Navigator extends Service
 	 * @param string|null                      $client  Client being viewed, or null.
 	 * @param string|null                      $profile Profile being viewed, or null.
 	 * @param array<string, mixed>|null        $entry   Log entry being viewed, or null.
+	 * @param string                           $from    scopeKey() of the viewed row, or ''.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function banLevel(array $banRows, $scope, $at, $user, $client, $profile, $entry)
+	private function banLevel(array $banRows, $scope, $at, $user, $client, $profile, $entry, $from)
 	{
 		$states = ['banned' => _('Banned'), 'deny' => _('Deny'), 'allow' => _('Allow')];
 		$rows = [];
@@ -697,7 +827,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'ban',
-			'title' => ['text' => _('Bans'), 'href' => '?display=oryk_provisioner&tab=bans'],
+			'title' => ['text' => _('Bans'), 'href' => self::listHref('bans', $from, $scope !== null)],
 			'mono' => false,
 			'new' => _('New ban'),
 			'search' => _('Search bans'),

@@ -18,27 +18,28 @@
  * define orykPost() and orykEscape(); this adds only what the log's own
  * columns need.
  *
- * @var string $logMac MAC to narrow to, or '' for every client's requests
+ * @var string $logMac   MAC to narrow to, or '' for every client's requests
+ * @var string $logScope Navigator scope key to narrow to, or '': the module
+ *                       page opened from a navigator title
  */
 
 $logMac = (string) ($logMac ?? '');
+$logScope = (string) ($logScope ?? '');
 $logNarrowed = $logMac !== '';
 
 $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
-	. ($logNarrowed ? '&mac=' . rawurlencode($logMac) : '');
+	. ($logNarrowed ? '&mac=' . rawurlencode($logMac) : '')
+	. ($logScope !== '' ? '&scope=' . rawurlencode($logScope) : '');
 ?>
 
-<p class="help-block fpbx-help-block">
-	<?php echo $logNarrowed
-		? _('Every file this client has asked for, whichever way it went. A phone with nothing here is a phone that is not reaching this PBX at all, which is a different fault from the ones the rows describe.')
-		: _('Every file a client has asked this PBX for, whether or not the MAC is one that has been associated. A MAC with no client behind it is a phone waiting to be added rather than a phone that is not there.'); ?>
-</p>
-
 <div id="log_toolbar" class="oryk-toolbar">
+	<?php // Clear empties one MAC or the lot; a scope is neither, so it has no Clear. ?>
+	<?php if ($logScope === ''): ?>
 	<button type="button" class="btn btn-danger" name="log_clear">
 		<i class="fa fa-trash"></i>
 		<?php echo $logNarrowed ? _('Clear This Client\'s Log') : _('Clear Log'); ?>
 	</button>
+	<?php endif; ?>
 </div>
 
 <table

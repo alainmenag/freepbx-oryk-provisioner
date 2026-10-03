@@ -147,10 +147,6 @@ $tabs = [
 					<?php if ($tab === 'client'): ?>
 					<div class="tab-pane oryk-tab-section active" id="oryk_client">
 
-						<p class="help-block fpbx-help-block">
-							<?php echo _('ATTENTION! Client resources are public by default. To restrict access, assign a custom token or use <code>username:password</code> to generate a hashed token.'); ?>
-						</p>
-
 						<div class="element-container">
 							<div class="row">
 								<div class="form-group">

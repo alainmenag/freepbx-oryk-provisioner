@@ -87,9 +87,12 @@ class Bans extends Service
 	 *
 	 * Expired bans are listed too, with `active` 0.
 	 *
+	 * @param array<int, int>|null $ids Bans to keep, or null for all: a
+	 *                                  navigator scope.
+	 *
 	 * @return array<string, mixed> total, rows.
 	 */
-	public function listBans()
+	public function listBans($ids = null)
 	{
 		// Interpolated, so looked up rather than taken from the request. An empty
 		// subject sorts first ascending: it is the wider rule.
@@ -119,6 +122,10 @@ class Bans extends Service
 		$params = [];
 		// A row marked deleted is gone as far as anyone looking is concerned.
 		$where = 'WHERE b.deleted_at IS NULL';
+
+		if ($ids !== null) {
+			$where .= ' AND ' . $this->inClause('b.id', $ids, 'id', $params);
+		}
 
 		if ($search !== '') {
 			$where .= " AND (b.ip LIKE :search

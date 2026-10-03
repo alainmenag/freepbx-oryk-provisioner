@@ -155,4 +155,29 @@ abstract class Service
 			return 0;
 		}
 	}
+
+	/**
+	 * A clause keeping rows whose column is one of some values, each bound.
+	 *
+	 * No values keeps no rows, rather than every row. The column is
+	 * interpolated, so **it may never come from a request**.
+	 *
+	 * @param string               $column Column, as written in the statement.
+	 * @param array<int, mixed>    $values Values to keep.
+	 * @param string               $name   Prefix for the placeholders, unique in the statement.
+	 * @param array<string, mixed> $params Placeholders, added to.
+	 *
+	 * @return string The clause.
+	 */
+	protected function inClause($column, array $values, $name, array &$params)
+	{
+		$names = [];
+
+		foreach (array_values(array_unique(array_map('strval', $values))) as $i => $value) {
+			$names[] = ':' . $name . '_' . $i;
+			$params[':' . $name . '_' . $i] = $value;
+		}
+
+		return $names ? "$column IN (" . implode(', ', $names) . ')' : '1 = 0';
+	}
 }

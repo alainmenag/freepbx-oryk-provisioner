@@ -121,9 +121,12 @@ class Users extends Service
 	 * Subqueries rather than a join and GROUP BY, so ONLY_FULL_GROUP_BY holds
 	 * whether or not `devices.id` has the unique key install() tries to add.
 	 *
+	 * @param array<int, string>|null $extensions Users to keep, or null for
+	 *                                           all: a navigator scope.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
-	public function listUsers()
+	public function listUsers($extensions = null)
 	{
 		// Written into the statement, so only these; anything else sorts by number.
 		$sortable = [
@@ -143,6 +146,10 @@ class Users extends Service
 
 		$params = [];
 		$where = 'WHERE ' . self::SHAPE;
+
+		if ($extensions !== null) {
+			$where .= ' AND ' . $this->inClause('d.id', $extensions, 'extension', $params);
+		}
 
 		if ($search !== '') {
 			$where .= " AND (d.id LIKE :search

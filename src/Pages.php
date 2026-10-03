@@ -85,6 +85,9 @@ class Pages extends Service
 	 * A list, five editors and a log entry, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
+	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
+	 *                                                        the list, narrowed
+	 *                                                        to what that row scopes
 	 *   ?display=oryk_provisioner&client=<id>                one client
 	 *   ?display=oryk_provisioner&client=                    a new one
 	 *   ?display=oryk_provisioner&profile=<id>               one profile
@@ -499,6 +502,15 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $this->navigator->section($tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab);
+		$at = Navigator::scopeAt((string) ($_REQUEST['scope'] ?? ''));
+		$navigator = $this->navigator->levels($at);
+		$scope = $this->scopeBanner($tab, $at, $navigator);
+
+		// A scope naming no row, or not narrowing this list, is dropped, and the
+		// page is the whole list: nothing on it says otherwise.
+		if (!$scope && $at) {
+			$navigator = $this->navigator->levels();
+		}
 
 		return $this->view('admin', [
 			'tab' => $tab,
@@ -510,10 +522,55 @@ class Pages extends Service
 			// What the State column warns with before refusing your own address.
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),
-			// Nothing is viewed, so nothing is scoped: every dropdown lists all of its
-			// kind, which is how somebody gets to a row without reading the table.
-			'navigator' => $this->navigator->levels(),
+			// Opened from a navigator title (`&scope=`), the dropdowns are scoped
+			// as they were on the row it names, so the context comes along. Else
+			// nothing is viewed and every dropdown lists all of its kind.
+			'navigator' => $navigator,
+			'scope' => $scope,
 		]);
+	}
+
+	/**
+	 * What a list narrowed by `&scope=` says it is narrowed to, or null when it is not.
+	 *
+	 * @param string                           $tab       Section shown.
+	 * @param array<string, string>            $at        Navigator::scopeAt().
+	 * @param array<int, array<string, mixed>> $navigator levels($at).
+	 *
+	 * @return array<string, string>|null key (the `&scope=` value), text (the
+	 *                                    row, named), href (its page), all
+	 *                                    (the list unnarrowed).
+	 */
+	private function scopeBanner($tab, array $at, array $navigator)
+	{
+		$key = $this->navigator->scopeKey($at);
+
+		if ($key === '' || !Navigator::narrows($tab, $this->navigator->scope($at))) {
+			return null;
+		}
+
+		$kind = (string) key($at);
+		$names = [
+			'user' => _('user %s'),
+			'client' => _('client %s'),
+			'profile' => _('profile %s'),
+			'log' => _('log entry %s'),
+			'ban' => _('ban %s'),
+		];
+
+		foreach ($navigator as $level) {
+			// The row's own level has it chosen; one with nothing chosen names no row.
+			if ($level['key'] === $kind && (string) $level['text'] !== '') {
+				return [
+					'key' => $key,
+					'text' => sprintf($names[$kind], (string) $level['text']),
+					'href' => (string) $level['href'],
+					'all' => Navigator::listHref($tab, ''),
+				];
+			}
+		}
+
+		return null;
 	}
 
 	/**

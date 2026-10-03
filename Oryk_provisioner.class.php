@@ -529,9 +529,16 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
 
+		// A list opened from a navigator title is narrowed the way that title's
+		// badge was counted: `&scope=<kind>:<id>` names the row, Navigator says
+		// what it scopes. Read only by the list commands.
+		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans'], true)
+			? $this->navigator->scope(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
+			: null;
+
 		switch ($command) {
 			case 'listClients':
-				$result = $this->clients->listClients();
+				$result = $this->clients->listClients($scope['clients']);
 
 				// Only the page that was read, and only when a resource was asked about:
 				// rendering a name costs this client's values.
@@ -545,7 +552,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $result;
 
 			case 'listProfiles':
-				return $this->profiles->listProfiles();
+				return $this->profiles->listProfiles($scope['profiles']);
 
 			case 'saveClient':
 				return $this->clients->saveClient($_REQUEST);
@@ -608,7 +615,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->resources->deleteResourceFile($_REQUEST);
 
 			case 'listLogs':
-				return $this->provisioningLog->listLogs();
+				return $this->provisioningLog->listLogs($scope['logs'], $scope['ip']);
 
 			case 'clearLogs':
 				return $this->provisioningLog->clearLogs($_REQUEST);
@@ -617,7 +624,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->provisioningLog->deleteLog($_REQUEST['id'] ?? null);
 
 			case 'listUsers':
-				return $this->users->listUsers();
+				return $this->users->listUsers($scope['users']);
 
 			// A save runs a full reload, so it answers as slowly as Apply Config.
 			case 'saveUser':
@@ -630,7 +637,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->settings->saveSettings($_REQUEST);
 
 			case 'listBans':
-				return $this->bans->listBans();
+				return $this->bans->listBans($scope['bans']);
 
 			case 'saveBan':
 				return $this->bans->saveBan($_REQUEST);

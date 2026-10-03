@@ -143,10 +143,6 @@ foreach ($profiles as $profile) {
 				<div class="tab-content">
 					<div class="tab-pane oryk-tab-section active" id="oryk_ban">
 
-						<p class="help-block">
-							<?php echo _('Fill in one or more of the five. A request is matched when it matches every one filled in; one left empty matches anything. When several bans match one request, the one naming the most specific thing decides -- Client, then User, then MAC Address, then Profile, then IP Address -- and of those, the one naming more of them.'); ?>
-						</p>
-
 						<?php
 						$field('ban_ip', _('IP Address'),
 							'<input type="text" class="form-control oryk-name" id="ban_ip" maxlength="45" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any address')) . '" value="' . $h($ban['ip'] ?? '') . '">',

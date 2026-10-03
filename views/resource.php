@@ -334,10 +334,6 @@ $tabs = [
 					<?php if ($tab === 'clients'): ?>
 						<div class="tab-pane oryk-tab-section active" id="oryk_clients" style="flex: 1;">
 
-							<p class="help-block fpbx-help-block">
-								<?php echo _('Clients assigned to the profile that owns this resource.'); ?>
-							</p>
-
 							<table
 								id="client_table"
 								data-toggle="table"

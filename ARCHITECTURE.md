@@ -622,7 +622,14 @@ the helper turns it into epochs and the sync writes them with
   and their users, profiles and logs (an address-only ban: logs from that
   address); a log entry scopes like the client with its MAC, and its Bans are
   those that apply to that request. A page viewing nothing (lists, Settings)
-  scopes nothing. A tab strip is
+  scopes nothing. A level's title links to the table of what it counts: the
+  viewed row's own tab where it has one (a user's Clients, a client's Logs),
+  else the section's list with `&scope=<kind>:<id>` naming the viewed row; an
+  unscoped level's title is the whole list. `Navigator::scope()` is the one
+  computation behind both the dropdowns and every list command asked with
+  `scope`, so a table counts what the badge did -- bar Logs, whose badge stops
+  at `LOG_LIMIT`. A scoped list draws the dropdowns as that row's page does,
+  says what it is narrowed to, and has no Clear on Logs. A tab strip is
   only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
   rendered, and `views/partials/tabs.php` draws the rest as links. A tab with
