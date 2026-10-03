@@ -79,7 +79,8 @@ diffing. Never rewrite a file wholesale to reword its comments.
 - A field's help is a `fpbx-help-icon` with `data-for="<id>"` after the label
   and one `fpbx-help-block` with `id="<id>-help"`; without the pair FreePBX
   never shows it.
-- Tab badges come from `Counts`, never from the table they label.
+- The only badges are the navigator dropdown titles' `count`, from `Navigator`;
+  tabs and the section bar carry none.
 - `Schema` steps are additive and ask `information_schema`, never a dbversion.
   `addResourceTypeColumn()` must stay after `addResourceFileColumns()`.
 - `AsteriskConfig`'s lock file stays named `oryk-connect-…` while any PBX may

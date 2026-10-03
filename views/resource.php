@@ -47,9 +47,10 @@
  * @var string                               $logPath      Where a log a phone PUTs is written
  * @var array<string, mixed>                 $profile      The profile it belongs to
  * @var array<string, array<string, string>> $placeholders What a template can refer to
- * @var array<string, int>                   $counts       Rows behind each tab -- see partials/counts.php
  * @var string                               $tab          Tab to open on: resource|clients
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
+ * @var string                            $version  Module version -- see partials/sections.php
  */
 
 $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template' => ''];
@@ -97,11 +98,6 @@ $showLog = $type === 'log';
 // does not have yet.
 $tab = $isNew ? 'resource' : $tab;
 
-// The one tab with a table on it is the profile's client list, so the profile
-// is what narrows this page's counts -- not the resource, which nothing is
-// counted against.
-$countScope = ['profile_id' => $profileId];
-
 // The strip, as links. The first tab is the bare ?profile=<id>&resource=<id>,
 // the way every other editor's first tab is the bare URL of the row it edits
 // -- and on a resource that has not been written it is the key present and
@@ -117,19 +113,18 @@ $tabs = [
 	'clients' => [
 		'label' => _('Clients'),
 		'href' => $resourceUrl . '&tab=clients',
-		'count' => 'clients',
 		'disabled' => $isNew,
 		'title' => $isNew ? _('Save the resource first -- the filename a client asks for is this one rendered.') : '',
 	],
 ];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
-<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
 		<div class="display full-border">
 
+			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">

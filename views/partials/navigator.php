@@ -1,20 +1,19 @@
 <?php
 /**
- * views/partials/navigator.php -- the breadcrumb every page is topped with.
+ * views/partials/navigator.php -- the row of dropdowns under the section bar.
  *
- * It replaced four hand-written section titles that could only go up. A title
- * said where you were and linked back; this says where you are and lets you
- * go anywhere at the same depth or below, which is most of the moving around
- * anybody does in a module whose whole shape is a tree.
+ * Users, Clients, Profiles, Resources, each scoped by the row the page is
+ * viewing: on a profile, Clients lists that profile's clients. What is in
+ * scope is Navigator's business (see src/Navigator.php); this only draws it.
  *
  * Every level is the same control: what it is now, and a searchable list of
- * every sibling it could be instead. Uniform on purpose -- there is one bit of
- * markup, one filter, one set of keys to learn, and a level added later works
- * the moment Navigator returns it, with nothing written here.
+ * what it could be instead. Uniform on purpose -- there is one bit of markup,
+ * one filter, one set of keys to learn, and a level added later works the
+ * moment Navigator returns it, with nothing written here.
  *
- * An option is an ordinary link. Choosing one is a page load, so the levels
- * under it are rebuilt by the page that answers rather than patched here, and
- * a middle-click opens it in a tab like any other link on the page.
+ * An option is an ordinary link. Choosing one is a page load, so every level
+ * is re-scoped by the page that answers rather than patched here, and a
+ * middle-click opens it in a tab like any other link on the page.
  *
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
@@ -29,19 +28,22 @@
  * a language it was not written in, and it certainly cannot know that a
  * profile's files are listed on the profile rather than on the list page.
  *
- * Included by every view, in place of its section title. What it needs is one
+ * Included by every view, under partials/sections.php. What it needs is one
  * variable, which is the whole contract with src/Navigator.php.
  *
  * Creating is the one thing here that is not navigating, and it is drawn like
  * it: pinned under the options, past a rule, out of the filter and out of the
  * arrow keys, so the list you walk is still only places that exist. A level
- * that says you cannot write a new one -- the sections -- simply has no row.
+ * that says you cannot write a new one here simply has no row.
  *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
  *                                       Each: key, title of text and href,
  *                                       text, mono, prompt, search,
  *                                       options[] of text, note, href, active,
- *                                       add of text, href, active (or null).
+ *                                       empty (what a menu with no options
+ *                                       says), count (the title's badge, or
+ *                                       null for none), add of text, href,
+ *                                       active (or null).
  */
 
 $navigator = isset($navigator) && is_array($navigator) ? $navigator : [];
@@ -102,6 +104,16 @@ $e = function ($value) {
 		font-size: 12px;
 		line-height: 17px;
 		color: #999;
+	}
+
+	/* How many the level lists here -- the options in its menu, not a
+	   module-wide total. Sized to the title, not to the crumb. */
+	.oryk-nav .oryk-nav-title .badge {
+		margin-left: 3px;
+		padding: 1px 5px;
+		font-size: 10px;
+		line-height: 12px;
+		vertical-align: 1px;
 	}
 
 	/* A name that is typed exactly -- a filename, twelve hex digits -- is
@@ -235,11 +247,6 @@ $e = function ($value) {
 <nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>" style="margin-bottom: 25px;">
 	<ol class="breadcrumb">
 
-		<li>
-			<a href="?display=oryk_provisioner" class="oryk-nav-title">Home</a>
-			<a href="?display=oryk_provisioner" style="font-weight: bolder;"><?php echo $e(_('Provisioner')); ?></a>
-		</li>
-
 		<?php foreach ($navigator as $level): ?>
 			<?php
 			$key = (string) $level['key'];
@@ -252,13 +259,14 @@ $e = function ($value) {
 			$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
 			$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : '';
 			$titleHref = ($title && isset($title['href'])) ? (string) $title['href'] : '';
+			$count = isset($level['count']) ? '<span class="badge">' . (int) $level['count'] . '</span>' : '';
 			?>
 			<li class="dropdown oryk-nav-level">
 
 				<?php if ($titleText !== '' && $titleHref !== ''): ?>
-					<a class="oryk-nav-title" href="<?php echo $e($titleHref); ?>" title="<?php echo $e(sprintf(_('Go to %s'), $titleText)); ?>"><?php echo $e($titleText); ?></a>
+					<a class="oryk-nav-title" href="<?php echo $e($titleHref); ?>" title="<?php echo $e(sprintf(_('Go to %s'), $titleText)); ?>"><?php echo $e($titleText); ?><?php echo $count; ?></a>
 				<?php elseif ($titleText !== ''): ?>
-					<span class="oryk-nav-title"><?php echo $e($titleText); ?></span>
+					<span class="oryk-nav-title"><?php echo $e($titleText); ?><?php echo $count; ?></span>
 				<?php endif; ?>
 
 				<a href="#" class="oryk-nav-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
@@ -274,7 +282,7 @@ $e = function ($value) {
 					</li>
 
 					<?php if (!$level['options']): ?>
-						<li class="oryk-nav-empty"><?php echo $e(_('Nothing here yet')); ?></li>
+						<li class="oryk-nav-empty"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
 					<?php endif; ?>
 
 					<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
@@ -315,7 +323,7 @@ $e = function ($value) {
 	 * the resource editor's file actions do -- and a crumb still saying the
 	 * old name is the page contradicting itself.
 	 *
-	 * @param string key  Level to write: section, client, profile, resource.
+	 * @param string key  Level to write: user, client, profile, resource.
 	 * @param string text What it is called now.
 	 */
 	function orykNavText(key, text) {

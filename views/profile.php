@@ -37,9 +37,10 @@
  * getActionBar() and bound by views/partials/editor.php.
  *
  * @var array<string, mixed> $profile id (0 when new), name, enabled
- * @var array<string, int>   $counts  Rows behind each tab -- see partials/counts.php
  * @var string               $tab     Tab to open on: profile|resources|clients
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
+ * @var string                            $version  Module version -- see partials/sections.php
  */
 
 $profile = $profile ?? ['id' => 0, 'name' => '', 'enabled' => 1];
@@ -62,9 +63,6 @@ $enabled = !isset($profile['enabled']) || (int) $profile['enabled'] === 1;
 // yet.
 $tab = $isNew ? 'profile' : $tab;
 
-// Both tabs on this page are this profile's: its files and its clients.
-$countScope = ['profile_id' => $id];
-
 // The strip, as links. The first tab is the bare ?profile=<id>, the way every
 // other editor's first tab is the bare URL of the row it edits -- and on a
 // profile that has not been written it is the key present and empty, since
@@ -79,26 +77,24 @@ $tabs = [
 	'resources' => [
 		'label' => _('Resources'),
 		'href' => $profileUrl . '&tab=resources',
-		'count' => 'resources',
 		'disabled' => $isNew,
 		'title' => $isNew ? _('Save the profile first -- a resource belongs to one.') : '',
 	],
 	'clients' => [
 		'label' => _('Clients'),
 		'href' => $profileUrl . '&tab=clients',
-		'count' => 'clients',
 		'disabled' => $isNew,
 		'title' => $isNew ? _('Save the profile first -- nothing can be assigned to one that has not been written.') : '',
 	],
 ];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
-<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
 		<div class="display full-border">
 
+			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
@@ -336,7 +332,6 @@ $tabs = [
 			}
 
 			$('#resource_table').bootstrapTable('refresh');
-			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});

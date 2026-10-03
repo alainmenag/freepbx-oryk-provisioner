@@ -1,6 +1,6 @@
 <?php
 /**
- * views/partials/tabs.php -- the tab strip every page is laid out under.
+ * views/partials/tabs.php -- the strip of views of the one row a page is on.
  *
  * A tab is a link. Clicking one is a page load, the way choosing a level in
  * partials/navigator.php is, and for the same reasons: the address is the
@@ -38,21 +38,17 @@
  * the user reaches by saving the row in front of them anyway. The views still
  * pass `disabled` and `title` -- they are what says which tabs to leave out.
  *
- * The badge is written by partials/counts.php, which is included before this
- * and refreshes every badge on the page from one request. Counts are of the
- * tabs, not of the panes, so a tab still says how many rows are behind it
- * when its pane is not the one on screen.
+ * Only a row has tabs: the module's sections are partials/sections.php, so
+ * the list page has no strip of its own. No badges: how many of each there
+ * are is on the navigator's dropdown titles, scoped to this row.
  *
- * Included by every view, between its error alert and its tab content.
+ * Included by every editor, between its error alert and its tab content.
  *
  * @var string                              $tab  Key of the tab to draw active
  * @var array<string, array<string, mixed>> $tabs Keyed by tab, in the order
  *                                                they are drawn. Each:
  *                                                label    what it is called
  *                                                href     where it goes
- *                                                count    badge to draw, named
- *                                                         for its table, from
- *                                                         partials/counts.php
  *                                                disabled nothing behind it
  *                                                         yet, so it is not
  *                                                         drawn
@@ -86,12 +82,7 @@ $tabEscape = function ($value) {
 		}
 		?>
 		<li<?php echo $isActive ? ' class="active"' : ''; ?>>
-			<a <?php echo $tabAttributes; ?>><?php echo $tabEscape($tabItem['label']); ?><?php
-				if (!empty($tabItem['count']) && isset($countBadge)) {
-					echo ' ';
-					$countBadge($tabItem['count']);
-				}
-			?></a>
+			<a <?php echo $tabAttributes; ?>><?php echo $tabEscape($tabItem['label']); ?></a>
 		</li>
 	<?php endforeach; ?>
 </ul>

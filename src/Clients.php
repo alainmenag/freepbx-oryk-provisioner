@@ -498,7 +498,7 @@ class Clients extends Service
 	}
 
 	/**
-	 * The clients the navigator lists.
+	 * The clients the navigator lists, with what links each to a user and a profile.
 	 *
 	 * A MAC and the description of the FreePBX device behind it: the MAC is what a
 	 * client *is* and is unreadable, the description is what its owner calls it
@@ -507,12 +507,13 @@ class Clients extends Service
 	 * Unpaged, like profileChoices(): both fill a control that offers every row
 	 * there is.
 	 *
-	 * @return array<int, array<string, mixed>> Client rows: id, mac, description.
+	 * @return array<int, array<string, mixed>> Client rows: id, mac, description,
+	 *                                          profile_id, device_id.
 	 */
 	public function clientChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, d.description
+			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, d.description
 				FROM `{$this->clientsTable}` pc
 				LEFT JOIN devices d ON d.id = pc.device_id
 				ORDER BY pc.mac"

@@ -14,6 +14,8 @@
  * @var array<string, array<string, mixed>> $clients   Bans::clientAddresses(): clients by public address
  * @var string                              $remote    The address this page was asked from
  * @var array<int, array<string, mixed>>    $navigator Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>>    $sections Navigator::sections() -- see partials/sections.php
+ * @var string                              $version  Module version -- see partials/sections.php
  */
 
 $ban = isset($ban) && is_array($ban) ? $ban : null;
@@ -49,6 +51,7 @@ $fact = function ($label, $html) use ($h) {
 	<div class="fpbx-container">
 		<div class="display full-border">
 
+			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">

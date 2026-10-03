@@ -12,10 +12,11 @@
  *
  * @var array<string, mixed>             $user       extension ('' when new), name, email, from_domain, secure, clients
  * @var string                           $pbxDomain  What a blank From Domain resolves to
- * @var array<string, int>               $counts     Rows behind each tab -- see partials/counts.php
  * @var array<string, bool>              $available  Which of the other tabs have anything on them
  * @var string                           $tab        Tab to open on: user|clients
  * @var array<int, array<string, mixed>> $navigator  Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>> $sections Navigator::sections() -- see partials/sections.php
+ * @var string                           $version  Module version -- see partials/sections.php
  */
 
 $user = $user ?? ['extension' => '', 'name' => '', 'email' => '', 'from_domain' => '', 'secure' => 1, 'clients' => 0];
@@ -31,8 +32,6 @@ $isNew = $extension === '';
 $tab = ($tab ?? '') === 'clients' && !empty($available['clients']) ? 'clients' : 'user';
 $clientCount = (int) ($user['clients'] ?? 0);
 
-$countScope = ['device_id' => $extension];
-
 $userUrl = '?display=oryk_provisioner&user=' . rawurlencode($extension);
 
 $tabs = [
@@ -43,7 +42,6 @@ $tabs = [
 	'clients' => [
 		'label' => _('Clients'),
 		'href' => $userUrl . '&tab=clients',
-		'count' => 'clients',
 		'disabled' => empty($available['clients']),
 		'title' => _('Save the user first.'),
 	],
@@ -61,12 +59,12 @@ if ($clientCount > 0) {
 }
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
-<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
 		<div class="display full-border">
 
+			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">

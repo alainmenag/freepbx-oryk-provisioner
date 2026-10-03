@@ -36,10 +36,11 @@
  * @var array<string, mixed>              $client         id (0 when new), mac, device_id, profile_id, token, enabled, last_seen, public_ip, private_ip
  * @var array<int, array<string, mixed>>  $freepbxDevices What the FreePBX device select offers
  * @var array<int, array<string, mixed>>  $profiles       What the profile select offers
- * @var array<string, int>                $counts         Rows behind each tab -- see partials/counts.php
  * @var array<string, bool>               $available      Which of the other tabs have anything on them
  * @var string                            $tab            Tab to open on: client|resources|logs
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
+ * @var string                            $version  Module version -- see partials/sections.php
  */
 
 $client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0, 'enabled' => 1];
@@ -99,10 +100,6 @@ if (($tab === 'resources' && !$served) || ($tab === 'logs' && !$logged)) {
 	$tab = 'client';
 }
 
-// Two scopes on one page: what is served comes from the profile this client
-// is assigned to, what was asked for is kept against its MAC.
-$countScope = ['profile_id' => $profileId, 'mac' => $mac];
-
 // The strip, as links. The first tab is the bare ?client=<id>, the way every
 // other editor's first tab is the bare URL of the row it edits -- and on a
 // client that has not been written it is the key present and empty, since
@@ -117,7 +114,6 @@ $tabs = [
 	'resources' => [
 		'label' => _('Resources'),
 		'href' => $clientUrl . '&tab=resources',
-		'count' => 'resources',
 		'disabled' => !$served,
 		'title' => $served ? '' : ($isNew
 			? _('Save the client first -- what it is served follows from the profile it is assigned to.')
@@ -126,19 +122,18 @@ $tabs = [
 	'logs' => [
 		'label' => _('Logs'),
 		'href' => $clientUrl . '&tab=logs',
-		'count' => 'logs',
 		'disabled' => !$logged,
 		'title' => $logged ? '' : _('Save the client first -- the log is kept by MAC address.'),
 	],
 ];
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
-<?php include __DIR__ . '/partials/counts.php'; ?>
 
 <div class="container-fluid">
 	<div class="fpbx-container">
 		<div class="display full-border">
 
+			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
