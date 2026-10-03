@@ -265,6 +265,37 @@ class Endpoint extends Service
 			];
 		}
 
+		// Serve profileless clients generated config based on accepted content
+		if ($client && $client['profile_id'] === null) {
+				if (!password_verify($token, $client['token'])) {
+					return [
+						'status' => false,
+						'message' => _('Invalid authentication provided for this client.'),
+						'code' => 401,
+					];
+				}
+
+			$values = $this->template->provisioningValues($client);
+			$template = $this->template->renderTemplate(
+				<<<'TPL'
+				MAC={{device.mac}}
+				HOST={{server.host}}
+				PORT={{server.port}}
+				USER={{device.id}}
+				SECRET={{device.secret}}
+				NAME={{extension.name}}
+				TPL,
+			$values);
+
+			return [
+				'status' => true,
+				'kind' => 'template',
+				'type' => 'template',
+				'resource' => '000000000000.cfg',
+				'config' => $template,
+			];
+		}
+
 		if ($client && $client['profile_id'] !== null) {
 			$values = $this->template->provisioningValues($client);
 

@@ -35,7 +35,7 @@
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, HEAD, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: Authorization, Content-Type');
+header('Access-Control-Allow-Headers: *');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -125,14 +125,16 @@ if ($user !== null && $pass !== null) {
 if ($mac === '000000000000' && $provisioning === 'OPEN') {
 	$found = $user && $pass ? $provisioner->findOrCreateUser($user, $pass) : null;
 	$client = $found ? $provisioner->findOrCreateClient($found['extension'], $token) : null;
-	$filename = $client ? str_replace($mac, $client['mac'], $filename) : $filename;
+	// $filename = $client ? str_replace($mac, $client['mac'], $filename) : $filename;
 	$mac = $client ? $client['mac'] : $mac;
 }
 
 // $provisioner->log('asdfadfasf', [
-// 	'$mac' => $mac,
-// 	'$filename' => $filename,
-// 	'$token' => $token,
+// 	// $_SERVER' => $_SERVER,
+// 	// '$mac' => $mac,
+// 	// '$filename' => $filename,
+// 	// '$token' => $token,
+// 	'accept' => $_SERVER['HTTP_ACCEPT'] ?? null,
 // ], 'ERROR');
 
 // --- SERVE ---

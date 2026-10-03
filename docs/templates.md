@@ -22,7 +22,7 @@ box; click one to copy it.
 | `{{extension.name}}` | display name |
 | `{{extension.voicemail}}` | voicemail setting |
 | `{{profile.id}}`, `{{profile.name}}` | the profile serving the file |
-| `{{server.host}}` | the host the request arrived on, port stripped |
+| `{{server.host}}` | the Hostname setting (`ORYK_HOSTNAME`); blank, the host the request arrived on, port stripped |
 | `{{server.port}}` | `5060` |
 
 Plus **everything else the device is configured with in FreePBX**, under a `sip.`

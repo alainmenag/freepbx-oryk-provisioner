@@ -18,14 +18,20 @@ class Template extends Service
 	/** @var Freepbx */
 	private $pbx;
 
+	/** @var Settings */
+	private $settings;
+
 	/**
-	 * @param object $freepbx FreePBX application instance.
+	 * @param object   $freepbx  FreePBX application instance.
+	 * @param Freepbx  $pbx      FreePBX lookups.
+	 * @param Settings $settings The module's settings.
 	 */
-	public function __construct($freepbx, Freepbx $pbx)
+	public function __construct($freepbx, Freepbx $pbx, Settings $settings)
 	{
 		parent::__construct($freepbx);
 
 		$this->pbx = $pbx;
+		$this->settings = $settings;
 	}
 
 	/**
@@ -114,14 +120,20 @@ class Template extends Service
 	/**
 	 * The host a phone would register against.
 	 *
-	 * Taken from the request, which is the host the administrator is looking at
-	 * the PBX on and, on a single-address system, the one the phones use. A module
-	 * setting overrides it once there are settings to hold one.
+	 * ORYK_HOSTNAME when it is set. Otherwise the request's host, which is the
+	 * one the administrator is looking at the PBX on and, on a single-address
+	 * system, the one the phones use.
 	 *
 	 * @return string Hostname or address, without a port.
 	 */
 	private function serverHost()
 	{
+		$configured = trim((string) $this->settings->get(Settings::HOSTNAME));
+
+		if ($configured !== '') {
+			return $configured;
+		}
+
 		$host = (string) ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '');
 		$host = preg_replace('/:\d+$/', '', $host);
 

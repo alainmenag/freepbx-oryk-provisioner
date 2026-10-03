@@ -17,6 +17,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 class Settings extends Service
 {
 	/**
+	 * The PBX-wide hostname.
+	 */
+	const HOSTNAME = 'ORYK_HOSTNAME';
+
+	/**
 	 * The PBX-wide from domain. The keyword oryk_connect registered, kept so
 	 * taking it over keeps its value.
 	 */
@@ -61,6 +66,14 @@ class Settings extends Service
 	public function definitions()
 	{
 		return [
+			self::HOSTNAME => [
+				'name' => 'Hostname',
+				'description' => 'The hostname of this PBX.',
+				'type' => 'text',
+				'default' => '',
+				'pattern' => EndpointSettings::DOMAIN_PATTERN,
+				'emptyok' => true,
+			],
 			self::FROM_DOMAIN => [
 				'name' => 'From Domain',
 				'description' => 'The domain a PJSIP endpoint puts in the From header. '

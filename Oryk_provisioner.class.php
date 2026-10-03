@@ -201,13 +201,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->schema = new Schema($freepbx);
 		$this->tokens = new Tokens($freepbx);
 		$this->provisioningLog = new ProvisioningLog($freepbx);
-		$this->template = new Template($freepbx, $this->pbx);
+		$this->settings = new Settings($freepbx);
+		$this->template = new Template($freepbx, $this->pbx, $this->settings);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 
-		$this->settings = new Settings($freepbx);
 		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
