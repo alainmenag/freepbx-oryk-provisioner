@@ -27,8 +27,8 @@ class Installer extends Service
 	/** @var Settings */
 	private $settings;
 
-	/** @var BanSync */
-	private $banSync;
+	/** @var Fail2ban */
+	private $fail2ban;
 
 	/** The FreePBX job the minute sync is registered as. */
 	const SYNC_JOB = 'fail2ban-sync';
@@ -36,7 +36,7 @@ class Installer extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, BanSync $banSync)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban)
 	{
 		parent::__construct($freepbx);
 
@@ -44,7 +44,7 @@ class Installer extends Service
 		$this->files = $files;
 		$this->logs = $logs;
 		$this->settings = $settings;
-		$this->banSync = $banSync;
+		$this->fail2ban = $fail2ban;
 	}
 
 	/**
@@ -178,8 +178,9 @@ class Installer extends Service
 		// `hits` counts the requests the row decided. `started_at`, `times` and
 		// `synced_at` are the current ban period, how often it came back into
 		// force, and when fail2ban last had it; `managed` says the fail2ban sync
-		// keeps the row in step with fail2ban's own ban. See ARCHITECTURE.md,
-		// "Bans".
+		// keeps the row in step with fail2ban's own ban; `deleted_at` marks a row
+		// deleted but kept until its copy in fail2ban is lifted. See
+		// ARCHITECTURE.md, "Bans".
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->bansTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -199,6 +200,7 @@ class Installer extends Service
 				`times` INT(10) UNSIGNED NOT NULL DEFAULT 1,
 				`synced_at` DATETIME NULL DEFAULT NULL,
 				`managed` TINYINT(1) NOT NULL DEFAULT 0,
+				`deleted_at` DATETIME NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -264,7 +266,7 @@ class Installer extends Service
 	 * The tables are deliberately left in place; the symlink is not, since it
 	 * would be left pointing into a directory that has gone, and nor are the
 	 * sync job and, when this runs as root, the fail2ban helper, its sudo rule
-	 * and the deny jail.
+	 * and the banned and deny jails.
 	 *
 	 * @return void
 	 */
@@ -279,7 +281,7 @@ class Installer extends Service
 		}
 
 		if ($this->runningAsRoot()) {
-			foreach ($this->banSync->runSetup(['--remove']) as $line) {
+			foreach ($this->fail2ban->runSetup(['--remove']) as $line) {
 				$this->installMessage('Provisioner: ' . $line);
 			}
 		}
@@ -320,20 +322,20 @@ class Installer extends Service
 	 */
 	private function setUpFail2ban()
 	{
-		if (!$this->banSync->enabled()) {
+		if (!$this->fail2ban->enabled()) {
 			return;
 		}
 
 		if ($this->runningAsRoot()) {
-			foreach ($this->banSync->runSetup([]) as $line) {
+			foreach ($this->fail2ban->runSetup([]) as $line) {
 				$this->installMessage('Provisioner: ' . $line);
 			}
 
 			return;
 		}
 
-		if (!in_array($this->banSync->status()['state'], ['ok', 'fail2ban'], true)) {
-			$this->installMessage('Provisioner: to sync bans with fail2ban, run as root: ' . $this->banSync->setupCommand());
+		if (!in_array($this->fail2ban->status()['state'], ['ok', 'fail2ban'], true)) {
+			$this->installMessage('Provisioner: to sync bans with fail2ban, run as root: ' . $this->fail2ban->setupCommand());
 		}
 	}
 
