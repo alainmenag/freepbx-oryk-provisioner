@@ -7,8 +7,8 @@ own: fail2ban only knows addresses.
 
 | On the Bans tab | In fail2ban |
 | --- | --- |
-| **Banned** | banned in the `asterisk` jail |
-| **Deny** | banned in the `deny` jail — permanent, every port |
+| **Banned** | banned in the `banned` jail — every port, until it expires |
+| **Deny** | banned in the `deny` jail — every port, until you delete it |
 | **Allow** | added to every jail's ignore list, and unbanned wherever it is banned |
 
 And the other way: every address fail2ban bans, in any jail, appears on the
@@ -33,14 +33,27 @@ A ban's page says where it is in fail2ban, and when that was last confirmed.
 - **Act on a guess.** If fail2ban can't be read (stopped, restarting), the
   minute does nothing — rather than taking "no answer" as "no bans".
 
+## Deleting a ban
+
+Deleting a ban takes it out of fail2ban at once. If that can't be done right
+then — the sync is paused, or fail2ban isn't answering — the ban disappears from
+the Bans tab and stops deciding anything, and the next minute the sync can reach
+fail2ban it takes the copy out and finishes the delete. Adding the same ban again
+before that simply brings it back.
+
 ## The two jails
 
-- `asterisk` is FreePBX's own. A Banned ban pushed there lasts that jail's
-  bantime (fail2ban can't be given a time per address); a longer one is banned
-  again on the next minute after fail2ban lifts it.
-- `deny` is written by setup: permanent, every port, and holds your Deny bans
-  and nothing else — each minute it is made to match the Bans tab exactly.
-  **A Deny on your own address locks you out of the PBX**, the GUI included.
+Both are written by setup, block every port, and hold your bans and nothing
+else — each minute they are made to match the Bans tab exactly.
+
+- `banned` holds your Banned bans. fail2ban can't be given a ban length per
+  address, so the jail bans permanently and the sync lifts each ban within a
+  minute of it expiring on the Bans tab.
+- `deny` holds your Deny bans until you delete them.
+
+**A ban on your own address locks you out of the PBX**, the GUI included.
+fail2ban's own jails (`asterisk`, `sshd`, `recidive`, …) are left to fail2ban;
+their bans show on the Bans tab, but nothing is pushed into them.
 
 ## Setting it up
 
@@ -52,15 +65,15 @@ sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup
 
 `fwconsole ma install` or `upgrade`, run as root, runs it for you. Until it has
 run, the Bans tab says what is missing and shows the command. It needs fail2ban
-0.11 or later, running, with an `asterisk` jail.
+0.11 or later, running.
 
 It installs three things and nothing else:
 
 | | |
 | --- | --- |
-| `/usr/local/sbin/oryk-fail2ban` | a root-owned copy of the module's `bin/oryk-fail2ban`. It can list, ban in `asterisk` or `deny`, unban, and add or remove an ignore entry — one address at a time, never loopback — and refuses anything else |
+| `/usr/local/sbin/oryk-fail2ban` | a root-owned copy of the module's `bin/oryk-fail2ban`. It can list, ban in `banned` or `deny`, unban, and add or remove an ignore entry — one address at a time, never loopback — and refuses anything else |
 | `/etc/sudoers.d/oryk_provisioner` | lets the FreePBX web user run that one file as root. Checked with `visudo` before it is used |
-| `/etc/fail2ban/jail.d/deny.conf`, `filter.d/deny.conf` | the `deny` jail. Setup refuses to write over a `[deny]` jail it didn't write |
+| `/etc/fail2ban/jail.d/banned.conf`, `deny.conf` and their `filter.d` files | the `banned` and `deny` jails. Setup refuses to write over a jail of either name it didn't write |
 
 It ends by running the helper as the web user and printing **OK** with the jails
 it found. Safe to run again, and needed again after an upgrade that changes the
@@ -83,7 +96,7 @@ provisioner, and nothing already in fail2ban is undone.
 sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup --remove
 ```
 
-Deletes the helper, the sudo rule and the `deny` jail (and so the bans in it),
+Deletes the helper, the sudo rule and the `banned` and `deny` jails (and so the bans in them),
 and reloads fail2ban. The Bans tab keeps every ban. `fwconsole ma uninstall`, run
 as root, does the same; uninstalled from the GUI it cannot, so run `--remove`
 first — the script goes with the module.

@@ -103,15 +103,18 @@ $syncFact = '<span class="text-muted">' . $h(_('Not in fail2ban')) . '</span>';
 
 if ($banId && !\FreePBX\Modules\Oryk_Provisioner\BanSync::ipOnly($ban)) {
 	$syncFact = '<span class="text-muted">' . $h(_('Not synced: fail2ban only takes bans that name an IP address and nothing else.')) . '</span>';
-} elseif ($banId && !empty($ban['managed'])) {
+} elseif ($banId && !empty($ban['managed']) && !empty($ban['active'])) {
 	// fail2ban's own ban, which the sync follows until a person saves this page.
 	$syncFact = $h(sprintf(_('fail2ban\'s own ban in the %s jail, followed by the sync'), $ban['jail'] ?: '?'))
 		. ' <span class="text-muted">' . $h(_('(saving this page makes it yours)')) . '</span>';
+} elseif ($banId && !empty($ban['managed'])) {
+	$syncFact = $h(sprintf(_('fail2ban\'s ban in the %s jail, which fail2ban has lifted'), $ban['jail'] ?: '?'))
+		. ' <span class="text-muted">' . $h(_('(back in force here if fail2ban bans the address again)')) . '</span>';
 } elseif ($banId && !empty($ban['synced_at'])) {
 	$where = [
 		'allow' => _('On every jail\'s ignore list'),
 		'deny' => _('Banned in the deny jail'),
-		'banned' => _('Banned in the asterisk jail'),
+		'banned' => _('Banned in the banned jail'),
 	][$state] ?? '';
 	$syncFact = $h($where) . ' <span class="text-muted">' . $h(sprintf(_('confirmed %s'), $ban['synced_at'])) . '</span>';
 }
@@ -148,7 +151,7 @@ foreach ($profiles as $profile) {
 						$field('ban_ip', _('IP Address'),
 							'<input type="text" class="form-control oryk-name" id="ban_ip" maxlength="45" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any address')) . '" value="' . $h($ban['ip'] ?? '') . '">',
 							'<span class="oryk-help-part">' . $h(_('One IPv4 or IPv6 address, as the request arrives from it. Ranges are not accepted. On its own it matches every phone behind that address; with a user or client, it is where that user or client is allowed or refused from. Loopback cannot be banned.')) . '</span>'
-							. '<span class="oryk-help-part">' . $h(_('With Fail2ban Sync on, a ban naming an address and nothing else also reaches fail2ban: Banned is banned in the asterisk jail, Deny in the permanent deny jail (every port), and Allow goes on every jail\'s ignore list.')) . '</span>'
+							. '<span class="oryk-help-part">' . $h(_('With Fail2ban Sync on, a ban naming an address and nothing else also reaches fail2ban: Banned is banned in the banned jail until it expires, Deny in the deny jail until it is deleted -- both on every port -- and Allow goes on every jail\'s ignore list.')) . '</span>'
 						);
 
 						$field('ban_mac', _('MAC Address'),
@@ -204,14 +207,12 @@ foreach ($profiles as $profile) {
 
 						if ($banId) {
 							$fact(_('Created'), $h($ban['created_at']) . ' <span class="text-muted" data-oryk-since="' . (int) $ban['created_age'] . '"></span>');
-							$fact(_('Started'), $ban['started_at'] === null
-								? '<span class="text-muted">-</span>'
-								: $h($ban['started_at']));
 							$fact(_('fail2ban'), $syncFact);
 							$fact(_('Hits'), (int) $ban['hits'] . ($ban['last_hit_at'] === null
 								? ' <span class="text-muted">' . $h(_('never hit')) . '</span>'
 								: ' <span class="text-muted">' . $h(_('last')) . ' ' . $h($ban['last_hit_at']) . '</span> <span class="text-muted" data-oryk-since="' . (int) $ban['last_hit_age'] . '"></span>'));
-							$fact(_('Times'), (int) $ban['times'] . ' <span class="text-muted">' . $h((int) $ban['times'] === 0 ? _('never in force') : _('times in force')) . '</span>');
+							$fact(_('Times'), (int) $ban['times'] . ($ban['started_at'] === null ? '' : ' <span class="text-muted">'
+								. $h(sprintf(empty($ban['active']) ? _('last began %s') : _('current since %s'), $ban['started_at'])) . '</span>'));
 
 							if ($state === 'banned') {
 								$fact(_('Expires'), $h($ban['expires_at']) . ' <span class="text-muted" data-oryk-in="' . (int) $ban['expires_in'] . '"></span>'

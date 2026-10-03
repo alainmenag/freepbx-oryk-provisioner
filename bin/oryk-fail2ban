@@ -8,7 +8,7 @@ whatever the module checked first. See ARCHITECTURE.md, "Syncing with fail2ban".
 
     oryk-fail2ban check               version; is fail2ban up; its jails
     oryk-fail2ban list                every jail's bans, with times, and ignore lists
-    oryk-fail2ban ban <jail> <ip>     ban one address in `asterisk` or `deny`
+    oryk-fail2ban ban <jail> <ip>     ban one address in `banned` or `deny`
     oryk-fail2ban unban <jail> <ip>   lift it; an address not banned is not an error
     oryk-fail2ban ignore <ip>         add to every jail's ignore list where missing
     oryk-fail2ban unignore <ip>       take it off every jail's ignore list
@@ -27,7 +27,7 @@ import time
 
 # Bump whenever this file changes: the Bans tab and the setup script compare it
 # with the installed copy.
-HELPER_VERSION = 2
+HELPER_VERSION = 4
 
 CLIENTS = ('/usr/bin/fail2ban-client', '/usr/local/bin/fail2ban-client', '/bin/fail2ban-client')
 JAIL = re.compile(r'\A[A-Za-z0-9_.-]{1,64}\Z')
@@ -37,7 +37,7 @@ WITH_TIME = re.compile(r'\A(\S+)\s+' + STAMP + r'\s*\+\s*(-?\d+)\s*=\s*' + STAMP
 LISTED = re.compile(r'\A[|`]-\s*(\S+)\s*\Z')
 
 # The only jails anything is banned in from here.
-BANNABLE = ('asterisk', 'deny')
+BANNABLE = ('banned', 'deny')
 
 EX_USAGE, EX_UNAVAILABLE, EX_SOFTWARE = 64, 69, 70
 
@@ -50,16 +50,53 @@ class Refused(Exception):
 		self.code = code
 
 
-def fail2ban(*args):
-	"""Run fail2ban-client with a fixed argument list and return what it printed."""
-	client = next((path for path in CLIENTS if os.access(path, os.X_OK)), None)
+class Socket:
+	"""fail2ban's own socket, through fail2ban's own client library: one process
+	for every question, where fail2ban-client would start Python once per
+	question. None when the library is not importable by this Python."""
 
-	if client is None:
+	PATHS = ('/var/run/fail2ban/fail2ban.sock', '/run/fail2ban/fail2ban.sock')
+
+	def __init__(self):
+		from fail2ban.client.csocket import CSocket
+
+		self.CSocket = CSocket
+		self.connection = None
+
+	def ask(self, args):
+		if self.connection is None:
+			path = next((path for path in self.PATHS if os.path.exists(path)), None)
+
+			if path is None:
+				raise Refused('fail2ban is not running (no socket)', EX_UNAVAILABLE)
+
+			try:
+				self.connection = self.CSocket(path, timeout=20)
+			except OSError as error:
+				raise Refused('fail2ban is not answering: ' + str(error), EX_UNAVAILABLE)
+
+		try:
+			code, value = self.connection.send(list(args))
+		except OSError as error:
+			raise Refused('fail2ban is not answering: ' + str(error), EX_UNAVAILABLE)
+
+		if code != 0:
+			raise Refused(' '.join(map(str, getattr(value, 'args', [value]))) or type(value).__name__, EX_SOFTWARE)
+
+		return value
+
+
+def client(args):
+	"""The same question through fail2ban-client, where the library is not
+	importable (a fail2ban on another Python), answered in the socket's shapes."""
+	path = next((path for path in CLIENTS if os.access(path, os.X_OK)), None)
+
+	if path is None:
 		raise Refused('fail2ban-client is not installed', EX_UNAVAILABLE)
 
 	try:
 		done = subprocess.run(
-			[client] + list(args),
+			[path] + list(args),
 			stdout=subprocess.PIPE,
 			stderr=subprocess.PIPE,
 			universal_newlines=True,
@@ -73,13 +110,39 @@ def fail2ban(*args):
 		message = (done.stderr or done.stdout).strip().splitlines()
 		raise Refused(message[-1] if message else 'fail2ban-client failed', EX_SOFTWARE)
 
-	return done.stdout
+	lines = done.stdout.strip().splitlines()
+
+	if args[0] == 'status':
+		match = re.search(r'Jail list:\s*(.*)$', done.stdout, re.MULTILINE)
+		return [('Jail list', match.group(1) if match else '')]
+
+	if args[0] == 'get' and args[2] == 'ignoreip':
+		return [match.group(1) for match in map(LISTED.match, map(str.strip, lines)) if match]
+
+	if args[0] == 'get':
+		return lines
+
+	return done.stdout.strip()
+
+
+TRANSPORT = []
+
+
+def fail2ban(*args):
+	"""Ask fail2ban one thing; the answer as fail2ban's socket gives it."""
+	if not TRANSPORT:
+		try:
+			TRANSPORT.append(Socket().ask)
+		except ImportError:
+			TRANSPORT.append(client)
+
+	return TRANSPORT[0](args)
 
 
 def jails():
 	"""The jail names, from `status`."""
-	match = re.search(r'Jail list:\s*(.*)$', fail2ban('status'), re.MULTILINE)
-	names = [name.strip() for name in (match.group(1) if match else '').split(',')]
+	listed = dict(fail2ban('status')).get('Jail list', '')
+	names = [name.strip() for name in str(listed).split(',')]
 
 	return [name for name in names if JAIL.match(name)]
 
@@ -117,8 +180,8 @@ def bans(name):
 	"""Every ban in one jail. Times are fail2ban's, turned into epochs here."""
 	found = []
 
-	for line in fail2ban('get', name, 'banip', '--with-time').splitlines():
-		match = WITH_TIME.match(line.strip())
+	for line in fail2ban('get', name, 'banip', '--with-time'):
+		match = WITH_TIME.match(str(line).strip())
 
 		if not match:
 			continue
@@ -140,16 +203,8 @@ def bans(name):
 
 
 def ignored(name):
-	"""One jail's ignore list, as fail2ban prints it (addresses, networks, names)."""
-	found = []
-
-	for line in fail2ban('get', name, 'ignoreip').splitlines():
-		match = LISTED.match(line.strip())
-
-		if match:
-			found.append(match.group(1))
-
-	return found
+	"""One jail's ignore list, as fail2ban holds it (addresses, networks, names)."""
+	return [str(entry) for entry in fail2ban('get', name, 'ignoreip')]
 
 
 def banned_ips(name):
@@ -167,7 +222,7 @@ def run(argv):
 
 		try:
 			fail2ban('ping')
-			answer['fail2ban'] = fail2ban('version').strip()
+			answer['fail2ban'] = str(fail2ban('version')).strip()
 			answer['jails'] = jails()
 		except Refused as refused:
 			print(json.dumps(dict(answer, ok=False, error=str(refused))))

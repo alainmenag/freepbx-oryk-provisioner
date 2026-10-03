@@ -23,73 +23,20 @@ class BanSync extends Service
 	/** @var Fail2ban */
 	private $fail2ban;
 
+	/** @var BanEscalation|null What makes a repeat Banned ban a Deny; null for never. */
+	private $escalation;
+
 	/**
-	 * @param object   $freepbx  FreePBX application instance.
-	 * @param Fail2ban $fail2ban The helper, through sudo.
+	 * @param object             $freepbx    FreePBX application instance.
+	 * @param Fail2ban           $fail2ban   The helper, through sudo.
+	 * @param BanEscalation|null $escalation ORYK_BAN_DENY_AFTER, or null for never.
 	 */
-	public function __construct($freepbx, Fail2ban $fail2ban)
+	public function __construct($freepbx, Fail2ban $fail2ban, ?BanEscalation $escalation = null)
 	{
 		parent::__construct($freepbx);
 
 		$this->fail2ban = $fail2ban;
-	}
-
-	/**
-	 * Whether the sync is switched on.
-	 *
-	 * @return bool True when ORYK_FAIL2BAN_SYNC is on.
-	 */
-	public function enabled()
-	{
-		return $this->fail2ban->enabled();
-	}
-
-	/**
-	 * Whether the sync can run, and if not why not, with the command that sets it up.
-	 *
-	 * @return array<string, mixed> Fail2ban::status(), and command.
-	 */
-	public function status()
-	{
-		return $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()];
-	}
-
-	/**
-	 * Run the setup script as root, for Installer. Never throws.
-	 *
-	 * @param array<int, string> $args Its flags: none to install, --remove.
-	 *
-	 * @return array<int, string> What it printed, line by line.
-	 */
-	public function runSetup(array $args)
-	{
-		$pipes = [];
-		$process = @proc_open(
-			array_merge(['/bin/bash', $this->fail2ban->setupScript()], $args),
-			[1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-			$pipes
-		);
-
-		if (!is_resource($process)) {
-			return ['could not run ' . $this->fail2ban->setupScript()];
-		}
-
-		$output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
-		fclose($pipes[1]);
-		fclose($pipes[2]);
-		proc_close($process);
-
-		return array_values(array_filter(array_map('rtrim', preg_split('/\R/', (string) $output)), 'strlen'));
-	}
-
-	/**
-	 * The command that sets the sync up, as root.
-	 *
-	 * @return string A shell command line.
-	 */
-	public function setupCommand()
-	{
-		return $this->fail2ban->setupCommand();
+		$this->escalation = $escalation;
 	}
 
 	/**
@@ -122,18 +69,24 @@ class BanSync extends Service
 	/**
 	 * Take a row's copy out of fail2ban, and say it has none.
 	 *
-	 * For a row about to be deleted, or changed so its copy no longer fits: the
-	 * minute job cannot lift what it can no longer see in the table. Only a row
-	 * with `synced_at` set has a copy of ours. Never throws.
+	 * For a row about to be deleted, or changed so its copy no longer fits. Only
+	 * a row with `synced_at` set has a copy. Never throws.
 	 *
 	 * @param array<string, mixed>|null $row The row as Bans::banRow() reads it.
 	 *
-	 * @return bool True when there was nothing to lift, or it was lifted.
+	 * @return bool True when there was nothing to lift, or it was lifted; false
+	 *              when a copy is still there -- the helper failed, or the sync
+	 *              is paused -- and Bans keeps the row, marked deleted, for the
+	 *              minute job to finish.
 	 */
 	public function lift($row)
 	{
-		if (!$row || !self::ipOnly($row) || empty($row['synced_at']) || !$this->enabled()) {
+		if (!$row || !self::ipOnly($row) || empty($row['synced_at'])) {
 			return true;
+		}
+
+		if (!$this->fail2ban->enabled()) {
+			return false;
 		}
 
 		$ip = (string) $row['ip'];
@@ -143,10 +96,8 @@ class BanSync extends Service
 			$answer = $this->fail2ban->unignore($ip);
 		} elseif (!empty($row['managed']) && !empty($row['jail'])) {
 			$answer = $this->fail2ban->unban((string) $row['jail'], $ip);
-		} elseif ($row['state'] === 'deny') {
-			$answer = $this->fail2ban->unban(Fail2ban::DENY_JAIL, $ip);
 		} else {
-			$answer = $this->fail2ban->unban(Fail2ban::BANNED_JAIL, $ip);
+			$answer = $this->fail2ban->unban(self::jailFor($row['state']), $ip);
 		}
 
 		if (empty($answer['ok'])) {
@@ -162,6 +113,18 @@ class BanSync extends Service
 	}
 
 	/**
+	 * The module's jail a refusing row of ours is kept in.
+	 *
+	 * @param string $state banned or deny.
+	 *
+	 * @return string BANNED_JAIL or DENY_JAIL.
+	 */
+	public static function jailFor($state)
+	{
+		return $state === 'deny' ? Fail2ban::DENY_JAIL : Fail2ban::BANNED_JAIL;
+	}
+
+	/**
 	 * After the Bans tab saved a row: lift the old copy if it no longer fits,
 	 * then bring the new one in step. Never throws, never fails the save.
 	 *
@@ -172,7 +135,7 @@ class BanSync extends Service
 	 */
 	public function afterSave($old, $new)
 	{
-		if (!$this->enabled()) {
+		if (!$this->fail2ban->enabled()) {
 			return;
 		}
 
@@ -210,32 +173,39 @@ class BanSync extends Service
 	/**
 	 * What one run does, from what fail2ban has and what the table says.
 	 *
-	 * Pure, so every case is tested. `deny` is mirrored exactly: it holds the
-	 * Deny rows made here and nothing else. A row in force that the sync does
-	 * not manage -- `managed` 0: made on the Bans tab, or a fail2ban ban a
-	 * person has since saved -- is never changed by it.
+	 * Pure, so every case is tested. The module's two jails, `banned` and
+	 * `deny`, are mirrored exactly: each holds the rows of ours in force in that
+	 * state and nothing else, so a row that expires, changes state or is deleted
+	 * is lifted by the same rule. Every other jail is fail2ban's own and is
+	 * followed into the table. A row in force that the sync does not manage --
+	 * `managed` 0: made on the Bans tab, or a fail2ban ban a person has since
+	 * saved -- is never changed by it. A row marked deleted has its copy lifted
+	 * and is then purged.
 	 *
 	 * @param array<string, mixed>              $listed What Fail2ban::listAll() answered.
 	 * @param array<string, array<string, mixed>> $rows IP-only rows by canonical
 	 *                                                  address: id, state, managed,
-	 *                                                  active, synced, expires_at,
-	 *                                                  started_at (epochs or null).
+	 *                                                  jail, active, synced, deleted,
+	 *                                                  expires_at, started_at (epochs
+	 *                                                  or null).
 	 * @param array<int, string>                $own    The PBX's own addresses: never pushed.
 	 * @param string|null                       $only   One address to look at, or null for all.
 	 *
 	 * @return array<string, array<int, mixed>> insert, update, expire, synced,
-	 *                                          unsynced, ban, unban, ignore.
+	 *                                          unsynced, ban, unban, ignore,
+	 *                                          unignore, purge.
 	 */
 	public static function plan(array $listed, array $rows, array $own = [], $only = null)
 	{
 		$plan = [
 			'insert' => [], 'update' => [], 'expire' => [], 'synced' => [], 'unsynced' => [],
-			'ban' => [], 'unban' => [], 'ignore' => [],
+			'ban' => [], 'unban' => [], 'ignore' => [], 'unignore' => [], 'purge' => [],
 		];
 
+		$module = [Fail2ban::BANNED_JAIL, Fail2ban::DENY_JAIL];
 		$jails = array_values(array_map('strval', (array) ($listed['jails'] ?? [])));
 		$byIp = [];
-		$inDeny = [];
+		$inModule = array_fill_keys($module, []);
 
 		foreach ((array) ($listed['bans'] ?? []) as $ban) {
 			$ip = Bans::canonical($ban['ip'] ?? '');
@@ -252,8 +222,8 @@ class BanSync extends Service
 				'expires_at' => $permanent || !isset($ban['expires_at']) ? null : (int) $ban['expires_at'],
 			];
 
-			if ($ban['jail'] === Fail2ban::DENY_JAIL) {
-				$inDeny[$ip] = true;
+			if (isset($inModule[$ban['jail']])) {
+				$inModule[$ban['jail']][$ip] = true;
 			} else {
 				$byIp[$ip][] = $ban;
 			}
@@ -276,7 +246,11 @@ class BanSync extends Service
 			return $jails && count($ignored[$ip] ?? []) === count($jails);
 		};
 
-		$wantDeny = [];
+		$want = array_fill_keys($module, []);
+
+		// Whose copy an unwanted ban in the module's jails is, for the rows that
+		// can still have one: not in force, or deleted.
+		$owner = [];
 
 		foreach ($rows as $ip => $row) {
 			if ($only !== null && $ip !== $only) {
@@ -288,7 +262,27 @@ class BanSync extends Service
 			$synced = !empty($row['synced']);
 			$mine = empty($row['managed']);
 			$bans = $byIp[$ip] ?? [];
-			$local = self::local($ip, $own);
+
+			if (!empty($row['deleted'])) {
+				// Its copy comes out -- from the module's jails by the mirror below
+				// -- and then the row goes. Nothing is imported onto it meanwhile.
+				unset($byIp[$ip]);
+
+				if ($row['state'] === 'allow' && $synced) {
+					$plan['unignore'][] = [$ip, $id];
+				} elseif (!$mine && $synced) {
+					foreach ($bans as $ban) {
+						if ($ban['jail'] === (string) $row['jail']) {
+							$plan['unban'][] = [$ban['jail'], $ip, $id];
+						}
+					}
+				}
+
+				$plan['purge'][] = $id;
+				$owner[$ip] = $id;
+
+				continue;
+			}
 
 			if ($active && $row['state'] === 'allow') {
 				// fail2ban never holds an address allowed here.
@@ -298,7 +292,7 @@ class BanSync extends Service
 
 				unset($byIp[$ip]);
 
-				if ($local) {
+				if (self::local($ip, $own)) {
 					continue;
 				}
 
@@ -316,25 +310,17 @@ class BanSync extends Service
 				// not imported: the row is in force and is not the sync's to change.
 				unset($byIp[$ip]);
 
-				if ($local) {
+				if (self::local($ip, $own)) {
 					continue;
 				}
 
-				if ($row['state'] === 'deny') {
-					$wantDeny[$ip] = true;
-					$present = isset($inDeny[$ip]);
-					$target = Fail2ban::DENY_JAIL;
-				} else {
-					$present = (bool) array_filter($bans, function ($ban) {
-						return $ban['jail'] === Fail2ban::BANNED_JAIL;
-					});
-					$target = Fail2ban::BANNED_JAIL;
-				}
+				$jail = self::jailFor($row['state']);
+				$want[$jail][$ip] = true;
 
-				if ($present) {
+				if (isset($inModule[$jail][$ip])) {
 					$plan['synced'][] = $id;
 				} else {
-					$plan['ban'][] = [$target, $ip, $id];
+					$plan['ban'][] = [$jail, $ip, $id];
 				}
 
 				continue;
@@ -349,36 +335,22 @@ class BanSync extends Service
 				continue;
 			}
 
-			// Not in force. A copy of ours still in `asterisk` is lifted -- unless
-			// fail2ban banned the address again on its own after the row ran out,
-			// which is a new ban and revives the row below.
-			if ($synced && $mine) {
-				$ends = (int) $row['expires_at'];
-				$kept = [];
-				$lifted = false;
+			// Not in force: a copy in the module's jails is lifted by the mirror,
+			// which says so; a fail2ban ban made since revives the row below.
+			$copy = isset($inModule[Fail2ban::BANNED_JAIL][$ip]) || isset($inModule[Fail2ban::DENY_JAIL][$ip]);
 
-				foreach ($bans as $ban) {
-					if (!$lifted && $ban['jail'] === Fail2ban::BANNED_JAIL && $ban['banned_at'] < $ends) {
-						$plan['unban'][] = [Fail2ban::BANNED_JAIL, $ip, $id];
-						$lifted = true;
-					} else {
-						$kept[] = $ban;
-					}
-				}
-
-				$byIp[$ip] = $kept;
-
-				if (!$lifted) {
-					$plan['unsynced'][] = $id;
-				}
-			} elseif ($synced) {
+			if ($synced && !$copy) {
 				$plan['unsynced'][] = $id;
 			}
+
+			$owner[$ip] = $id;
 		}
 
-		foreach ($inDeny as $ip => $yes) {
-			if (!isset($wantDeny[$ip])) {
-				$plan['unban'][] = [Fail2ban::DENY_JAIL, $ip, null];
+		foreach ($inModule as $jail => $ips) {
+			foreach ($ips as $ip => $yes) {
+				if (!isset($want[$jail][$ip])) {
+					$plan['unban'][] = [$jail, $ip, $owner[$ip] ?? null];
+				}
 			}
 		}
 
@@ -455,7 +427,7 @@ class BanSync extends Service
 	 */
 	private function sync($only)
 	{
-		if (!$this->enabled()) {
+		if (!$this->fail2ban->enabled()) {
 			return ['ok' => true, 'paused' => true];
 		}
 
@@ -467,8 +439,17 @@ class BanSync extends Service
 
 		try {
 			$plan = self::plan($listed, $this->rows($only), $this->ownAddresses(), $only);
+			list($done, $denied) = $this->apply($plan);
 
-			return ['ok' => true] + $this->apply($plan);
+			// A row made Deny is the person's now, so it moves into `deny` --
+			// at once rather than on the next run. It cannot be made Deny twice.
+			foreach ($denied as $ip) {
+				if ($ip !== '') {
+					$this->sync($ip);
+				}
+			}
+
+			return ['ok' => true] + $done + ['denied' => count($denied)];
 		} catch (\Exception $e) {
 			$this->logError('fail2ban sync: ' . $e->getMessage());
 
@@ -489,9 +470,10 @@ class BanSync extends Service
 	private function rows($only)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT b.id, b.ip, b.state, b.managed,
+			"SELECT b.id, b.ip, b.state, b.managed, b.jail,
 				" . Bans::ACTIVE_EXPR . " AS active,
 				b.synced_at IS NOT NULL AS synced,
+				b.deleted_at IS NOT NULL AS deleted,
 				UNIX_TIMESTAMP(b.expires_at) AS expires_at,
 				UNIX_TIMESTAMP(b.started_at) AS started_at
 			FROM `{$this->bansTable}` b
@@ -518,13 +500,17 @@ class BanSync extends Service
 	 *
 	 * @param array<string, array<int, mixed>> $plan From plan().
 	 *
-	 * @return array<string, int> What was done, by kind.
+	 * @return array<int, mixed> What was done, by kind; and the rows a ban
+	 *                           back in force made Deny (BanEscalation::apply()).
 	 */
 	private function apply(array $plan)
 	{
 		$synced = $plan['synced'];
 		$unsynced = $plan['unsynced'];
-		$done = ['banned' => 0, 'unbanned' => 0, 'ignored' => 0, 'imported' => 0, 'expired' => 0];
+		$done = ['banned' => 0, 'unbanned' => 0, 'ignored' => 0, 'imported' => 0, 'expired' => 0, 'unignored' => 0, 'purged' => 0];
+
+		// Rows a lift failed for: a deleted one among them is kept for the next run.
+		$failed = [];
 
 		foreach ($plan['ban'] as list($jail, $ip, $id)) {
 			if ($this->said($this->fail2ban->ban($jail, $ip), "banned $ip in $jail (ban #$id)")) {
@@ -540,6 +526,16 @@ class BanSync extends Service
 				}
 
 				$done['unbanned']++;
+			} elseif ($id) {
+				$failed[$id] = true;
+			}
+		}
+
+		foreach ($plan['unignore'] as list($ip, $id)) {
+			if ($this->said($this->fail2ban->unignore($ip), "no longer ignoring $ip (ban #$id)")) {
+				$done['unignored']++;
+			} else {
+				$failed[$id] = true;
 			}
 		}
 
@@ -562,13 +558,16 @@ class BanSync extends Service
 				ON DUPLICATE KEY UPDATE id = id"
 			);
 			$stmt->execute($this->banParams($ban) + [':ip' => $ban['ip'], ':source' => self::SOURCE]);
-			$done['imported']++;
+			$done['imported'] += $stmt->rowCount() === 1 ? 1 : 0;
 		}
+
+		// Rows fail2ban has put back in force, for ORYK_BAN_DENY_AFTER.
+		$renewed = [];
 
 		foreach ($plan['update'] as $ban) {
 			// A revived row is fail2ban's for this period, so the sync manages it
 			// again; its source stays what created it.
-			$guard = $ban['revive'] ? "NOT $active" : "b.managed = 1 AND $active";
+			$guard = $ban['revive'] ? "b.deleted_at IS NULL AND NOT $active" : "b.managed = 1 AND $active";
 			$params = $this->banParams($ban) + [':id' => $ban['id'], ':times' => $ban['times']];
 
 			$stmt = $this->db->prepare(
@@ -579,6 +578,10 @@ class BanSync extends Service
 				WHERE b.id = :id AND $guard"
 			);
 			$stmt->execute($params);
+
+			if ($ban['times'] && $stmt->rowCount()) {
+				$renewed[] = $ban['id'];
+			}
 		}
 
 		if ($plan['expire']) {
@@ -594,7 +597,15 @@ class BanSync extends Service
 		$this->markSynced($synced, true);
 		$this->markSynced($unsynced, false);
 
-		return $done;
+		$purge = array_diff(array_map('intval', $plan['purge']), array_keys($failed));
+
+		if ($purge) {
+			$done['purged'] = $this->db->exec(
+				"DELETE FROM `$table` WHERE id IN (" . self::ids($purge) . ") AND deleted_at IS NOT NULL"
+			);
+		}
+
+		return [$done, $this->escalation ? $this->escalation->apply($renewed) : []];
 	}
 
 	/**
@@ -672,15 +683,24 @@ class BanSync extends Service
 	}
 
 	/**
-	 * The addresses this PBX answers on, as far as PHP can see.
+	 * The addresses this PBX answers on: every interface's, then whatever the
+	 * request and the hostname say. The minute job has no request, so the
+	 * interfaces are the list it relies on.
 	 *
 	 * @return array<int, string> Addresses.
 	 */
 	private function ownAddresses()
 	{
 		$own = [(string) ($_SERVER['SERVER_ADDR'] ?? '')];
+
+		foreach ((function_exists('net_get_interfaces') ? (@net_get_interfaces() ?: []) : []) as $interface) {
+			foreach ((array) ($interface['unicast'] ?? []) as $unicast) {
+				$own[] = (string) ($unicast['address'] ?? '');
+			}
+		}
+
 		$byName = @gethostbynamel((string) gethostname());
 
-		return array_values(array_filter(array_merge($own, $byName ?: [])));
+		return array_values(array_unique(array_filter(array_merge($own, $byName ?: []))));
 	}
 }
