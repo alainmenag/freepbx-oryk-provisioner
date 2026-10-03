@@ -113,8 +113,8 @@ request.
 | `000000000000-directory.xml` | the same | matched literally -- that MAC is not this client's |
 
 A name written out in full wins over a bare tail. `resourceRequest()` is the
-same thinking backwards and is what every Render link is drawn from -- a name
-carrying *another* device's MAC gets no link, because the endpoint reads the MAC
+same thinking backwards and is what every Open link is drawn from -- a name
+carrying *another* device's MAC gets no link (and no Render or Download), because the endpoint reads the MAC
 out of the path in preference to `?mac=`, so the link would answer for the wrong
 phone.
 

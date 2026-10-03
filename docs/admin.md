@@ -47,8 +47,16 @@ editor's **Clients** tab is one file over all the phones that get it. A
 resource's rendered filename depends on both, so the row where the two meet is
 the only place such a link can exist. Filenames shown there are produced by the
 same code the endpoint uses, so they are what a phone actually asks for. A file
-whose name carries another device's MAC gets its filename and no Render button
-— the link would answer for the wrong phone.
+whose name carries another device's MAC gets its filename and no buttons — the
+link would answer for the wrong phone.
+
+Each row has two ways to look at the file. **Open** fetches it from the
+endpoint in a new tab, exactly as the phone does: the browser is asked for the
+client's token when it has one, and the fetch counts as the client being seen.
+**Render** shows the same body in a window on the page, read through your admin
+login, so it needs no token and is not logged. A firmware image or other file
+too large or binary to show is given its size instead. **Download** saves the
+same body, any size, under the filename this client asks for it by.
 
 **Deleting a profile** that clients are still assigned to is refused rather than
 cascading; its resources do cascade, since a resource has no existence apart

@@ -474,6 +474,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'setProfileEnabled':
 			case 'deleteProfile':
 			case 'listResources':
+			case 'previewResource':
+			case 'downloadResource':
 			case 'saveResource':
 			case 'deleteResource':
 			case 'uploadResourceFile':
@@ -561,6 +563,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				}
 
 				return $result;
+
+			case 'previewResource':
+				return $this->endpoint->previewResource(
+					$_REQUEST['client_id'] ?? null,
+					$_REQUEST['resource_id'] ?? null
+				);
+
+			// Never returns: the file is the answer, not JSON.
+			case 'downloadResource':
+				$this->endpoint->downloadResource(
+					$_REQUEST['client_id'] ?? null,
+					$_REQUEST['resource_id'] ?? null
+				);
 
 			case 'saveResource':
 				return $this->resources->saveResource($_REQUEST);

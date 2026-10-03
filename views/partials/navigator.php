@@ -223,6 +223,13 @@ $e = function ($value) {
 	.oryk-nav .oryk-nav-menu > li.oryk-nav-add.active .oryk-nav-plus {
 		color: inherit;
 	}
+
+	.oryk-tab-section .btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+	}
 </style>
 
 <nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>" style="margin-bottom: 25px;">
