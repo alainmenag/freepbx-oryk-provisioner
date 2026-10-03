@@ -37,9 +37,11 @@
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
  * @var string                            $version  Module version -- see partials/sections.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
+ * @var array<string, mixed>              $sync      BanSync::status(), on the Bans tab
  */
 
 $tab = (string) ($tab ?? 'users');
+$sync = isset($sync) && is_array($sync) ? $sync : [];
 ?>
 <style>
 	.flex {
@@ -228,12 +230,35 @@ $tab = (string) ($tab ?? 'users');
 									<th data-field="profile" data-formatter="formatBanProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
 									<th data-field="state" data-formatter="formatBanState" data-sortable="true"><?php echo _('State'); ?></th>
 									<th data-field="hits" data-formatter="formatBanHits" data-sortable="true" data-align="right"><?php echo _('Hits'); ?></th>
+									<th data-field="times" data-formatter="formatBanTimes" data-sortable="true" data-align="right"><?php echo _('Times'); ?></th>
 									<th data-field="created_at" data-formatter="formatBanCreated" data-sortable="true"><?php echo _('Created'); ?></th>
 									<th data-field="expires_at" data-formatter="formatBanExpires" data-sortable="true"><?php echo _('Expires'); ?></th>
 									<th data-field="actions" data-formatter="formatBanActions" data-align="right"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
+						<?php
+						// The fail2ban sync in one line, under the table: what it is doing, or what stops it.
+						$syncState = (string) ($sync['state'] ?? '');
+						$syncClass = ['ok' => 'success', 'disabled' => 'info'][$syncState] ?? 'warning';
+						?>
+						<?php if ($syncState !== ''): ?>
+						<div class="alert alert-<?php echo $syncClass; ?>" style="margin: 0; clear: both;">
+							<i class="fa fa-shield"></i>
+							<?php if ($syncState === 'ok'): ?>
+								<?php echo htmlspecialchars(sprintf(_('IP bans sync with fail2ban every minute (fail2ban %s): Banned into the asterisk jail, Deny into deny, Allow onto every ignore list.'), (string) ($sync['fail2ban'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>
+							<?php else: ?>
+								<strong><?php echo htmlspecialchars((string) ($sync['message'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></strong>
+								<?php if (!empty($sync['detail'])): ?>
+								<small class="text-muted"><?php echo htmlspecialchars((string) $sync['detail'], ENT_QUOTES, 'UTF-8'); ?></small>
+								<?php endif; ?>
+								<?php if (in_array($syncState, ['missing', 'sudo', 'stale', 'nojail'], true)): ?>
+								<br><?php echo _('Run this once on the PBX, as root:'); ?>
+								<code style="user-select: all;"><?php echo htmlspecialchars((string) ($sync['command'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></code>
+								<?php endif; ?>
+							<?php endif; ?>
+						</div>
+						<?php endif; ?>
 					</div>
 					<?php endif; ?>
 
@@ -710,6 +735,14 @@ $tab = (string) ($tab ?? 'users');
 
 	// Ages are the server's subtraction, on the database's clock -- see Bans.
 	// Requests this ban decided, allowed or refused; when the last was is the title.
+	// How many times the ban has been in force; when the current time began is the title.
+	function formatBanTimes(value, row) {
+		const times = Number(value) || 1;
+		const title = row.started_at ? ` title="In force since ${orykEscape(row.started_at)}"` : '';
+
+		return `<span${title}>${times}</span>`;
+	}
+
 	function formatBanHits(value, row) {
 		const hits = Number(value) || 0;
 
@@ -795,6 +828,12 @@ $tab = (string) ($tab ?? 'users');
 		modal.find('.oryk-ban-note').text(row.note);
 		modal.find('.oryk-ban-note-edit').attr('href', orykBanUrl(row));
 		modal.modal('show');
+	});
+
+	// bootstrap-table puts an empty clearfix after the table it draws; the sync
+	// line under the table clears the floats itself, so it goes.
+	$('#ban_table').on('post-body.bs.table', function () {
+		$(this).closest('.bootstrap-table').next('.clearfix').remove();
 	});
 
 	$(document).on('click', '[name="ban_delete"]', function () {
