@@ -29,8 +29,8 @@ class Fail2ban extends Service
 	/** @var int Helper exit code: fail2ban not installed or not answering. */
 	const EX_UNAVAILABLE = 69;
 
-	/** The jail a Banned row is pushed into. */
-	const BANNED_JAIL = 'asterisk';
+	/** The permanent jail a Banned row is kept in until it expires, which setup writes. */
+	const BANNED_JAIL = 'banned';
 
 	/** The permanent jail a Deny row is pushed into, which setup writes. */
 	const DENY_JAIL = 'deny';
@@ -131,7 +131,7 @@ class Fail2ban extends Service
 			'sudo' => _('The fail2ban helper is installed, but the web server is not allowed to run it: the sudo rule is missing or wrong.'),
 			'stale' => _('The fail2ban helper installed on this PBX is not the one this version of the module ships. Run setup again to update it.'),
 			'fail2ban' => _('The helper works, but fail2ban is not installed or not running.'),
-			'nojail' => _('fail2ban is missing a jail bans are synced into. The asterisk jail is FreePBX\'s; deny is made by the setup script.'),
+			'nojail' => _('fail2ban is missing a jail bans are synced into: banned and deny are made by the setup script.'),
 			'disabled' => _('Fail2ban Sync is switched off on the Settings tab.'),
 			'ok' => '',
 		];
@@ -145,16 +145,6 @@ class Fail2ban extends Service
 	}
 
 	/**
-	 * Whether the list can be drawn and a ban written.
-	 *
-	 * @return bool True when status() is ok.
-	 */
-	public function ready()
-	{
-		return $this->status()['state'] === 'ok';
-	}
-
-	/**
 	 * The command that fixes every state but `fail2ban`, as root, for this PBX.
 	 *
 	 * @return string A shell command line.
@@ -164,6 +154,24 @@ class Fail2ban extends Service
 		$script = $this->setupScript();
 
 		return 'sudo bash ' . (preg_match('#^[A-Za-z0-9_./-]+$#', $script) ? $script : escapeshellarg($script));
+	}
+
+	/**
+	 * Run the setup script as root, for Installer. Never throws.
+	 *
+	 * @param array<int, string> $args Its flags: none to install, --remove.
+	 *
+	 * @return array<int, string> What it printed, line by line.
+	 */
+	public function runSetup(array $args)
+	{
+		$done = self::process(array_merge(['/bin/bash', $this->setupScript()], $args));
+
+		if ($done === null) {
+			return ['could not run ' . $this->setupScript()];
+		}
+
+		return array_values(array_filter(array_map('rtrim', preg_split('/\R/', $done['stdout'] . $done['stderr'])), 'strlen'));
 	}
 
 	/**
@@ -191,7 +199,7 @@ class Fail2ban extends Service
 	}
 
 	/**
-	 * Ban one address in `asterisk` or `deny`.
+	 * Ban one address in `banned` or `deny`.
 	 *
 	 * @param string $jail BANNED_JAIL or DENY_JAIL.
 	 * @param string $ip   One IP address.
@@ -328,22 +336,13 @@ class Fail2ban extends Service
 			return ['ok' => false, 'exit' => 1, 'error' => _('sudo is not installed.')];
 		}
 
-		$pipes = [];
-		$process = @proc_open(
-			array_merge([$sudo, '-n', self::HELPER], $args),
-			[1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-			$pipes
-		);
+		$done = self::process(array_merge([$sudo, '-n', self::HELPER], $args));
 
-		if (!is_resource($process)) {
+		if ($done === null) {
 			return ['ok' => false, 'exit' => 1, 'error' => _('Could not start sudo.')];
 		}
 
-		$stdout = (string) stream_get_contents($pipes[1]);
-		$stderr = (string) stream_get_contents($pipes[2]);
-		fclose($pipes[1]);
-		fclose($pipes[2]);
-		$exit = proc_close($process);
+		list('stdout' => $stdout, 'stderr' => $stderr, 'exit' => $exit) = $done;
 
 		$answer = json_decode(trim($stdout), true);
 
@@ -354,5 +353,29 @@ class Fail2ban extends Service
 		}
 
 		return $answer + ['exit' => $exit];
+	}
+
+	/**
+	 * Run one program with an argument array -- no shell -- and collect what it said.
+	 *
+	 * @param array<int, string> $command Program and arguments.
+	 *
+	 * @return array<string, mixed>|null stdout, stderr, exit; null when it could not start.
+	 */
+	private static function process(array $command)
+	{
+		$pipes = [];
+		$process = @proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+
+		if (!is_resource($process)) {
+			return null;
+		}
+
+		$stdout = (string) stream_get_contents($pipes[1]);
+		$stderr = (string) stream_get_contents($pipes[2]);
+		fclose($pipes[1]);
+		fclose($pipes[2]);
+
+		return ['stdout' => $stdout, 'stderr' => $stderr, 'exit' => proc_close($process)];
 	}
 }

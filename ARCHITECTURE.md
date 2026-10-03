@@ -288,7 +288,13 @@ file (1.0.7).
   there have been: a save that puts a row back in force (`saveBan()`, read
   inside the statement, before state and expiry are assigned), or fail2ban
   banning the address again, starts a new one. A row already in force keeps
-  its own. The sync re-banning its own push is not a new period.
+  its own. **`ORYK_BAN_DENY_AFTER`** is decided at that moment and no other:
+  `BanEscalation::apply()` makes a Banned row Deny (and `managed` 0) when the
+  new period brings `times` to the setting or past it -- asked by `saveBan()`
+  when `times` went up, and by `BanSync` for the rows fail2ban put back in
+  force, which it then reconciles at once so the row moves into `deny`. A row
+  set back to Banned by hand is not overruled until it next comes back into
+  force.
 - `synced_at` is when fail2ban was last seen holding this row's copy -- its
   ban, or, for an allow, the ignore entry the sync added. NULL is "fail2ban has
   nothing of ours for this row", which is what stops the sync lifting a ban it
@@ -297,6 +303,11 @@ file (1.0.7).
   revived by the sync. **Any save on the Bans tab sets it to 0** -- the ban is
   the person's from then on, whatever `source` says. It is a column of its own
   so `source` can keep saying what created the row.
+- `deleted_at` marks a row deleted while it still has a copy in fail2ban that
+  could not be lifted then (the sync paused, the helper failing). Such a row
+  is out of `ACTIVE_EXPR`, the list and `banRow()` -- gone, to anyone looking
+  -- and the minute job purges it once its copy is out. Adding the same ban
+  again reopens it like any other row.
 
 ### Migrations deliberately not written
 
@@ -496,36 +507,48 @@ profile stays the provisioner's.
 
 | row | in fail2ban |
 | --- | --- |
-| Banned | banned in **`asterisk`** (FreePBX's jail) |
-| Deny | banned in **`deny`**, a permanent jail setup writes (every port) |
+| Banned | banned in **`banned`** until the row expires |
+| Deny | banned in **`deny`** until the row is deleted |
 | Allow | on **every** jail's ignore list, and unbanned wherever it is banned |
 
 **fail2ban answers root only**, and the GUI and FreePBX's scheduler run as the
 web user. So `Fail2ban` -- the only file that asks -- runs
 `sudo -n /usr/local/sbin/oryk-fail2ban <verb> …` with an argument array. The
 helper (`bin/oryk-fail2ban`, Python) is the privilege boundary: `check`,
-`list`, `ban <asterisk|deny> <ip>`, `unban <jail> <ip>`, `ignore <ip>`,
+`list`, `ban <banned|deny> <ip>`, `unban <jail> <ip>`, `ignore <ip>`,
 `unignore <ip>`; every argument re-checked (one address, no range, no
-loopback; a jail fail2ban has), `fail2ban-client` run with a fixed argument
-list, one line of JSON back. Exit 64 is a refused argument, 69 fail2ban down.
+loopback; a jail fail2ban has), one line of JSON back. Exit 64 is a refused
+argument, 69 fail2ban down. It asks fail2ban over fail2ban's own socket with
+fail2ban's own client library (`fail2ban.client.csocket`), one process for a
+whole `list`; where `/usr/bin/python3` cannot import that library it falls back
+to `fail2ban-client` with a fixed argument list -- the same answers, one Python
+start-up per question. `Fail2ban::status()` is what the Bans tab shows under
+the table; Installer and Pages hold `Fail2ban`, only `Bans` holds `BanSync`.
 
 - **The helper sudo runs is a root-owned copy, never the module's file** --
   the module directory is writable by the web user.
 - **Setup is one script**, `bin/oryk-fail2ban-setup`, run as root by hand or
   by `install()` when that runs as root: helper copy, a sudoers file checked
   with `visudo` before it is renamed into place (sudo skips dotted names),
-  and the `deny` jail (`jail.d/deny.conf`, a filter that never matches,
-  `bantime = -1`, `banaction = %(banaction_allports)s`). It refuses to write
-  over a `[deny]` jail it did not write; `--check` reports, `--remove` undoes.
+  and the module's two jails, `banned` and `deny` (`jail.d/<name>.conf`, a
+  filter that never matches, `bantime = -1`, `banaction =
+  %(banaction_allports)s`). Permanent in fail2ban, because fail2ban takes no
+  ban time per address: the sync lifts a Banned row's copy when the row
+  expires. It refuses to write over a jail of either name it did not write;
+  `--check` reports, `--remove` undoes.
   `HELPER_VERSION` finds a stale copy. Nothing about it fails an install.
 - **The minute job** is `bin/oryk-fail2ban-sync`, registered by `install()`
   with FreePBX's scheduler (`Job::addCommand`, every minute, as the web user)
   and removed by `uninstall()`. It bootstraps FreePBX and calls
   `BanSync::run()`.
-- **A save is carried over at once.** `Bans::saveBan()` hands the row before
-  and after to `BanSync::afterSave()`: the old copy is lifted if the row moved
-  (address, scope or state changed), then the address is reconciled.
-  `deleteBan()` lifts first -- once the row is gone nothing says it was ours.
+- **A save is carried over at once.** `Bans::saveBan()` -- and
+  `setBanState()`, the table's State menu, which saves the row again with only
+  its state changed -- hands the row before and after to
+  `BanSync::afterSave()`: the old copy is lifted if the row moved (address,
+  scope or state changed), then the address is reconciled.
+  `deleteBan()` lifts first -- once the row is gone nothing says it was ours --
+  and when that cannot be done, marks the row deleted (`deleted_at`) for the
+  minute job to lift and purge.
   A helper failure never fails the save; the minute job retries.
 - **`ORYK_FAIL2BAN_SYNC`** (a [setting](#settings), on by default) pauses it:
   nothing is read or written, and nothing already in fail2ban is undone.
@@ -534,7 +557,7 @@ list, one line of JSON back. Exit 64 is a refused argument, 69 fail2ban down.
 bantime, and every ignore list) and the IP-only rows, and `BanSync::plan()` --
 pure, and tested case by case -- decides:
 
-- **fail2ban → table, every jail but `deny`.** An address with no row gets one
+- **fail2ban → table, every jail but `banned` and `deny`.** An address with no row gets one
   (source `fail2ban`, the jail, Banned -- or Deny when fail2ban's bantime is
   permanent -- with fail2ban's ban time and expiry, `managed` 1). A managed
   row is refreshed, `times` up when the ban time moved. **A row in force that
@@ -542,24 +565,29 @@ pure, and tested case by case -- decides:
   like a reopen and managed again, source kept. An address banned in several
   jails is one row: the longest ban. A managed row in force that fail2ban no
   longer has is expired, never deleted.
-- **table → fail2ban.** A Banned or Deny row the sync does not manage, missing
-  from its jail, is banned; one already there is confirmed. So a fail2ban ban
-  a person turns into a Deny is lifted from its jail and banned in `deny`. `deny` is mirrored exactly:
-  anything in it without a Deny row is unbanned. A row with `synced_at` that
-  has stopped refusing is lifted from `asterisk` -- unless that ban started
-  after the row ran out, which makes it fail2ban's own. An allow missing from
-  any ignore list is added; one already on every list, without `synced_at`, was
-  put there by someone else and is never removed by the sync.
-- **Never pushed**: loopback, unspecified, or the PBX's own addresses.
+- **table → fail2ban.** `banned` and `deny` are mirrored exactly: each holds
+  the rows of ours in force in that state, and anything else in them is
+  unbanned. So one rule lifts a copy whether its row expired, changed state or
+  was deleted, and a fail2ban ban a person turns into a Deny is lifted from its
+  jail and banned in `deny`. A row of ours missing from its jail is banned; one
+  already there is confirmed. An allow missing from any ignore list is added;
+  one already on every list, without `synced_at`, was put there by someone else
+  and is never removed by the sync.
+- **A row marked deleted** has its copy lifted -- from the module's jails by
+  the mirror, an allow off the ignore lists, a ban the sync followed from
+  fail2ban's own jail -- and is purged once every lift succeeded. Nothing is
+  imported onto its address meanwhile.
+- **Never pushed**: loopback, unspecified, or the PBX's own addresses --
+  every interface's (`net_get_interfaces()`), the request's, the hostname's.
+  The minute job has no request, so the interfaces are what it relies on.
 - **fail2ban unreadable is not "no bans"**: the run does nothing, or every
   `fail2ban` row would expire the moment fail2ban restarts.
 - Writes assign `updated_at = updated_at` and are guarded in SQL against a row
   that changed since it was read; a row is marked synced only once the helper
   said yes. Each push and lift is a line in the FreePBX log.
 
-**Known limits.** `banip` takes no time, so a Banned row longer than
-`asterisk`'s bantime is banned again on the run after fail2ban lifts it -- up
-to a minute's gap; Deny has its own permanent jail for this reason. An ignore
+**Known limits.** Each push is one `Ban` line in fail2ban's log, which
+`recidive`, where it is enabled, counts like any other ban. An ignore
 entry added at runtime is lost when fail2ban restarts and re-added by the next
 run. An Allow lifted from the ignore lists comes off every jail, including one
 where an administrator had listed it too. Times: fail2ban prints local time;

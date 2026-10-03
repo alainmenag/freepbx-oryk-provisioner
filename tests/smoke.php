@@ -17,6 +17,7 @@ require_once __DIR__ . '/stubs.php';
 require_once __DIR__ . '/namespacing.php';
 
 use FreePBX\Modules\Oryk_Provisioner\AsteriskConfig;
+use FreePBX\Modules\Oryk_Provisioner\BanEscalation;
 use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
@@ -793,9 +794,22 @@ is_eq('subjects keep only what is one of its kind, most specific first',
 echo "\n  the most specific row decides:\n";
 
 /** A ban row with the subjects given and the rest empty. */
+/** The last write to the bans table: [sql, params] -- reads made after it, like banRow(), are skipped. */
+function ban_write($db)
+{
+	foreach (array_reverse($db->params) as $call) {
+		if (preg_match('/^\s*(INSERT INTO|UPDATE) `oryk_provisioner_bans`/', $call[0])) {
+			return $call;
+		}
+	}
+
+	return [null, null];
+}
+
 function ban_row($id, $state, array $set)
 {
-	return ['id' => $id, 'state' => $state] + $set + ['client_id' => null, 'extension' => null, 'mac' => null, 'profile_id' => null, 'ip' => null];
+	return ['id' => $id, 'state' => $state] + $set + ['client_id' => null, 'extension' => null, 'mac' => null, 'profile_id' => null, 'ip' => null,
+		'user_device' => null, 'user_name' => null, 'client_mac' => null, 'client_description' => null, 'mac_client_id' => null, 'profile_name' => null];
 }
 
 $site = ban_row(1, 'banned', ['ip' => '203.0.113.7']);
@@ -845,7 +859,8 @@ $bans->listBans();
 $bans->banRow('1');
 $_REQUEST = [];
 is_eq('reading bans deletes nothing, expired or not',
-	array_values(array_filter($db->seen, function ($q) { return stripos($q, 'DELETE') !== false; })), []);
+	array_values(array_filter($db->seen, function ($q) { return stripos($q, 'DELETE FROM') !== false; })), []);
+is_eq('and lists no row marked deleted', strpos($db->seen[0], 'WHERE b.deleted_at IS NULL') !== false, true);
 
 echo "\n  what saveBan() refuses before writing:\n";
 
@@ -864,30 +879,43 @@ is_eq('or one too long', $saved(['minutes' => (string) (Bans::MAX_MINUTES + 1)])
 is_eq('a client that is not there', $saved(['client' => '5']), false);
 
 $db->answers = ['FROM `oryk_provisioner_bans`' => '7', 'FROM `oryk_provisioner_bans` WHERE `id`' => '1'];
+// What banRow() reads back: any row will do for an edit to find.
+$db->fetches = ['WHERE b.id = :id' => [ban_row(3, 'deny', ['ip' => '203.0.113.7'])]];
 $db->insertId = 7;
 $db->seen = [];
 is_eq('a new ban naming what a row already does reopens that row',
-	$bans->saveBan(['ip' => '203.0.113.7', 'state' => 'deny']), ['status' => true, 'id' => 7, 'reopened' => true]);
+	$bans->saveBan(['ip' => '203.0.113.7', 'state' => 'deny']), ['status' => true, 'id' => 7, 'reopened' => true, 'escalated' => false]);
 is_eq('through the unique key, so two saves at once still make one row',
-	strpos(end($db->seen), 'ON DUPLICATE KEY UPDATE') !== false, true);
+	strpos(ban_write($db)[0], 'ON DUPLICATE KEY UPDATE') !== false, true);
 is_eq('an existing ban edited onto another row\'s subjects is refused',
 	$bans->saveBan(['id' => '3', 'ip' => '203.0.113.7', 'state' => 'deny'])['message'] ?? null,
 	'Ban #7 already names exactly that. Open it instead, or delete one of the two.');
 
+$db->answers = ['FROM `oryk_provisioner_bans` WHERE `id`' => '1'];
+$db->fetches = ['WHERE b.id = :id' => [ban_row(1, 'banned', ['ip' => '198.51.100.4']) + ['note' => 'scanner', 'source' => 'fail2ban', 'jail' => 'sshd']]];
+$db->params = [];
+is_eq('the State column changes the state and nothing else',
+	[$bans->setBanState(['id' => '1', 'state' => 'deny'])['status'],
+		array_intersect_key(ban_write($db)[1], array_flip([':ip', ':state', ':note', ':source', ':jail']))],
+	[true, [':ip' => '198.51.100.4', ':state' => 'deny', ':note' => 'scanner', ':source' => 'fail2ban', ':jail' => 'sshd']]);
+is_eq('a Banned picked there still needs its length', $bans->setBanState(['id' => '1', 'state' => 'banned'])['status'], false);
+$db->fetches = [];
+is_eq('and a ban gone since the table was drawn says so', $bans->setBanState(['id' => '1', 'state' => 'deny'])['message'] ?? null, 'That ban has been deleted.');
+
 $db->answers = [];
 $db->insertId = 9;
 $db->params = [];
-is_eq('a deny needs no length, and is written', $bans->saveBan(['mac' => '00-04-F2-82-E8-24', 'user' => '1001', 'state' => 'deny', 'minutes' => '']), ['status' => true, 'id' => 9, 'reopened' => false]);
+is_eq('a deny needs no length, and is written', $bans->saveBan(['mac' => '00-04-F2-82-E8-24', 'user' => '1001', 'state' => 'deny', 'minutes' => '']), ['status' => true, 'id' => 9, 'reopened' => false, 'escalated' => false]);
 is_eq('with each subject as it is stored, the rest as "any"',
-	array_intersect_key(end($db->params)[1], array_flip([':client_id', ':extension', ':mac', ':profile_id', ':ip'])),
+	array_intersect_key(ban_write($db)[1], array_flip([':client_id', ':extension', ':mac', ':profile_id', ':ip'])),
 	[':client_id' => 0, ':extension' => '1001', ':mac' => '0004f282e824', ':profile_id' => 0, ':ip' => '']);
 is_eq('written from the tab, it is a manual ban with no jail',
-	array_intersect_key(end($db->params)[1], array_flip([':source', ':jail'])), [':source' => 'manual', ':jail' => null]);
+	array_intersect_key(ban_write($db)[1], array_flip([':source', ':jail'])), [':source' => 'manual', ':jail' => null]);
 is_eq('and a reopen leaves what created it alone',
-	strpos(end($db->seen), 'source = ') === false && strpos(end($db->seen), 'jail = ') === false, true);
+	strpos(ban_write($db)[0], 'source = ') === false && strpos(ban_write($db)[0], 'jail = ') === false, true);
 is_eq('a source and jail given are written, the source lowercased',
 	[$bans->saveBan(['ip' => '198.51.100.4', 'state' => 'banned', 'minutes' => '60', 'source' => 'Fail2ban', 'jail' => 'asterisk'])['status'],
-		array_intersect_key(end($db->params)[1], array_flip([':source', ':jail']))],
+		array_intersect_key(ban_write($db)[1], array_flip([':source', ':jail']))],
 	[true, [':source' => 'fail2ban', ':jail' => 'asterisk']]);
 is_eq('a source or jail that is not a name is refused',
 	[$bans->saveBan(['ip' => '198.51.100.4', 'state' => 'deny', 'source' => 'fail 2 ban'])['status'],
@@ -895,9 +923,10 @@ is_eq('a source or jail that is not a name is refused',
 $db->params = [];
 $db->seen = [];
 $db->answers = ['FROM `oryk_provisioner_bans` WHERE `id`' => '1'];
+$db->fetches = ['WHERE b.id = :id' => [ban_row(1, 'deny', ['ip' => '198.51.100.4'])]];
 $bans->saveBan(['id' => '1', 'ip' => '198.51.100.4', 'state' => 'deny', 'source' => 'ratelimit', 'jail' => 'open-prov']);
-is_eq('an edit writes them', [strpos(end($db->seen), 'source = :source, jail = :jail') !== false,
-	array_intersect_key(end($db->params)[1], array_flip([':source', ':jail']))], [true, [':source' => 'ratelimit', ':jail' => 'open-prov']]);
+is_eq('an edit writes them', [strpos(ban_write($db)[0], 'source = :source, jail = :jail') !== false,
+	array_intersect_key(ban_write($db)[1], array_flip([':source', ':jail']))], [true, [':source' => 'ratelimit', ':jail' => 'open-prov']]);
 $db->answers = [];
 is_eq('and a row storing "any" as 0 or \'\' sets nothing there',
 	Bans::summary(['client_id' => '0', 'extension' => '1001', 'mac' => '', 'profile_id' => '0', 'ip' => '']), 'user 1001');
@@ -969,15 +998,15 @@ is_eq('no JSON at all is sudo refusing', Fail2ban::state(null, ['ok' => false, '
 is_eq('another version installed is stale', Fail2ban::state(null, ['ok' => true, 'version' => 1, 'exit' => 0], 2)['state'], 'stale');
 is_eq('a current helper with fail2ban down is fail2ban', Fail2ban::state(null, ['ok' => false, 'version' => 2, 'exit' => 69], 2)['state'], 'fail2ban');
 is_eq('no deny jail is said, with which',
-	array_intersect_key(Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['asterisk', 'sshd']], 2), ['state' => 1, 'detail' => 1]),
+	array_intersect_key(Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['asterisk', 'banned', 'sshd']], 2), ['state' => 1, 'detail' => 1]),
 	['state' => 'nojail', 'detail' => 'deny']);
-is_eq('both jails there is ok', Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['asterisk', 'deny']], 2)['state'], 'ok');
-is_eq('the shipped helper is version 2', Fail2ban::helperVersion(file_get_contents(__DIR__ . '/../bin/oryk-fail2ban')), 2);
+is_eq('both of the module\'s jails there is ok, asterisk or not', Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['banned', 'deny']], 2)['state'], 'ok');
+is_eq('the shipped helper is version 4', Fail2ban::helperVersion(file_get_contents(__DIR__ . '/../bin/oryk-fail2ban')), 4);
 
 echo "\n  what one run plans:\n";
 
 /** fail2ban's answer to list, from bans as [jail, ip, banned_at, expires_at or null for permanent]. */
-function listed(array $bans, array $ignore = [], array $jails = ['asterisk', 'deny', 'sshd'])
+function listed(array $bans, array $ignore = [], array $jails = ['asterisk', 'banned', 'deny', 'sshd'])
 {
 	return [
 		'ok' => true,
@@ -1025,7 +1054,7 @@ $p = BanSync::plan(listed([]), ['203.0.113.7' => ['managed' => 0] + sync_row(4, 
 is_eq('a fail2ban ban a person made Deny is theirs: pushed to deny, not expired', [$p['ban'], $p['expire']], [[['deny', '203.0.113.7', 4]], []]);
 
 $p = BanSync::plan(listed([]), ['203.0.113.7' => sync_row(6, 'banned')]);
-is_eq('a Banned row made here is banned in asterisk', $p['ban'], [['asterisk', '203.0.113.7', 6]]);
+is_eq('a Banned row made here is banned in the banned jail', $p['ban'], [['banned', '203.0.113.7', 6]]);
 
 $p = BanSync::plan(listed([]), ['203.0.113.7' => sync_row(6, 'deny')]);
 is_eq('a Deny row is banned in deny', $p['ban'], [['deny', '203.0.113.7', 6]]);
@@ -1036,16 +1065,40 @@ is_eq('one already there is only confirmed', [$p['ban'], $p['synced']], [[], [6]
 $p = BanSync::plan(listed([['deny', '198.51.100.9', 1000, null]]), []);
 is_eq('deny holds nothing the table does not', [$p['unban'], $p['insert']], [[['deny', '198.51.100.9', null]], []]);
 
-$p = BanSync::plan(listed([['asterisk', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => sync_row(7, 'banned', 'manual', false, true, 2000, 1000)]);
-is_eq('our copy outliving its row is lifted, and not imported', [$p['unban'], $p['insert'], $p['update']], [[['asterisk', '203.0.113.7', 7]], [], []]);
+$p = BanSync::plan(listed([['banned', '203.0.113.7', 1000, null]]), ['203.0.113.7' => sync_row(7, 'banned', 'manual', false, true, 2000, 1000)]);
+is_eq('an expired row\'s copy is lifted from banned, and not imported', [$p['unban'], $p['unsynced'], $p['insert'], $p['update']], [[['banned', '203.0.113.7', 7]], [], [], []]);
 
 $p = BanSync::plan(listed([['asterisk', '203.0.113.7', 3000, 6600]]), ['203.0.113.7' => sync_row(7, 'banned', 'manual', false, true, 2000, 1000)]);
-is_eq('but a ban fail2ban made after it ran out is its own', [$p['unban'], $p['unsynced'], $p['update'][0]['revive'] ?? null], [[], [7], true]);
+is_eq('a ban fail2ban made in its own jail is its own', [$p['unban'], $p['unsynced'], $p['update'][0]['revive'] ?? null], [[], [7], true]);
+
+$p = BanSync::plan(listed([['deny', '203.0.113.7', 1000, null]]), ['203.0.113.7' => sync_row(7, 'banned', 'manual', true, true, 9000, 1000)]);
+is_eq('Deny turned Banned moves from deny to banned', [$p['ban'], $p['unban']], [[['banned', '203.0.113.7', 7]], [['deny', '203.0.113.7', null]]]);
+
+$p = BanSync::plan(listed([['banned', '203.0.113.7', 1000, null]]), ['203.0.113.7' => sync_row(7, 'banned', 'manual', true, true, 9000, 1000)]);
+is_eq('a Banned row in force already in banned is only confirmed', [$p['ban'], $p['unban'], $p['synced']], [[], [], [7]]);
+
+$p = BanSync::plan(listed([['banned', '198.51.100.9', 1000, null]]), []);
+is_eq('banned holds nothing the table does not either', $p['unban'], [['banned', '198.51.100.9', null]]);
+
+echo "\n  a row marked deleted:\n";
+
+$p = BanSync::plan(listed([['deny', '203.0.113.7', 1000, null], ['sshd', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'deny', 'manual', false, true)]);
+is_eq('its copy is lifted, it is purged, and nothing is imported onto it meanwhile',
+	[$p['unban'], $p['purge'], $p['insert'], $p['update']], [[['deny', '203.0.113.7', 10]], [10], [], []]);
+
+$p = BanSync::plan(listed([]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'allow', 'manual', false, true)]);
+is_eq('an Allow comes off the ignore lists first', [$p['unignore'], $p['purge']], [[['203.0.113.7', 10]], [10]]);
+
+$p = BanSync::plan(listed([['sshd', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => ['deleted' => 1, 'jail' => 'sshd'] + sync_row(10, 'banned', 'fail2ban', false, true)]);
+is_eq('one the sync followed is lifted from fail2ban\'s jail', [$p['unban'], $p['purge']], [[['sshd', '203.0.113.7', 10]], [10]]);
+
+$p = BanSync::plan(listed([]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'deny', 'manual', false, false)]);
+is_eq('one with no copy left is just purged', [$p['unban'], $p['unignore'], $p['purge']], [[], [], [10]]);
 
 $p = BanSync::plan(listed([['sshd', '203.0.113.7', 1000, 4600]], ['asterisk' => [], 'deny' => [], 'sshd' => []]), ['203.0.113.7' => sync_row(8, 'allow')]);
 is_eq('an allowed address is unbanned and put on the ignore list', [$p['unban'], $p['ignore'], $p['insert']], [[['sshd', '203.0.113.7', null]], [['203.0.113.7', 8]], []]);
 
-$everywhere = ['asterisk' => ['127.0.0.1/8', '203.0.113.7'], 'deny' => ['203.0.113.7'], 'sshd' => ['203.0.113.7']];
+$everywhere = ['asterisk' => ['127.0.0.1/8', '203.0.113.7'], 'banned' => ['203.0.113.7'], 'deny' => ['203.0.113.7'], 'sshd' => ['203.0.113.7']];
 $p = BanSync::plan(listed([], $everywhere), ['203.0.113.7' => sync_row(8, 'allow')]);
 is_eq('already on every list by someone else: left unmarked', [$p['ignore'], $p['synced']], [[], []]);
 
@@ -1064,7 +1117,7 @@ echo "\n  what a save sends to fail2ban at once:\n";
 class StubFail2ban extends Fail2ban
 {
 	public $asked = [];
-	public $listed = ['ok' => true, 'jails' => ['asterisk', 'deny'], 'bans' => [], 'ignore' => []];
+	public $listed = ['ok' => true, 'jails' => ['asterisk', 'banned', 'deny'], 'bans' => [], 'ignore' => []];
 	public $on = true;
 
 	public function enabled() { return $this->on; }
@@ -1099,12 +1152,28 @@ is_eq('a row fail2ban never had from us is left alone', $f2b->asked, []);
 
 $f2b->asked = [];
 $sync->afterSave(['state' => 'banned'] + $ban, $ban);
-is_eq('Banned to Deny: out of asterisk, then the address is synced', $f2b->asked, [['unban', 'asterisk', '203.0.113.7'], ['list']]);
+is_eq('Banned to Deny: out of banned, then the address is synced', $f2b->asked, [['unban', 'banned', '203.0.113.7'], ['list']]);
 
 $f2b->asked = [];
 $f2b->on = false;
 $sync->afterSave(['state' => 'banned'] + $ban, $ban);
 is_eq('paused, a save asks fail2ban nothing', $f2b->asked, []);
+is_eq('and a copy cannot be lifted, so a delete keeps the row', [$sync->lift($ban), $sync->lift(['synced_at' => null] + $ban)], [false, true]);
+
+$db = $s['app']->Database;
+$db->fetches = ['WHERE b.id = :id' => [ban_row(3, 'deny', ['ip' => '203.0.113.7']) + ['synced_at' => '2026-10-03 12:00:00']]];
+$db->seen = [];
+(new Bans($s['app'], $sync))->deleteBan('3');
+is_eq('deleted while paused, a ban with a copy is marked deleted, not removed',
+	[strpos(end($db->seen), 'SET deleted_at = NOW()') !== false, strpos(implode(' ', $db->seen), 'DELETE FROM') === false], [true, true]);
+
+$f2b->on = true;
+$f2b->asked = [];
+$db->seen = [];
+(new Bans($s['app'], $sync))->deleteBan('3');
+is_eq('with the sync on, it is lifted and removed', [$f2b->asked, strpos(end($db->seen), 'DELETE FROM') !== false], [[['unban', 'deny', '203.0.113.7']], true]);
+$db->fetches = [];
+$f2b->on = false;
 is_eq('and a run does nothing', $sync->run(), ['ok' => true, 'paused' => true]);
 
 $f2b->on = true;
@@ -1121,8 +1190,31 @@ $db = $s['app']->Database;
 $db->seen = [];
 $bans->saveBan(['ip' => '203.0.113.7', 'state' => 'deny']);
 is_eq('a reopen counts a return to force and starts a new period',
-	strpos(end($db->seen), 'times = times + IF(') !== false && strpos(end($db->seen), 'started_at = IF(') !== false, true);
-is_eq('and a ban saved on the tab is no longer the sync\'s to manage', strpos(end($db->seen), 'managed = 0') !== false, true);
+	strpos(ban_write($db)[0], 'times = times + IF(') !== false && strpos(ban_write($db)[0], 'started_at = IF(') !== false, true);
+is_eq('and a ban saved on the tab is no longer the sync\'s to manage', strpos(ban_write($db)[0], 'managed = 0') !== false, true);
+
+echo "\n  a repeat Banned ban made Deny (ORYK_BAN_DENY_AFTER):\n";
+
+$s = build();
+$settings = new Settings($s['app']);
+$escalation = new BanEscalation($s['app'], $settings);
+$db = $s['app']->Database;
+
+is_eq('blank is off', [$settings->set(Settings::BAN_DENY_AFTER, ''), $escalation->threshold()], [null, 0]);
+is_eq('1 is refused: every ban is in force once', $settings->set(Settings::BAN_DENY_AFTER, '1') !== null, true);
+is_eq('3 is taken', [$settings->set(Settings::BAN_DENY_AFTER, '3'), $escalation->threshold()], [null, 3]);
+
+$db->seen = [];
+$db->fetchAlls = ['b.times >= :after' => [5 => '203.0.113.7']];
+is_eq('a Banned row in force 3 times is made Deny, and said', $escalation->apply([5, 6]), [5 => '203.0.113.7']);
+is_eq('asked of those rows only, Banned and in force', [strpos($db->seen[0], 'IN (5, 6)') !== false, strpos($db->seen[0], "b.state = 'banned'") !== false,
+	strpos($db->seen[0], Bans::ACTIVE_EXPR) !== false, end($db->params)[1][':after'] ?? null], [true, true, true, 3]);
+$db->fetchAlls = [];
+$db->seen = [];
+is_eq('none there, nothing written', [$escalation->apply([7]), count($db->seen)], [[], 1]);
+$settings->set(Settings::BAN_DENY_AFTER, '');
+$db->seen = [];
+is_eq('off, nothing is asked', [$escalation->apply([5]), $db->seen], [[], []]);
 
 echo "\nopen provisioning:\n";
 

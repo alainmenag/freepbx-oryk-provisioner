@@ -194,7 +194,8 @@ class Schema extends Service
 	 * Bring a bans table written before 1.3.0 up to date.
 	 *
 	 * The current ban period, how many times it has come back into force, when
-	 * fail2ban last had it, and whether the sync manages it -- see
+	 * fail2ban last had it, whether the sync manages it, and whether it is
+	 * deleted but kept until its copy in fail2ban is lifted -- see
 	 * ARCHITECTURE.md, "Syncing with fail2ban". A row written before has no
 	 * period yet, so `started_at` and `synced_at` start NULL and `times` at 1.
 	 * `managed` is backfilled once, on the pass that adds it: a row the sync
@@ -209,6 +210,7 @@ class Schema extends Service
 			'times' => 'ADD COLUMN `times` INT(10) UNSIGNED NOT NULL DEFAULT 1 AFTER `started_at`',
 			'synced_at' => 'ADD COLUMN `synced_at` DATETIME NULL DEFAULT NULL AFTER `times`',
 			'managed' => 'ADD COLUMN `managed` TINYINT(1) NOT NULL DEFAULT 0 AFTER `synced_at`',
+			'deleted_at' => 'ADD COLUMN `deleted_at` DATETIME NULL DEFAULT NULL AFTER `managed`',
 		];
 
 		foreach ($columns as $column => $clause) {

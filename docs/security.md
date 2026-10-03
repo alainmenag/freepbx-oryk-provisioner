@@ -37,9 +37,9 @@ Know what this is before you expose it:
   into a statement; everything else is bound.
 - **Syncing with fail2ban is root access, narrowed.** The sudo rule lets the
   web user run one root-owned file, which checks every argument itself and can
-  only list, ban in `asterisk` or `deny`, unban, and add or remove an ignore
+  only list, ban in `banned` or `deny`, unban, and add or remove an ignore
   entry. Anyone who can use the FreePBX admin GUI can therefore firewall any
-  address but loopback — a Deny blocks every port, the GUI included — or put
+  address but loopback — a Banned or Deny blocks every port, the GUI included — or put
   any address on fail2ban's ignore lists. Keep your own address in `ignoreip`
   in `/etc/fail2ban/jail.local`.
 - **A ban alone is not a firewall.** It is answered by the provisioning endpoint

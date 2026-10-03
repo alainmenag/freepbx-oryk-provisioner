@@ -25,15 +25,20 @@ class Bans extends Service
 	/** @var BanSync|null What carries a save to fail2ban at once; null for none. */
 	private $sync;
 
+	/** @var BanEscalation|null What makes a repeat Banned ban a Deny; null for never. */
+	private $escalation;
+
 	/**
-	 * @param object       $freepbx FreePBX application instance.
-	 * @param BanSync|null $sync    The fail2ban sync, or null to leave fail2ban alone.
+	 * @param object             $freepbx    FreePBX application instance.
+	 * @param BanSync|null       $sync       The fail2ban sync, or null to leave fail2ban alone.
+	 * @param BanEscalation|null $escalation ORYK_BAN_DENY_AFTER, or null for never.
 	 */
-	public function __construct($freepbx, ?BanSync $sync = null)
+	public function __construct($freepbx, ?BanSync $sync = null, ?BanEscalation $escalation = null)
 	{
 		parent::__construct($freepbx);
 
 		$this->sync = $sync;
+		$this->escalation = $escalation;
 	}
 
 	/**
@@ -71,10 +76,11 @@ class Bans extends Service
 	const LAST_HIT_AGE_EXPR = 'TIMESTAMPDIFF(SECOND, b.last_hit_at, NOW())';
 
 	/**
-	 * A row that is in force: anything but a temporary ban that has run out. The
-	 * one test of expiry; nothing deletes a row because it has expired.
+	 * A row that is in force: anything but a temporary ban that has run out, or
+	 * one deleted but kept until the fail2ban sync has lifted its copy. The one
+	 * test of expiry; nothing deletes a row because it has expired.
 	 */
-	const ACTIVE_EXPR = "(b.state <> 'banned' OR b.expires_at > NOW())";
+	const ACTIVE_EXPR = "(b.deleted_at IS NULL AND (b.state <> 'banned' OR b.expires_at > NOW()))";
 
 	/**
 	 * One page of the Bans tab, the way bootstrap-table asks for it.
@@ -111,10 +117,11 @@ class Bans extends Service
 
 		$search = (string) ($_REQUEST['search'] ?? '');
 		$params = [];
-		$where = '';
+		// A row marked deleted is gone as far as anyone looking is concerned.
+		$where = 'WHERE b.deleted_at IS NULL';
 
 		if ($search !== '') {
-			$where = "WHERE (b.ip LIKE :search
+			$where .= " AND (b.ip LIKE :search
 				OR b.mac LIKE :search
 				OR b.extension LIKE :search
 				OR b.state LIKE :search
@@ -157,18 +164,19 @@ class Bans extends Service
 	/**
 	 * One ban as the list draws it, or null when there is no such row (any more).
 	 *
-	 * @param mixed $id Ban id.
+	 * @param mixed $id      Ban id.
+	 * @param bool  $deleted True to read a row marked deleted too.
 	 *
 	 * @return array<string, mixed>|null The row.
 	 */
-	public function banRow($id)
+	public function banRow($id, $deleted = false)
 	{
 		if (!ctype_digit((string) $id)) {
 			return null;
 		}
 
 		try {
-			$stmt = $this->db->prepare("{$this->select()} {$this->from()} WHERE b.id = :id");
+			$stmt = $this->db->prepare("{$this->select()} {$this->from()} WHERE b.id = :id" . ($deleted ? '' : ' AND b.deleted_at IS NULL'));
 			$stmt->execute([':id' => (int) $id]);
 			$row = $stmt->fetch(PDO::FETCH_ASSOC);
 		} catch (\Exception $e) {
@@ -437,22 +445,28 @@ class Bans extends Service
 			}
 
 			if ($id) {
-				if (!$this->rowCount($this->bansTable, 'id', $id)) {
+				if (!$before) {
 					return ['status' => false, 'message' => _('That ban has been deleted.')];
 				}
 
 				$taken = $this->scopeHolder($columns, $id);
+
+				if ($taken && $this->banRow($taken) === null) {
+					return ['status' => false, 'message' => _('A deleted ban naming exactly that is still being lifted from fail2ban. Try again in a minute.')];
+				}
 
 				if ($taken) {
 					return ['status' => false, 'message' => sprintf(_('Ban #%d already names exactly that. Open it instead, or delete one of the two.'), $taken)];
 				}
 			}
 
+			// Adding a ban some row already names reopens that row, one marked
+			// deleted included: its copy in fail2ban is then this ban's to keep or lift.
 			$holder = $id ? 0 : $this->scopeHolder($columns, 0);
 			$reopened = (bool) $holder;
 
 			if ($holder) {
-				$before = $this->banRow($holder);
+				$before = $this->banRow($holder, true);
 			}
 
 			// NOW() rather than PHP's clock: expiry is compared with NOW() too.
@@ -487,6 +501,7 @@ class Bans extends Service
 						id = LAST_INSERT_ID(id),
 						$period,
 						managed = 0,
+						deleted_at = NULL,
 						state = VALUES(state),
 						expires_at = VALUES(expires_at),
 						note = COALESCE(VALUES(note), note)"
@@ -511,11 +526,54 @@ class Bans extends Service
 
 		$this->logInfo("ban #$id " . ($reopened ? 'reopened' : 'saved') . ': ' . self::summary($values) . " is $state" . ($minutes === null ? '' : " for $minutes minutes"));
 
-		if ($this->sync) {
-			$this->sync->afterSave($before, $this->banRow($id));
+		$after = $this->banRow($id);
+		$escalated = false;
+
+		// Back in force once more: ORYK_BAN_DENY_AFTER may make it a Deny.
+		if ($this->escalation && $before && $after && (int) $after['times'] > (int) $before['times']) {
+			$escalated = (bool) $this->escalation->apply([$id]);
+			$after = $escalated ? $this->banRow($id) : $after;
 		}
 
-		return ['status' => true, 'id' => $id, 'reopened' => $reopened];
+		if ($this->sync) {
+			$this->sync->afterSave($before, $after);
+		}
+
+		return ['status' => true, 'id' => $id, 'reopened' => $reopened, 'escalated' => $escalated];
+	}
+
+	/**
+	 * Change only a ban's state, from the State column of the Bans tab.
+	 *
+	 * The row is saved again through saveBan() with everything else as it is,
+	 * so a state change is checked, counted and synced exactly like a save on
+	 * the ban's page -- and, like one, makes a fail2ban ban the person's.
+	 *
+	 * @param array<string, mixed> $request id, state, and minutes for banned.
+	 *
+	 * @return array<string, mixed> See saveBan().
+	 */
+	public function setBanState($request)
+	{
+		$row = $this->banRow($request['id'] ?? null);
+
+		if ($row === null) {
+			return ['status' => false, 'message' => _('That ban has been deleted.')];
+		}
+
+		return $this->saveBan([
+			'id' => $row['id'],
+			'ip' => $row['ip'],
+			'mac' => $row['mac'],
+			'user' => $row['extension'],
+			'client' => $row['client_id'],
+			'profile' => $row['profile_id'],
+			'state' => (string) ($request['state'] ?? ''),
+			'minutes' => (string) ($request['minutes'] ?? ''),
+			'note' => $row['note'],
+			'source' => $row['source'],
+			'jail' => $row['jail'],
+		]);
 	}
 
 	/**
@@ -571,25 +629,37 @@ class Bans extends Service
 	/**
 	 * Delete one ban. One that has already gone is a success.
 	 *
+	 * A ban with a copy in fail2ban that cannot be lifted now -- the sync is
+	 * paused, or the helper failed -- is marked deleted instead: gone from the
+	 * list and from every decision, and purged by the minute job once its copy
+	 * is out. See ARCHITECTURE.md, "Syncing with fail2ban".
+	 *
 	 * @param mixed $id Ban id.
 	 *
 	 * @return array<string, mixed> status.
 	 */
 	public function deleteBan($id)
 	{
-		// Its copy in fail2ban first: once the row is gone nothing says it was ours.
-		if ($this->sync) {
-			$this->sync->lift($this->banRow($id));
+		$row = $this->banRow($id);
+
+		if ($row === null) {
+			return ['status' => true];
 		}
 
+		$kept = $this->sync && !$this->sync->lift($row);
+
 		try {
-			$stmt = $this->db->prepare("DELETE FROM `{$this->bansTable}` WHERE id = :id");
+			$stmt = $this->db->prepare(
+				$kept
+					? "UPDATE `{$this->bansTable}` SET deleted_at = NOW(), updated_at = updated_at WHERE id = :id"
+					: "DELETE FROM `{$this->bansTable}` WHERE id = :id"
+			);
 			$stmt->execute([':id' => (int) $id]);
 		} catch (\Exception $e) {
 			return ['status' => false, 'message' => _('The ban could not be deleted.')];
 		}
 
-		$this->logInfo('ban #' . (int) $id . ' deleted');
+		$this->logInfo('ban #' . (int) $id . ($kept ? ' deleted; kept until fail2ban lets it go' : ' deleted'));
 
 		return ['status' => true];
 	}
@@ -782,7 +852,7 @@ class Bans extends Service
 	{
 		return "SELECT
 			b.id, b.client_id, b.extension, b.mac, b.profile_id, b.ip, b.state, b.note, b.created_at, b.expires_at,
-			b.hits, b.last_hit_at, b.source, b.jail, b.started_at, b.times, b.synced_at, b.managed, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
+			b.hits, b.last_hit_at, b.source, b.jail, b.started_at, b.times, b.synced_at, b.managed, b.deleted_at, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
 			" . self::CREATED_AGE_EXPR . " AS created_age,
 			" . self::EXPIRES_IN_EXPR . " AS expires_in,
 			" . self::ACTIVE_EXPR . " AS active,
