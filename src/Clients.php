@@ -79,9 +79,12 @@ class Clients extends Service
 	 * asks with resource_id alongside it and gets the same rows again, each
 	 * carrying the filename that client asks that one resource for.
 	 *
+	 * @param array<int, int>|null $ids Clients to keep, or null for all: a
+	 *                                  navigator scope.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
-	public function listClients()
+	public function listClients($ids = null)
 	{
 		// The sort column and its direction are written into the statement rather
 		// than bound, so neither may come from the request as it stands. Anything
@@ -125,6 +128,10 @@ class Clients extends Service
 		if (isset($_REQUEST['device_id'])) {
 			$clauses[] = 'pc.device_id = :device_id';
 			$params[':device_id'] = (string) $_REQUEST['device_id'];
+		}
+
+		if ($ids !== null) {
+			$clauses[] = $this->inClause('pc.id', $ids, 'id', $params);
 		}
 
 		// Bracketed: an unbracketed OR chain ANDed with the profile would match

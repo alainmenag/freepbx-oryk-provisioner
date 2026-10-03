@@ -13,13 +13,18 @@ people they belong to; on a client, its user and its profile are already picked,
 Resources lists the files it is served, Logs its latest requests and Bans every
 ban that would apply to it. On a ban, the other dropdowns list what that ban
 covers. The dropdown for the thing you are on
-lists all of its kind, so you can switch straight to another one. The list
-page opens one section at a time (`&tab=clients`, `&tab=profiles`, ...); the
-editors below have their own tabs, which are views of that one row.
+lists all of its kind, so you can switch straight to another one. A
+dropdown's title, with its count, opens the table of exactly those: on a
+client, **Profiles 1** opens the Profiles list showing only that client's
+profile, with a **Show all** link back to the whole list (the section bar's
+Profiles is the whole list too). The list page opens one section at a time
+(`&tab=clients`, `&tab=profiles`, ...); the editors below have their own tabs,
+which are views of that one row.
 
 | URL | Page | Tabs |
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
+| `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log` or `ban` row scopes | — |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |

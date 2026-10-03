@@ -31,9 +31,13 @@ class ProvisioningLog extends Service
 	 * Newest first unless asked otherwise, and the id breaks the tie: a phone that
 	 * has just booted asks for six files inside one second.
 	 *
+	 * @param array<int, string>|null $macs MACs to keep, or null for any: a
+	 *                                     navigator scope, like `$ip`.
+	 * @param string|null             $ip   Address to keep, or null for any.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
-	public function listLogs()
+	public function listLogs($macs = null, $ip = null)
 	{
 		$sortable = [
 			'created_at' => 'l.created_at',
@@ -59,6 +63,15 @@ class ProvisioningLog extends Service
 		if (isset($_REQUEST['mac'])) {
 			$clauses[] = 'l.mac = :mac';
 			$params[':mac'] = Mac::stored($_REQUEST['mac']);
+		}
+
+		if ($macs !== null) {
+			$clauses[] = $this->inClause('l.mac', $macs, 'scope_mac', $params);
+		}
+
+		if ($ip !== null) {
+			$clauses[] = 'l.ip = :scope_ip';
+			$params[':scope_ip'] = (string) $ip;
 		}
 
 		if ($search !== '') {

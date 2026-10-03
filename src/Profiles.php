@@ -38,9 +38,12 @@ class Profiles extends Service
 	/**
 	 * Rows for the Profiles table.
 	 *
+	 * @param array<int, int>|null $ids Profiles to keep, or null for all: a
+	 *                                  navigator scope.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
-	public function listProfiles()
+	public function listProfiles($ids = null)
 	{
 		$sortable = [
 			'name' => 'p.name',
@@ -56,12 +59,18 @@ class Profiles extends Service
 		$search = (string) ($_REQUEST['search'] ?? '');
 
 		$params = [];
-		$where = '';
+		$clauses = [];
+
+		if ($ids !== null) {
+			$clauses[] = $this->inClause('p.id', $ids, 'id', $params);
+		}
 
 		if ($search !== '') {
-			$where = "WHERE p.name LIKE :search";
+			$clauses[] = "p.name LIKE :search";
 			$params[':search'] = '%' . $search . '%';
 		}
+
+		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
 
 		$countStmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->profilesTable}` p $where");
 		$countStmt->execute($params);

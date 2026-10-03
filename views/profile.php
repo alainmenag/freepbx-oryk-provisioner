@@ -163,10 +163,6 @@ $tabs = [
 					<?php if ($tab === 'resources'): ?>
 						<div class="tab-pane oryk-tab-section active" id="oryk_resources">
 
-							<p class="help-block fpbx-help-block">
-								<?php echo _('Files a client asks this profile for -- .cfg, [mac]-phone.cfg, [mac]-web.cfg -- and the logs it sends back. Each is a template rendered for the client that asks, a file uploaded here and served exactly as stored (firmware, ringtones), or a log the phone PUTs; the resource says which.'); ?>
-							</p>
-
 							<div id="resource_toolbar" class="oryk-toolbar">
 								<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=<?php echo $id; ?>&amp;resource=">
 									<i class="fa fa-plus"></i> <?php echo _('Add Resource'); ?>
@@ -202,10 +198,6 @@ $tabs = [
 
 					<?php if ($tab === 'clients'): ?>
 						<div class="tab-pane oryk-tab-section active" id="oryk_clients">
-
-							<p class="help-block fpbx-help-block">
-								<?php echo _('Clients assigned to this profile.'); ?>
-							</p>
 
 							<table
 								id="client_table"

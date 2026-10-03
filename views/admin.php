@@ -32,6 +32,9 @@
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
  *
+ * Opened from a navigator title, a table is narrowed to what that title's badge
+ * counted: `$scope` names the row, and every list command is asked with it.
+ *
  * @var string             $tab    Section to open on, settled by Navigator::section()
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
@@ -39,10 +42,14 @@
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
  * @var array<string, mixed>              $sync      Fail2ban::status(), on the Bans tab
  * @var string                            $remote    The address this page was asked from, canonical
+ * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
  */
 
 $tab = (string) ($tab ?? 'users');
 $sync = isset($sync) && is_array($sync) ? $sync : [];
+$scope = isset($scope) && is_array($scope) ? $scope : null;
+// Appended to every list command's URL, so a refresh stays narrowed.
+$scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) : '', ENT_QUOTES, 'UTF-8');
 ?>
 
 <div class="provisioner container-fluid">
@@ -55,6 +62,16 @@ $sync = isset($sync) && is_array($sync) ? $sync : [];
 			<div class="section no-border" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
+
+				<?php if ($scope): ?>
+				<p class="oryk-scope">
+					<?php echo sprintf(
+						htmlspecialchars(_('Only what is linked to %s.'), ENT_QUOTES, 'UTF-8'),
+						'<a href="' . htmlspecialchars($scope['href'], ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($scope['text'], ENT_QUOTES, 'UTF-8') . '</a>'
+					); ?>
+					<a class="oryk-scope-all" href="<?php echo htmlspecialchars($scope['all'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo _('Show all'); ?></a>
+				</p>
+				<?php endif; ?>
 
 				<div class="tab-content">
 
@@ -69,7 +86,7 @@ $sync = isset($sync) && is_array($sync) ? $sync : [];
 						<table
 							id="client_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listClients"
+							data-url="ajax.php?module=oryk_provisioner&command=listClients<?php echo $scopeQuery; ?>"
 							data-toolbar="#client_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"
@@ -108,7 +125,7 @@ $sync = isset($sync) && is_array($sync) ? $sync : [];
 						<table
 							id="profile_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listProfiles"
+							data-url="ajax.php?module=oryk_provisioner&command=listProfiles<?php echo $scopeQuery; ?>"
 							data-toolbar="#profile_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"
@@ -142,7 +159,7 @@ $sync = isset($sync) && is_array($sync) ? $sync : [];
 						<table
 							id="user_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listUsers"
+							data-url="ajax.php?module=oryk_provisioner&command=listUsers<?php echo $scopeQuery; ?>"
 							data-toolbar="#user_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"
@@ -173,6 +190,7 @@ $sync = isset($sync) && is_array($sync) ? $sync : [];
 						// Every request, not just the ones a client was found
 						// for -- see the note at the top of the partial.
 						$logMac = '';
+						$logScope = $scope ? $scope['key'] : '';
 						include __DIR__ . '/partials/logs.php';
 						?>
 					</div>
@@ -189,7 +207,7 @@ $sync = isset($sync) && is_array($sync) ? $sync : [];
 						<table
 							id="ban_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listBans"
+							data-url="ajax.php?module=oryk_provisioner&command=listBans<?php echo $scopeQuery; ?>"
 							data-toolbar="#ban_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"

@@ -19,10 +19,10 @@
  * level moves between *rows*; a tab moves between views of the one row.
  *
  * Over each crumb is the level's own title -- what these are, plural -- and it
- * is a link to where they are all listed: `resources` over a filename goes to
- * that profile's Resources tab. So a level names two places rather than one,
- * the row that is open and the list it came out of, and getting back to the
- * list no longer means going up to the profile and picking the tab again.
+ * is a link to the table of what its badge counts: `resources` over a filename
+ * goes to that profile's Resources tab, `profiles` on a client to the Profiles
+ * list narrowed to that client's. So a level names two places rather than one,
+ * the row that is open and the list it came out of.
  * Both the word and the URL come from Navigator, because the view knows
  * nothing about the module -- it cannot pluralise `resource` into a heading in
  * a language it was not written in, and it certainly cannot know that a
