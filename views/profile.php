@@ -90,14 +90,14 @@ $tabs = [
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 
-<div class="container-fluid">
+<div class="provisioner container-fluid">
 	<div class="fpbx-container">
-		<div class="display full-border">
+		<div class="display no-border">
 
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section" style="padding: 0;">
+			<div class="section no-border" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 

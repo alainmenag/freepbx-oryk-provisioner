@@ -44,50 +44,15 @@
 $tab = (string) ($tab ?? 'users');
 $sync = isset($sync) && is_array($sync) ? $sync : [];
 ?>
-<style>
-	.flex {
-		display: flex;
-	}
-	.gap-3 {
-		gap: 3px;
-	}
-	/* The State column's label is the toggle of its menu. */
-	.oryk-ban-state > [data-toggle="dropdown"],
-	.oryk-ban-state > [data-toggle="dropdown"]:hover,
-	.oryk-ban-state > [data-toggle="dropdown"]:focus {
-		text-decoration: none;
-	}
-	.oryk-ban-state .fa-caret-down {
-		margin: 0 0 0 2px;
-	}
-	/* bootstrap-table's empty clearfix after the Bans table: the sync line under it clears the floats itself. */
-	#oryk_bans > .bootstrap-table + .clearfix {
-		display: none;
-	}
-	/*
-	 * A disabled row stays on the list -- a client or a profile that has been
-	 * switched off is still one, and the whole point of the switch is that
-	 * nothing about the row is lost -- so it says what it is by being greyed
-	 * rather than by being somewhere else. The buttons keep their own
-	 * colours: they are what is done to the row, not what the row says.
-	 */
-	tr.oryk-disabled > td,
-	tr.oryk-disabled > td a:not(.btn) {
-		color: #999;
-	}
-	.oryk-name {
-		font-family: monospace;
-	}
-</style>
 
-<div class="container-fluid">
+<div class="provisioner container-fluid">
 	<div class="fpbx-container">
-		<div class="display full-border">
+		<div class="display no-border">
 
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section" style="padding: 0;">
+			<div class="section no-border" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 

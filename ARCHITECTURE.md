@@ -636,6 +636,12 @@ the helper turns it into epochs and the sync writes them with
   page (a resource's file box and template, a profile's Resources tab). The URL
   is the row and nothing else: no key says a save has just happened. Only Close
   and a finished Delete go back to a list.
+- **Styles live in `assets/oryk_provisioner.css`**, never in a `<style>` in a
+  view. `Pages::view()` puts it on every page: linked through the
+  `admin/assets/oryk_provisioner` symlink `fwconsole reload` makes, with the
+  file's mtime as `?v=`, or inlined until that symlink exists. It is outside
+  `assets/css/` on purpose -- FreePBX links everything in there itself, with
+  no version, so an edit would be served from cache and the file loaded twice.
 - **No view contains a `<form>`.** The module page renders inside the FreePBX
   page form and a nested form is dropped by the browser. Fields are read by id
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.

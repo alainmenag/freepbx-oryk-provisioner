@@ -526,7 +526,33 @@ class Pages extends Service
 	 */
 	private function view($name, array $vars)
 	{
-		return load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+		return $this->stylesheet() . load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+	}
+
+	/**
+	 * The module's stylesheet, assets/oryk_provisioner.css, for the top of a page.
+	 *
+	 * Linked through the admin/assets/oryk_provisioner symlink `fwconsole reload`
+	 * makes, versioned by the file's mtime so an edit is never served from cache.
+	 * Before that symlink exists it is inlined instead, so a module copied up
+	 * and not yet reloaded is still styled.
+	 *
+	 * @return string A <link>, a <style>, or '' when the file is missing.
+	 */
+	private function stylesheet()
+	{
+		$file = dirname(__DIR__) . '/assets/oryk_provisioner.css';
+
+		if (!is_file($file)) {
+			return '';
+		}
+
+		// admin/modules/oryk_provisioner/assets -> admin/assets/oryk_provisioner.
+		if (is_dir(dirname(__DIR__, 3) . '/assets/oryk_provisioner')) {
+			return '<link rel="stylesheet" type="text/css" href="assets/oryk_provisioner/oryk_provisioner.css?v=' . (int) filemtime($file) . '">';
+		}
+
+		return '<style>' . file_get_contents($file) . '</style>';
 	}
 
 	/**

@@ -27,27 +27,6 @@ $logNarrowed = $logMac !== '';
 $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	. ($logNarrowed ? '&mac=' . rawurlencode($logMac) : '');
 ?>
-<style>
-	.oryk-log-detail {
-		display: block;
-		color: #a94442;
-		font-size: 11px;
-		line-height: 15px;
-	}
-	.oryk-log-agent {
-		display: block;
-		max-width: 260px;
-		overflow: hidden;
-		color: #777;
-		font-size: 11px;
-		line-height: 15px;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-	.oryk-log-time {
-		white-space: nowrap;
-	}
-</style>
 
 <p class="help-block fpbx-help-block">
 	<?php echo $logNarrowed

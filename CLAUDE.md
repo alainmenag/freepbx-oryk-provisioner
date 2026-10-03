@@ -76,6 +76,7 @@ diffing. Never rewrite a file wholesale to reword its comments.
 - A new AJAX command must be named in **both** `ajaxRequest()` and
   `ajaxHandler()`.
 - No view contains a `<form>`; fields are read by id and posted over AJAX.
+- CSS goes in `assets/oryk_provisioner.css`, not in a `<style>` in a view.
 - A field's help is a `fpbx-help-icon` with `data-for="<id>"` after the label
   and one `fpbx-help-block` with `id="<id>-help"`; without the pair FreePBX
   never shows it.

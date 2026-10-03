@@ -733,6 +733,7 @@ class Navigator extends Service
 	{
 		$options = [];
 		$text = '';
+		$href = '';
 		$keep = $scope === null ? null : array_map('strval', $scope);
 
 		foreach ($rows as $row) {
@@ -753,6 +754,7 @@ class Navigator extends Service
 
 			if ($active) {
 				$text = $row['text'];
+				$href = $row['href'];
 			}
 		}
 
@@ -767,6 +769,8 @@ class Navigator extends Service
 			'key' => $meta['key'],
 			'title' => $meta['title'],
 			'text' => $at === 'new' ? $meta['new'] : $text,
+			// Where the chosen row is, for the crumb's own link; '' on a new one.
+			'href' => $at === 'new' ? '' : $href,
 			'mono' => $meta['mono'],
 			// Every level asks the same way. A scope with nothing in it says None
 			// on the crumb; the menu under it says what is missing.
