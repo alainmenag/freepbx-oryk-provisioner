@@ -1,6 +1,7 @@
 <?php
 /**
- * The module page: Clients, Profiles, Users, Logs, Bans and Settings tabs.
+ * The module page: one pane per section -- Users, Clients, Profiles, Logs,
+ * Bans and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -19,10 +20,11 @@
  * the phone's own web interface, drawn from the private address written on
  * that client and only on the rows that have one.
  *
- * Every tab is a link and only the tab asked for is rendered -- see
- * partials/tabs.php. Each tab names itself rather than one of them being the
- * bare URL: none is the others' default, though a bare
- * ?display=oryk_provisioner still opens Clients.
+ * The sections are the bar every page is topped with -- see
+ * partials/sections.php -- so this page has no tab strip of its own. Only the
+ * section asked for is rendered. Each names itself (`&tab=<section>`) rather
+ * than one being the bare URL, though a bare ?display=oryk_provisioner opens
+ * Users, the first of them.
  *
  * Settings is the one tab with fields rather than a table, drawn by
  * partials/settings.php and saved by the action bar's Save.
@@ -31,65 +33,22 @@
  * tab draws what is missing and the command that fixes it instead of a table
  * -- see ARCHITECTURE.md, "Bans".
  *
- * @var string             $tab    Tab to open on: clients|profiles|logs|users|bans|settings
- * @var array<string, int> $counts Rows behind each tab -- see partials/counts.php
+ * @var string             $tab    Section to open on: clients|profiles|logs|users|bans|settings
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
+ * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
  * @var array<string, mixed>              $fail2ban  Fail2ban::status() and its setup command, on the Bans tab
  * @var bool                              $bansEnabled ORYK_FAIL2BAN: whether the Bans tab is drawn at all
  */
 
-$tab = in_array($tab ?? '', ['profiles', 'logs', 'users', 'bans', 'settings'], true) ? $tab : 'clients';
+$tab = in_array($tab ?? '', ['clients', 'profiles', 'logs', 'bans', 'settings'], true) ? $tab : 'users';
 $fail2ban = isset($fail2ban) && is_array($fail2ban) ? $fail2ban : [];
 $bansEnabled = !isset($bansEnabled) || $bansEnabled;
 
 if ($tab === 'bans' && !$bansEnabled) {
-	$tab = 'clients';
-}
-
-// Nothing above this page narrows them: every client, every profile, every
-// request the endpoint has answered.
-$countScope = [];
-
-// The strip, as links. Nothing on this page is ever behind a tab that cannot
-// be opened: an empty table is still a table, and Add lives on it.
-$tabs = [
-	'clients' => [
-		'label' => _('Clients'),
-		'href' => '?display=oryk_provisioner&tab=clients',
-		'count' => 'clients',
-	],
-	'profiles' => [
-		'label' => _('Profiles'),
-		'href' => '?display=oryk_provisioner&tab=profiles',
-		'count' => 'profiles',
-	],
-	'users' => [
-		'label' => _('Users'),
-		'href' => '?display=oryk_provisioner&tab=users',
-		'count' => 'users',
-	],
-	'logs' => [
-		'label' => _('Logs'),
-		'href' => '?display=oryk_provisioner&tab=logs',
-		'count' => 'logs',
-	],
-	'bans' => [
-		'label' => _('Bans'),
-		'href' => '?display=oryk_provisioner&tab=bans',
-		'count' => 'bans',
-	],
-	'settings' => [
-		'label' => _('Settings'),
-		'href' => '?display=oryk_provisioner&tab=settings',
-	],
-];
-
-if (!$bansEnabled) {
-	unset($tabs['bans']);
+	$tab = 'users';
 }
 ?>
-<?php include __DIR__ . '/partials/counts.php'; ?>
 <style>
 	.flex {
 		display: flex;
@@ -119,13 +78,12 @@ if (!$bansEnabled) {
 	<div class="fpbx-container">
 		<div class="display full-border">
 
+			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
 			<div class="section" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
-
-				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
 				<div class="tab-content">
 
@@ -615,8 +573,7 @@ if (!$bansEnabled) {
 	// Deleting is the one action on either tab that needs no page of its own.
 	//
 	// Only one table is on the page -- the tab that was asked for is the only
-	// pane rendered -- so only that one is refreshed. What a delete changes on
-	// the other tab is its badge, and the badges are re-read whole.
+	// pane rendered -- so only that one is refreshed.
 
 	$(document).on('click', '[name="client_delete"]', function () {
 		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
@@ -630,7 +587,6 @@ if (!$bansEnabled) {
 			}
 
 			$('#client_table').bootstrapTable('refresh');
-			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});
@@ -724,7 +680,6 @@ if (!$bansEnabled) {
 			}
 
 			$('#user_table').bootstrapTable('refresh');
-			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		}).fail(function () {
 			button.prop('disabled', false);
@@ -805,7 +760,6 @@ if (!$bansEnabled) {
 			}
 
 			$('#ban_table').bootstrapTable('refresh');
-			orykCounts();
 			notie.alert(1, 'Unbanned.', 2);
 		}).fail(function () {
 			button.prop('disabled', false);
@@ -852,7 +806,6 @@ if (!$bansEnabled) {
 			}
 
 			$('#profile_table').bootstrapTable('refresh');
-			orykCounts();
 			notie.alert(1, 'Deleted.', 2);
 		});
 	});

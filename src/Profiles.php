@@ -276,9 +276,7 @@ class Profiles extends Service
 	/**
 	 * How many clients a profile is assigned to.
 	 *
-	 * The rule that a profile still in use is not deleted, and only that: what a
-	 * tab is labelled with comes from Counts, which counts the same table the same
-	 * way. Both are rowCount(), so there is one statement between them.
+	 * The rule that a profile still in use is not deleted, and only that.
 	 *
 	 * @param int $profileId Profile id.
 	 *

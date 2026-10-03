@@ -8,10 +8,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Which URL is which page.
  *
  * Everything the module edits is a page, told apart by which key the URL
- * carries, and every page is a tab strip over a tab content with its tab in
- * the address. A tab is a link, so a tab is a page too: only the pane asked
- * for is rendered, and the strip above it is links to the rest -- see
- * views/partials/tabs.php.
+ * carries. Every page is topped by the section bar and the navigator under it;
+ * a row's page adds a tab strip with its tab in the address. A tab is a link,
+ * so a tab is a page too: only the pane asked for is rendered, and the strip
+ * above it is links to the rest -- see views/partials/tabs.php.
  *
  * doConfigPageInit() sends an id that names no row back to the list, before
  * any markup: a redirect out of showPage() would be too late to set a header.
@@ -35,9 +35,6 @@ class Pages extends Service
 
 	/** @var ProvisioningLog */
 	private $requestLog;
-
-	/** @var Counts */
-	private $counts;
 
 	/** @var Navigator */
 	private $navigator;
@@ -63,7 +60,7 @@ class Pages extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Counts $counts, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban)
 	{
 		parent::__construct($freepbx);
 
@@ -73,7 +70,6 @@ class Pages extends Service
 		$this->pbx = $pbx;
 		$this->template = $template;
 		$this->requestLog = $requestLog;
-		$this->counts = $counts;
 		$this->navigator = $navigator;
 		$this->logs = $logs;
 		$this->users = $users;
@@ -162,14 +158,12 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/profile.php', [
 			'profile' => $profile,
-			// A profile that has not been written is 'new' rather than an id: the
-			// crumb has something to say about it and no row to point at.
-			'navigator' => $this->navigator->levels('profiles', [
+			'sections' => $this->navigator->sections('profiles'),
+			// A profile that has not been written is 'new' rather than an id: it has
+			// no links yet, so nothing else is scoped by it.
+			'navigator' => $this->navigator->levels([
 				'profile' => $profile['id'] ? (int) $profile['id'] : 'new',
 			]),
-			// Narrowed to this profile, new one included: profile_id=0 counts nothing
-			// rather than being read as no narrowing at all.
-			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
 			'tab' => (in_array($tab, $tabs, true) && $profile['id']) ? $tab : 'profile',
 		]);
 	}
@@ -207,19 +201,16 @@ class Pages extends Service
 			$client = $found;
 		}
 
-		$profileId = (int) ($client['profile_id'] ?? 0);
-		$mac = (string) ($client['mac'] ?? '');
 		$available = $this->clientTabs($client);
 
 		return load_view(dirname(__DIR__) . '/views/client.php', [
 			'client' => $client,
-			'navigator' => $this->navigator->levels('clients', [
+			'sections' => $this->navigator->sections('clients'),
+			'navigator' => $this->navigator->levels([
 				'client' => $client['id'] ? (int) $client['id'] : 'new',
 			]),
 			'freepbxDevices' => $this->pbx->freepbxDevices(),
 			'profiles' => $this->profiles->profileChoices(),
-			// Two scopes on one page: Resources is the profile's, Logs is this MAC's.
-			'counts' => $this->counts->pageCounts(['profile_id' => $profileId, 'mac' => $mac]),
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'client',
 		]);
@@ -256,12 +247,12 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/user.php', [
 			'user' => $user,
-			'navigator' => $this->navigator->levels('users', [
+			'sections' => $this->navigator->sections('users'),
+			'navigator' => $this->navigator->levels([
 				'user' => $extension !== '' ? $extension : 'new',
 			]),
 			// Blank on the form is not nothing: it is this.
 			'pbxDomain' => $this->endpoints->fromDomain(null),
-			'counts' => $this->counts->pageCounts(['device_id' => $extension]),
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
 		]);
@@ -299,9 +290,9 @@ class Pages extends Service
 			'prefill' => (string) Bans::canonical($_REQUEST['ip'] ?? ''),
 			'clients' => $this->bans->clientAddresses(),
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
-			'navigator' => $this->navigator->levels('bans', [
-				'ban' => $ban ? $ban['id'] : 'new',
-			]),
+			'sections' => $this->navigator->sections('bans'),
+			// A ban is linked to none of the four, so it scopes nothing.
+			'navigator' => $this->navigator->levels(),
 		]);
 	}
 
@@ -433,9 +424,10 @@ class Pages extends Service
 
 		return load_view(dirname(__DIR__) . '/views/resource.php', [
 			'resource' => $resource,
-			// Both levels, because a resource is reached through its profile and is
-			// nothing without it.
-			'navigator' => $this->navigator->levels('profiles', [
+			'sections' => $this->navigator->sections('profiles'),
+			// Both, because a resource is viewed within its profile: that profile
+			// scopes the rest, and both are selected.
+			'navigator' => $this->navigator->levels([
 				'profile' => (int) $profile['id'],
 				'resource' => $resource['id'] ? (int) $resource['id'] : 'new',
 			]),
@@ -445,7 +437,6 @@ class Pages extends Service
 			// operator needs from that type, and it is read off this server's own
 			// configuration.
 			'logPath' => $this->logs->logPath(),
-			'counts' => $this->counts->pageCounts(['profile_id' => (int) $profile['id']]),
 			// A resource that has never been written has no name to render against a
 			// client, so Clients is there but does not open.
 			'tab' => ($tab === 'clients' && $resource['id']) ? 'clients' : 'resource',
@@ -456,9 +447,8 @@ class Pages extends Service
 	 * Render the list page.
 	 *
 	 * Every table is filled over AJAX and no row is edited here, so the view is
-	 * handed which tab to open on and the counts its tabs are labelled with --
-	 * and, on Settings, the module's settings, which are fields rather than a
-	 * table.
+	 * handed which section to open on -- and, on Settings, the module's
+	 * settings, which are fields rather than a table.
 	 * Nothing arrives from a save: an editor's Save stays on the row it wrote, and
 	 * only Close and a finished Delete come back here.
 	 *
@@ -470,9 +460,9 @@ class Pages extends Service
 	{
 		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
 		$tabs = $this->bans->enabled()
-			? ['profiles', 'logs', 'users', 'bans', 'settings']
-			: ['profiles', 'logs', 'users', 'settings'];
-		$tab = in_array($tab, $tabs, true) ? $tab : 'clients';
+			? ['clients', 'profiles', 'logs', 'bans', 'settings']
+			: ['clients', 'profiles', 'logs', 'settings'];
+		$tab = in_array($tab, $tabs, true) ? $tab : 'users';
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
@@ -485,12 +475,10 @@ class Pages extends Service
 			'fail2ban' => $tab === 'bans'
 				? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()]
 				: [],
-			// Nothing above this page to narrow them by.
-			'counts' => $this->counts->pageCounts(),
-			// The section is the tab this page opens on, and nothing under it is open:
-			// those levels are prompts, which is how somebody gets from here to a row
-			// without reading the table first.
-			'navigator' => $this->navigator->levels($tab),
+			'sections' => $this->navigator->sections($tab),
+			// Nothing is viewed, so nothing is scoped: every dropdown lists all of its
+			// kind, which is how somebody gets to a row without reading the table.
+			'navigator' => $this->navigator->levels(),
 		]);
 	}
 

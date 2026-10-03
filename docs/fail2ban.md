@@ -134,5 +134,5 @@ address, so nobody real), see it with `sudo fail2ban-client status asterisk`,
 **Unban** it, and check it has gone. Banning the address you are connected from
 is refused.
 
-Every load of the module page asks fail2ban for the badge, so each writes a sudo
+Only the Bans section itself asks fail2ban, so only opening it writes a sudo
 line to the auth log.

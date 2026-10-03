@@ -9,7 +9,6 @@ use FreePBX_Helpers;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
-use FreePBX\Modules\Oryk_Provisioner\Counts;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -79,7 +78,6 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Matcher          a filename is a MAC and a name, read both ways
  *   Previews         which filename does this phone ask this file by
  *   ProvisioningLog  one row per request the endpoint answered
- *   Counts           how many rows a tab is labelled with
  *   Endpoint         answering a provisioning request, and ending it
  *   Pages            which URL is which page
  *   Settings         the module's PBX-wide settings, and the Settings tab
@@ -114,9 +112,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Clients */
 	private $clients;
-
-	/** @var Counts */
-	private $counts;
 
 	/** @var Endpoint */
 	private $endpoint;
@@ -235,8 +230,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban);
 
-		$this->counts = new Counts($freepbx, $this->fail2ban);
-
 		$this->endpoint = new Endpoint(
 			$freepbx,
 			$this->clients,
@@ -257,7 +250,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->pbx,
 			$this->template,
 			$this->provisioningLog,
-			$this->counts,
 			$this->navigator,
 			$this->logs,
 			$this->users,
@@ -482,7 +474,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteResourceFile':
 			case 'listLogs':
 			case 'clearLogs':
-			case 'counts':
 			case 'listUsers':
 			case 'saveUser':
 			case 'deleteUser':
@@ -594,13 +585,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'clearLogs':
 				return $this->provisioningLog->clearLogs($_REQUEST);
-
-			// Every count a page has a badge for, in one answer. One command rather
-			// than four because a page that has just deleted a client has changed what
-			// two of its tabs say, and asking table by table is how two of them end up
-			// disagreeing.
-			case 'counts':
-				return $this->counts->countsRequest();
 
 			case 'listUsers':
 				return $this->users->listUsers();

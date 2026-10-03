@@ -128,8 +128,8 @@ abstract class Service
 	 * The table and column are interpolated, so **neither may come from a
 	 * request**: both are named by the caller, from the properties above.
 	 *
-	 * It answers zero rather than throwing -- a table that is not there is a badge
-	 * reading zero, not a 500 on the page.
+	 * It answers zero rather than throwing -- a table that is not there counts as
+	 * empty, not as a 500 on the page.
 	 *
 	 * @param string      $table  Table to count, from this class's properties.
 	 * @param string|null $column Column to narrow by, or null for the lot.

@@ -185,7 +185,6 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 			}
 
 			$('#log_table').bootstrapTable('refresh');
-			orykCounts();
 			notie.alert(1, 'Cleared.', 2);
 		});
 	});

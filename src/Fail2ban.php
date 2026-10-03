@@ -191,8 +191,9 @@ class Fail2ban extends Service
 	/**
 	 * How many addresses are banned across every jail. Zero when it cannot be asked.
 	 *
-	 * Called by every page with a tab strip, so it is one helper call and no
-	 * status() first: a helper that is not there answers no faster either way.
+	 * Nothing calls it until bans are counted again. One
+	 * helper call and no status() first: a helper that is not there answers no
+	 * faster either way.
 	 *
 	 * @return int Addresses banned.
 	 */

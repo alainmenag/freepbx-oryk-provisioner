@@ -7,30 +7,34 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Where you are, and everywhere you can go from here.
  *
- * The module's pages are a tree -- Clients has clients under it, Profiles has
- * profiles and every profile has its files -- and this builds the path through
- * it that views/partials/navigator.php draws. One level per step, each
- * carrying what it is now and every sibling it could be instead.
+ * Two halves. sections() is the module's top level, drawn as the bar over
+ * every page by views/partials/sections.php. levels() is the row of dropdowns
+ * views/partials/navigator.php draws under it: Users, Clients, Profiles and
+ * Resources, always all four, always in that order -- who, which phone, what
+ * configuration, which file.
  *
- * Two rules hold it together, and they are why the view needs to know nothing
- * about the module:
+ * The four are linked: a user has clients, a client has one profile, a profile
+ * has clients and files. The page being viewed sets the scope, and three rules
+ * decide what each dropdown lists:
  *
- *   - a level lists its siblings, never its children;
- *   - choosing one goes to *that* level's own page, and everything under it is
- *     rebuilt from what is there.
+ *   - a level lists only what is linked to the row being viewed;
+ *   - the level *of* that row lists all of its kind, the row selected, so
+ *     moving sideways is still one pick;
+ *   - a linked level with exactly one row in it shows that row selected.
  *
- * The second is what makes it a navigator rather than a record of where you
- * have been: pick another profile and you land on that profile, not on
- * whichever of its files happens to sit where the last one did.
+ * Nothing viewed -- a list page, Logs, Settings, Bans -- scopes nothing, and a
+ * new row has no links yet, so it scopes nothing either. Choosing an option is
+ * a page load to that row, and the row of dropdowns re-scopes around it.
  *
- * Growing it is adding a branch to levels(). Two keys are places rather than
- * values, and are built here because only the level knows what they cost:
+ * Two keys are places rather than values, and are built here because only the
+ * level knows what they cost:
  *
- *   - 'title': what this level is, plural, and where they are all listed -- a
- *     link, so the level names its own list page as well as the row open in
- *     it. Given rather than derived, which is what lets it be translated.
+ *   - 'title': what this level is, plural, and the list it is drawn from -- the
+ *     scoped one where there is one (a profile's Clients tab), else the module's.
+ *     Its badge is 'count', the options the level lists, so it always agrees
+ *     with the menu under it.
  *   - 'add': where a *new* one is written, or null where that is not a thing
- *     you can do. Creating is not navigating, so it is not one of the options.
+ *     you can do here. Creating is not navigating, so it is not an option.
  */
 class Navigator extends Service
 {
@@ -64,72 +68,101 @@ class Navigator extends Service
 	}
 
 	/**
-	 * The levels one page is reached through.
+	 * The four dropdowns, scoped by the row a page is viewing.
 	 *
-	 * `$at` says which row is open at each level below the section: an id, or
-	 * the string 'new' on a page writing a row that does not exist yet. A
-	 * level nothing is open at still draws -- it is how you get to one.
+	 * `$at` names that row: `user` (an extension), `client`, `profile`, or
+	 * `profile` and `resource` together. Each is an id, or 'new' on a page
+	 * writing one that does not exist yet. Empty on a page viewing no row.
 	 *
-	 * @param string                    $section clients|profiles|logs|users|bans|settings.
-	 * @param array<string, mixed>      $at      Row open at each level below it.
+	 * @param array<string, mixed> $at Row being viewed.
 	 *
-	 * @return array<int, array<string, mixed>> Levels, outermost first.
+	 * @return array<int, array<string, mixed>> Users, clients, profiles, resources.
 	 */
-	public function levels($section, array $at = [])
+	public function levels(array $at = [])
 	{
-		$sections = ['clients', 'profiles', 'logs', 'users', 'bans', 'settings'];
+		$user = isset($at['user']) ? (string) $at['user'] : null;
+		$client = isset($at['client']) ? (string) $at['client'] : null;
+		$profile = isset($at['profile']) ? (string) $at['profile'] : null;
+		$resource = isset($at['resource']) ? (string) $at['resource'] : null;
 
-		if (!$this->bans->enabled()) {
-			$sections = array_diff($sections, ['bans']);
+		$clientRows = $this->clients->clientChoices();
+		$profileNames = [];
+
+		foreach ($this->profiles->profileChoices() as $row) {
+			$profileNames[(int) $row['id']] = (string) $row['name'];
 		}
 
-		$section = in_array($section, $sections, true) ? $section : 'clients';
+		// null is "not scoped": the level lists everything. An array is the ids
+		// linked to the row being viewed, and may be empty.
+		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null];
 
-		$levels = [$this->sectionLevel($section)];
-
-		if ($section === 'clients') {
-			$levels[] = $this->clientLevel(isset($at['client']) ? $at['client'] : null);
-		}
-
-		if ($section === 'users') {
-			$levels[] = $this->userLevel(isset($at['user']) ? $at['user'] : null);
-		}
-
-		if ($section === 'bans') {
-			$levels[] = $this->banLevel(isset($at['ban']) ? $at['ban'] : null);
-		}
-
-		if ($section === 'profiles') {
-			$profile = isset($at['profile']) ? $at['profile'] : null;
-
-			$levels[] = $this->profileLevel($profile);
-
-			// A resource hangs off a profile that has been written, so on a new profile
-			// this level is absent rather than empty.
-			if (ctype_digit((string) $profile) && (int) $profile) {
-				$levels[] = $this->resourceLevel((int) $profile, isset($at['resource']) ? $at['resource'] : null);
+		if ($this->written($client)) {
+			foreach ($clientRows as $row) {
+				if ((string) $row['id'] === $client) {
+					$scope['users'] = (string) $row['device_id'] !== '' ? [(string) $row['device_id']] : [];
+					$scope['profiles'] = (int) $row['profile_id'] ? [(int) $row['profile_id']] : [];
+					$scope['files'] = $scope['profiles'];
+				}
 			}
+		} elseif ($this->written($user)) {
+			$scope['clients'] = [];
+			$scope['profiles'] = [];
+
+			foreach ($clientRows as $row) {
+				if ((string) $row['device_id'] === $user) {
+					$scope['clients'][] = (int) $row['id'];
+
+					if ((int) $row['profile_id']) {
+						$scope['profiles'][] = (int) $row['profile_id'];
+					}
+				}
+			}
+
+			$scope['profiles'] = array_values(array_unique($scope['profiles']));
+			$scope['files'] = $scope['profiles'];
+		} elseif ($this->written($profile)) {
+			$scope['clients'] = [];
+			$scope['users'] = [];
+
+			foreach ($clientRows as $row) {
+				if ((int) $row['profile_id'] === (int) $profile) {
+					$scope['clients'][] = (int) $row['id'];
+
+					if ((string) $row['device_id'] !== '') {
+						$scope['users'][] = (string) $row['device_id'];
+					}
+				}
+			}
+
+			$scope['users'] = array_values(array_unique($scope['users']));
+			$scope['files'] = [(int) $profile];
 		}
 
-		return $levels;
+		return [
+			$this->userLevel($scope['users'], $user),
+			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile),
+			$this->profileLevel($profileNames, $scope['profiles'], $profile),
+			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
+		];
 	}
 
 	/**
-	 * The module's own sections, which are the list page's tabs.
+	 * The module's own sections, for the bar over every page.
 	 *
-	 * This level is never empty and never unchosen: every page in the module
-	 * is in one of them.
+	 * Exactly one is active on every page: the branch the page is in, not the
+	 * URL's `tab` -- a resource page is in Profiles.
 	 *
-	 * @param string $section Section this page is in.
+	 * @param string $section clients|profiles|users|logs|bans|settings.
 	 *
-	 * @return array<string, mixed> One level.
+	 * @return array<int, array<string, mixed>> Each: key, text, href, active.
 	 */
-	private function sectionLevel($section)
+	public function sections($section)
 	{
+		// Users, Clients, Profiles in the order of the dropdowns under the bar.
 		$sections = [
+			'users' => _('Users'),
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
-			'users' => _('Users'),
 			'logs' => _('Logs'),
 			'bans' => _('Bans'),
 			'settings' => _('Settings'),
@@ -140,287 +173,283 @@ class Navigator extends Service
 			unset($sections['bans']);
 		}
 
-		$options = [];
+		$section = isset($sections[$section]) ? $section : 'users';
+		$bar = [];
 
-		foreach ($sections as $key => $label) {
-			$options[] = [
-				'text' => $label,
-				'note' => '',
+		foreach ($sections as $key => $text) {
+			$bar[] = [
+				'key' => $key,
+				'text' => $text,
 				'href' => '?display=oryk_provisioner&tab=' . $key,
 				'active' => $key === $section,
 			];
 		}
 
-		return [
-			'key' => 'section',
-			// Every section is a tab of the list page, so the list page is where they
-			// are all named -- the same URL the Provisioner crumb goes to.
-			'title' => [
-				'text' => _('Sections'),
-				'href' => '?display=oryk_provisioner',
-			],
-			'text' => $sections[$section],
-			'mono' => false,
-			'prompt' => _('Select a section'),
-			'search' => _('Search sections'),
-			'options' => $options,
-			// The module's sections are the module. There is no writing another one,
-			// so this level draws no add row.
-			'add' => null,
-		];
+		return $bar;
 	}
 
 	/**
-	 * Every client, by the MAC it is and the description it is known by.
+	 * Users: all of them, or the ones whose phones the viewed row is linked to.
 	 *
-	 * Twelve hex digits are exact and unreadable; a device description is readable
-	 * and not unique. The option carries both and the filter reads across the
-	 * pair, so a phone is found by whichever its owner has in mind.
-	 *
-	 * @param mixed $at Client id open here, 'new', or null.
+	 * @param array<int, string>|null $scope Extensions linked, or null for all.
+	 * @param string|null             $at    Extension being viewed, 'new', or null.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function clientLevel($at)
+	private function userLevel($scope, $at)
 	{
-		$options = [];
-		$text = '';
-
-		foreach ($this->clients->clientChoices() as $row) {
-			$id = (int) $row['id'];
-			$active = (string) $at === (string) $id;
-
-			// The MAC is optional, and a blank breadcrumb names nothing -- so a client
-			// without one reads as the dash every list already shows it as.
-			$mac = (string) $row['mac'];
-			$mac = $mac === '' ? '-' : $mac;
-
-			$options[] = [
-				'text' => $mac,
-				'note' => (string) (isset($row['description']) ? $row['description'] : ''),
-				'href' => '?display=oryk_provisioner&client=' . $id,
-				'active' => $active,
-			];
-
-			if ($active) {
-				$text = $mac;
-			}
-		}
-
-		return [
-			'key' => 'client',
-			'title' => [
-				'text' => _('Clients'),
-				'href' => '?display=oryk_provisioner&tab=clients',
-			],
-			'text' => $at === 'new' ? _('New client') : $text,
-			'mono' => true,
-			'prompt' => _('Select a client'),
-			'search' => _('Search clients'),
-			'options' => $options,
-			'add' => [
-				'text' => _('New client'),
-				'href' => '?display=oryk_provisioner&client=',
-				// On the page writing one, the add row is where you are -- so the level
-				// still has exactly one thing marked active.
-				'active' => $at === 'new',
-			],
-		];
-	}
-
-	/**
-	 * Every user, by number and name.
-	 *
-	 * @param mixed $at Extension open here, 'new', or null.
-	 *
-	 * @return array<string, mixed> One level.
-	 */
-	private function userLevel($at)
-	{
-		$options = [];
-		$text = '';
+		$rows = [];
 
 		foreach ($this->users->userChoices() as $row) {
 			$extension = (string) $row['extension'];
-			$active = (string) $at === $extension;
 
-			$options[] = [
+			$rows[] = [
+				'id' => $extension,
 				'text' => $extension,
 				'note' => (string) (isset($row['name']) ? $row['name'] : ''),
 				'href' => '?display=oryk_provisioner&user=' . rawurlencode($extension),
-				'active' => $active,
 			];
-
-			if ($active) {
-				$text = $extension;
-			}
 		}
 
-		return [
+		return $this->level($rows, $scope, $at, [
 			'key' => 'user',
-			'title' => [
-				'text' => _('Users'),
-				'href' => '?display=oryk_provisioner&tab=users',
-			],
-			'text' => $at === 'new' ? _('New user') : $text,
+			'title' => ['text' => _('Users'), 'href' => '?display=oryk_provisioner&tab=users'],
 			'mono' => true,
+			'new' => _('New user'),
 			'prompt' => _('Select a user'),
 			'search' => _('Search users'),
-			'options' => $options,
-			'add' => [
-				'text' => _('New user'),
-				'href' => '?display=oryk_provisioner&user=',
-				'active' => $at === 'new',
-			],
-		];
+			'none' => _('No user here'),
+			'add' => ['text' => _('New user'), 'href' => '?display=oryk_provisioner&user='],
+		]);
 	}
 
 	/**
-	 * Every ban, by address and jail. Empty, and with nowhere to add one, until
-	 * fail2ban can be asked.
+	 * Clients, by the MAC they are and the description they are known by.
 	 *
-	 * @param mixed $at Ban key (`jail/ip`) open here, 'new', or null.
+	 * A client without a MAC reads as the dash every list shows it as. Viewing a
+	 * user, a new client is written with that user's device already chosen.
+	 *
+	 * @param array<int, array<string, mixed>> $clientRows clientChoices().
+	 * @param array<int, int>|null             $scope      Ids linked, or null for all.
+	 * @param string|null                      $at         Client being viewed, 'new', or null.
+	 * @param string|null                      $user       Extension being viewed, or null.
+	 * @param string|null                      $profile    Profile being viewed, or null.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function banLevel($at)
+	private function clientLevel(array $clientRows, $scope, $at, $user, $profile)
 	{
-		$options = [];
-		$text = '';
+		$rows = [];
 
-		foreach ($this->bans->banChoices() as $row) {
-			$active = (string) $at === $row['id'];
+		foreach ($clientRows as $row) {
+			$mac = (string) $row['mac'];
 
-			$options[] = [
-				'text' => $row['ip'],
-				'note' => $row['jail'],
-				'href' => '?display=oryk_provisioner&jail=' . rawurlencode($row['jail']) . '&ban=' . rawurlencode($row['ip']),
-				'active' => $active,
+			$rows[] = [
+				'id' => (int) $row['id'],
+				'text' => $mac === '' ? '-' : $mac,
+				'note' => (string) (isset($row['description']) ? $row['description'] : ''),
+				'href' => '?display=oryk_provisioner&client=' . (int) $row['id'],
 			];
-
-			if ($active) {
-				$text = $row['ip'];
-			}
 		}
 
-		return [
-			'key' => 'ban',
-			'title' => [
-				'text' => _('Bans'),
-				'href' => '?display=oryk_provisioner&tab=bans',
-			],
-			'text' => $at === 'new' ? _('New ban') : $text,
+		// The list this level is drawn from: the viewed row's own Clients tab.
+		$list = '?display=oryk_provisioner&tab=clients';
+		$add = '?display=oryk_provisioner&client=';
+
+		if ($this->written($user)) {
+			$list = '?display=oryk_provisioner&user=' . rawurlencode($user) . '&tab=clients';
+			$add .= '&device_id=' . rawurlencode($user);
+		} elseif ($this->written($profile)) {
+			$list = '?display=oryk_provisioner&profile=' . (int) $profile . '&tab=clients';
+		}
+
+		return $this->level($rows, $scope, $at, [
+			'key' => 'client',
+			'title' => ['text' => _('Clients'), 'href' => $list],
 			'mono' => true,
-			'prompt' => _('Select a ban'),
-			'search' => _('Search bans'),
-			'options' => $options,
-			'add' => $this->bans->ready() ? [
-				'text' => _('New ban'),
-				'href' => '?display=oryk_provisioner&ban=',
-				'active' => $at === 'new',
-			] : null,
-		];
+			'new' => _('New client'),
+			'prompt' => _('Select a client'),
+			'search' => _('Search clients'),
+			'none' => _('No clients here'),
+			'add' => ['text' => _('New client'), 'href' => $add],
+		]);
 	}
 
 	/**
-	 * Every profile.
+	 * Profiles: all of them, or the ones the viewed row's phones use.
 	 *
-	 * @param mixed $at Profile id open here, 'new', or null.
+	 * @param array<int, string>   $profileNames Every profile's name, by id.
+	 * @param array<int, int>|null $scope        Ids linked, or null for all.
+	 * @param string|null          $at           Profile being viewed, 'new', or null.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function profileLevel($at)
+	private function profileLevel(array $profileNames, $scope, $at)
 	{
-		$options = [];
-		$text = '';
+		$rows = [];
 
-		foreach ($this->profiles->profileChoices() as $row) {
-			$id = (int) $row['id'];
-			$active = (string) $at === (string) $id;
-
-			$options[] = [
-				'text' => (string) $row['name'],
+		foreach ($profileNames as $id => $name) {
+			$rows[] = [
+				'id' => $id,
+				'text' => $name,
 				'note' => '',
 				'href' => '?display=oryk_provisioner&profile=' . $id,
+			];
+		}
+
+		return $this->level($rows, $scope, $at, [
+			'key' => 'profile',
+			'title' => ['text' => _('Profiles'), 'href' => '?display=oryk_provisioner&tab=profiles'],
+			'mono' => false,
+			'new' => _('New profile'),
+			'prompt' => _('Select a profile'),
+			'search' => _('Search profiles'),
+			'none' => _('No profile here'),
+			'add' => ['text' => _('New profile'), 'href' => '?display=oryk_provisioner&profile='],
+		]);
+	}
+
+	/**
+	 * The files of the profiles in scope.
+	 *
+	 * A file belongs to a profile and means nothing without one, so with no
+	 * profile in scope this level lists nothing and says so. With more than
+	 * one, each file carries its profile's name under it.
+	 *
+	 * @param array<int, string>   $profileNames Every profile's name, by id.
+	 * @param array<int, int>|null $profiles     Profiles whose files to list, or null.
+	 * @param string|null          $at           Resource being viewed, 'new', or null.
+	 * @param string|null          $client       Client being viewed, or null.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function resourceLevel(array $profileNames, $profiles, $at, $client)
+	{
+		$rows = [];
+		$unscoped = $profiles === null;
+		$empty = $unscoped ? _('Pick a profile to see its files') : _('No profile here');
+		$prompt = $profiles === null ? _('Select a profile first') : _('No profile here');
+		$profiles = (array) $profiles;
+
+		if ($profiles) {
+			$empty = _('Nothing here yet');
+			$prompt = _('Select a resource');
+		}
+
+		foreach ($profiles as $profileId) {
+			foreach ($this->resources->resourceChoices($profileId) as $row) {
+				$rows[] = [
+					'id' => (int) $row['id'],
+					'text' => (string) $row['name'],
+					'note' => count($profiles) > 1 ? (isset($profileNames[$profileId]) ? $profileNames[$profileId] : '') : '',
+					'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=' . (int) $row['id'],
+				];
+			}
+		}
+
+		$one = count($profiles) === 1 ? (int) reset($profiles) : 0;
+		$list = '';
+
+		// A client's Resources tab names each file as *that* phone asks for it.
+		if ($this->written($client) && $one) {
+			$list = '?display=oryk_provisioner&client=' . (int) $client . '&tab=resources';
+		} elseif ($one) {
+			$list = '?display=oryk_provisioner&profile=' . $one . '&tab=resources';
+		}
+
+		// Every file listed is in scope, so the level is never filtered again.
+		return $this->level($rows, null, $at, [
+			'key' => 'resource',
+			'title' => ['text' => _('Resources'), 'href' => $list],
+			'mono' => true,
+			'new' => _('New resource'),
+			'prompt' => $prompt,
+			'search' => _('Search resources'),
+			'empty' => $empty,
+			// No profile in scope is not zero files: there is nothing to count yet.
+			'count' => $unscoped ? null : count($rows),
+			'add' => $one ? ['text' => _('New resource'), 'href' => '?display=oryk_provisioner&profile=' . $one . '&resource='] : null,
+		]);
+	}
+
+	/**
+	 * One level, from every row of its kind and the scope it is narrowed to.
+	 *
+	 * The row being viewed is the active one. A scope of exactly one row makes
+	 * that row active too: it is the only thing this level can be, here.
+	 *
+	 * @param array<int, array<string, mixed>> $rows  Each: id, text, note, href.
+	 * @param array<int, mixed>|null           $scope Ids to keep, or null for all.
+	 * @param string|null                      $at    Id being viewed, 'new', or null.
+	 * @param array<string, mixed>             $meta  key, title, mono, new,
+	 *                                                prompt, search, add, and
+	 *                                                none (what a scope with
+	 *                                                nothing in it says) or
+	 *                                                empty (said either way);
+	 *                                                count to override the
+	 *                                                options counted.
+	 *
+	 * @return array<string, mixed> One level, as views/partials/navigator.php reads it.
+	 */
+	private function level(array $rows, $scope, $at, array $meta)
+	{
+		$options = [];
+		$text = '';
+		$keep = $scope === null ? null : array_map('strval', $scope);
+
+		foreach ($rows as $row) {
+			$id = (string) $row['id'];
+
+			if ($keep !== null && !in_array($id, $keep, true)) {
+				continue;
+			}
+
+			$active = $at === $id || ($keep !== null && count($keep) === 1);
+
+			$options[] = [
+				'text' => $row['text'],
+				'note' => $row['note'],
+				'href' => $row['href'],
 				'active' => $active,
 			];
 
 			if ($active) {
-				$text = (string) $row['name'];
+				$text = $row['text'];
 			}
 		}
 
+		$add = $meta['add'];
+
+		if ($add !== null) {
+			// On the page writing one, the add row is where you are.
+			$add['active'] = $at === 'new';
+		}
+
 		return [
-			'key' => 'profile',
-			'title' => [
-				'text' => _('Profiles'),
-				'href' => '?display=oryk_provisioner&tab=profiles',
-			],
-			'text' => $at === 'new' ? _('New profile') : $text,
-			'mono' => false,
-			'prompt' => _('Select a profile'),
-			'search' => _('Search profiles'),
+			'key' => $meta['key'],
+			'title' => $meta['title'],
+			'text' => $at === 'new' ? $meta['new'] : $text,
+			'mono' => $meta['mono'],
+			// A scope with nothing in it says so on the crumb, not only in its menu.
+			'prompt' => (!$options && $keep !== null) ? $meta['none'] : $meta['prompt'],
+			'search' => $meta['search'],
 			'options' => $options,
-			'add' => [
-				'text' => _('New profile'),
-				'href' => '?display=oryk_provisioner&profile=',
-				'active' => $at === 'new',
-			],
+			'count' => array_key_exists('count', $meta) ? $meta['count'] : count($options),
+			// What an empty menu says: nothing linked is not the same as nothing yet.
+			'empty' => isset($meta['empty']) ? $meta['empty'] : ($keep !== null ? $meta['none'] : _('Nothing here yet')),
+			'add' => $add,
 		];
 	}
 
 	/**
-	 * The files one profile serves.
+	 * Whether an id names a row that has been written, rather than 'new' or nothing.
 	 *
-	 * Narrowed to the profile above it, the way everything about a resource is: an
-	 * id belonging to another profile names nothing at this URL.
+	 * @param string|null $id Id from `$at`.
 	 *
-	 * @param int   $profileId Profile whose files these are.
-	 * @param mixed $at        Resource id open here, 'new', or null.
-	 *
-	 * @return array<string, mixed> One level.
+	 * @return bool Written.
 	 */
-	private function resourceLevel($profileId, $at)
+	private function written($id)
 	{
-		$options = [];
-		$text = '';
-
-		foreach ($this->resources->resourceChoices($profileId) as $row) {
-			$id = (int) $row['id'];
-			$active = (string) $at === (string) $id;
-
-			$options[] = [
-				'text' => (string) $row['name'],
-				'note' => '',
-				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=' . $id,
-				'active' => $active,
-			];
-
-			if ($active) {
-				$text = (string) $row['name'];
-			}
-		}
-
-		return [
-			'key' => 'resource',
-			// The only level whose list is not a tab of the module's own list page: a
-			// profile's files are listed on that profile.
-			'title' => [
-				'text' => _('Resources'),
-				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&tab=resources',
-			],
-			'text' => $at === 'new' ? _('New resource') : $text,
-			'mono' => true,
-			'prompt' => _('Select a resource'),
-			'search' => _('Search resources'),
-			'options' => $options,
-			// Narrowed to its profile like everything else here: a file is written to
-			// the profile above it or to nothing at all.
-			'add' => [
-				'text' => _('New resource'),
-				'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=',
-				'active' => $at === 'new',
-			],
-		];
+		return $id !== null && $id !== '' && $id !== 'new';
 	}
 }

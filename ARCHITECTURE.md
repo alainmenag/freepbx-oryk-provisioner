@@ -173,7 +173,6 @@ views/                       one view per page, plus views/partials/
 | `Matcher` | a filename is a MAC and a name, read both ways |
 | `Previews` | which filename does this phone ask this file by |
 | `ProvisioningLog` | one row per request the endpoint answered |
-| `Counts` | how many rows a tab is labelled with |
 | `Endpoint` | answering a provisioning request, and ending it |
 | `Pages` | which URL is which page |
 | `Installer` | install, uninstall, the web-root symlink, registering the settings |
@@ -417,8 +416,7 @@ argument, 69 fail2ban down.
   every age is subtracted on the helper's `now` -- the same reasoning as Last
   Seen: the browser's clock is not the PBX's.
 - **Each helper call costs a sudo and two Python start-ups.** `Fail2ban` asks
-  each read once per request, and `Counts` asks for the ban count only for the
-  unnarrowed scope -- the module page, the one strip with a Bans tab.
+  each read once per request, and nothing counts bans for a badge.
 - **A ban refuses** the requester's own address, loopback and unspecified
   addresses, and the PBX's own; a client's public address is warned about in
   the browser, not refused. **Unbanning** an address no longer banned succeeds:
@@ -433,6 +431,16 @@ argument, 69 fail2ban down.
   bounces an id that names no row *before any markup* -- a redirect out of
   `showPage()` would be too late to set a header. A user's key is its
   extension, so a renumbering save lands on a new address.
+- **Every page is topped the same way, and each strip means one thing.**
+  `views/partials/sections.php` is the module's sections, a bar on every page,
+  lit by the branch the page is in (a resource page is in Profiles).
+  `views/partials/navigator.php` is a row of four searchable dropdowns under
+  it -- Users, Clients, Profiles, Resources -- scoped by the row the page is
+  viewing (user 1-n client n-1 profile 1-n resource): each lists only what is
+  linked to that row, the viewed row's own level lists all of its kind with it
+  selected, and a linked level with exactly one row shows it selected. A page
+  viewing nothing (lists, Logs, Settings, Bans) scopes nothing. A tab strip is
+  only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
   rendered, and `views/partials/tabs.php` draws the rest as links. A tab with
   nothing behind it is not drawn. Nothing about tabs is scripted. The
@@ -455,8 +463,12 @@ argument, 69 fail2ban down.
   data-for="<id>">` beside the label is hovered, and then shows the one element
   with id `<id>-help` -- so help without that pair is never seen. A field with
   several paragraphs puts them in `.oryk-help-part` spans inside one block.
-- **Tab badges come from `Counts`, never from the table they label** -- a table
-  with something in its search box answers with the total of what matched.
+- **The only badges are on the navigator's dropdown titles** -- the number of
+  options that dropdown lists, from `Navigator`, so it always matches its menu
+  and is scoped like it. Neither the section bar nor a tab strip carries one,
+  and none is ever read off a table: a table with something in its search box
+  answers with the total of what matched. They are drawn with the page and not
+  refreshed in place.
 - **A table or column name written into SQL is interpolated, so it may never
   come from a request.** Sort columns are whitelisted and mapped; everything
   else is bound.

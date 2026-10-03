@@ -188,22 +188,6 @@ class Bans extends Service
 	}
 
 	/**
-	 * Every ban, sorted by address, for the navigator. Empty when not ready().
-	 *
-	 * @return array<int, array<string, mixed>> Rows: id, jail, ip.
-	 */
-	public function banChoices()
-	{
-		if (!$this->ready()) {
-			return [];
-		}
-
-		$answer = $this->fail2ban->bans();
-
-		return empty($answer['ok']) ? [] : self::page(self::rows($answer), 'ip', 'asc', '', 0, PHP_INT_MAX)['rows'];
-	}
-
-	/**
 	 * One ban, or null when it is not banned (any more) or the names are no good.
 	 *
 	 * @param string $jail Jail name.
