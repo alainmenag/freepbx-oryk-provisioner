@@ -33,21 +33,15 @@
  * tab draws what is missing and the command that fixes it instead of a table
  * -- see ARCHITECTURE.md, "Bans".
  *
- * @var string             $tab    Section to open on: clients|profiles|logs|users|bans|settings
+ * @var string             $tab    Section to open on, settled by Navigator::section()
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
  * @var array<string, mixed>              $fail2ban  Fail2ban::status() and its setup command, on the Bans tab
- * @var bool                              $bansEnabled ORYK_FAIL2BAN: whether the Bans tab is drawn at all
  */
 
-$tab = in_array($tab ?? '', ['clients', 'profiles', 'logs', 'bans', 'settings'], true) ? $tab : 'users';
+$tab = (string) ($tab ?? 'users');
 $fail2ban = isset($fail2ban) && is_array($fail2ban) ? $fail2ban : [];
-$bansEnabled = !isset($bansEnabled) || $bansEnabled;
-
-if ($tab === 'bans' && !$bansEnabled) {
-	$tab = 'users';
-}
 ?>
 <style>
 	.flex {

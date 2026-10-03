@@ -189,26 +189,6 @@ class Fail2ban extends Service
 	}
 
 	/**
-	 * How many addresses are banned across every jail. Zero when it cannot be asked.
-	 *
-	 * Nothing calls it until bans are counted again. One
-	 * helper call and no status() first: a helper that is not there answers no
-	 * faster either way.
-	 *
-	 * @return int Addresses banned.
-	 */
-	public function count()
-	{
-		if (!$this->enabled() || !is_file(self::HELPER)) {
-			return 0;
-		}
-
-		$answer = $this->run(['count']);
-
-		return !empty($answer['ok']) ? (int) ($answer['count'] ?? 0) : 0;
-	}
-
-	/**
 	 * Ban one address in one jail.
 	 *
 	 * @param string $jail A jail name.

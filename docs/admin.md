@@ -4,10 +4,10 @@
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
-Every page is topped by the same bar of sections -- Users, Clients, Profiles,
+Every page is topped by the same bar of sections — Users, Clients, Profiles,
 Logs, Bans, Settings — with the one you are in underlined, so any section is
-one click away from anywhere. Under it is a row of searchable dropdowns --
-Users, Clients, Profiles, Resources -- narrowed to whatever you are looking at:
+one click away from anywhere. Under it is a row of searchable dropdowns —
+Users, Clients, Profiles, Resources — narrowed to whatever you are looking at:
 on a profile, Clients lists that profile's clients and Users the people they
 belong to; on a client, its user and its profile are already picked and
 Resources lists the files it is served. The dropdown for the thing you are on

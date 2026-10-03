@@ -378,8 +378,8 @@ ban cannot be edited, so an existing one has Unban and Close and no Save.
 
 **`ORYK_FAIL2BAN`** (a [setting](#settings), on by default) switches the whole
 thing. `Fail2ban::enabled()` is the one place it is read: off, every call
-answers not-ok without running sudo and `status()` is `disabled`, and `Pages`,
-`Navigator` and `views/admin.php` leave the tab and the section out. It does
+answers not-ok without running sudo and `status()` is `disabled`, and
+`Navigator::section()` leaves the section out of the bar and the list. It does
 not touch the helper or the sudo rule; `--remove` does. `Settings::get()`
 answers a setting's default until install has registered it, so new files on a
 box not yet upgraded do not read it as off.

@@ -458,19 +458,13 @@ class Pages extends Service
 	 */
 	private function showList($tab = null)
 	{
-		$tab = $tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab;
-		$tabs = $this->bans->enabled()
-			? ['clients', 'profiles', 'logs', 'bans', 'settings']
-			: ['clients', 'profiles', 'logs', 'settings'];
-		$tab = in_array($tab, $tabs, true) ? $tab : 'users';
+		$tab = $this->navigator->section($tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab);
 
 		return load_view(dirname(__DIR__) . '/views/admin.php', [
 			'tab' => $tab,
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
 				: [],
-			// Off on the Settings tab, the Bans tab is not drawn at all.
-			'bansEnabled' => $this->bans->enabled(),
 			// What the Bans tab draws in place of its table until fail2ban can be asked.
 			'fail2ban' => $tab === 'bans'
 				? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()]

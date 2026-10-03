@@ -158,25 +158,10 @@ class Navigator extends Service
 	 */
 	public function sections($section)
 	{
-		// Users, Clients, Profiles in the order of the dropdowns under the bar.
-		$sections = [
-			'users' => _('Users'),
-			'clients' => _('Clients'),
-			'profiles' => _('Profiles'),
-			'logs' => _('Logs'),
-			'bans' => _('Bans'),
-			'settings' => _('Settings'),
-		];
-
-		// Switched off on the Settings tab, Bans is not a section.
-		if (!$this->bans->enabled()) {
-			unset($sections['bans']);
-		}
-
-		$section = isset($sections[$section]) ? $section : 'users';
+		$section = $this->section($section);
 		$bar = [];
 
-		foreach ($sections as $key => $text) {
+		foreach ($this->sectionNames() as $key => $text) {
 			$bar[] = [
 				'key' => $key,
 				'text' => $text,
@@ -186,6 +171,49 @@ class Navigator extends Service
 		}
 
 		return $bar;
+	}
+
+	/**
+	 * The section a request names, if it is one: else the first, Users.
+	 *
+	 * The one place that decides, so the list page renders the pane the bar
+	 * lights -- a section switched off, or no section at all, is Users in both.
+	 *
+	 * @param string $section Section asked for.
+	 *
+	 * @return string A section that exists.
+	 */
+	public function section($section)
+	{
+		$names = $this->sectionNames();
+
+		return isset($names[$section]) ? (string) $section : (string) key($names);
+	}
+
+	/**
+	 * Every section there is, in the bar's order, by key.
+	 *
+	 * Users, Clients, Profiles first, in the order of the dropdowns under the bar.
+	 * Bans is not a section while it is switched off on the Settings tab.
+	 *
+	 * @return array<string, string> Names, by key.
+	 */
+	private function sectionNames()
+	{
+		$sections = [
+			'users' => _('Users'),
+			'clients' => _('Clients'),
+			'profiles' => _('Profiles'),
+			'logs' => _('Logs'),
+			'bans' => _('Bans'),
+			'settings' => _('Settings'),
+		];
+
+		if (!$this->bans->enabled()) {
+			unset($sections['bans']);
+		}
+
+		return $sections;
 	}
 
 	/**
