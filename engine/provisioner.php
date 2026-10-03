@@ -115,9 +115,8 @@ if ($user !== null && $pass !== null) {
 
 // --- OPEN PROVISIONING ---
 
-// The all-zero MAC, while ORYK_PROVISIONING is OPEN, is answered by its
-// credentials -- see Endpoint::openProvision(). Settings::get() falls back to
-// CLOSED when the setting is not registered yet, so this fails closed.
+// See Endpoint::openProvision(). Settings::get() returns CLOSED for an
+// unregistered setting, so this fails closed.
 if ($provisioning === 'OPEN'
 	&& \FreePBX\Modules\Oryk_Provisioner\Mac::normalize($mac) === \FreePBX\Modules\Oryk_Provisioner\Mac::OPEN
 	&& in_array($method, ['GET', 'HEAD', 'PUT'], true)) {

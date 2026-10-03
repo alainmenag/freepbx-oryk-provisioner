@@ -16,9 +16,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  */
 class Settings extends Service
 {
-	/**
-	 * The PBX-wide hostname.
-	 */
+	/** The PBX-wide hostname. */
 	const HOSTNAME = 'ORYK_HOSTNAME';
 
 	/**

@@ -263,13 +263,9 @@ class Clients extends Service
 	/**
 	 * The client a device is provisioned as, made when it has none.
 	 *
-	 * Only a client on an internal MAC counts: one on a real phone's MAC
-	 * stands for that phone and is not handed to anything else asking. A new
-	 * one is made by saveClient() as the editor makes one with a blank MAC --
-	 * enabled, no profile -- with $token. A found one is given $token when
-	 * the one it holds no longer verifies: the
-	 * caller has just logged in with it, and a password changed in UCP
-	 * would otherwise lock the phone out.
+	 * Only a client on an internal MAC counts; one on a real phone's MAC is
+	 * that phone's. A found one whose token no longer verifies is given
+	 * $token, so a password changed in UCP does not lock the phone out.
 	 *
 	 * @param string      $deviceId FreePBX device id.
 	 * @param string|null $token    Token as typed, user:password; null for none.
@@ -659,8 +655,7 @@ class Clients extends Service
 	 * nothing on the system can account for -- and MySQL would hand the same id to
 	 * the next client written, which would inherit them.
 	 *
-	 * So do its rows in the provisioning log, found by its MAC -- which is how
-	 * rows from before it was added go too, and why the MAC is read first.
+	 * So do its provisioning-log rows, found by MAC, so the MAC is read first.
 	 *
 	 * @param mixed $id Client id.
 	 *

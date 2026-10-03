@@ -397,10 +397,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/**
 	 * Answer a request for the all-zero MAC by its credentials, and end the
-	 * request.
-	 *
-	 * Called by engine/provisioner.php while ORYK_PROVISIONING is OPEN. See
-	 * Endpoint::openProvision().
+	 * request. See Endpoint::openProvision().
 	 *
 	 * @param string|null $username  Basic username offered.
 	 * @param string|null $password  Basic password offered.

@@ -8,8 +8,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * The vendor a User-Agent names.
  *
  * The name is what a profile is looked up by when a client has none of its
- * own -- see Endpoint::resolveRequest(). Static because nothing here needs
- * anything.
+ * own; see Endpoint::resolveRequest().
  */
 class Vendor
 {

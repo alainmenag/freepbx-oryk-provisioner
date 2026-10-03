@@ -268,21 +268,17 @@ class Users extends Service
 	/**
 	 * The user a phone's credentials name, made from them when there is none.
 	 *
-	 * The credentials are a User Manager login. One that logs in answers with
-	 * the account's default extension. A username no account holds makes a
-	 * user the way the editor does with a blank Extension -- next free
-	 * number, device, extension, account and mailbox -- and gives that account
-	 * the username and password, as the extension form's "Use Custom
-	 * Username" does. The SIP secret is Core's generated one, not the
-	 * password. A username held under another password is refused.
+	 * A User Manager login answers with its account's default extension. A
+	 * username no account holds makes a user as the editor does with a blank
+	 * Extension, and its account is given that username and password. The SIP
+	 * secret stays Core's generated one.
 	 *
 	 * @param mixed $username Username offered.
 	 * @param mixed $password Password offered.
 	 *
-	 * @return array{extension: string, created: bool}|null The user, or null
-	 *                                                       when the username
-	 *                                                       is held under
-	 *                                                       another password.
+	 * @return array{extension: string, created: bool}|null Null when the
+	 *                                                       username is held
+	 *                                                       under another password.
 	 *
 	 * @throws \InvalidArgumentException When the username or password is unusable.
 	 * @throws \RuntimeException         When User Manager is not available, or

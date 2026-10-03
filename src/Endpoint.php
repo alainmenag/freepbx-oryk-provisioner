@@ -122,10 +122,8 @@ class Endpoint extends Service
 	/**
 	 * Answer a request for Mac::OPEN by its credentials, and end the request.
 	 *
-	 * Called by engine/provisioner.php while ORYK_PROVISIONING is OPEN. The
-	 * request is served, or received, as the client openClient() finds or
-	 * makes, with the all-zero MAC in the filename swapped for that client's:
-	 * 000000000000.cfg is asked of it as [its mac].cfg.
+	 * Served or received as the client openClient() returns, with the all-zero
+	 * MAC in the filename swapped for that client's.
 	 *
 	 * @param string|null $username  Basic username offered.
 	 * @param string|null $password  Basic password offered.
@@ -157,10 +155,8 @@ class Endpoint extends Service
 	/**
 	 * The client a request for Mac::OPEN is answered as, made when need be.
 	 *
-	 * Users::findOrCreate(), then Clients::findOrCreateForDevice(). Any
-	 * address may ask. A username held under another password is written to
-	 * FreePBX's security log as a GUI login failure is, so the jail that
-	 * watches that log bans the address.
+	 * A username held under another password is written to FreePBX's security
+	 * log as a GUI login failure, so fail2ban bans the address.
 	 *
 	 * @param string|null $username Basic username offered.
 	 * @param string|null $password Basic password offered.

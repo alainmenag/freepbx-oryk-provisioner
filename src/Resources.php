@@ -26,12 +26,7 @@ class Resources extends Service
 	 */
 	const TYPES = ['template', 'file', 'log'];
 
-	/**
-	 * What a new template resource holds when it is created with no text of its
-	 * own -- which is every one made from the page, since the box is not on it yet.
-	 *
-	 * @var string
-	 */
+	/** @var string What a template resource created with no text holds. */
 	const DEFAULT_TEMPLATE = "MAC={{device.mac}}\nHOST={{server.host}}\nPORT={{server.port}}\nUSER={{device.id}}\nSECRET={{device.secret}}\nNAME={{extension.name}}";
 
 	/** @var Profiles */
