@@ -598,7 +598,8 @@ the helper turns it into epochs and the sync writes them with
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?ban=`. The
+  `?ban=`, and `?log=` for one provisioning log entry, which is read and
+  deleted but never edited or created. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
   `showPage()` would be too late to set a header. A user's key is its
@@ -606,12 +607,22 @@ the helper turns it into epochs and the sync writes them with
 - **Every page is topped the same way, and each strip means one thing.**
   `views/partials/sections.php` is the module's sections, a bar on every page,
   lit by the branch the page is in (a resource page is in Profiles).
-  `views/partials/navigator.php` is a row of four searchable dropdowns under
-  it -- Users, Clients, Profiles, Resources -- scoped by the row the page is
-  viewing (user 1-n client n-1 profile 1-n resource): each lists only what is
-  linked to that row, the viewed row's own level lists all of its kind with it
-  selected, and a linked level with exactly one row shows it selected. A page
-  viewing nothing (lists, Logs, Settings, Bans) scopes nothing. A tab strip is
+  `views/partials/navigator.php` is a row of six searchable dropdowns under
+  it -- Users, Clients, Profiles, Resources, Logs, Bans -- scoped by the row the
+  page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
+  what is linked to that row, the viewed row's own level lists all of its kind
+  with it selected, and a linked level with exactly one row shows it selected.
+  Logs are linked by MAC: a client's own, a user's or profile's clients'. Logs
+  lists only the newest `Navigator::LOG_LIMIT` entries in scope, and its badge
+  counts those. Bans lists the bans that *apply* to the viewed row
+  (`Bans::applies()`, check()'s test on one row): every subject a ban sets must
+  be one of the row's requests', a client's address being the public one it
+  was last seen at; a user or profile is its clients' requests plus the bare
+  user or profile. From the other side, a ban scopes the clients it applies to
+  and their users, profiles and logs (an address-only ban: logs from that
+  address); a log entry scopes like the client with its MAC, and its Bans are
+  those that apply to that request. A page viewing nothing (lists, Settings)
+  scopes nothing. A tab strip is
   only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
   rendered, and `views/partials/tabs.php` draws the rest as links. A tab with

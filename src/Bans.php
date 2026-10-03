@@ -187,6 +187,54 @@ class Bans extends Service
 	}
 
 	/**
+	 * Every ban not marked deleted, for the navigator: expired ones too, the
+	 * way the Bans tab lists them. Unpaged, like clientChoices().
+	 *
+	 * @return array<int, array<string, mixed>> Rows as banRow() hands them out.
+	 */
+	public function banChoices()
+	{
+		try {
+			$stmt = $this->db->prepare("{$this->select()} {$this->from()} WHERE b.deleted_at IS NULL ORDER BY b.created_at DESC, b.id DESC");
+			$stmt->execute();
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return [];
+		}
+
+		return $this->described($rows);
+	}
+
+	/**
+	 * Whether a ban applies to a request with these subjects: the test check()
+	 * makes in SQL, made on one row, and ignoring whether the row is in force.
+	 *
+	 * A subject the request does not have matches only a row leaving it empty,
+	 * so an address ban applies to a client only through an address it is known by.
+	 *
+	 * @param array<string, mixed> $row      The subject columns, "any" as null or as ANY.
+	 * @param array<string, mixed> $subjects As passed to check().
+	 *
+	 * @return bool True when the row sets a subject and every one it sets is
+	 *              one of the request's.
+	 */
+	public static function applies(array $row, array $subjects)
+	{
+		$subjects = self::subjects($subjects);
+		$set = self::setSubjects($row);
+
+		foreach ($set as $subject) {
+			$value = self::value($subject, $row[self::SUBJECTS[$subject]]);
+
+			if ($value === null || !in_array($value, $subjects[$subject] ?? [], true)) {
+				return false;
+			}
+		}
+
+		return (bool) $set;
+	}
+
+	/**
 	 * Whether a request is refused, and by which row.
 	 *
 	 * Every row in force that matches is read in one query -- each subject a row

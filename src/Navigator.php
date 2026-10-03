@@ -9,22 +9,14 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * Two halves. sections() is the module's top level, drawn as the bar over
  * every page by views/partials/sections.php. levels() is the row of dropdowns
- * views/partials/navigator.php draws under it: Users, Clients, Profiles and
- * Resources, always all four, always in that order -- who, which phone, what
- * configuration, which file.
+ * views/partials/navigator.php draws under it: Users, Clients, Profiles,
+ * Resources, Logs and Bans, always all six, always in that order -- who, which
+ * phone, what configuration, which file, what it asked, what refuses it.
  *
- * The four are linked: a user has clients, a client has one profile, a profile
- * has clients and files. The page being viewed sets the scope, and three rules
- * decide what each dropdown lists:
- *
- *   - a level lists only what is linked to the row being viewed;
- *   - the level *of* that row lists all of its kind, the row selected, so
- *     moving sideways is still one pick;
- *   - a linked level with exactly one row in it shows that row selected.
- *
- * Nothing viewed -- a list page, Logs, Settings, Bans -- scopes nothing, and a
- * new row has no links yet, so it scopes nothing either. Choosing an option is
- * a page load to that row, and the row of dropdowns re-scopes around it.
+ * The page being viewed sets the scope; ARCHITECTURE.md, "Conventions that
+ * hold everywhere", has the rules. A new row has no links yet, so it scopes
+ * nothing. Choosing an option is a page load to that row, and the row of
+ * dropdowns re-scopes around it.
  *
  * Two keys are places rather than values, and are built here because only the
  * level knows what they cost:
@@ -47,13 +39,22 @@ class Navigator extends Service
 	/** @var Resources */
 	private $resources;
 
+	/** The most log entries the Logs level lists: the newest, in scope. */
+	const LOG_LIMIT = 100;
+
 	/** @var Users */
 	private $users;
+
+	/** @var ProvisioningLog */
+	private $requestLog;
+
+	/** @var Bans */
+	private $bans;
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans)
 	{
 		parent::__construct($freepbx);
 
@@ -61,18 +62,21 @@ class Navigator extends Service
 		$this->profiles = $profiles;
 		$this->resources = $resources;
 		$this->users = $users;
+		$this->requestLog = $requestLog;
+		$this->bans = $bans;
 	}
 
 	/**
-	 * The four dropdowns, scoped by the row a page is viewing.
+	 * The six dropdowns, scoped by the row a page is viewing.
 	 *
-	 * `$at` names that row: `user` (an extension), `client`, `profile`, or
-	 * `profile` and `resource` together. Each is an id, or 'new' on a page
-	 * writing one that does not exist yet. Empty on a page viewing no row.
+	 * `$at` names that row: `user` (an extension), `client`, `profile`,
+	 * `profile` and `resource` together, `log` or `ban`. Each is an id, or 'new'
+	 * on a page writing one that does not exist yet. Empty on a page viewing no row.
 	 *
 	 * @param array<string, mixed> $at Row being viewed.
 	 *
-	 * @return array<int, array<string, mixed>> Users, clients, profiles, resources.
+	 * @return array<int, array<string, mixed>> Users, clients, profiles,
+	 *                                           resources, logs, bans.
 	 */
 	public function levels(array $at = [])
 	{
@@ -80,8 +84,11 @@ class Navigator extends Service
 		$client = isset($at['client']) ? (string) $at['client'] : null;
 		$profile = isset($at['profile']) ? (string) $at['profile'] : null;
 		$resource = isset($at['resource']) ? (string) $at['resource'] : null;
+		$log = isset($at['log']) ? (string) $at['log'] : null;
+		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 
 		$clientRows = $this->clients->clientChoices();
+		$banRows = $this->bans->banChoices();
 		$profileNames = [];
 
 		foreach ($this->profiles->profileChoices() as $row) {
@@ -89,8 +96,15 @@ class Navigator extends Service
 		}
 
 		// null is "not scoped": the level lists everything. An array is the ids
-		// linked to the row being viewed, and may be empty.
-		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null];
+		// linked to the row being viewed, and may be empty. Logs are scoped by
+		// MAC, and by address in `ip`.
+		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'logs' => null, 'bans' => null];
+		$ip = null;
+		$entry = null;
+
+		// What the viewed row's requests would be, for Bans::applies(); null
+		// where the Bans level is not scoped.
+		$requests = null;
 
 		if ($this->written($client)) {
 			foreach ($clientRows as $row) {
@@ -98,15 +112,21 @@ class Navigator extends Service
 					$scope['users'] = (string) $row['device_id'] !== '' ? [(string) $row['device_id']] : [];
 					$scope['profiles'] = (int) $row['profile_id'] ? [(int) $row['profile_id']] : [];
 					$scope['files'] = $scope['profiles'];
+					$scope['logs'] = $this->macs([$row]);
+					$requests = [$this->subjects($row)];
 				}
 			}
 		} elseif ($this->written($user)) {
 			$scope['clients'] = [];
 			$scope['profiles'] = [];
+			$linked = [];
+			$requests = [['user' => $user]];
 
 			foreach ($clientRows as $row) {
 				if ((string) $row['device_id'] === $user) {
 					$scope['clients'][] = (int) $row['id'];
+					$linked[] = $row;
+					$requests[] = $this->subjects($row);
 
 					if ((int) $row['profile_id']) {
 						$scope['profiles'][] = (int) $row['profile_id'];
@@ -116,13 +136,18 @@ class Navigator extends Service
 
 			$scope['profiles'] = array_values(array_unique($scope['profiles']));
 			$scope['files'] = $scope['profiles'];
+			$scope['logs'] = $this->macs($linked);
 		} elseif ($this->written($profile)) {
 			$scope['clients'] = [];
 			$scope['users'] = [];
+			$linked = [];
+			$requests = [['profile' => $profile]];
 
 			foreach ($clientRows as $row) {
 				if ((int) $row['profile_id'] === (int) $profile) {
 					$scope['clients'][] = (int) $row['id'];
+					$linked[] = $row;
+					$requests[] = $this->subjects($row);
 
 					if ((string) $row['device_id'] !== '') {
 						$scope['users'][] = (string) $row['device_id'];
@@ -132,6 +157,50 @@ class Navigator extends Service
 
 			$scope['users'] = array_values(array_unique($scope['users']));
 			$scope['files'] = [(int) $profile];
+			$scope['logs'] = $this->macs($linked);
+		} elseif ($this->written($log)) {
+			// A request is scoped like the client that has its MAC now, if any.
+			$entry = $this->requestLog->logRow($log);
+			$owner = null;
+
+			foreach ($clientRows as $row) {
+				if ($entry && (string) $row['id'] === (string) $entry['client_id']) {
+					$owner = $row;
+				}
+			}
+
+			$scope['clients'] = $owner ? [(int) $owner['id']] : [];
+			$scope['users'] = ($owner && (string) $owner['device_id'] !== '') ? [(string) $owner['device_id']] : [];
+			$scope['profiles'] = ($owner && (int) $owner['profile_id']) ? [(int) $owner['profile_id']] : [];
+			$scope['files'] = $scope['profiles'];
+
+			if ($entry) {
+				// Its own address rather than the one the client was last seen at.
+				$requests = [array_merge($owner ? $this->subjects($owner) : [], ['mac' => $entry['mac'], 'ip' => $entry['ip']])];
+			}
+		} elseif ($this->written($ban)) {
+			// The other way round: the clients this ban applies to, and what
+			// they are linked to, plus anything the ban names that has no client.
+			foreach ($banRows as $row) {
+				if ((string) $row['id'] === $ban) {
+					$scope = $this->banScope($row, $clientRows) + $scope;
+					$ip = $row['ip'] !== null ? (string) $row['ip'] : null;
+				}
+			}
+		}
+
+		if ($requests !== null) {
+			$scope['bans'] = [];
+
+			foreach ($banRows as $row) {
+				foreach ($requests as $subjects) {
+					if (Bans::applies($row, $subjects)) {
+						$scope['bans'][] = (int) $row['id'];
+
+						break;
+					}
+				}
+			}
 		}
 
 		return [
@@ -139,6 +208,8 @@ class Navigator extends Service
 			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile),
 			$this->profileLevel($profileNames, $scope['profiles'], $profile),
 			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
+			$this->logLevel($scope['logs'], $ip, $log, $entry, $client, $clientRows),
+			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $entry),
 		];
 	}
 
@@ -233,7 +304,6 @@ class Navigator extends Service
 			'title' => ['text' => _('Users'), 'href' => '?display=oryk_provisioner&tab=users'],
 			'mono' => true,
 			'new' => _('New user'),
-			'prompt' => _('Select a user'),
 			'search' => _('Search users'),
 			'none' => _('No user here'),
 			'add' => ['text' => _('New user'), 'href' => '?display=oryk_provisioner&user='],
@@ -285,7 +355,6 @@ class Navigator extends Service
 			'title' => ['text' => _('Clients'), 'href' => $list],
 			'mono' => true,
 			'new' => _('New client'),
-			'prompt' => _('Select a client'),
 			'search' => _('Search clients'),
 			'none' => _('No clients here'),
 			'add' => ['text' => _('New client'), 'href' => $add],
@@ -319,7 +388,6 @@ class Navigator extends Service
 			'title' => ['text' => _('Profiles'), 'href' => '?display=oryk_provisioner&tab=profiles'],
 			'mono' => false,
 			'new' => _('New profile'),
-			'prompt' => _('Select a profile'),
 			'search' => _('Search profiles'),
 			'none' => _('No profile here'),
 			'add' => ['text' => _('New profile'), 'href' => '?display=oryk_provisioner&profile='],
@@ -345,12 +413,12 @@ class Navigator extends Service
 		$rows = [];
 		$unscoped = $profiles === null;
 		$empty = $unscoped ? _('Pick a profile to see its files') : _('No profile here');
-		$prompt = $profiles === null ? _('Select a profile first') : _('No profile here');
+		// No profile in scope: there is nothing to pick yet, and the crumb says so.
+		$prompt = $profiles === [] ? _('None') : null;
 		$profiles = (array) $profiles;
 
 		if ($profiles) {
 			$empty = _('Nothing here yet');
-			$prompt = _('Select a resource');
 		}
 
 		foreach ($profiles as $profileId) {
@@ -390,6 +458,255 @@ class Navigator extends Service
 	}
 
 	/**
+	 * The levels a ban scopes, from the clients it applies to.
+	 *
+	 * Users and Profiles add the user and profile the ban names, which may have
+	 * no client. Logs are the applied clients' MACs where the ban names a
+	 * client, user or profile; else its MAC; else any MAC, from its address.
+	 *
+	 * @param array<string, mixed>             $ban        Bans::banChoices() row.
+	 * @param array<int, array<string, mixed>> $clientRows clientChoices().
+	 *
+	 * @return array<string, mixed> users, clients, profiles, files, logs.
+	 */
+	private function banScope(array $ban, array $clientRows)
+	{
+		$applied = [];
+
+		foreach ($clientRows as $row) {
+			if (Bans::applies($ban, $this->subjects($row))) {
+				$applied[] = $row;
+			}
+		}
+
+		$users = $ban['extension'] !== null ? [(string) $ban['extension']] : [];
+		$profiles = $ban['profile_id'] !== null ? [(int) $ban['profile_id']] : [];
+		$clients = [];
+
+		foreach ($applied as $row) {
+			$clients[] = (int) $row['id'];
+
+			if ((string) $row['device_id'] !== '') {
+				$users[] = (string) $row['device_id'];
+			}
+
+			if ((int) $row['profile_id']) {
+				$profiles[] = (int) $row['profile_id'];
+			}
+		}
+
+		$profiles = array_values(array_unique($profiles));
+		$logs = null;
+
+		if ($ban['client_id'] !== null || $ban['extension'] !== null || $ban['profile_id'] !== null) {
+			$logs = $this->macs($applied);
+		} elseif ($ban['mac'] !== null) {
+			$logs = [(string) $ban['mac']];
+		}
+
+		return [
+			'users' => array_values(array_unique($users)),
+			'clients' => $clients,
+			'profiles' => $profiles,
+			'files' => $profiles,
+			'logs' => $logs,
+		];
+	}
+
+	/**
+	 * A client's requests as Bans::applies() reads them: the address is the
+	 * public one it was last seen at.
+	 *
+	 * @param array<string, mixed> $row clientChoices() row.
+	 *
+	 * @return array<string, mixed> client, user, mac, profile, ip.
+	 */
+	private function subjects(array $row)
+	{
+		return [
+			'client' => $row['id'],
+			'user' => $row['device_id'],
+			'mac' => $row['mac'],
+			'profile' => $row['profile_id'],
+			'ip' => $row['public_ip'] ?? '',
+		];
+	}
+
+	/**
+	 * The MACs of some clients, the ones without one left out.
+	 *
+	 * @param array<int, array<string, mixed>> $rows clientChoices() rows.
+	 *
+	 * @return array<int, string> MACs, as the log stores them.
+	 */
+	private function macs(array $rows)
+	{
+		$macs = [];
+
+		foreach ($rows as $row) {
+			if ((string) $row['mac'] !== '') {
+				$macs[] = (string) $row['mac'];
+			}
+		}
+
+		return array_values(array_unique($macs));
+	}
+
+	/**
+	 * Log entries: the newest LOG_LIMIT in scope, each a page of its own.
+	 *
+	 * Already narrowed when read, so the level is never filtered again. On an
+	 * entry's page that entry is listed even when it is older than the rest.
+	 * Nothing writes an entry from here, so there is no add row.
+	 *
+	 * @param array<int, string>|null           $macs       MACs to keep, or null for any.
+	 * @param string|null                       $ip         Address to keep, or null for any.
+	 * @param string|null                       $at         Entry being viewed, or null.
+	 * @param array<string, mixed>|null         $entry      That entry's logRow(), or null.
+	 * @param string|null                       $client     Client being viewed, or null.
+	 * @param array<int, array<string, mixed>>  $clientRows clientChoices().
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function logLevel($macs, $ip, $at, $entry, $client, array $clientRows)
+	{
+		$found = $this->requestLog->logChoices($macs, $ip, self::LOG_LIMIT);
+		$listed = array_map(function ($row) {
+			return (string) $row['id'];
+		}, $found);
+
+		if ($entry && !in_array((string) $entry['id'], $listed, true)) {
+			$found[] = $entry;
+		}
+
+		$rows = [];
+
+		foreach ($found as $row) {
+			$method = (string) $row['method'];
+			$note = [(int) $row['status'] . ($method !== '' && $method !== 'GET' && $method !== 'HEAD' ? ' ' . $method : ''), (string) $row['created_at']];
+
+			// One MAC in scope says it once, on the crumb above, not on every row.
+			if ($macs === null || count($macs) > 1) {
+				$note[] = (string) $row['mac'];
+			}
+
+			if ((string) $row['ip'] !== '') {
+				$note[] = (string) $row['ip'];
+			}
+
+			$rows[] = [
+				'id' => (int) $row['id'],
+				'text' => (string) $row['filename'] !== '' ? (string) $row['filename'] : _('(main config)'),
+				'note' => implode(' · ', $note),
+				'href' => '?display=oryk_provisioner&log=' . (int) $row['id'],
+			];
+		}
+
+		$list = '?display=oryk_provisioner&tab=logs';
+
+		// A client's Logs tab is drawn only for a client with a MAC.
+		if ($this->written($client) && $macs) {
+			$list = '?display=oryk_provisioner&client=' . (int) $client . '&tab=logs';
+		}
+
+		return $this->level($rows, null, $at, [
+			'key' => 'log',
+			'title' => ['text' => _('Logs'), 'href' => $list],
+			'mono' => true,
+			'new' => '',
+			'prompt' => ($macs !== null && !$rows) ? _('None') : null,
+			'search' => _('Search logs'),
+			'empty' => $macs !== null ? _('No log entries here') : _('Nothing here yet'),
+			'add' => null,
+		]);
+	}
+
+	/**
+	 * Bans: all of them, or the ones that apply to the viewed row's requests.
+	 *
+	 * Each is named by what it names, with its state under it. Viewing a user,
+	 * client, profile or log entry, a new ban is written naming that.
+	 *
+	 * @param array<int, array<string, mixed>> $banRows Bans::banChoices().
+	 * @param array<int, int>|null             $scope   Ids that apply, or null for all.
+	 * @param string|null                      $at      Ban being viewed, 'new', or null.
+	 * @param string|null                      $user    Extension being viewed, or null.
+	 * @param string|null                      $client  Client being viewed, or null.
+	 * @param string|null                      $profile Profile being viewed, or null.
+	 * @param array<string, mixed>|null        $entry   Log entry being viewed, or null.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function banLevel(array $banRows, $scope, $at, $user, $client, $profile, $entry)
+	{
+		$states = ['banned' => _('Banned'), 'deny' => _('Deny'), 'allow' => _('Allow')];
+		$rows = [];
+
+		foreach ($banRows as $row) {
+			$names = [];
+
+			if ($row['client_id'] !== null) {
+				$names[] = sprintf(_('client %s'), (string) $row['client_label']);
+			}
+
+			if ($row['extension'] !== null) {
+				$names[] = sprintf(_('user %s'), (string) $row['extension']);
+			}
+
+			if ($row['mac'] !== null) {
+				$names[] = (string) $row['mac'];
+			}
+
+			if ($row['profile_id'] !== null) {
+				$names[] = sprintf(_('profile %s'), (string) ($row['profile_name'] ?: '#' . $row['profile_id']));
+			}
+
+			if ($row['ip'] !== null) {
+				$names[] = (string) $row['ip'];
+			}
+
+			$note = [$states[(string) $row['state']] ?? (string) $row['state']];
+
+			if (empty($row['active'])) {
+				$note[] = _('expired');
+			}
+
+			if ((string) $row['note'] !== '') {
+				$note[] = (string) $row['note'];
+			}
+
+			$rows[] = [
+				'id' => (int) $row['id'],
+				'text' => $names ? implode(', ', $names) : '#' . (int) $row['id'],
+				'note' => implode(' · ', $note),
+				'href' => '?display=oryk_provisioner&ban=' . (int) $row['id'],
+			];
+		}
+
+		$add = '?display=oryk_provisioner&ban=';
+
+		if ($this->written($client)) {
+			$add .= '&ban_client=' . (int) $client;
+		} elseif ($this->written($user)) {
+			$add .= '&ban_user=' . rawurlencode($user);
+		} elseif ($this->written($profile)) {
+			$add .= '&ban_profile=' . (int) $profile;
+		} elseif ($entry && (string) $entry['ip'] !== '') {
+			$add .= '&ban_ip=' . rawurlencode((string) $entry['ip']);
+		}
+
+		return $this->level($rows, $scope, $at, [
+			'key' => 'ban',
+			'title' => ['text' => _('Bans'), 'href' => '?display=oryk_provisioner&tab=bans'],
+			'mono' => false,
+			'new' => _('New ban'),
+			'search' => _('Search bans'),
+			'none' => _('No bans here'),
+			'add' => ['text' => _('New ban'), 'href' => $add],
+		]);
+	}
+
+	/**
 	 * One level, from every row of its kind and the scope it is narrowed to.
 	 *
 	 * The row being viewed is the active one. A scope of exactly one row makes
@@ -399,9 +716,13 @@ class Navigator extends Service
 	 * @param array<int, mixed>|null           $scope Ids to keep, or null for all.
 	 * @param string|null                      $at    Id being viewed, 'new', or null.
 	 * @param array<string, mixed>             $meta  key, title, mono, new,
-	 *                                                prompt, search, add, and
-	 *                                                none (what a scope with
-	 *                                                nothing in it says) or
+	 *                                                search, add, prompt (what
+	 *                                                the crumb says with nothing
+	 *                                                chosen, null or absent for
+	 *                                                "Select"), and
+	 *                                                none (what the menu of a
+	 *                                                scope with nothing in it
+	 *                                                says) or
 	 *                                                empty (said either way);
 	 *                                                count to override the
 	 *                                                options counted.
@@ -447,8 +768,9 @@ class Navigator extends Service
 			'title' => $meta['title'],
 			'text' => $at === 'new' ? $meta['new'] : $text,
 			'mono' => $meta['mono'],
-			// A scope with nothing in it says so on the crumb, not only in its menu.
-			'prompt' => (!$options && $keep !== null) ? $meta['none'] : $meta['prompt'],
+			// Every level asks the same way. A scope with nothing in it says None
+			// on the crumb; the menu under it says what is missing.
+			'prompt' => (!$options && $keep !== null) ? _('None') : (isset($meta['prompt']) ? $meta['prompt'] : _('Select')),
 			'search' => $meta['search'],
 			'options' => $options,
 			'count' => array_key_exists('count', $meta) ? $meta['count'] : count($options),

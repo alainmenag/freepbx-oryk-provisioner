@@ -127,6 +127,125 @@ class ProvisioningLog extends Service
 	}
 
 	/**
+	 * One entry, as its page shows it, or null when there is no such row.
+	 *
+	 * Joined to the client that has the MAC *now*, the way listLogs() is.
+	 *
+	 * @param mixed $id Entry id.
+	 *
+	 * @return array<string, mixed>|null The row, with client_id, description,
+	 *                                   device_id and profile_id.
+	 */
+	public function logRow($id)
+	{
+		if (!ctype_digit((string) $id)) {
+			return null;
+		}
+
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT l.id, l.mac, l.filename, l.status, l.message, l.method, l.ip, l.user_agent, l.created_at,
+					pc.id AS client_id, pc.device_id, pc.profile_id, d.description AS description
+				FROM `{$this->logsTable}` l
+					LEFT JOIN `{$this->clientsTable}` pc ON pc.mac = l.mac
+					LEFT JOIN devices d ON d.id = pc.device_id
+				WHERE l.id = :id"
+			);
+			$stmt->execute([':id' => (int) $id]);
+			$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return null;
+		}
+
+		return $row ?: null;
+	}
+
+	/**
+	 * The newest entries, for the navigator: at most `$limit`, newest first.
+	 *
+	 * Narrowed by MAC, by address, or both. An empty list of MACs is nothing
+	 * linked, and answers with no rows rather than every row.
+	 *
+	 * @param array<int, string>|null $macs  Stored MACs to keep, or null for any.
+	 * @param string|null             $ip    Address to keep, or null for any.
+	 * @param int                     $limit Most rows to answer with.
+	 *
+	 * @return array<int, array<string, mixed>> Rows: id, mac, filename, status,
+	 *                                          method, ip, created_at.
+	 */
+	public function logChoices($macs = null, $ip = null, $limit = 100)
+	{
+		if ($macs !== null && !$macs) {
+			return [];
+		}
+
+		$clauses = [];
+		$params = [];
+
+		if ($macs !== null) {
+			$names = [];
+
+			foreach (array_values(array_unique($macs)) as $i => $mac) {
+				$names[] = ':mac_' . $i;
+				$params[':mac_' . $i] = (string) $mac;
+			}
+
+			$clauses[] = 'mac IN (' . implode(', ', $names) . ')';
+		}
+
+		if ($ip !== null) {
+			$clauses[] = 'ip = :ip';
+			$params[':ip'] = (string) $ip;
+		}
+
+		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
+
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT id, mac, filename, status, method, ip, created_at
+				FROM `{$this->logsTable}`
+				$where
+				ORDER BY id DESC
+				LIMIT :limit"
+			);
+
+			foreach ($params as $key => $value) {
+				$stmt->bindValue($key, $value);
+			}
+
+			$stmt->bindValue(':limit', (int) $limit, PDO::PARAM_INT);
+			$stmt->execute();
+
+			return $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return [];
+		}
+	}
+
+	/**
+	 * Delete one entry.
+	 *
+	 * @param mixed $id Entry id.
+	 *
+	 * @return array<string, mixed> Status, or a message.
+	 */
+	public function deleteLog($id)
+	{
+		if (!ctype_digit((string) $id)) {
+			return ['status' => false, 'message' => _('That log entry no longer exists.')];
+		}
+
+		try {
+			$stmt = $this->db->prepare("DELETE FROM `{$this->logsTable}` WHERE id = :id");
+			$stmt->execute([':id' => (int) $id]);
+		} catch (\Exception $e) {
+			return ['status' => false, 'message' => _('The log entry could not be deleted.')];
+		}
+
+		return ['status' => true];
+	}
+
+	/**
 	 * Empty the log, or one client's part of it.
 	 *
 	 * Narrowed the same way the table is. A provisioning log grows by a row per

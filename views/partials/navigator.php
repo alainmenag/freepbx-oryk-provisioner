@@ -2,8 +2,8 @@
 /**
  * views/partials/navigator.php -- the row of dropdowns under the section bar.
  *
- * Users, Clients, Profiles, Resources, each scoped by the row the page is
- * viewing: on a profile, Clients lists that profile's clients. What is in
+ * Users, Clients, Profiles, Resources, Logs, Bans, each scoped by the row the
+ * page is viewing: on a profile, Clients lists that profile's clients. What is in
  * scope is Navigator's business (see src/Navigator.php); this only draws it.
  *
  * Every level is the same control: what it is now, and a searchable list of
@@ -67,6 +67,7 @@ $e = function ($value) {
 		margin: 0;
 		padding: 0;
 		background: none;
+		flex-wrap: wrap;
 		gap: 10px;
 	}
 	.oryk-nav .breadcrumb > li {
@@ -120,6 +121,13 @@ $e = function ($value) {
 	   shown as it is spelled, here as everywhere else in the module. */
 	.oryk-nav-mono {
 		font-family: monospace;
+	}
+
+	/* The same chevron on every crumb: what says it opens, whatever it reads. */
+	.oryk-nav .oryk-nav-caret {
+		margin-left: 6px;
+		vertical-align: 2px;
+		color: #999;
 	}
 
 	/* Nothing chosen at this level yet. An invitation, not a value. */
@@ -273,6 +281,7 @@ $e = function ($value) {
 					<span class="oryk-nav-text<?php echo $chosen ? $mono : ' oryk-nav-prompt'; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>">
 						<?php echo $e($chosen ? $level['text'] : $level['prompt']); ?>
 					</span>
+					<svg class="oryk-nav-caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5 3.5 5 7l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 				</a>
 
 				<ul class="dropdown-menu oryk-nav-menu">
@@ -323,7 +332,7 @@ $e = function ($value) {
 	 * the resource editor's file actions do -- and a crumb still saying the
 	 * old name is the page contradicting itself.
 	 *
-	 * @param string key  Level to write: user, client, profile, resource.
+	 * @param string key  Level to write: user, client, profile, resource, log, ban.
 	 * @param string text What it is called now.
 	 */
 	function orykNavText(key, text) {

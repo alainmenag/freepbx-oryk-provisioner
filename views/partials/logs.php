@@ -102,8 +102,11 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	var orykLogUnknown = <?php echo json_encode(_('Not associated')); ?>;
 	var orykLogMainConfig = <?php echo json_encode(_('(main config)')); ?>;
 
-	function formatLogTime(value) {
-		return value ? `<span class="oryk-log-time">${orykEscape(value)}</span>` : '-';
+	// The time is the link to the entry's own page.
+	function formatLogTime(value, row) {
+		const time = value ? orykEscape(value) : '-';
+
+		return `<a class="oryk-log-time" href="?display=oryk_provisioner&log=${encodeURIComponent(row.id)}">${time}</a>`;
 	}
 
 	// The MAC links to the client it belongs to *now*. One that belongs to

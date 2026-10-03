@@ -239,7 +239,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->banSync = new BanSync($freepbx, $this->fail2ban, $escalation);
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban);
 
@@ -499,6 +499,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteResourceFile':
 			case 'listLogs':
 			case 'clearLogs':
+			case 'deleteLog':
 			case 'listUsers':
 			case 'saveUser':
 			case 'deleteUser':
@@ -611,6 +612,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'clearLogs':
 				return $this->provisioningLog->clearLogs($_REQUEST);
+
+			case 'deleteLog':
+				return $this->provisioningLog->deleteLog($_REQUEST['id'] ?? null);
 
 			case 'listUsers':
 				return $this->users->listUsers();

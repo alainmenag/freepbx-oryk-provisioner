@@ -1,16 +1,18 @@
 # The admin interface
 
-*Oryk → Provisioner*. A list and five editors, told apart by which key the URL
+*Oryk → Provisioner*. A list, five editors and a log entry page, told apart by which key the URL
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 Every page is topped by the same bar of sections — Users, Clients, Profiles,
 Logs, Bans, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
-Users, Clients, Profiles, Resources — narrowed to whatever you are looking at:
-on a profile, Clients lists that profile's clients and Users the people they
-belong to; on a client, its user and its profile are already picked and
-Resources lists the files it is served. The dropdown for the thing you are on
+Users, Clients, Profiles, Resources, Logs, Bans — narrowed to whatever you are
+looking at: on a profile, Clients lists that profile's clients and Users the
+people they belong to; on a client, its user and its profile are already picked,
+Resources lists the files it is served, Logs its latest requests and Bans every
+ban that would apply to it. On a ban, the other dropdowns list what that ban
+covers. The dropdown for the thing you are on
 lists all of its kind, so you can switch straight to another one. The list
 page opens one section at a time (`&tab=clients`, `&tab=profiles`, ...); the
 editors below have their own tabs, which are views of that one row.
@@ -23,6 +25,7 @@ editors below have their own tabs, which are views of that one row.
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 | `&user=<extension>` | one user (`&user=` for a new one) | User, Clients |
 | `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
+| `&log=<id>` | one provisioning log entry, read-only | Log Entry |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor. Save leaves you on
