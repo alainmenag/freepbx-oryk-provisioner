@@ -31,6 +31,9 @@ a sighting: a client that is switched off, or one asking for a file its profile
 does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
 
+**Deleting a client** deletes the logs it sent and every Logs tab entry for its
+MAC, including those from before it was added.
+
 **The phone's web interface** is one button on the Clients list, on the rows
 that have a private address on them: it opens `http://<address>` in a new tab.
 It is drawn from what is stored on the client and nothing more — the module

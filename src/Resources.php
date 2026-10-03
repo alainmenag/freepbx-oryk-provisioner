@@ -26,6 +26,14 @@ class Resources extends Service
 	 */
 	const TYPES = ['template', 'file', 'log'];
 
+	/**
+	 * What a new template resource holds when it is created with no text of its
+	 * own -- which is every one made from the page, since the box is not on it yet.
+	 *
+	 * @var string
+	 */
+	const DEFAULT_TEMPLATE = "MAC={{device.mac}}\nHOST={{server.host}}\nPORT={{server.port}}\nUSER={{device.id}}\nSECRET={{device.secret}}\nNAME={{extension.name}}";
+
 	/** @var Profiles */
 	private $profiles;
 
@@ -235,6 +243,10 @@ class Resources extends Service
 		}
 
 		$type = $type ?? self::TYPES[0];
+
+		if ($type === 'template' && trim($template) === '') {
+			$template = self::DEFAULT_TEMPLATE;
+		}
 
 		$stmt = $this->db->prepare(
 			"INSERT INTO `{$this->resourcesTable}` (profile_id, name, type, template)

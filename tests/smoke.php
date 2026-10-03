@@ -369,12 +369,17 @@ echo "\n  deleting a user deletes every client pointing at it:\n";
 $s = build();
 stored_user('1001');
 $s['app']->Database->fetchAlls = ['SELECT id FROM `oryk_provisioner_clients` WHERE device_id = :id' => ['5', '6']];
+$s['app']->Database->answers['SELECT mac FROM `oryk_provisioner_clients` WHERE id = :id'] = '0004f282e824';
 is_eq('remove() says it deleted', $s['users']->remove('1001'), true);
 is_eq('the device went', FreePBX::$core->deleted, [['1001', false]]);
 is_eq('both its clients were deleted, whatever their MAC',
 	array_values(array_map(function ($p) { return $p[1][':id']; }, array_filter($s['app']->Database->params, function ($p) {
 		return strpos($p[0], 'DELETE FROM `oryk_provisioner_clients` WHERE id = :id') !== false;
 	}))), [5, 6]);
+is_eq('and each one\'s Logs tab entries went with it, by its MAC',
+	count(array_filter($s['app']->Database->params, function ($p) {
+		return strpos($p[0], 'DELETE FROM `oryk_provisioner_logs` WHERE mac = :mac') !== false && $p[1][':mac'] === '0004f282e824';
+	})), 2);
 is_eq('and none was left with no device',
 	(bool) array_filter($s['app']->Database->seen, function ($q) {
 		return strpos($q, 'SET device_id = NULL') !== false;

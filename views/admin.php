@@ -619,7 +619,7 @@ if (!$bansEnabled) {
 	// the other tab is its badge, and the badges are re-read whole.
 
 	$(document).on('click', '[name="client_delete"]', function () {
-		if (!window.confirm('Delete this client? Any logs it has sent go with it.')) {
+		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
 			return;
 		}
 

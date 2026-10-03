@@ -657,12 +657,10 @@ class Clients extends Service
 	 * What it has sent us goes with it. The log directory is named after this id
 	 * and nothing else, so a row deleted without it would leave a directory
 	 * nothing on the system can account for -- and MySQL would hand the same id to
-	 * the next client written, which would inherit them. The id it was called with
-	 * says where the logs are, so there is nothing to read first.
+	 * the next client written, which would inherit them.
 	 *
-	 * Its rows in the provisioning log deliberately stay: they are keyed on the
-	 * MAC so that they outlive the client and predate it. Clearing them is its own
-	 * button on the Logs tab.
+	 * So do its rows in the provisioning log, found by its MAC -- which is how
+	 * rows from before it was added go too, and why the MAC is read first.
 	 *
 	 * @param mixed $id Client id.
 	 *
@@ -670,6 +668,15 @@ class Clients extends Service
 	 */
 	public function deleteClient($id)
 	{
+		$stmt = $this->db->prepare("SELECT mac FROM `{$this->clientsTable}` WHERE id = :id");
+		$stmt->execute([':id' => (int) $id]);
+		$mac = (string) $stmt->fetchColumn();
+
+		if ($mac !== '') {
+			$stmt = $this->db->prepare("DELETE FROM `{$this->logsTable}` WHERE mac = :mac");
+			$stmt->execute([':mac' => $mac]);
+		}
+
 		$this->logs->removeClientLogs($id);
 
 		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");

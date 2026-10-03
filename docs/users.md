@@ -43,7 +43,7 @@ other destinations naming the old number are **not** updated.
 > up `asteriskcdrdb` first if the history matters.
 
 Every client pointed at a deleted user is deleted with it, whatever its MAC,
-along with the logs it sent. Delete asks first, and says how many clients that
+along with the logs it sent and its entries on the Logs tab. Delete asks first, and says how many clients that
 is.
 
 ## From Domain

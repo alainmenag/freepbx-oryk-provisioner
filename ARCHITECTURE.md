@@ -215,9 +215,9 @@ file (1.0.7).
 
 **`oryk_provisioner_logs`** -- one row per request the endpoint answered.
 
-- No `client_id` and no foreign key: a log row outlives the client it was about
-  and predates the one it was not, so which client a MAC belongs to is a
-  question asked when the log is read.
+- No `client_id` and no foreign key: a log row predates the client it is about,
+  so which client a MAC belongs to is a question asked when the log is read.
+  Deleting a client deletes the rows with its MAC (`Clients::deleteClient()`).
 - `mac` is 64 rather than 12, because it also holds what was asked with when
   that was not a MAC at all.
 - **Metadata only.** The rendered body carries `device.secret` whenever a
@@ -310,7 +310,7 @@ channel names; recording file names are left, since they must match the file).
 
 **A delete** removes the device and its endpoint section and **deletes** every
 client pointing at it, whatever its MAC (`Clients::deleteForDevice()`, each with
-its stored logs; its provisioning-log rows stay, as for any deleted client). Once no
+its stored logs and its provisioning-log rows, as for any deleted client). Once no
 other device points at the extension, the extension, the account this module
 owns, its UCP assignments and its **call history and recordings** go too, only
 after the extension itself is gone. History is found by `src` or `dst` matched

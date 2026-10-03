@@ -155,7 +155,7 @@ $tabs = [
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="resource_name"
 											autocomplete="off" placeholder="{{device.mac}}-phone.cfg"
-											value="<?php echo $h($resource['name']); ?>">
+											value="<?php echo $h($isNew && $resource['name'] === '' ? '{{device.mac}}.cfg' : $resource['name']); ?>">
 									</div>
 								</div>
 							</div>
@@ -170,7 +170,7 @@ $tabs = [
 										</span>
 										<?php if ($isNew): ?>
 											<span class="oryk-help-part">
-												<?php echo _('Save it, and this page will then take what it holds -- a template to write, or a file to upload.'); ?>
+												<?php echo _('Save it, and this page will then take what it holds -- a template to write, or a file to upload. A new template starts with the basics filled in -- MAC, server, credentials and name -- to edit from.'); ?>
 											</span>
 										<?php else: ?>
 											<span class="oryk-help-part">
