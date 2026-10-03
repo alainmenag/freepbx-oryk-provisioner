@@ -271,16 +271,18 @@ class Endpoint extends Service
 			$result['message'] ?? 'OK'
 		), null, $result['status'] ? 'INFO' : 'DEBUG');
 
+		// Both outcomes, and a MAC nothing is associated with as readily as one
+		// that renders: that request is the one an operator most needs to see and
+		// the one that leaves no other trace.
+		$this->requestLog->logRequest($mac, $requested, $status, $result['message'] ?? null);
+
+		// After the log line: a 401 is a request like any other, and a run of
+		// them is how a phone with the wrong token shows up.
 		if ($status === 401) {
 			header('WWW-Authenticate: Basic realm="Provisioning"');
 			http_response_code(401);
 			exit;
 		}
-
-		// Both outcomes, and a MAC nothing is associated with as readily as one
-		// that renders: that request is the one an operator most needs to see and
-		// the one that leaves no other trace.
-		$this->requestLog->logRequest($mac, $requested, $status, $result['message'] ?? null);
 
 		// And, when it went out, that this client was heard from: the one place
 		// every answered request passes through, whichever direction it went. The
