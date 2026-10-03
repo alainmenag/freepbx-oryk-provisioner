@@ -21,6 +21,9 @@
  *   PUT /provisioner/0004f282e824-boot.log   a log the phone is sending back,
  *                                            taken when the profile has a
  *                                            resource of type Log by that name
+ *   /provisioner/000000000000.cfg            with Settings -> Provisioning
+ *                                            Open, answered as the client its
+ *                                            Basic credentials log in as
  *
  * GET or HEAD to fetch, PUT to send; the MAC is read from the path, the query
  * string or the User-Agent, and on a fetch may be missing altogether. A
@@ -35,7 +38,7 @@
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, HEAD, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: Authorization, Content-Type');
+header('Access-Control-Allow-Headers: Authorization, *');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -54,6 +57,14 @@ require '/etc/freepbx.conf';
 
 $freepbx = \FreePBX::Create();
 $provisioner = \FreePBX::Oryk_provisioner();
+
+// Read after the bootstrap: before it there is no $freepbx and no autoloader.
+$provisioning = (new \FreePBX\Modules\Oryk_Provisioner\Settings($freepbx))->get(\FreePBX\Modules\Oryk_Provisioner\Settings::PROVISIONING);
+
+if ($provisioning === 'DISABLED') {
+	http_response_code(503);
+	exit;
+}
 
 $requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH); // /provisioner/00908f3bbcba.cfg
 $requestAgent = $_SERVER['HTTP_USER_AGENT'] ?? ''; // AUDC-IPPhone/2.0.0_build_15 (420HD; 00908F3BBCBA)
@@ -100,6 +111,17 @@ $token = null;
 
 if ($user !== null && $pass !== null) {
 	$token = $user . ':' . $pass;
+}
+
+// --- OPEN PROVISIONING ---
+
+// See Endpoint::openProvision(). Settings::get() returns CLOSED for an
+// unregistered setting, so this fails closed.
+if ($provisioning === 'OPEN'
+	&& \FreePBX\Modules\Oryk_Provisioner\Mac::normalize($mac) === \FreePBX\Modules\Oryk_Provisioner\Mac::OPEN
+	&& in_array($method, ['GET', 'HEAD', 'PUT'], true)) {
+	$provisioner->openProvision($user, $pass, $filename, $method);
+	exit;
 }
 
 // --- SERVE ---

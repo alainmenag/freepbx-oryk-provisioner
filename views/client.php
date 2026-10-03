@@ -254,7 +254,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block" id="client_profile_id-help">
-										<?php echo _('What this client is served. Until one is assigned there is nothing to provision, and the client is asked for a configuration it has none of. A profile marked disabled is switched off and serves nothing, however this client is set.'); ?>
+										<?php echo _('What this client is served. Until one is assigned, the client is served the profile named after the vendor its User-Agent names (Polycom, Yealink, ...), when there is one, and otherwise nothing. A profile marked disabled is switched off and serves nothing, however this client is set.'); ?>
 									</span>
 								</div>
 							</div>
@@ -472,7 +472,7 @@ $tabs = [
 	orykEditor({
 		save: 'saveClient',
 		remove: 'deleteClient',
-		confirm: 'Delete this client? Any logs it has sent go with it.',
+		confirm: 'Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.',
 		values: function () {
 			return {
 				id: orykClientId,

@@ -26,6 +26,9 @@ class Resources extends Service
 	 */
 	const TYPES = ['template', 'file', 'log'];
 
+	/** @var string What a template resource created with no text holds. */
+	const DEFAULT_TEMPLATE = "MAC={{device.mac}}\nHOST={{server.host}}\nPORT={{server.port}}\nUSER={{device.id}}\nSECRET={{device.secret}}\nNAME={{extension.name}}";
+
 	/** @var Profiles */
 	private $profiles;
 
@@ -235,6 +238,10 @@ class Resources extends Service
 		}
 
 		$type = $type ?? self::TYPES[0];
+
+		if ($type === 'template' && trim($template) === '') {
+			$template = self::DEFAULT_TEMPLATE;
+		}
 
 		$stmt = $this->db->prepare(
 			"INSERT INTO `{$this->resourcesTable}` (profile_id, name, type, template)

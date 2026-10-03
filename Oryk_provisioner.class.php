@@ -201,13 +201,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->schema = new Schema($freepbx);
 		$this->tokens = new Tokens($freepbx);
 		$this->provisioningLog = new ProvisioningLog($freepbx);
-		$this->template = new Template($freepbx, $this->pbx);
+		$this->settings = new Settings($freepbx);
+		$this->template = new Template($freepbx, $this->pbx, $this->settings);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 
-		$this->settings = new Settings($freepbx);
 		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
@@ -244,7 +244,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->template,
 			$this->files,
 			$this->logs,
-			$this->provisioningLog
+			$this->provisioningLog,
+			$this->profiles,
+			$this->users
 		);
 
 		$this->pages = new Pages(
@@ -384,12 +386,29 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * @param string|null $requested Filename asked for.
 	 * @param string|null $token     Token offered, when one was.
 	 * @param string      $method    Request method it would be asked with.
+	 * @param string|null $vendor    Vendor a User-Agent names; see Vendor.
 	 *
 	 * @return array<string, mixed> The outcome, for a caller to act on.
 	 */
-	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET')
+	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET', $vendor = null)
 	{
-		return $this->endpoint->resolveRequest($mac, $requested, $token, $method);
+		return $this->endpoint->resolveRequest($mac, $requested, $token, $method, $vendor);
+	}
+
+	/**
+	 * Answer a request for the all-zero MAC by its credentials, and end the
+	 * request. See Endpoint::openProvision().
+	 *
+	 * @param string|null $username  Basic username offered.
+	 * @param string|null $password  Basic password offered.
+	 * @param string|null $requested Filename asked for.
+	 * @param string      $method    GET, HEAD or PUT.
+	 *
+	 * @return void This ends the request.
+	 */
+	public function openProvision($username, $password, $requested = null, $method = 'GET')
+	{
+		$this->endpoint->openProvision($username, $password, $requested, $method);
 	}
 
 	/**

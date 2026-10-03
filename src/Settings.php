@@ -16,6 +16,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  */
 class Settings extends Service
 {
+	/** The PBX-wide hostname. */
+	const HOSTNAME = 'ORYK_HOSTNAME';
+
 	/**
 	 * The PBX-wide from domain. The keyword oryk_connect registered, kept so
 	 * taking it over keeps its value.
@@ -26,6 +29,13 @@ class Settings extends Service
 	 * Whether the Bans tab is shown and fail2ban is asked anything at all.
 	 */
 	const FAIL2BAN = 'ORYK_FAIL2BAN';
+
+	/**
+	 * Whether the all-zero MAC logs in, or creates a user, with its credentials.
+	 * OPEN, CLOSED or DISABLED (every request refused with a 503); CLOSED
+	 * unless an admin changes it.
+	 */
+	const PROVISIONING = 'ORYK_PROVISIONING';
 
 	/**
 	 * What every setting is filed under in Advanced Settings.
@@ -54,13 +64,23 @@ class Settings extends Service
 	public function definitions()
 	{
 		return [
+			self::HOSTNAME => [
+				'name' => 'Hostname',
+				'description' => 'The name phones register to, as {{server.host}} in a template, and the '
+					. 'From Domain when that is blank. Left blank, a template gets the host each request '
+					. 'arrived on, and From Domain the hostname of this machine.',
+				'type' => 'text',
+				'default' => '',
+				'pattern' => EndpointSettings::DOMAIN_PATTERN,
+				'emptyok' => true,
+			],
 			self::FROM_DOMAIN => [
 				'name' => 'From Domain',
 				'description' => 'The domain a PJSIP endpoint puts in the From header. '
 					. 'It is written to pjsip.endpoint_custom_post.conf on the next save of each '
 					. 'user, and a user given a From Domain of its own uses that instead. '
-					. 'Left blank, the hostname of this PBX is used when that is a domain name, '
-					. 'and nothing is written when it is not.',
+					. 'Left blank, the Hostname setting is used, or the hostname of this machine when '
+					. 'that is a domain name, and nothing is written when neither is.',
 				'type' => 'text',
 				'default' => '',
 				'pattern' => EndpointSettings::DOMAIN_PATTERN,
@@ -73,6 +93,21 @@ class Settings extends Service
 					. 'sudo rule the setup script installed stay in place until it is run with --remove.',
 				'type' => 'bool',
 				'default' => true,
+			],
+			self::PROVISIONING => [
+				'name' => 'Provisioning',
+				'description' => 'Open: a request for the MAC address 000000000000 logs in with its '
+					. 'credentials as a User Manager login, a user is created for a username no account '
+					. 'has, and the request is served as that user\'s client. Closed: that request is '
+					. 'handled like any other MAC. Disabled: every request to the provisioning endpoint '
+					. 'is refused with a 503.',
+				'type' => 'select',
+				'default' => 'CLOSED',
+				'options' => [
+					'OPEN' => 'Open (000000000000 logs in, or registers, with its credentials)',
+					'CLOSED' => 'Closed (only existing clients are served)',
+					'DISABLED' => 'Disabled (every request is refused)',
+				],
 			],
 		];
 	}
@@ -239,6 +274,17 @@ class Settings extends Service
 				$this->logError('unable to store ' . $keyword . ': ' . $e->getMessage());
 
 				return ['status' => false, 'message' => sprintf(_('Could not save %s.'), _($this->definitions()[$keyword]['name']))];
+			}
+
+			// FreePBX validates against the definition it stored at install, not
+			// this one, and on a mismatch keeps the old value without throwing.
+			if ($this->get($keyword) !== $value) {
+				$this->logError('FreePBX did not store ' . $keyword . '; its registered definition is older than this one');
+
+				return ['status' => false, 'message' => sprintf(
+					_('%s was not saved: FreePBX does not accept that value yet. Run "fwconsole ma install oryk_provisioner" and save again.'),
+					_($this->definitions()[$keyword]['name'])
+				)];
 			}
 		}
 

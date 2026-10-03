@@ -42,6 +42,9 @@ class Clients extends Service
 	 */
 	const SEEN_AGE_EXPR = 'TIMESTAMPDIFF(SECOND, pc.last_seen, NOW())';
 
+	/** Whether a client's MAC is the internal one Mac::internal() gave it. */
+	const INTERNAL_EXPR = "(pc.mac = CONCAT('02', LPAD(pc.id, 10, '0')))";
+
 	/** @var Freepbx */
 	private $pbx;
 
@@ -258,6 +261,60 @@ class Clients extends Service
 	}
 
 	/**
+	 * The client a device is provisioned as, made when it has none.
+	 *
+	 * Only a client on an internal MAC counts; one on a real phone's MAC is
+	 * that phone's. A found one whose token no longer verifies is given
+	 * $token, so a password changed in UCP does not lock the phone out.
+	 *
+	 * @param string      $deviceId FreePBX device id.
+	 * @param string|null $token    Token as typed, user:password; null for none.
+	 *
+	 * @return array{id: int, mac: string, created: bool} The client.
+	 *
+	 * @throws \Exception When saveClient() refuses.
+	 */
+	public function findOrCreateForDevice($deviceId, $token = null)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT pc.id, pc.mac, pc.token
+			FROM `{$this->clientsTable}` pc
+			WHERE pc.device_id = :device_id AND " . self::INTERNAL_EXPR . "
+			ORDER BY pc.id
+			LIMIT 1"
+		);
+		$stmt->execute([':device_id' => (string) $deviceId]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		if ($row) {
+			$token = (string) $token;
+
+			if ($token !== '' && !password_verify($token, (string) $row['token'])) {
+				$update = $this->db->prepare(
+					"UPDATE `{$this->clientsTable}` SET token = :token WHERE id = :id"
+				);
+				$update->execute([':token' => $this->tokens->hashToken($token), ':id' => (int) $row['id']]);
+			}
+
+			return ['id' => (int) $row['id'], 'mac' => (string) $row['mac'], 'created' => false];
+		}
+
+		$saved = $this->saveClient([
+			'mac' => '',
+			'device_id' => (string) $deviceId,
+			'token' => (string) $token,
+		]);
+
+		if (empty($saved['status'])) {
+			throw new \Exception((string) ($saved['message'] ?? 'The client could not be saved.'));
+		}
+
+		$id = (int) $saved['id'];
+
+		return ['id' => $id, 'mac' => Mac::internal($id), 'created' => true];
+	}
+
+	/**
 	 * Create or update a client.
 	 *
 	 * `token` is the field here that is not simply written: what arrives is either
@@ -302,7 +359,7 @@ class Clients extends Service
 		}
 
 		if (!$mac) {
-			$mac = '02' . str_pad((string) $id, 10, '0', STR_PAD_LEFT);
+			$mac = Mac::internal($id);
 		}
 
 		if (!$mac) {
@@ -563,23 +620,28 @@ class Clients extends Service
 	}
 
 	/**
-	 * Take a deleted device off every client that pointed at it.
+	 * Delete every client that pointed at a deleted device.
 	 *
-	 * The client keeps its MAC, profile and token and has no device, which is
-	 * what saveClient() stores for None.
+	 * Whatever its MAC: a phone of a user that is gone is pointed at nothing.
+	 * One by one through deleteClient(), so each one's stored logs go with it.
 	 *
 	 * @param string $deviceId Device id that has gone.
 	 *
-	 * @return int Clients released.
+	 * @return int Clients deleted.
 	 */
-	public function releaseDevice($deviceId)
+	public function deleteForDevice($deviceId)
 	{
 		$stmt = $this->db->prepare(
-			"UPDATE `{$this->clientsTable}` SET device_id = NULL WHERE device_id = :id"
+			"SELECT id FROM `{$this->clientsTable}` WHERE device_id = :id"
 		);
 		$stmt->execute([':id' => (string) $deviceId]);
+		$ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
-		return (int) $stmt->rowCount();
+		foreach ($ids as $id) {
+			$this->deleteClient($id);
+		}
+
+		return count($ids);
 	}
 
 	/**
@@ -591,12 +653,9 @@ class Clients extends Service
 	 * What it has sent us goes with it. The log directory is named after this id
 	 * and nothing else, so a row deleted without it would leave a directory
 	 * nothing on the system can account for -- and MySQL would hand the same id to
-	 * the next client written, which would inherit them. The id it was called with
-	 * says where the logs are, so there is nothing to read first.
+	 * the next client written, which would inherit them.
 	 *
-	 * Its rows in the provisioning log deliberately stay: they are keyed on the
-	 * MAC so that they outlive the client and predate it. Clearing them is its own
-	 * button on the Logs tab.
+	 * So do its provisioning-log rows, found by MAC, so the MAC is read first.
 	 *
 	 * @param mixed $id Client id.
 	 *
@@ -604,6 +663,15 @@ class Clients extends Service
 	 */
 	public function deleteClient($id)
 	{
+		$stmt = $this->db->prepare("SELECT mac FROM `{$this->clientsTable}` WHERE id = :id");
+		$stmt->execute([':id' => (int) $id]);
+		$mac = (string) $stmt->fetchColumn();
+
+		if ($mac !== '') {
+			$stmt = $this->db->prepare("DELETE FROM `{$this->logsTable}` WHERE mac = :mac");
+			$stmt->execute([':mac' => $mac]);
+		}
+
 		$this->logs->removeClientLogs($id);
 
 		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");

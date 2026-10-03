@@ -141,7 +141,7 @@ class Installer extends Service
 
 		// One row per request the endpoint answered, written whether or not the MAC
 		// is one this module knows. No client_id and no foreign key: a log row
-		// outlives the client it was about and predates the one it was not.
+		// predates the client it is about; a deleted client takes its rows by MAC.
 		//
 		// Metadata only. The rendered body carries device.secret whenever a
 		// template asks for it, and a log is not where that belongs. Nor is which

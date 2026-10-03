@@ -619,7 +619,7 @@ if (!$bansEnabled) {
 	// the other tab is its badge, and the badges are re-read whole.
 
 	$(document).on('click', '[name="client_delete"]', function () {
-		if (!window.confirm('Delete this client? Any logs it has sent go with it.')) {
+		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
 			return;
 		}
 
@@ -701,13 +701,13 @@ if (!$bansEnabled) {
 	}
 
 	// Permanent, and it takes the call history and recordings with it, so it
-	// says so -- and how many clients it leaves without a device.
+	// says so -- and what happens to the clients pointing at it.
 	$(document).on('click', '[name="user_delete"]', function () {
 		const clients = Number($(this).data('clients')) || 0;
 		let ask = 'Delete this user? The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently. This cannot be undone.';
 
 		if (clients) {
-			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be left with no device.`;
+			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be deleted too, with the logs ${clients === 1 ? 'it' : 'they'} sent.`;
 		}
 
 		if (!window.confirm(ask)) {

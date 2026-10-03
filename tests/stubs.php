@@ -92,12 +92,21 @@ class StubStatement
 class StubDatabase
 {
 	public $answers = [];
+	/** @var array<string, array> Fragment => rows fetch() hands back, in turn. */
+	public $fetches = [];
+	/** @var array<string, array> Fragment => what fetchAll() hands back. */
+	public $fetchAlls = [];
 	public $seen = [];
+	public $params = [];
+	public $insertId = 0;
 
 	public function prepare($sql)
 	{
 		$this->seen[] = $sql;
 		$statement = new StubStatement();
+		$statement->onExecute = function ($params) use ($sql) {
+			$this->params[] = [$sql, $params];
+		};
 
 		foreach ($this->answers as $fragment => $value) {
 			if (strpos($sql, $fragment) !== false) {
@@ -107,7 +116,28 @@ class StubDatabase
 			}
 		}
 
+		foreach ($this->fetchAlls as $fragment => $rows) {
+			if (strpos($sql, $fragment) !== false) {
+				$statement->rows = $rows;
+
+				break;
+			}
+		}
+
+		foreach ($this->fetches as $fragment => $rows) {
+			if (strpos($sql, $fragment) !== false) {
+				$statement->fetchRows = $rows;
+
+				break;
+			}
+		}
+
 		return $statement;
+	}
+
+	public function lastInsertId()
+	{
+		return (string) $this->insertId;
 	}
 
 	public function exec($sql)
@@ -348,11 +378,13 @@ class StubApp
 	public $Modules;
 	public $Database;
 	public $Logger;
+	public $Config;
 	public $astman;
 
 	public function __construct()
 	{
 		$this->Modules = new StubModules();
+		$this->Config = new StubConfig();
 		$this->Database = new StubDatabase();
 		$this->Logger = new StubLogger();
 		$this->astman = null;

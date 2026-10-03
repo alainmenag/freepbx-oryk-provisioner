@@ -14,6 +14,12 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 class Mac
 {
 	/**
+	 * The MAC a phone asks with to be provisioned by its credentials; see
+	 * Endpoint::openProvision().
+	 */
+	const OPEN = '000000000000';
+
+	/**
 	 * A MAC address as it is stored: lowercase hexadecimal, no separators.
 	 *
 	 * @param mixed $mac MAC address as it was typed.
@@ -25,6 +31,22 @@ class Mac
 		$mac = strtolower(preg_replace('/[^0-9A-Fa-f]/', '', (string) $mac));
 
 		return preg_match('/^[0-9a-f]{12}$/', $mac) ? $mac : '';
+	}
+
+	/**
+	 * The MAC a client saved without one is given.
+	 *
+	 * Locally administered (`02` prefix) and built from the client id, so it
+	 * cannot collide with a real phone or another client. Clients::INTERNAL_EXPR
+	 * is the same thing in SQL; the two must agree.
+	 *
+	 * @param int $id Client id.
+	 *
+	 * @return string The MAC, normalised.
+	 */
+	public static function internal($id)
+	{
+		return '02' . str_pad((string) (int) $id, 10, '0', STR_PAD_LEFT);
 	}
 
 	/**

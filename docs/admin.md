@@ -31,6 +31,9 @@ a sighting: a client that is switched off, or one asking for a file its profile
 does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
 
+**Deleting a client** deletes the logs it sent and every Logs tab entry for its
+MAC, including those from before it was added.
+
 **The phone's web interface** is one button on the Clients list, on the rows
 that have a private address on them: it opens `http://<address>` in a new tab.
 It is drawn from what is stored on the client and nothing more — the module
@@ -60,5 +63,7 @@ any, and stays on the tab.
 
 | Setting | What it is |
 | --- | --- |
-| **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](users.md#from-domain). Blank: the PBX hostname, when that is a domain name; the field shows what blank comes to. |
+| **Hostname** (`ORYK_HOSTNAME`) | What phones register to: `{{server.host}}` in a template, and the From Domain when that is blank. Blank: a template gets the host each request arrived on, and From Domain this machine's hostname. |
+| **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](users.md#from-domain). Blank: the Hostname setting, or this machine's hostname, when that is a domain name; the field shows what blank comes to. |
 | **Fail2ban Bans** (`ORYK_FAIL2BAN`) | Yes (the default): the [Bans](fail2ban.md) tab is shown. No: the tab, its pages and its commands are gone and the module asks fail2ban nothing. Switching it off does not uninstall the helper — see [Uninstalling fail2ban access](fail2ban.md#uninstalling-fail2ban-access). |
+| **Provisioning** (`ORYK_PROVISIONING`) | Closed (the default): a request for MAC `000000000000` is treated like any other MAC. Open: that request is answered by its Basic credentials — see [Open provisioning](endpoint.md#open-provisioning). Disabled: every request to the endpoint is refused with a 503, unlogged. |

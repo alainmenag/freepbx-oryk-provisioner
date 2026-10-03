@@ -37,8 +37,13 @@ phone
   -> engine/.htaccess          rewrites anything under engine/ to provisioner.php
   -> engine/provisioner.php    who is asking (MAC) + what they asked for (last
                                path segment). Bootstraps FreePBX directly:
-                               freepbx_auth=false, restrict_mods=true
+                               freepbx_auth=false, restrict_mods=true.
+                               ORYK_PROVISIONING=DISABLED: 503, unlogged
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
+     or ::openProvision()                         MAC 000000000000, OPEN only
+  -> Endpoint::openProvision()                    finds or makes the client its
+                                                  credentials log in as, then
+                                                  serve()s / receive()s as it
   -> Endpoint::resolveRequest()                   decides
   -> Endpoint::answer()                           logs, sets status, sends, exits
 ```
@@ -47,16 +52,19 @@ phone
 without the exit -- previews, console commands and tests use it. **Its order is
 the security of the thing:**
 
-1. disabled client -> refused
-2. disabled profile -> refused
-3. match a resource of the client's profile by name
-4. no client, or no profile: the resources declared `file`, matched by name
+1. disabled client -> 403
+2. a client with no profile: the profile named after the vendor its
+   User-Agent names (`Vendor`), matched without regard to case, for this
+   request only -- nothing is stored
+3. disabled profile -> 403
+4. match a resource of the client's profile by name
+5. no client, or still no profile: the resources declared `file`, matched by name
    exactly (this is how firmware is fetched by a phone that sends no MAC)
-5. token, when the client has one -> 401
-6. the resource's `type` decides what the answer is
+6. token, when the client has one -> 401
+7. the resource's `type` decides what the answer is
 
 The token is asked for **after** a match and **before** the type, so a 401
-cannot tell an unauthenticated caller which files exist. Step 4 is files only:
+cannot tell an unauthenticated caller which files exist. Step 5 is files only:
 a template with no client behind it has no values to render against, so the
 phone would get a config that parses and is wrong.
 
@@ -65,6 +73,32 @@ URL and knows a MAC gets that client's config, `device.secret` included, unless
 the client has a token. An uploaded file can be fetched by anyone who knows what
 it is called. Restrict the URL at the network layer until the token scheme is
 mandatory.
+
+### Open provisioning
+
+With `ORYK_PROVISIONING` OPEN, a request for `Mac::OPEN` (`000000000000`) is
+answered by its Basic credentials instead of a client row
+(`Endpoint::openClient()`), in this order:
+
+1. no credentials -> 401, which is the challenge that makes a phone send them
+2. `Users::findOrCreate()`: a User Manager login answers with the account's
+   default extension; a username no account holds makes a user, as a blank
+   Extension does, and gives its account that username and password (see
+   [Users](#users)); a username held under another password -> 401, written
+   to FreePBX's security log as a GUI login failure is, so the jail that
+   watches it bans the address; no User Manager, or a login with no
+   Extension/User -> 409
+3. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
+   made when there is none, with no profile and the credentials as its
+   token; a found one is given the credentials again when its token no longer
+   verifies, so a password changed in UCP does not lock the phone out. A client
+   on a real phone's MAC is never used.
+
+The request is then served or received as that client, `000000000000` in the
+filename swapped for its MAC, so the ordinary order above -- token included --
+decides the answer -- including the vendor's profile, since the client has
+none of its own. A user made here costs a full reload, inside the phone's
+request.
 
 ## Matching a filename
 
@@ -92,7 +126,7 @@ page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper and its setup script -- see Bans
-src/                         35 files, namespace FreePBX\Modules\Oryk_Provisioner
+src/                         36 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -105,6 +139,7 @@ views/                       one view per page, plus views/partials/
 | `Repo` | base class for the two file directories |
 | `Logs`, `Enabled` | traits: writing to the FreePBX log; the on/off switch two tables share |
 | `Mac` | a MAC as written, and as found in a filename (static) |
+| `Vendor` | the vendor a User-Agent names, which a client with no profile is served the profile of (static) |
 | `Freepbx` | the only file that asks FreePBX about a device |
 | `Template` | `{{name}}` and the flat map behind it |
 | `Tokens` | hashing a client's token, checking one |
@@ -180,9 +215,9 @@ file (1.0.7).
 
 **`oryk_provisioner_logs`** -- one row per request the endpoint answered.
 
-- No `client_id` and no foreign key: a log row outlives the client it was about
-  and predates the one it was not, so which client a MAC belongs to is a
-  question asked when the log is read.
+- No `client_id` and no foreign key: a log row predates the client it is about,
+  so which client a MAC belongs to is a question asked when the log is read.
+  Deleting a client deletes the rows with its MAC (`Clients::deleteClient()`).
 - `mac` is 64 rather than 12, because it also holds what was asked with when
   that was not a MAC at all.
 - **Metadata only.** The rendered body carries `device.secret` whenever a
@@ -256,6 +291,13 @@ takes as long as Apply Config. A blank number keeps the user's own (a new one
 takes the next free `999…`); a blank secret keeps the stored one. A number held
 by any device, extension or account is refused before anything is written.
 
+**A custom username** -- given by open provisioning, as the extension form's
+"Use Custom Username" gives one -- leaves the account no longer named after the
+extension, so `UsermanManager::setLogin()` marks it with the User Manager module
+setting `oryk_provisioner/owned` first. `ownedAccount()` counts either as this
+module's: it is synced, moved with a renumber (keeping its username) and deleted
+with the user.
+
 **A renumber** is a save whose number changed. The order is the point
 (`ExtensionRenumberer`): the new extension exists before the old is given up,
 so a failure leaves the user where it was; the mailbox moves before the old
@@ -266,8 +308,9 @@ repointed** (`Clients::repointDevice()`); UCP access moves before the history
 it opens; the history is rewritten in place (`src`, `dst`, `cnum`, `clid`, both
 channel names; recording file names are left, since they must match the file).
 
-**A delete** removes the device and its endpoint section and **releases** every
-client pointing at it (`device_id` NULL; MAC, profile and token kept). Once no
+**A delete** removes the device and its endpoint section and **deletes** every
+client pointing at it, whatever its MAC (`Clients::deleteForDevice()`, each with
+its stored logs and its provisioning-log rows, as for any deleted client). Once no
 other device points at the extension, the extension, the account this module
 owns, its UCP assignments and its **call history and recordings** go too, only
 after the extension itself is gone. History is found by `src` or `dst` matched
@@ -280,7 +323,8 @@ which is why Delete says so before it asks.
 **The From Domain** is three questions, first answer wins: the device's own
 `from_domain`; `ORYK_FROM_DOMAIN`, the [setting](#settings) in *Advanced Settings → Oryk
 Provisioner* and on the Settings tab;
-the PBX hostname, only when it is a domain name (not bare, not `.local`, not
+`ORYK_HOSTNAME` unless it is an address, otherwise this machine's hostname --
+either only when it is a domain name (not bare, not `.local`, not
 `localhost`). Nothing resolved takes the setting off the endpoint rather than
 leaving the old one. `ORYK_FROM_DOMAIN` is the keyword `oryk_connect`
 registered: `install()` re-registers it as this module's and passes the stored
@@ -450,7 +494,9 @@ bootstrap FreePBX on its own.
 - Uniform refusals. A failure still says which kind of failure it was, so a
   caller probing MACs can tell a known one from an unknown one. Closing that is
   the token scheme's job and is a change to all the messages at once.
-- No rate limiting or lockout on token verification.
+- No rate limiting or lockout on token verification, or on open
+  provisioning, which answers any address and makes a user per new username.
+  Its failed logins reach fail2ban only through FreePBX's security log.
 - Copying resources between profiles, or a seeded starting resource. A profile
   is set up one file at a time from empty.
 - No `fwconsole` command. Backup/restore hooks are stubs.

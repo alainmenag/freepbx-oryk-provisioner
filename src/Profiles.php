@@ -121,6 +121,28 @@ class Profiles extends Service
 	}
 
 	/**
+	 * The profile with a name, matched without regard to case.
+	 *
+	 * @param string $name Name to look for.
+	 *
+	 * @return array<string, mixed>|null id, name, enabled; null when there is none.
+	 */
+	public function profileByName($name)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id, name, enabled
+			FROM `{$this->profilesTable}`
+			WHERE LOWER(name) = LOWER(:name)
+			ORDER BY id
+			LIMIT 1"
+		);
+		$stmt->execute([':name' => (string) $name]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		return $row ?: null;
+	}
+
+	/**
 	 * Create or update a profile.
 	 *
 	 * A name and whether it serves at all. What the profile serves is its

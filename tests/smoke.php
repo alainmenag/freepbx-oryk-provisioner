@@ -20,6 +20,7 @@ use FreePBX\Modules\Oryk_Provisioner\AsteriskConfig;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
+use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionRenumberer;
@@ -27,6 +28,7 @@ use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
+use FreePBX\Modules\Oryk_Provisioner\Mac;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
@@ -34,6 +36,7 @@ use FreePBX\Modules\Oryk_Provisioner\Tokens;
 use FreePBX\Modules\Oryk_Provisioner\UcpAssignments;
 use FreePBX\Modules\Oryk_Provisioner\UsermanManager;
 use FreePBX\Modules\Oryk_Provisioner\Users;
+use FreePBX\Modules\Oryk_Provisioner\Vendor;
 use FreePBX\Modules\Oryk_Provisioner\VoicemailManager;
 
 // What the PBX is set to, for the tests that would otherwise depend on what
@@ -361,16 +364,26 @@ is_eq('the secret came with it', $settings['secret']['value'], 'stored-secret');
 is_eq('an emergency cid that was the old number is the new one', $settings['emergency_cid']['value'], '2002');
 is_eq('the clients pointing at it were repointed', count($repointed), 1);
 
-echo "\n  deleting a user releases its clients:\n";
+echo "\n  deleting a user deletes every client pointing at it:\n";
 
 $s = build();
 stored_user('1001');
+$s['app']->Database->fetchAlls = ['SELECT id FROM `oryk_provisioner_clients` WHERE device_id = :id' => ['5', '6']];
+$s['app']->Database->answers['SELECT mac FROM `oryk_provisioner_clients` WHERE id = :id'] = '0004f282e824';
 is_eq('remove() says it deleted', $s['users']->remove('1001'), true);
 is_eq('the device went', FreePBX::$core->deleted, [['1001', false]]);
-is_eq('the clients pointing at it were released',
+is_eq('both its clients were deleted, whatever their MAC',
+	array_values(array_map(function ($p) { return $p[1][':id']; }, array_filter($s['app']->Database->params, function ($p) {
+		return strpos($p[0], 'DELETE FROM `oryk_provisioner_clients` WHERE id = :id') !== false;
+	}))), [5, 6]);
+is_eq('and each one\'s Logs tab entries went with it, by its MAC',
+	count(array_filter($s['app']->Database->params, function ($p) {
+		return strpos($p[0], 'DELETE FROM `oryk_provisioner_logs` WHERE mac = :mac') !== false && $p[1][':mac'] === '0004f282e824';
+	})), 2);
+is_eq('and none was left with no device',
 	(bool) array_filter($s['app']->Database->seen, function ($q) {
-		return strpos($q, 'SET device_id = NULL WHERE device_id = :id') !== false;
-	}), true);
+		return strpos($q, 'SET device_id = NULL') !== false;
+	}), false);
 
 $s = build();
 FreePBX::$core->devices['9990000101'] = ['id' => '9990000101', 'tech' => 'pjsip', 'user' => '1001'];
@@ -689,11 +702,11 @@ $settings->register();
 is_eq('registering again on an upgrade leaves it where it is',
 	FreePBX::Config()->get(Settings::FROM_DOMAIN), 'set-in-advanced.example.net');
 
-$fields = $settings->fields([Settings::FROM_DOMAIN => 'pbx.example.net']);
+$fields = array_column($settings->fields([Settings::FROM_DOMAIN => 'pbx.example.net']), null, 'keyword');
 
 is_eq('the Settings tab draws it with its value and what blank comes to',
-	[$fields[0]['keyword'], $fields[0]['value'], $fields[0]['placeholder']],
-	[Settings::FROM_DOMAIN, 'set-in-advanced.example.net', 'pbx.example.net']);
+	[$fields[Settings::FROM_DOMAIN]['value'], $fields[Settings::FROM_DOMAIN]['placeholder']],
+	['set-in-advanced.example.net', 'pbx.example.net']);
 
 is_eq('a keyword that is not a setting is ignored, not written',
 	[$settings->saveSettings(['settings' => ['AMPWEBROOT' => '/tmp']])['status'], FreePBX::Config()->get('AMPWEBROOT')],
@@ -703,6 +716,20 @@ $settings->set(Settings::FROM_DOMAIN, '');
 
 is_eq('and blank is saved as blank',
 	FreePBX::Config()->get(Settings::FROM_DOMAIN), '');
+
+echo "\n  the Hostname setting comes before this machine's name:\n";
+
+$s = build();
+$named = new EndpointSettings($s['app'], new AsteriskConfig($s['app'], scratch_file()));
+FreePBX::$config[Settings::HOSTNAME] = 'pbx.example.net';
+
+is_eq('a blank From Domain is the Hostname setting', $named->fromDomain('1002'), 'pbx.example.net');
+
+FreePBX::$config[Settings::HOSTNAME] = '203.0.113.7';
+
+is_eq('but not when that is an address', $named->hostname() !== '203.0.113.7', true);
+
+unset(FreePBX::$config[Settings::HOSTNAME]);
 
 echo "\n  a setting that works out to nothing is taken off the endpoint:\n";
 
@@ -826,6 +853,143 @@ is_eq('off, every question answers not-ok', [$fail2ban->jails(), $fail2ban->coun
 is_eq('off, a ban is refused', (new Bans($s['app'], $fail2ban))->saveBan(['jail' => 'asterisk', 'ip' => '203.0.113.7'])['status'], false);
 is_eq('off, an unban is refused', (new Bans($s['app'], $fail2ban))->deleteBan('asterisk/203.0.113.7')['status'], false);
 is_eq('and on again', [$settings->set(Settings::FAIL2BAN, '1'), $settings->get(Settings::FAIL2BAN)], [null, true]);
+
+echo "\nopen provisioning:\n";
+
+echo "\n  what openClient() answers before a user is found:\n";
+
+$s = build();
+$settings = new Settings($s['app']);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+$endpoint = new Endpoint(
+	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
+	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
+	new Profiles($s['app'], new FileRepo($s['app'])), $s['users']
+);
+$codes = function ($user, $pass, $address) use ($endpoint) {
+	return $endpoint->openClient($user, $pass, $address)['code'] ?? 200;
+};
+
+is_eq('no credentials is a 401, the challenge', $codes('', '', '192.0.2.1'), 401);
+is_eq('a username that cannot be one is a 400', $codes(' bob', 'pw', '192.0.2.1'), 400);
+is_eq('no User Manager is a 409', $codes('bob', 'pw', '192.0.2.1'), 409);
+
+echo "\nthe vendor a User-Agent names:\n";
+
+foreach ([
+	'FileTransport PolycomVVX-VVX_411-UA/5.9.5.0614' => 'Polycom',
+	'Yealink SIP-T46S 66.86.0.15' => 'Yealink',
+	'Grandstream Model HW GXP2170 SW 1.0.11.3 DevId c074ad123456' => 'Grandstream',
+	'Mozilla/4.0 (compatible; snom320-SIP 8.7.5.35' => 'Snom',
+	'AUDC-IPPhone/2.0.0_build_15 (420HD; 00908F3BBCBA)' => 'AudioCodes',
+	'Aastra6731i MAC:00-08-5D-12-34-56 V:3.3.1.4305-SIP' => 'Mitel',
+	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' => 'WebKit',
+	'Mozilla/5.0 (Linux; Android 7.0; GXV3380) AppleWebKit/537.36 Grandstream' => 'Grandstream',
+	'curl/8.4.0' => null,
+	'' => null,
+] as $agent => $vendor) {
+	is_eq($agent === '' ? '(no User-Agent)' : substr($agent, 0, 50), Vendor::fromUserAgent($agent), $vendor);
+}
+
+echo "\n  a client with no profile is served the one named after its vendor:\n";
+
+$db = $s['app']->Database;
+$client = ['id' => '5', 'mac' => '0004f282e824', 'token' => null, 'enabled' => '1', 'device_id' => null,
+	'profile_id' => null, 'public_ip' => null, 'private_ip' => null, 'extension' => null, 'description' => null,
+	'tech' => null, 'profile_name' => null, 'profile_enabled' => null];
+$db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => [['id' => '3', 'name' => 'polycom', 'enabled' => '0']]];
+
+$disabled = $endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
+
+is_eq('the vendor profile is the one it gets', $disabled['message'] ?? null, 'The polycom profile is disabled.');
+is_eq('and a disabled profile is a 403, not a 404', $disabled['code'] ?? 404, 403);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => []];
+
+is_eq('no profile by that name, no profile',
+	$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, '0004f282e824 has no profile assigned.');
+
+$db->fetches = ['WHERE pc.mac = :mac' => [$client]];
+$db->seen = [];
+
+is_eq('and no vendor, no lookup',
+	[$endpoint->resolveRequest('0004f282e824')['message'] ?? null,
+		(bool) array_filter($db->seen, function ($q) { return strpos($q, 'LOWER(name)') !== false; })],
+	['0004f282e824 has no profile assigned.', false]);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [['enabled' => '0'] + $client]];
+$disabled = $endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
+
+is_eq('a disabled client is a 403 too, before any profile is looked at',
+	[$disabled['code'] ?? 404, $disabled['message'] ?? null], [403, '0004f282e824 is disabled.']);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [['profile_id' => '9', 'profile_name' => 'Own', 'profile_enabled' => '0'] + $client],
+	'WHERE LOWER(name) = LOWER(:name)' => [['id' => '3', 'name' => 'Polycom', 'enabled' => '1']]];
+
+is_eq('a profile of its own wins over the vendor',
+	$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, 'The Own profile is disabled.');
+
+$db->fetches = [];
+
+echo "\n  what findOrCreate() refuses before asking User Manager anything:\n";
+
+/** The class of what a call threw, or null when it returned. */
+function thrown(callable $call)
+{
+	try {
+		$call();
+	} catch (\Exception $e) {
+		return get_class($e);
+	}
+
+	return null;
+}
+
+$s = build();
+
+is_eq('a blank username', thrown(function () use ($s) { $s['users']->findOrCreate('', 'secret'); }), 'InvalidArgumentException');
+is_eq('a username with a space around it', thrown(function () use ($s) { $s['users']->findOrCreate(' bob', 'secret'); }), 'InvalidArgumentException');
+is_eq('a blank password', thrown(function () use ($s) { $s['users']->findOrCreate('bob', ''); }), 'InvalidArgumentException');
+is_eq('anything at all without User Manager', thrown(function () use ($s) { $s['users']->findOrCreate('bob', 'secret'); }), 'RuntimeException');
+is_eq('and nothing was created', FreePBX::$core->added, null);
+
+echo "\n  the client a device is provisioned as:\n";
+
+$s = build();
+$db = $s['app']->Database;
+$db->answers = ['FROM devices WHERE id' => '1001'];
+$db->insertId = 7;
+$client = $s['clients']->findOrCreateForDevice('1001', 'bob:secret');
+
+is_eq('none on an internal MAC: one is made', [$client['created'], $client['mac']], [true, Mac::internal(7)]);
+
+$saved = array_values(array_filter($db->params, function ($p) {
+	return strpos(ltrim($p[0]), 'UPDATE `oryk_provisioner_clients`') === 0;
+}));
+
+is_eq('with no profile and the credentials as its token',
+	[$saved[0][1][':profile_id'] ?? null, password_verify('bob:secret', (string) ($saved[0][1][':token'] ?? ''))],
+	[null, true]);
+
+$s = build();
+$db = $s['app']->Database;
+$db->fetches = [Clients::INTERNAL_EXPR => [['id' => '5', 'mac' => Mac::internal(5), 'token' => password_hash('bob:old', PASSWORD_DEFAULT)]]];
+$client = $s['clients']->findOrCreateForDevice('1001', 'bob:new');
+$updated = array_values(array_filter($db->params, function ($p) {
+	return strpos($p[0], 'SET token = :token') !== false;
+}));
+
+is_eq('one already there is found, not made', [$client['created'], $client['mac']], [false, Mac::internal(5)]);
+is_eq('and given the password just logged in with when its own is stale',
+	password_verify('bob:new', (string) ($updated[0][1][':token'] ?? '')), true);
+
+$s = build();
+$db = $s['app']->Database;
+$db->fetches = [Clients::INTERNAL_EXPR => [['id' => '5', 'mac' => Mac::internal(5), 'token' => password_hash('bob:new', PASSWORD_DEFAULT)]]];
+$s['clients']->findOrCreateForDevice('1001', 'bob:new');
+
+is_eq('a token that still verifies is left alone',
+	(bool) array_filter($db->seen, function ($q) { return strpos($q, 'SET token = :token') !== false; }), false);
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);
