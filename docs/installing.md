@@ -35,11 +35,6 @@ http://<pbx>/provisioner/<mac>
 so the filename a phone asks for arrives as the request path. `uninstall()`
 removes the symlink — and only if it still resolves to this module's engine.
 
-The **Bans** tab needs one more step, as root, that a module install from the
-GUI cannot do — see [Installing fail2ban access](fail2ban.md#installing-fail2ban-access). Uninstalling from the
-GUI leaves the fail2ban helper and its sudo rule in place: run
-[`--remove`](fail2ban.md#uninstalling-fail2ban-access) first.
-
 ## Coming from Oryk Connect
 
 This module replaces `oryk_connect` for **Extension/User** devices. Nothing

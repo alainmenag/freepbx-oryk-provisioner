@@ -7,11 +7,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Installing and uninstalling the module.
  *
- * The tables, the module's settings, the repo directory, the web-root
- * symlink that gives a phone a short URL, and the fail2ban helper. Nothing
- * about the symlink or the helper fails the install: a module that could not
- * write to the web root, or to /etc, is still a working module minus a
- * friendly URL or a Bans tab.
+ * The tables, the module's settings, the repo directory, and the web-root
+ * symlink that gives a phone a short URL. Nothing about the symlink fails the
+ * install: a module that could not write to the web root is still a working
+ * module minus a friendly URL.
  */
 class Installer extends Service
 {
@@ -27,13 +26,10 @@ class Installer extends Service
 	/** @var Settings */
 	private $settings;
 
-	/** @var Fail2ban */
-	private $fail2ban;
-
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings)
 	{
 		parent::__construct($freepbx);
 
@@ -41,7 +37,6 @@ class Installer extends Service
 		$this->files = $files;
 		$this->logs = $logs;
 		$this->settings = $settings;
-		$this->fail2ban = $fail2ban;
 	}
 
 	/**
@@ -167,6 +162,39 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
+		// One rule per row: up to five subjects in the spelling Bans::value()
+		// stores, and a state. "Any" is 0 or '' and never NULL, so the unique key
+		// over the five admits one row per set of subjects -- MySQL counts NULLs
+		// as distinct, and would admit any number. Only a `banned` row has an
+		// expires_at. `source` and `jail` are what created the row, set once.
+		// `hits` counts the requests the row decided. See ARCHITECTURE.md, "Bans".
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->bansTable}` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`client_id` INT(11) NOT NULL DEFAULT 0,
+				`extension` VARCHAR(20) NOT NULL DEFAULT '',
+				`mac` VARCHAR(12) NOT NULL DEFAULT '',
+				`profile_id` INT(11) NOT NULL DEFAULT 0,
+				`ip` VARCHAR(45) NOT NULL DEFAULT '',
+				`state` VARCHAR(16) NOT NULL DEFAULT 'banned',
+				`expires_at` DATETIME NULL DEFAULT NULL,
+				`note` VARCHAR(255) NULL DEFAULT NULL,
+				`source` VARCHAR(32) NOT NULL DEFAULT 'manual',
+				`jail` VARCHAR(64) NULL DEFAULT NULL,
+				`hits` INT(10) UNSIGNED NOT NULL DEFAULT 0,
+				`last_hit_at` DATETIME NULL DEFAULT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				PRIMARY KEY (`id`),
+				UNIQUE KEY `scope` (`client_id`, `extension`, `mac`, `profile_id`, `ip`),
+				KEY `extension` (`extension`),
+				KEY `mac` (`mac`),
+				KEY `profile_id` (`profile_id`),
+				KEY `ip` (`ip`),
+				KEY `expires_at` (`expires_at`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
 		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already there,
 		// so every column added after a table first existed is added from here.
 		// Order matters in one place: addResourceTypeColumn() backfills from
@@ -207,8 +235,6 @@ class Installer extends Service
 			));
 		}
 
-		$this->setUpFail2ban();
-
 		return true;
 	}
 
@@ -216,90 +242,13 @@ class Installer extends Service
 	 * Uninstall the module.
 	 *
 	 * The tables are deliberately left in place; the symlink is not, since it
-	 * would be left pointing into a directory that has gone, and nor are the
-	 * fail2ban helper and its sudo rule, when this runs as root.
+	 * would be left pointing into a directory that has gone.
 	 *
 	 * @return void
 	 */
 	public function uninstall()
 	{
 		$this->unlinkEngine();
-
-		if ($this->runningAsRoot()) {
-			$this->runSetup(['--remove']);
-		}
-	}
-
-	/**
-	 * Install or update the fail2ban helper, which only root can do.
-	 *
-	 * As root -- `fwconsole ma install/upgrade` -- this runs the same setup script
-	 * an operator would, and reports what it said. Otherwise it says what to run,
-	 * unless the helper is already in place and current. Not at all while
-	 * ORYK_FAIL2BAN is off.
-	 *
-	 * @return void
-	 */
-	private function setUpFail2ban()
-	{
-		// Switched off on the Settings tab: nothing to set up, and nothing said.
-		if (!$this->fail2ban->enabled()) {
-			return;
-		}
-
-		if ($this->runningAsRoot()) {
-			$this->runSetup([]);
-
-			return;
-		}
-
-		if (!in_array($this->fail2ban->status()['state'], ['ok', 'fail2ban'], true)) {
-			$this->installMessage('Provisioner: to manage fail2ban from the Bans tab, run as root: ' . $this->fail2ban->setupCommand());
-		}
-	}
-
-	/**
-	 * Run bin/oryk-fail2ban-setup and pass on what it printed. Never throws.
-	 *
-	 * @param array<int, string> $args Its flags.
-	 *
-	 * @return void
-	 */
-	private function runSetup(array $args)
-	{
-		$pipes = [];
-		$process = @proc_open(
-			array_merge(['/bin/bash', $this->fail2ban->setupScript()], $args),
-			[1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-			$pipes
-		);
-
-		if (!is_resource($process)) {
-			$this->installMessage('Provisioner: could not run the fail2ban setup; run as root: ' . $this->fail2ban->setupCommand());
-
-			return;
-		}
-
-		$output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
-		fclose($pipes[1]);
-		fclose($pipes[2]);
-		proc_close($process);
-
-		foreach (preg_split('/\R/', trim((string) $output)) as $line) {
-			if (trim($line) !== '') {
-				$this->installMessage('Provisioner: ' . $line);
-			}
-		}
-	}
-
-	/**
-	 * Whether this process is root, which writing to /etc needs.
-	 *
-	 * @return bool True when it is.
-	 */
-	private function runningAsRoot()
-	{
-		return function_exists('posix_geteuid') && posix_geteuid() === 0;
 	}
 
 	/**

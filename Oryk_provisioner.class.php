@@ -13,7 +13,6 @@ use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionRenumberer;
-use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
@@ -94,8 +93,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *
  * and, for the Bans tab -- see ARCHITECTURE.md, "Bans":
  *
- *   Fail2ban         the only file that asks fail2ban, through the sudo helper
- *   Bans             listing, adding and lifting a ban
+ *   Bans             who the endpoint refuses, or answers in spite of a ban
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
@@ -118,9 +116,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var EndpointSettings */
 	private $endpointSettings;
-
-	/** @var Fail2ban */
-	private $fail2ban;
 
 	/** @var FileRepo */
 	private $files;
@@ -223,12 +218,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->clients
 		);
 
-		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
-		$this->bans = new Bans($freepbx, $this->fail2ban);
+		$this->bans = new Bans($freepbx);
 
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->bans);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings);
 
 		$this->endpoint = new Endpoint(
 			$freepbx,
@@ -239,7 +233,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->logs,
 			$this->provisioningLog,
 			$this->profiles,
-			$this->users
+			$this->users,
+			$this->bans
 		);
 
 		$this->pages = new Pages(
@@ -255,8 +250,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->users,
 			$this->endpointSettings,
 			$this->settings,
-			$this->bans,
-			$this->fail2ban
+			$this->bans
 		);
 	}
 
@@ -605,7 +599,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveBan':
 				return $this->bans->saveBan($_REQUEST);
 
-			// The key is `jail/ip`: one string, as every editor's Delete posts.
 			case 'deleteBan':
 				return $this->bans->deleteBan($_REQUEST['id'] ?? null);
 

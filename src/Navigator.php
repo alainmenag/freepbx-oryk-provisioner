@@ -50,13 +50,10 @@ class Navigator extends Service
 	/** @var Users */
 	private $users;
 
-	/** @var Bans */
-	private $bans;
-
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, Bans $bans)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users)
 	{
 		parent::__construct($freepbx);
 
@@ -64,7 +61,6 @@ class Navigator extends Service
 		$this->profiles = $profiles;
 		$this->resources = $resources;
 		$this->users = $users;
-		$this->bans = $bans;
 	}
 
 	/**
@@ -177,7 +173,7 @@ class Navigator extends Service
 	 * The section a request names, if it is one: else the first, Users.
 	 *
 	 * The one place that decides, so the list page renders the pane the bar
-	 * lights -- a section switched off, or no section at all, is Users in both.
+	 * lights -- no section at all is Users in both.
 	 *
 	 * @param string $section Section asked for.
 	 *
@@ -194,13 +190,12 @@ class Navigator extends Service
 	 * Every section there is, in the bar's order, by key.
 	 *
 	 * Users, Clients, Profiles first, in the order of the dropdowns under the bar.
-	 * Bans is not a section while it is switched off on the Settings tab.
 	 *
 	 * @return array<string, string> Names, by key.
 	 */
 	private function sectionNames()
 	{
-		$sections = [
+		return [
 			'users' => _('Users'),
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
@@ -208,12 +203,6 @@ class Navigator extends Service
 			'bans' => _('Bans'),
 			'settings' => _('Settings'),
 		];
-
-		if (!$this->bans->enabled()) {
-			unset($sections['bans']);
-		}
-
-		return $sections;
 	}
 
 	/**

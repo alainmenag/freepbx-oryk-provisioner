@@ -9,8 +9,9 @@ Vendor-specific syntax stays in templates you write; the module holds the data
 and the rendering.
 
 Alongside provisioning it manages **users** (an extension, its User Manager
-account, mailbox and SIP device as one number), shows and lifts **fail2ban
-bans**, and logs every request a phone makes.
+account, mailbox and SIP device as one number), **bans** — refusing, or
+explicitly allowing, an address, MAC, user or client — and logs every request
+a phone makes.
 
 > [!WARNING]
 > A client with no token is served to anyone who can reach the URL and knows
@@ -31,9 +32,6 @@ sudo fwconsole ma install oryk_provisioner
 Or download the latest zip from the
 [Releases](https://github.com/alainmenag/freepbx-oryk-provisioner/releases)
 page and upload it in *Admin → Module Admin*.
-
-The Bans tab needs one extra step as root — see
-[Installing fail2ban access](docs/fail2ban.md#installing-fail2ban-access).
 
 ### Provision a phone
 
@@ -64,6 +62,6 @@ The Bans tab needs one extra step as root — see
 ## Documentation
 
 Everything else is in [`docs/`](docs/README.md): the endpoint and filename
-matching, every template placeholder, the admin pages, users, fail2ban,
+matching, every template placeholder, the admin pages, users, bans,
 security, and [releasing a version](docs/releasing.md). How the module is built
 is in [`ARCHITECTURE.md`](ARCHITECTURE.md).

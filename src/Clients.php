@@ -657,7 +657,10 @@ class Clients extends Service
 	 * nothing on the system can account for -- and MySQL would hand the same id to
 	 * the next client written, which would inherit them.
 	 *
-	 * So do its provisioning-log rows, found by MAC, so the MAC is read first.
+	 * So do its provisioning-log rows, found by MAC, so the MAC is read first,
+	 * and every ban naming it, for the same reason as the directory: the next
+	 * client given this id would inherit them. A ban on its MAC alone stays -- it
+	 * names the handset, not the row.
 	 *
 	 * @param mixed $id Client id.
 	 *
@@ -675,6 +678,13 @@ class Clients extends Service
 		}
 
 		$this->logs->removeClientLogs($id);
+
+		try {
+			$stmt = $this->db->prepare("DELETE FROM `{$this->bansTable}` WHERE client_id = :id");
+			$stmt->execute([':id' => (int) $id]);
+		} catch (\Exception $e) {
+			// No bans table before the upgrade that adds it: nothing to delete.
+		}
 
 		$stmt = $this->db->prepare("DELETE FROM `{$this->clientsTable}` WHERE id = :id");
 		$stmt->execute([':id' => (int) $id]);

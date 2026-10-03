@@ -8,9 +8,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Answering a provisioning request, and ending it.
  *
  * resolveRequest() decides; serve(), receive() and openProvision() are the only
- * things that end the request. Anything that wants the answer without the exit -- a preview, a
- * console command -- calls resolveRequest(), or previewResource() when an admin
- * is asking.
+ * things that end the request, and each asks Bans first. Anything that wants
+ * the answer without the exit -- a preview, a console command -- calls
+ * resolveRequest(), or previewResource() when an admin is asking.
  */
 class Endpoint extends Service
 {
@@ -38,10 +38,13 @@ class Endpoint extends Service
 	/** @var Users */
 	private $users;
 
+	/** @var Bans */
+	private $bans;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users)
+	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users, Bans $bans)
 	{
 		parent::__construct($freepbx);
 
@@ -53,6 +56,7 @@ class Endpoint extends Service
 		$this->requestLog = $requestLog;
 		$this->profiles = $profiles;
 		$this->users = $users;
+		$this->bans = $bans;
 	}
 
 	/**
@@ -79,6 +83,12 @@ class Endpoint extends Service
 	 */
 	public function serve($mac, $requested = null, $token = null)
 	{
+		$banned = $this->banned($mac);
+
+		if ($banned) {
+			$this->answer($banned, $mac, $requested);
+		}
+
 		$this->answer($this->resolveRequest($mac, $requested, $token, 'GET', self::vendor()), $mac, $requested, self::accept());
 	}
 
@@ -102,6 +112,12 @@ class Endpoint extends Service
 	 */
 	public function receive($mac, $requested = null, $token = null)
 	{
+		$banned = $this->banned($mac);
+
+		if ($banned) {
+			$this->answer($banned, $mac, $requested);
+		}
+
 		$result = $this->resolveRequest($mac, $requested, $token, 'PUT', self::vendor());
 
 		// The one thing this does that serve() does not: the body is written
@@ -124,7 +140,9 @@ class Endpoint extends Service
 	 * Answer a request for Mac::OPEN by its credentials, and end the request.
 	 *
 	 * Served or received as the client openClient() returns, with the all-zero
-	 * MAC in the filename swapped for that client's.
+	 * MAC in the filename swapped for that client's. The address, and the
+	 * username as a user, are checked against Bans before anything is looked up
+	 * or made; the client found is checked by serve() or receive().
 	 *
 	 * @param string|null $username  Basic username offered.
 	 * @param string|null $password  Basic password offered.
@@ -135,6 +153,12 @@ class Endpoint extends Service
 	 */
 	public function openProvision($username, $password, $requested = null, $method = 'GET')
 	{
+		$banned = $this->banned(Mac::OPEN, $username);
+
+		if ($banned) {
+			$this->answer($banned, Mac::OPEN, $requested);
+		}
+
 		$opened = $this->openClient($username, $password, (string) ($_SERVER['REMOTE_ADDR'] ?? ''));
 
 		if (!$opened['status']) {
@@ -157,7 +181,7 @@ class Endpoint extends Service
 	 * The client a request for Mac::OPEN is answered as, made when need be.
 	 *
 	 * A username held under another password is written to FreePBX's security
-	 * log as a GUI login failure, so fail2ban bans the address.
+	 * log as a GUI login failure, which FreePBX's own fail2ban jail watches.
 	 *
 	 * @param string|null $username Basic username offered.
 	 * @param string|null $password Basic password offered.
@@ -206,6 +230,43 @@ class Endpoint extends Service
 			'extension' => $user['extension'],
 			'created' => $user['created'] || $client['created'],
 		];
+	}
+
+	/**
+	 * The 403 a ban answers this request with, or null when none does.
+	 *
+	 * Asked of the address it came from, its MAC, the client that MAC names, that
+	 * client's device and extension, and the profile it is served -- its own, or
+	 * its vendor's as resolveRequest() would pick -- or, with no client, the open
+	 * provisioning username. See Bans::check() for which row decides.
+	 *
+	 * @param mixed       $mac      MAC the request was made with.
+	 * @param string|null $username Open provisioning's Basic username, or null.
+	 *
+	 * @return array<string, mixed>|null A refusal for answer(), or null.
+	 */
+	private function banned($mac, $username = null)
+	{
+		$mac = Mac::normalize($mac);
+		$client = $mac === '' ? null : $this->clients->clientByMac($mac);
+		$profile = $client ? ($client['profile_id'] ?? null) : null;
+
+		if ($client && $profile === null && self::vendor() !== null) {
+			$vendor = $this->profiles->profileByName(self::vendor());
+			$profile = $vendor ? $vendor['id'] : null;
+		}
+
+		$row = $this->bans->check([
+			'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+			'mac' => $mac,
+			'client' => $client ? (string) $client['id'] : '',
+			'profile' => (string) $profile,
+			'user' => $client
+				? [(string) $client['device_id'], (string) $client['extension']]
+				: [(string) $username],
+		]);
+
+		return $row === null ? null : ['status' => false, 'code' => 403, 'message' => Bans::refusal($row)];
 	}
 
 	/**

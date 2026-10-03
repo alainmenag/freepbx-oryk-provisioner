@@ -32,8 +32,9 @@ log line.
 
 A MAC that is not associated, a client with no profile, and a filename the
 profile does not serve are all 404s. A client that has been switched off, or
-whose profile has, is a 403. A client that has a token and did not present it
-is a 401.
+whose profile has, is a 403, and so is a request a [ban](bans.md) refuses —
+that is asked before anything else. A client that has a token and did not
+present it is a 401.
 
 ## A client with no profile
 
