@@ -2,10 +2,8 @@
 
 The **Bans** tab says what the provisioning endpoint does with requests that
 match a rule. Bans are checked before the endpoint answers anything, and a
-refusal is a **403**, written to the Logs tab like any other request. On their
-own, bans touch only the provisioning endpoint. A ban naming an IP address and
-nothing else is also kept in step with fail2ban, when that is set up — see
-[Syncing with fail2ban](fail2ban.md).
+refusal is a **403**, written to the Logs tab like any other request. Bans touch
+only the provisioning endpoint — not SIP, not the admin GUI.
 
 ## What a ban matches
 
@@ -91,11 +89,6 @@ the ban that decided a request is counted, not every ban that matched it.
 Editing a ban, or reopening it by adding the same one again, keeps its count;
 deleting it is the only reset.
 
-**Times** counts the separate periods a ban has been in force — a save or a
-fail2ban ban that puts it back in force after it lapsed starts a new one —
-next to Hits in the table and on the ban's page, where **Started** says when
-the current period began.
-
 ## Keeping it tidy
 
 Deleting a client or a profile deletes every ban naming it. A ban naming a user keeps the
@@ -103,8 +96,7 @@ number when the user is deleted or renumbered; a ban naming a MAC stays when its
 client is deleted. Nothing else removes a ban: expired ones stay until you
 delete them.
 
-A loopback address (127.x.x.x, ::1) or the unspecified address can't be banned
-at all. The editor warns before banning an address on its own when it is the
-address you are connected from, or one written on a client as its Public IP —
-both stop phones you probably care about, and with fail2ban syncing, a Deny on
-your own address blocks you from the PBX entirely.
+The editor warns before banning an address on its own when it is the address
+you are connected from, or one written on a client as its Public IP — both stop
+phones you probably care about. Neither is refused: a ban never locks you out
+of the GUI.

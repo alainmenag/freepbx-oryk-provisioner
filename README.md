@@ -10,8 +10,8 @@ and the rendering.
 
 Alongside provisioning it manages **users** (an extension, its User Manager
 account, mailbox and SIP device as one number), **bans** — refusing, or
-explicitly allowing, an address, MAC, user, client or profile, with IP bans
-kept in step with fail2ban — and logs every request a phone makes.
+explicitly allowing, an address, MAC, user or client — and logs every request
+a phone makes.
 
 > [!WARNING]
 > A client with no token is served to anyone who can reach the URL and knows
@@ -32,10 +32,6 @@ sudo fwconsole ma install oryk_provisioner
 Or download the latest zip from the
 [Releases](https://github.com/alainmenag/freepbx-oryk-provisioner/releases)
 page and upload it in *Admin → Module Admin*.
-
-Syncing IP bans with fail2ban needs one more step as root — see
-[Syncing with fail2ban](docs/fail2ban.md#setting-it-up). `fwconsole ma install`
-run as root does it for you.
 
 ### Provision a phone
 
@@ -66,6 +62,6 @@ run as root does it for you.
 ## Documentation
 
 Everything else is in [`docs/`](docs/README.md): the endpoint and filename
-matching, every template placeholder, the admin pages, users, bans and fail2ban,
+matching, every template placeholder, the admin pages, users, bans,
 security, and [releasing a version](docs/releasing.md). How the module is built
 is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
