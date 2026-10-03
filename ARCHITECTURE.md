@@ -94,7 +94,10 @@ answered by its Basic credentials instead of a client row
    [Users](#users)); a username held under another password -> 401, written
    to FreePBX's security log as a GUI login failure is, so the jail that
    watches it bans the address; no User Manager, or a login with no
-   Extension/User -> 409
+   Extension/User -> 409. From the username check to the login being set it
+   holds `Users::LOCK`, the MySQL named lock every `Users::store()` holds, so two
+   sign-ups at once cannot be handed the same number and one cannot rename the
+   other's account
 3. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
    made when there is none, with no profile and the credentials as its
    token; a found one is given the credentials again when its token no longer
@@ -133,6 +136,17 @@ so a phone is never rewritten by accident. Already in that format: sent byte for
 byte, and a file keeps its ETag/304. Otherwise it is rewritten and sent as text;
 binary, over `Transcoder::MAX_BYTES`, or undetectable is a 406. Logs are never
 transcoded.
+
+**Nothing the endpoint sends runs as a page.** `engine/provisioner.php` sends
+`X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox;
+default-src 'none'` on every answer, and `Endpoint::viewResource()` (Render) the
+same pair on a text/plain body: `/provisioner/` shares the GUI's origin, and a
+body -- an `.xml` template, a log a phone PUT -- must not be able to script it.
+Phones ignore both headers.
+
+**A stored log is at most `LogRepo::MAX_KEPT` bytes**, its newest, cut to start on
+a whole line; a body declared or found to be over `LogRepo::MAX_BODY` is a 413 and
+nothing is written. It is written to `<name>.part` and renamed.
 
 Every format is read into one tree (ordered arrays of name => string, tree or
 list) and written out of it:
@@ -458,7 +472,9 @@ client behind it has no profile, so a profile ban does not stop it. A subject th
 leave it empty. Open provisioning is asked before `openClient()`, so a refused
 caller never makes a user; the client it is answered as is checked again by
 `serve()`. A refusal is a 403 through `answer()`, so it is logged like any other
-request, and touches nothing else -- no `last_seen`. The deciding row is counted
+request, and touches nothing else -- no `last_seen`. The caller's body is a bare
+`Forbidden`; which ban, and what it names, go to the provisioning log only,
+since they would map a MAC to its extension. The deciding row is counted
 a hit (`Bans::hit()`), once per PHP request, so open provisioning asking twice
 counts once; that UPDATE is the only write on the request path, and one that
 fails is a count lost, never a request refused.
@@ -564,7 +580,10 @@ pure, and tested case by case -- decides:
   the sync does not manage is never changed**; one not in force is revived
   like a reopen and managed again, source kept. An address banned in several
   jails is one row: the longest ban. A managed row in force that fail2ban no
-  longer has is expired, never deleted.
+  longer has is expired, never deleted -- until `BanSync::KEEP_DAYS` after it
+  expired, when a run with no address given prunes it (managed, source
+  `fail2ban`, no copy in fail2ban). That bounds the table by how many addresses
+  fail2ban bans in that time; an address back after it starts `times` again.
 - **table → fail2ban.** `banned` and `deny` are mirrored exactly: each holds
   the rows of ours in force in that state, and anything else in them is
   unbanned. So one rule lifts a copy whether its row expired, changed state or
@@ -614,7 +633,8 @@ the helper turns it into epochs and the sync writes them with
   with it selected, and a linked level with exactly one row shows it selected.
   Logs are linked by MAC: a client's own, a user's or profile's clients'. Logs
   lists only the newest `Navigator::LOG_LIMIT` entries in scope, and its badge
-  counts those. Bans lists the bans that *apply* to the viewed row
+  counts those; an unscoped Bans level likewise lists the newest
+  `Navigator::BAN_LIMIT` (plus the viewed ban). Bans lists the bans that *apply* to the viewed row
   (`Bans::applies()`, check()'s test on one row): every subject a ban sets must
   be one of the row's requests', a client's address being the public one it
   was last seen at; a user or profile is its clients' requests plus the bare
@@ -627,8 +647,10 @@ the helper turns it into epochs and the sync writes them with
   else the section's list with `&scope=<kind>:<id>` naming the viewed row; an
   unscoped level's title is the whole list. `Navigator::scope()` is the one
   computation behind both the dropdowns and every list command asked with
-  `scope`, so a table counts what the badge did -- bar Logs, whose badge stops
-  at `LOG_LIMIT`. A scoped list draws the dropdowns as that row's page does,
+  `scope`, so a table counts what the badge did -- bar Logs and unscoped Bans,
+  whose badges stop at `LOG_LIMIT` and `BAN_LIMIT`. A scoped Bans level reads only
+  the rows naming one of the viewed row's subjects (`Bans::banChoices($requests)`)
+  and asks `applies()` of those, never the whole table. A scoped list draws the dropdowns as that row's page does,
   says what it is narrowed to, and has no Clear on Logs. A tab strip is
   only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is

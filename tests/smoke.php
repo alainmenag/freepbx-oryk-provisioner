@@ -1447,6 +1447,36 @@ file_put_contents($uploaded, "\x7fELF\0\0binary");
 is_eq('a binary file is a 406', $asked($file, 'application/json')['code'] ?? null, 406);
 is_eq('a log upload is never touched', $asked(['status' => true, 'kind' => 'log', 'path' => $uploaded], 'application/json')['kind'], 'log');
 
+echo "\n  what a phone's log upload keeps:\n";
+
+$logs = new LogRepo($s['app']);
+$logDir = sys_get_temp_dir() . '/oryk-log-' . getmypid();
+$logPath = $logDir . '/phone-boot.log';
+$body = scratch_file();
+
+file_put_contents($body, "one\ntwo\n");
+$stored = $logs->storeLog($logPath, $body, null);
+is_eq('a small log is kept whole', file_get_contents($logPath), "one\ntwo\n");
+
+$lines = '';
+for ($i = 0; $i < 150000; $i++) {
+	$lines .= sprintf("line %07d\n", $i);
+}
+file_put_contents($body, $lines);
+$stored = $logs->storeLog($logPath, $body, strlen($lines));
+$kept = file_get_contents($logPath);
+is_eq('a large one keeps no more than MAX_KEPT', strlen($kept) <= LogRepo::MAX_KEPT, true);
+is_eq('starting on a whole line', substr($kept, 0, 5), 'line ');
+is_eq('and ending with the newest', substr($kept, -13), "line 0149999\n");
+is_eq('the count says what was sent and kept', [$stored['bytes'], $stored['kept']], [strlen($lines), strlen($kept)]);
+
+$refused = $logs->storeLog($logPath, $body, LogRepo::MAX_BODY + 1);
+is_eq('a body declared over MAX_BODY is a 413', $refused['code'] ?? null, 413);
+is_eq('and nothing is written', file_get_contents($logPath), $kept);
+
+@unlink($logPath);
+@rmdir($logDir);
+
 foreach ($TEMPORARY as $path) {
 	@unlink($path);
 }

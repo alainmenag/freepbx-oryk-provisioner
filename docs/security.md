@@ -22,6 +22,12 @@ Know what this is before you expose it:
   tell a known one from an unknown one.
 - **Secrets are not masked anywhere in the UI.** Open, Render and Download give the real
   rendered file, secret included.
+- **Only admins given this module can use it.** It is not `access="all"`: an
+  administrator limited to other modules in *Admin → Administrators* cannot
+  open it or call its commands.
+- **A phone's log is capped.** The newest 1 MiB of what it PUT is kept; a body
+  over 16 MiB is refused. Anyone who can PUT for a client can still overwrite
+  that client's log.
 - **Open provisioning creates PBX users from an unauthenticated request.**
   With **Provisioning** Open, anyone who reaches the endpoint, from any address,
   can create an extension, account and mailbox per username they invent, each
@@ -47,4 +53,5 @@ Know what this is before you expose it:
   the admin GUI or any other port, and costs the caller no more than a refused
   request does. A banned MAC or user is only as good as the MAC or username
   the caller chooses to send; an address ban is the one a caller cannot pick.
-  The 403 says it is a ban, which tells the caller it has been noticed.
+  The 403's body is a bare `Forbidden`; which ban refused it, and what that ban
+  names, is on the Logs tab only.

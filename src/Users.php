@@ -51,6 +51,15 @@ class Users extends Service
 	 */
 	const DERIVED = ['id', 'tech', 'devicetype', 'account', 'dial', 'mailbox', 'user', 'description', 'callerid'];
 
+	/** The MySQL named lock every save and every open-provisioning sign-up holds. */
+	const LOCK = 'oryk_provisioner_users';
+
+	/** Seconds to wait for LOCK before giving up. */
+	const LOCK_WAIT = 30;
+
+	/** @var int How many withLock() calls this request is inside: the lock is taken once. */
+	private $lockDepth = 0;
+
 	/** @var NumberAllocator */
 	private $numbers;
 
@@ -322,26 +331,31 @@ class Users extends Service
 			return ['extension' => $extension, 'created' => false];
 		}
 
-		if ($this->userman->usernameTaken($username)) {
-			return null;
-		}
+		// From the username check to the login being set, under the lock: two
+		// sign-ups at once would otherwise be handed the same next number, and the
+		// second's setLogin() would rename the first's account to its own.
+		return $this->withLock(function () use ($username, $password) {
+			if ($this->userman->usernameTaken($username)) {
+				return null;
+			}
 
-		$extension = $this->store([
-			'extension' => '',
-			'name' => '',
-			'email' => filter_var($username, FILTER_VALIDATE_EMAIL) !== false ? $username : '',
-		]);
+			$extension = $this->store([
+				'extension' => '',
+				'name' => '',
+				'email' => filter_var($username, FILTER_VALIDATE_EMAIL) !== false ? $username : '',
+			]);
 
-		// A user whose login could not be set is one nobody can provision as
-		try {
-			$this->userman->setLogin($extension, $username, $password);
-		} catch (\Exception $e) {
-			$this->remove($extension);
+			// A user whose login could not be set is one nobody can provision as
+			try {
+				$this->userman->setLogin($extension, $username, $password);
+			} catch (\Exception $e) {
+				$this->remove($extension);
 
-			throw $e;
-		}
+				throw $e;
+			}
 
-		return ['extension' => $extension, 'created' => true];
+			return ['extension' => $extension, 'created' => true];
+		});
 	}
 
 	/**
@@ -363,6 +377,22 @@ class Users extends Service
 	 *                    Core would not write the device.
 	 */
 	public function store(array $input)
+	{
+		// Under the lock, so the number generate() or assertAvailable() settles on
+		// is still free when the device is written.
+		return $this->withLock(function () use ($input) {
+			return $this->save($input);
+		});
+	}
+
+	/**
+	 * store() without the lock; only store() calls it.
+	 *
+	 * @param array<string, mixed> $input Submitted values.
+	 *
+	 * @return string The number saved under.
+	 */
+	private function save(array $input)
 	{
 		$id = trim((string) ($input['id'] ?? ''));
 		$requested = trim((string) ($input['extension'] ?? ''));
@@ -614,5 +644,40 @@ class Users extends Service
 			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
 			COALESCE((SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
 			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id) AS clients";
+	}
+
+	/**
+	 * Run $work holding LOCK, a MySQL named lock, so saves and sign-ups from
+	 * different requests happen one at a time. Re-entrant within a request: only
+	 * the outermost call takes and releases it.
+	 *
+	 * @param callable $work What to run.
+	 *
+	 * @return mixed What $work returns.
+	 *
+	 * @throws \RuntimeException When the lock is not had within LOCK_WAIT seconds.
+	 */
+	private function withLock(callable $work)
+	{
+		if ($this->lockDepth === 0) {
+			$stmt = $this->db->prepare('SELECT GET_LOCK(:name, :wait)');
+			$stmt->execute([':name' => self::LOCK, ':wait' => self::LOCK_WAIT]);
+
+			if ((int) $stmt->fetchColumn() !== 1) {
+				throw new \RuntimeException(_('Another user is being saved; try again.'));
+			}
+		}
+
+		$this->lockDepth++;
+
+		try {
+			return $work();
+		} finally {
+			$this->lockDepth--;
+
+			if ($this->lockDepth === 0) {
+				$this->db->prepare('SELECT RELEASE_LOCK(:name)')->execute([':name' => self::LOCK]);
+			}
+		}
 	}
 }
