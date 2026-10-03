@@ -166,8 +166,8 @@ class Installer extends Service
 		// stores, and a state. "Any" is 0 or '' and never NULL, so the unique key
 		// over the five admits one row per set of subjects -- MySQL counts NULLs
 		// as distinct, and would admit any number. Only a `banned` row has an
-		// expires_at. `hits` counts the requests the row decided. See
-		// ARCHITECTURE.md, "Bans".
+		// expires_at. `source` and `jail` are what created the row, set once.
+		// `hits` counts the requests the row decided. See ARCHITECTURE.md, "Bans".
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->bansTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -179,6 +179,8 @@ class Installer extends Service
 				`state` VARCHAR(16) NOT NULL DEFAULT 'banned',
 				`expires_at` DATETIME NULL DEFAULT NULL,
 				`note` VARCHAR(255) NULL DEFAULT NULL,
+				`source` VARCHAR(32) NOT NULL DEFAULT 'manual',
+				`jail` VARCHAR(64) NULL DEFAULT NULL,
 				`hits` INT(10) UNSIGNED NOT NULL DEFAULT 0,
 				`last_hit_at` DATETIME NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -41,6 +41,9 @@ class Bans extends Service
 	 */
 	const STATES = ['banned', 'deny', 'allow'];
 
+	/** What a ban written from the Bans tab was created by. */
+	const SOURCE_MANUAL = 'manual';
+
 	/** The longest a temporary ban can be given, in minutes: ten years. */
 	const MAX_MINUTES = 5256000;
 
@@ -319,13 +322,29 @@ class Bans extends Service
 	 * with its id. An existing ban edited to name what another row does is
 	 * refused, since that would be two rows becoming one.
 	 *
+	 * `source` and `jail` say what created the row: blank source is
+	 * SOURCE_MANUAL, blank jail none. A new row and an edit write them; a reopen
+	 * keeps the row's own, so re-adding a ban does not rewrite who made it.
+	 *
 	 * @param array<string, mixed> $request id, ip, mac, user, client, profile,
-	 *                                      state, minutes, note.
+	 *                                      state, minutes, note, source, jail.
 	 *
 	 * @return array<string, mixed> status, id and reopened, or message.
 	 */
 	public function saveBan($request)
 	{
+		$source = strtolower(trim((string) ($request['source'] ?? ''))) ?: self::SOURCE_MANUAL;
+		$jail = trim((string) ($request['jail'] ?? ''));
+		$jail = $jail === '' ? null : $jail;
+
+		if (!preg_match('/^[a-z0-9_-]{1,32}$/', $source)) {
+			return ['status' => false, 'message' => _('A source is up to 32 letters, digits, dashes and underscores.')];
+		}
+
+		if ($jail !== null && !preg_match('/^[A-Za-z0-9_.-]{1,64}$/', $jail)) {
+			return ['status' => false, 'message' => _('A jail is up to 64 letters, digits, dots, dashes and underscores.')];
+		}
+
 		$id = (int) ($request['id'] ?? 0);
 		$state = (string) ($request['state'] ?? '');
 		$note = trim((string) ($request['note'] ?? ''));
@@ -406,6 +425,8 @@ class Bans extends Service
 			$params = $columns + [
 				':state' => $state,
 				':note' => $note === '' ? null : $note,
+				':source' => $source,
+				':jail' => $jail,
 			];
 
 			if ($minutes !== null) {
@@ -416,7 +437,7 @@ class Bans extends Service
 				$stmt = $this->db->prepare(
 					"UPDATE `{$this->bansTable}`
 					SET client_id = :client_id, extension = :extension, mac = :mac, profile_id = :profile_id, ip = :ip,
-						state = :state, note = :note, expires_at = $expires
+						state = :state, note = :note, expires_at = $expires, source = :source, jail = :jail
 					WHERE id = :id"
 				);
 				$stmt->execute($params + [':id' => $id]);
@@ -424,8 +445,8 @@ class Bans extends Service
 				// The key decides, not the look-up above: two saves at once still make
 				// one row. LAST_INSERT_ID(id) makes lastInsertId() the row reopened.
 				$stmt = $this->db->prepare(
-					"INSERT INTO `{$this->bansTable}` (client_id, extension, mac, profile_id, ip, state, note, expires_at)
-					VALUES (:client_id, :extension, :mac, :profile_id, :ip, :state, :note, $expires)
+					"INSERT INTO `{$this->bansTable}` (client_id, extension, mac, profile_id, ip, state, note, expires_at, source, jail)
+					VALUES (:client_id, :extension, :mac, :profile_id, :ip, :state, :note, $expires, :source, :jail)
 					ON DUPLICATE KEY UPDATE
 						id = LAST_INSERT_ID(id),
 						state = VALUES(state),
@@ -700,7 +721,7 @@ class Bans extends Service
 	{
 		return "SELECT
 			b.id, b.client_id, b.extension, b.mac, b.profile_id, b.ip, b.state, b.note, b.created_at, b.expires_at,
-			b.hits, b.last_hit_at, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
+			b.hits, b.last_hit_at, b.source, b.jail, " . self::LAST_HIT_AGE_EXPR . " AS last_hit_age,
 			" . self::CREATED_AGE_EXPR . " AS created_age,
 			" . self::EXPIRES_IN_EXPR . " AS expires_in,
 			" . self::ACTIVE_EXPR . " AS active,

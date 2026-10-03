@@ -879,6 +879,24 @@ is_eq('a deny needs no length, and is written', $bans->saveBan(['mac' => '00-04-
 is_eq('with each subject as it is stored, the rest as "any"',
 	array_intersect_key(end($db->params)[1], array_flip([':client_id', ':extension', ':mac', ':profile_id', ':ip'])),
 	[':client_id' => 0, ':extension' => '1001', ':mac' => '0004f282e824', ':profile_id' => 0, ':ip' => '']);
+is_eq('written from the tab, it is a manual ban with no jail',
+	array_intersect_key(end($db->params)[1], array_flip([':source', ':jail'])), [':source' => 'manual', ':jail' => null]);
+is_eq('and a reopen leaves what created it alone',
+	strpos(end($db->seen), 'source = ') === false && strpos(end($db->seen), 'jail = ') === false, true);
+is_eq('a source and jail given are written, the source lowercased',
+	[$bans->saveBan(['ip' => '198.51.100.4', 'state' => 'banned', 'minutes' => '60', 'source' => 'Fail2ban', 'jail' => 'asterisk'])['status'],
+		array_intersect_key(end($db->params)[1], array_flip([':source', ':jail']))],
+	[true, [':source' => 'fail2ban', ':jail' => 'asterisk']]);
+is_eq('a source or jail that is not a name is refused',
+	[$bans->saveBan(['ip' => '198.51.100.4', 'state' => 'deny', 'source' => 'fail 2 ban'])['status'],
+		$bans->saveBan(['ip' => '198.51.100.4', 'state' => 'deny', 'jail' => 'a/b'])['status']], [false, false]);
+$db->params = [];
+$db->seen = [];
+$db->answers = ['FROM `oryk_provisioner_bans` WHERE `id`' => '1'];
+$bans->saveBan(['id' => '1', 'ip' => '198.51.100.4', 'state' => 'deny', 'source' => 'ratelimit', 'jail' => 'open-prov']);
+is_eq('an edit writes them', [strpos(end($db->seen), 'source = :source, jail = :jail') !== false,
+	array_intersect_key(end($db->params)[1], array_flip([':source', ':jail']))], [true, [':source' => 'ratelimit', ':jail' => 'open-prov']]);
+$db->answers = [];
 is_eq('and a row storing "any" as 0 or \'\' sets nothing there',
 	Bans::summary(['client_id' => '0', 'extension' => '1001', 'mac' => '', 'profile_id' => '0', 'ip' => '']), 'user 1001');
 

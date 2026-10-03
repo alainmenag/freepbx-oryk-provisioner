@@ -73,6 +73,14 @@ The caller's address, and its username when it is a number, are checked before
 any user or client is looked up or made — a refused caller creates nothing. The
 client it is answered as is then checked like any other.
 
+## Source and jail
+
+A ban's page has two fields for what created it: **Source** — `manual` unless
+you say otherwise, or the name of whatever adds bans on its own, such as
+`fail2ban` — and **Jail**, the fail2ban jail or rule that fired, when there is
+one. Change them on the ban's page like any other field. Adding the same ban
+again keeps the source and jail it already has.
+
 ## Hits
 
 **Hits** counts the requests each ban decided — refused, or let through for an

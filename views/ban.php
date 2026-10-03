@@ -173,6 +173,16 @@ foreach ($profiles as $profile) {
 							$h(_('Why, for whoever reads this list next. Not shown to the phone.'))
 						);
 
+						$field('ban_source', _('Source'),
+							'<input type="text" class="form-control oryk-name" id="ban_source" maxlength="32" autocomplete="off" spellcheck="false" placeholder="' . $h(\FreePBX\Modules\Oryk_Provisioner\Bans::SOURCE_MANUAL) . '" value="' . $h($ban['source'] ?? \FreePBX\Modules\Oryk_Provisioner\Bans::SOURCE_MANUAL) . '">',
+							$h(_('What created this ban: manual for one added here, or the name of whatever adds bans on its own, such as fail2ban. Up to 32 letters, digits, dashes and underscores; blank is manual. Adding the same ban again keeps the source it already has.'))
+						);
+
+						$field('ban_jail', _('Jail'),
+							'<input type="text" class="form-control oryk-name" id="ban_jail" maxlength="64" autocomplete="off" spellcheck="false" placeholder="' . $h(_('None')) . '" value="' . $h($ban['jail'] ?? '') . '">',
+							$h(_('The fail2ban jail, or other rule, that fired, when there is one -- asterisk, for instance. Up to 64 letters, digits, dots, dashes and underscores. Adding the same ban again keeps the jail it already has.'))
+						);
+
 						if ($banId) {
 							$fact(_('Created'), $h($ban['created_at']) . ' <span class="text-muted" data-oryk-since="' . (int) $ban['created_age'] . '"></span>');
 							$fact(_('Hits'), (int) $ban['hits'] . ($ban['last_hit_at'] === null
@@ -281,7 +291,9 @@ foreach ($profiles as $profile) {
 				profile: $('#ban_profile').val(),
 				state: $('#ban_state').val(),
 				minutes: $('#ban_minutes').val(),
-				note: $('#ban_note').val()
+				note: $('#ban_note').val(),
+				source: $('#ban_source').val(),
+				jail: $('#ban_jail').val()
 			};
 		},
 		page: function (id) {

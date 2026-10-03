@@ -272,6 +272,11 @@ file (1.0.7).
 - A row naming a client or a profile goes with it, since the next one written
   can be given the same id. A user is a number and its rows outlive it; a MAC
   names a handset and its rows outlive any client.
+- `source` and `jail` are what created the row -- `manual` by default, or
+  whatever adds bans on its own naming itself, with the fail2ban jail or rule
+  that fired. Fields on a ban's page (not list columns), written on create and
+  on an edit; a reopen keeps the row's own, so re-adding a ban never rewrites
+  who made it. Validated as names, since they are drawn on the page.
 - `hits` and `last_hit_at` count the requests a row *decided* -- the one row
   `decide()` picked, allow or not, not every row that matched. A hit assigns
   `updated_at = updated_at`, as a sighting does, so it never reads as an edit.
