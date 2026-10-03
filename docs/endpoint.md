@@ -66,7 +66,6 @@ login:
 
 | | |
 | --- | --- |
-| address not in **Open Provisioning Networks** | 403 |
 | no credentials | 401, the challenge that makes a phone send them |
 | a login that works | that account's default extension |
 | a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives); the username is the email too when it is one. The SIP secret is generated, not the password |

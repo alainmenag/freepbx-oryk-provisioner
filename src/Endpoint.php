@@ -37,13 +37,10 @@ class Endpoint extends Service
 	/** @var Users */
 	private $users;
 
-	/** @var Settings */
-	private $settings;
-
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users, Settings $settings)
+	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users)
 	{
 		parent::__construct($freepbx);
 
@@ -55,7 +52,6 @@ class Endpoint extends Service
 		$this->requestLog = $requestLog;
 		$this->profiles = $profiles;
 		$this->users = $users;
-		$this->settings = $settings;
 	}
 
 	/**
@@ -161,25 +157,21 @@ class Endpoint extends Service
 	/**
 	 * The client a request for Mac::OPEN is answered as, made when need be.
 	 *
-	 * The address is checked against ORYK_OPEN_NETWORKS before any login is
-	 * tried. Then Users::findOrCreate() and Clients::findOrCreateForDevice().
-	 * A username held under another
-	 * password is written to FreePBX's security log as a GUI login failure
-	 * is, so the jail that watches that log bans the address.
+	 * Users::findOrCreate(), then Clients::findOrCreateForDevice(). Any
+	 * address may ask. A username held under another password is written to
+	 * FreePBX's security log as a GUI login failure is, so the jail that
+	 * watches that log bans the address.
 	 *
 	 * @param string|null $username Basic username offered.
 	 * @param string|null $password Basic password offered.
-	 * @param string      $address  Address the request came from.
+	 * @param string      $address  Address the request came from, for the
+	 *                              security log.
 	 *
 	 * @return array<string, mixed> status, and mac, extension and created on
 	 *                              success; code and message on a refusal.
 	 */
 	public function openClient($username, $password, $address)
 	{
-		if (!self::addressAllowed((string) $this->settings->get(Settings::OPEN_NETWORKS), $address)) {
-			return ['status' => false, 'code' => 403, 'message' => sprintf(_('%s may not use open provisioning.'), $address)];
-		}
-
 		if ((string) $username === '' || (string) $password === '') {
 			return ['status' => false, 'code' => 401, 'message' => _('Open provisioning needs a username and password.')];
 		}
@@ -217,64 +209,6 @@ class Endpoint extends Service
 			'extension' => $user['extension'],
 			'created' => $user['created'] || $client['created'],
 		];
-	}
-
-	/**
-	 * Whether an address is in a list of addresses and CIDR ranges.
-	 *
-	 * An entry that is not an address or range matches nothing, so a typo
-	 * shuts open provisioning rather than opening it.
-	 *
-	 * @param string $list    ORYK_OPEN_NETWORKS: comma or space separated;
-	 *                        blank allows every address.
-	 * @param string $address Address to check.
-	 *
-	 * @return bool True when the address is allowed.
-	 */
-	public static function addressAllowed($list, $address)
-	{
-		$entries = preg_split('/[\s,]+/', trim((string) $list), -1, PREG_SPLIT_NO_EMPTY);
-
-		if (!$entries) {
-			return true;
-		}
-
-		$packed = @inet_pton((string) $address);
-
-		if ($packed === false) {
-			return false;
-		}
-
-		foreach ($entries as $entry) {
-			$parts = explode('/', $entry, 2);
-			$network = @inet_pton($parts[0]);
-
-			if ($network === false || strlen($network) !== strlen($packed)) {
-				continue;
-			}
-
-			$width = strlen($network) * 8;
-			$bits = isset($parts[1]) ? $parts[1] : (string) $width;
-
-			if (!ctype_digit($bits) || (int) $bits > $width) {
-				continue;
-			}
-
-			$bytes = intdiv((int) $bits, 8);
-			$rest = (int) $bits % 8;
-
-			if (substr($network, 0, $bytes) !== substr($packed, 0, $bytes)) {
-				continue;
-			}
-
-			if ($rest && ((ord($network[$bytes]) ^ ord($packed[$bytes])) & (0xFF << (8 - $rest)) & 0xFF)) {
-				continue;
-			}
-
-			return true;
-		}
-
-		return false;
 	}
 
 	/**

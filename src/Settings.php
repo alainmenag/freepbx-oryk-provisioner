@@ -40,12 +40,6 @@ class Settings extends Service
 	const PROVISIONING = 'ORYK_PROVISIONING';
 
 	/**
-	 * Addresses and CIDR ranges open provisioning answers, comma or space
-	 * separated; blank for any.
-	 */
-	const OPEN_NETWORKS = 'ORYK_OPEN_NETWORKS';
-
-	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
@@ -116,17 +110,6 @@ class Settings extends Service
 					'CLOSED' => 'Closed (only existing clients are served)',
 					'DISABLED' => 'Disabled (every request is refused)',
 				],
-			],
-			self::OPEN_NETWORKS => [
-				'name' => 'Open Provisioning Networks',
-				'description' => 'The addresses and ranges open provisioning answers, separated by '
-					. 'commas or spaces: 203.0.113.7, 10.0.0.0/8, 2001:db8::/32. Anything else asking '
-					. 'for 000000000000 is refused with a 403 before any login is tried. Blank: any '
-					. 'address, which lets anyone who reaches the endpoint create users.',
-				'type' => 'text',
-				'default' => '',
-				'pattern' => '/^[0-9A-Fa-f:.\/]+([\s,]+[0-9A-Fa-f:.\/]+)*$/',
-				'emptyok' => true,
 			],
 		];
 	}

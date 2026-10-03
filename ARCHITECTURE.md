@@ -80,16 +80,15 @@ With `ORYK_PROVISIONING` OPEN, a request for `Mac::OPEN` (`000000000000`) is
 answered by its Basic credentials instead of a client row
 (`Endpoint::openClient()`), in this order:
 
-1. the address against `ORYK_OPEN_NETWORKS` -> 403
-2. no credentials -> 401, which is the challenge that makes a phone send them
-3. `Users::findOrCreate()`: a User Manager login answers with the account's
+1. no credentials -> 401, which is the challenge that makes a phone send them
+2. `Users::findOrCreate()`: a User Manager login answers with the account's
    default extension; a username no account holds makes a user, as a blank
    Extension does, and gives its account that username and password (see
    [Users](#users)); a username held under another password -> 401, written
    to FreePBX's security log as a GUI login failure is, so the jail that
    watches it bans the address; no User Manager, or a login with no
    Extension/User -> 409
-4. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
+3. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
    made when there is none, with no profile and the credentials as its
    token; a found one is given the credentials again when its token no longer
    verifies, so a password changed in UCP does not lock the phone out. A client
@@ -496,8 +495,9 @@ bootstrap FreePBX on its own.
 - Uniform refusals. A failure still says which kind of failure it was, so a
   caller probing MACs can tell a known one from an unknown one. Closing that is
   the token scheme's job and is a change to all the messages at once.
-- No rate limiting or lockout on token verification. Open provisioning's
-  failed logins reach fail2ban only through FreePBX's security log.
+- No rate limiting or lockout on token verification, or on open
+  provisioning, which answers any address and makes a user per new username.
+  Its failed logins reach fail2ban only through FreePBX's security log.
 - Copying resources between profiles, or a seeded starting resource. A profile
   is set up one file at a time from empty.
 - No `fwconsole` command. Backup/restore hooks are stubs.

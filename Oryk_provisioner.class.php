@@ -246,8 +246,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->logs,
 			$this->provisioningLog,
 			$this->profiles,
-			$this->users,
-			$this->settings
+			$this->users
 		);
 
 		$this->pages = new Pages(

@@ -701,9 +701,6 @@ $fields = array_column($settings->fields([Settings::FROM_DOMAIN => 'pbx.example.
 is_eq('the Settings tab draws it with its value and what blank comes to',
 	[$fields[Settings::FROM_DOMAIN]['value'], $fields[Settings::FROM_DOMAIN]['placeholder']],
 	['set-in-advanced.example.net', 'pbx.example.net']);
-is_eq('the open provisioning networks are addresses and ranges',
-	[$settings->set(Settings::OPEN_NETWORKS, '203.0.113.7, 10.0.0.0/8 2001:db8::/32'), $settings->set(Settings::OPEN_NETWORKS, 'office lan') !== null],
-	[null, true]);
 
 is_eq('a keyword that is not a setting is ignored, not written',
 	[$settings->saveSettings(['settings' => ['AMPWEBROOT' => '/tmp']])['status'], FreePBX::Config()->get('AMPWEBROOT')],
@@ -853,19 +850,6 @@ is_eq('and on again', [$settings->set(Settings::FAIL2BAN, '1'), $settings->get(S
 
 echo "\nopen provisioning:\n";
 
-echo "\n  which addresses ORYK_OPEN_NETWORKS lets in:\n";
-
-is_eq('blank lets in anything', Endpoint::addressAllowed('', '198.51.100.1'), true);
-is_eq('an address lets in itself', Endpoint::addressAllowed('198.51.100.1', '198.51.100.1'), true);
-is_eq('and nothing else', Endpoint::addressAllowed('198.51.100.1', '198.51.100.2'), false);
-is_eq('a range lets in what is in it', Endpoint::addressAllowed('10.0.0.0/8, 192.168.1.0/24', '192.168.1.200'), true);
-is_eq('and not what is next to it', Endpoint::addressAllowed('192.168.1.0/25', '192.168.1.200'), false);
-is_eq('IPv6 ranges are ranges', Endpoint::addressAllowed('2001:db8::/32', '2001:db8:1::5'), true);
-is_eq('an IPv4 range never lets in IPv6', Endpoint::addressAllowed('0.0.0.0/0', '2001:db8::1'), false);
-is_eq('an entry that is not an address matches nothing', Endpoint::addressAllowed('abc', '198.51.100.1'), false);
-is_eq('a prefix wider than the address matches nothing', Endpoint::addressAllowed('10.0.0.0/33', '10.0.0.1'), false);
-is_eq('no address is never let in past a list', Endpoint::addressAllowed('10.0.0.0/8', ''), false);
-
 echo "\n  what openClient() answers before a user is found:\n";
 
 $s = build();
@@ -874,19 +858,15 @@ $template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDev
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
-	new Profiles($s['app'], new FileRepo($s['app'])), $s['users'], $settings
+	new Profiles($s['app'], new FileRepo($s['app'])), $s['users']
 );
-FreePBX::$config[Settings::OPEN_NETWORKS] = '10.0.0.0/8';
 $codes = function ($user, $pass, $address) use ($endpoint) {
 	return $endpoint->openClient($user, $pass, $address)['code'] ?? 200;
 };
 
-is_eq('an address outside the networks is a 403, credentials or not', $codes('bob', 'pw', '192.0.2.1'), 403);
-is_eq('no credentials is a 401, the challenge', $codes('', '', '10.1.1.1'), 401);
-is_eq('a username that cannot be one is a 400', $codes(' bob', 'pw', '10.1.1.1'), 400);
-is_eq('no User Manager is a 409', $codes('bob', 'pw', '10.1.1.1'), 409);
-
-unset(FreePBX::$config[Settings::OPEN_NETWORKS]);
+is_eq('no credentials is a 401, the challenge', $codes('', '', '192.0.2.1'), 401);
+is_eq('a username that cannot be one is a 400', $codes(' bob', 'pw', '192.0.2.1'), 400);
+is_eq('no User Manager is a 409', $codes('bob', 'pw', '192.0.2.1'), 409);
 
 echo "\nthe vendor a User-Agent names:\n";
 
