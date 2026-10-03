@@ -91,11 +91,6 @@ tr.oryk-disabled > td a:not(.btn) {
 	display: block;
 	margin: 2px 0;
 }
-.oryk-render-body {
-	max-height: 65vh;
-	overflow: auto;
-	margin: 0;
-}
 /*
  * A field's help is one block, because FreePBX's (?) icon shows exactly
  * one: the element with id "<field>-help". A field with more to say puts

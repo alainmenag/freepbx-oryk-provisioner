@@ -20,6 +20,13 @@ class BanSync extends Service
 	/** What a row made by the sync says it was created by. */
 	const SOURCE = 'fail2ban';
 
+	/**
+	 * Days a row the sync made is kept after it expires. Without a limit the
+	 * table grows by a row per address fail2ban ever bans; the price is that an
+	 * address back after this long starts its Times count again.
+	 */
+	const KEEP_DAYS = 30;
+
 	/** @var Fail2ban */
 	private $fail2ban;
 
@@ -449,6 +456,10 @@ class BanSync extends Service
 				}
 			}
 
+			if ($only === null) {
+				$done['pruned'] = $this->prune();
+			}
+
 			return ['ok' => true] + $done + ['denied' => count($denied)];
 		} catch (\Exception $e) {
 			$this->logError('fail2ban sync: ' . $e->getMessage());
@@ -606,6 +617,21 @@ class BanSync extends Service
 		}
 
 		return [$done, $this->escalation ? $this->escalation->apply($renewed) : []];
+	}
+
+	/**
+	 * Delete the rows the sync made, still its own, that expired over KEEP_DAYS
+	 * ago and have no copy in fail2ban. A row anybody saved is never pruned.
+	 *
+	 * @return int Rows deleted.
+	 */
+	private function prune()
+	{
+		return (int) $this->db->exec(
+			"DELETE FROM `{$this->bansTable}`
+			WHERE managed = 1 AND source = '" . self::SOURCE . "' AND state = 'banned'
+				AND synced_at IS NULL AND expires_at < NOW() - INTERVAL " . (int) self::KEEP_DAYS . ' DAY'
+		);
 	}
 
 	/**

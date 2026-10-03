@@ -58,7 +58,7 @@ run as root does it for you.
 3. **Add a client.** *Clients → Add Client*: the MAC, the FreePBX device it
    stands for, the profile.
 4. **Check it.** The client's **Resources** tab lists every file it will ask
-   for, each with **Render**, which shows it as the phone will get it, and **Open**,
+   for, each with **Render**, which opens it as the phone will get it, and **Open**,
    which fetches it from the endpoint as the phone does.
 5. **Point the phone at** `http://<pbx>/provisioner/`. Most phones append their
    own MAC and filename.

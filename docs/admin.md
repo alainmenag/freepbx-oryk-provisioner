@@ -72,9 +72,9 @@ link would answer for the wrong phone.
 Each row has two ways to look at the file. **Open** fetches it from the
 endpoint in a new tab, exactly as the phone does: the browser is asked for the
 client's token when it has one, and the fetch counts as the client being seen.
-**Render** shows the same body in a window on the page, read through your admin
-login, so it needs no token and is not logged. A firmware image or other file
-too large or binary to show is given its size instead. **Download** saves the
+**Render** opens the same body as plain text in a new tab, read through your
+admin login, so it needs no token and is not logged. A firmware image or other
+file too large or binary to show is given its size instead. **Download** saves the
 same body, any size, under the filename this client asks for it by.
 
 **Deleting a profile** that clients are still assigned to is refused rather than

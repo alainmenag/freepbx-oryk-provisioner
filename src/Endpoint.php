@@ -10,7 +10,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * resolveRequest() decides; serve(), receive() and openProvision() are the only
  * things that end the request, and each asks Bans first. Anything that wants
  * the answer without the exit -- a preview, a console command -- calls
- * resolveRequest(), or previewResource() when an admin is asking.
+ * resolveRequest(); an admin's Render and Download go through adminResult().
  */
 class Endpoint extends Service
 {
@@ -129,8 +129,10 @@ class Endpoint extends Service
 			// server's and not the phone's. Answered as one thing either way; the
 			// log says which, and the byte count rides back on a success.
 			$result = $stored['status']
-				? $result + ['message' => sprintf('%s bytes', $stored['bytes'])]
-				: $stored;
+				? $result + ['message' => $stored['kept'] < $stored['bytes']
+					? sprintf('%d bytes, kept the newest %d', $stored['bytes'], $stored['kept'])
+					: sprintf('%d bytes', $stored['bytes'])]
+				: $stored + ['code' => 500];
 		}
 
 		$this->answer($result, $mac, $requested);
@@ -266,7 +268,14 @@ class Endpoint extends Service
 				: [(string) $username],
 		]);
 
-		return $row === null ? null : ['status' => false, 'code' => 403, 'message' => Bans::refusal($row)];
+		// Which ban, and the extension, client and profile it names, go to the
+		// provisioning log only: told to the caller, they map a MAC to its extension.
+		return $row === null ? null : [
+			'status' => false,
+			'code' => 403,
+			'message' => Bans::refusal($row),
+			'body' => _('Forbidden'),
+		];
 	}
 
 	/**
@@ -307,6 +316,9 @@ class Endpoint extends Service
 	 *
 	 * A template or file is first transcoded when the request asked for
 	 * another format -- see transcoded().
+	 *
+	 * A refusal's `message` is what the logs record; `body`, when set, is what the
+	 * caller is sent instead -- a ban's details are the operator's, not the caller's.
 	 *
 	 * @param array<string, mixed>                     $result    What resolveRequest() decided.
 	 * @param mixed                                    $mac       MAC the request was made with.
@@ -358,7 +370,7 @@ class Endpoint extends Service
 		}
 
 		if (!$result['status']) {
-			$this->sendText($status, $result['message'] . "\n");
+			$this->sendText($status, ($result['body'] ?? $result['message']) . "\n");
 		}
 
 		if (($result['kind'] ?? '') === 'file') {
@@ -633,40 +645,57 @@ class Endpoint extends Service
 	}
 
 	/**
-	 * One resource as one client is sent it, for an admin to read.
+	 * One resource as one client is sent it, as text in a tab of its own, and
+	 * end the request.
 	 *
-	 * The Render button. A file is read only when Transcoder::readText() would:
-	 * a firmware image is answered with its size, not its bytes. Not transcoded.
+	 * The Render button. Always text/plain, with nosniff and a sandboxing CSP:
+	 * this is served on the admin GUI's origin, and a body -- a log a phone PUT
+	 * included -- must never be able to run as a page there. A file
+	 * Transcoder::readText() will not read is answered with its size, not its
+	 * bytes. Not transcoded.
 	 *
 	 * @param mixed $clientId   Client id.
 	 * @param mixed $resourceId Resource id.
 	 *
-	 * @return array<string, mixed> status; on success type, filename and either
-	 *                              body or size; message on a refusal.
+	 * @return void Never returns; the request ends here.
 	 */
-	public function previewResource($clientId, $resourceId)
+	public function viewResource($clientId, $resourceId)
 	{
 		$result = $this->adminResult($clientId, $resourceId);
 
+		self::inertHeaders();
+
 		if (!$result['status']) {
-			return $result;
+			$this->sendText($result['code'] ?? 404, $result['message'] . "\n");
 		}
 
-		$answer = [
-			'status' => true,
-			'type' => (string) $result['type'],
-			'filename' => (string) $result['filename'],
-		];
+		$body = $result['kind'] === 'template'
+			? (string) $result['config']
+			: Transcoder::readText((string) $result['path']);
 
-		if ($result['kind'] === 'template') {
-			return $answer + ['body' => (string) $result['config']];
+		if ($body === null) {
+			$body = sprintf(
+				_('%1$s is %2$d bytes, binary or too large to show here. Download saves it.'),
+				(string) $result['filename'],
+				(int) @filesize((string) $result['path'])
+			) . "\n";
 		}
 
-		$body = Transcoder::readText((string) $result['path']);
+		header('Content-Disposition: inline; ' . $this->filenameParameter((string) $result['filename']));
+		$this->sendText(200, $body);
+	}
 
-		return $body === null
-			? $answer + ['size' => (int) @filesize((string) $result['path'])]
-			: $answer + ['body' => $body];
+	/**
+	 * The headers that keep a response from being run as a page by a browser:
+	 * no sniffing, and a CSP that sandboxes it and loads nothing. A phone ignores
+	 * both. engine/provisioner.php sends the same pair for every endpoint answer.
+	 *
+	 * @return void
+	 */
+	private static function inertHeaders()
+	{
+		header('X-Content-Type-Options: nosniff');
+		header("Content-Security-Policy: sandbox; default-src 'none'");
 	}
 
 	/**

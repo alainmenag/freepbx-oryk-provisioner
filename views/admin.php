@@ -293,8 +293,15 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		});
 	}
 
+	// Safe in element text and inside a quoted attribute alike: quotes are
+	// escaped too, which .text().html() never does.
 	function orykEscape(value) {
-		return $('<div>').text(value === null || value === undefined ? '' : value).html();
+		return String(value === null || value === undefined ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 
 	function formatText(value) {
@@ -415,7 +422,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		if (!value) {
 			return '-';
 		}
-		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${value}</a>`;
+		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>`;
 	}
 
 	function formatAssignedClients(value, row) {
