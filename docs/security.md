@@ -16,7 +16,7 @@ Know what this is before you expose it:
   at all**, matched by name across every enabled profile — which is what lets a
   phone fetch firmware before anybody has written its client, and also means
   anyone who reaches the endpoint and knows the name can fetch it.
-- **Failures are not uniform.** A 404 says which kind of failure it was
+- **Failures are not uniform.** A 404 or 403 says which kind of failure it was
   ("… is not associated with anything", "… has no profile assigned",
   "… is disabled", "The … profile is disabled"), so a caller probing MACs can
   tell a known one from an unknown one.

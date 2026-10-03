@@ -38,7 +38,7 @@
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, HEAD, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: Authorization, Content-Type');
+header('Access-Control-Allow-Headers: Authorization, *');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 

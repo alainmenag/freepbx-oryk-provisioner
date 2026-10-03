@@ -52,11 +52,11 @@ phone
 without the exit -- previews, console commands and tests use it. **Its order is
 the security of the thing:**
 
-1. disabled client -> refused
+1. disabled client -> 403
 2. a client with no profile: the profile named after the vendor its
    User-Agent names (`Vendor`), matched without regard to case, for this
    request only -- nothing is stored
-3. disabled profile -> refused
+3. disabled profile -> 403
 4. match a resource of the client's profile by name
 5. no client, or still no profile: the resources declared `file`, matched by name
    exactly (this is how firmware is fetched by a phone that sends no MAC)

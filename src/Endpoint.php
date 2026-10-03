@@ -418,11 +418,13 @@ class Endpoint extends Service
 		// looked at: not its profile's files, not the files served by name to
 		// callers with no client at all, and not a log it tries to send. A switch
 		// that only covered what the profile serves would leave firmware still
-		// going out to it.
+		// going out to it. A 403, as for a disabled profile: the client is
+		// known, it is switched off.
 		if ($client && !(int) ($client['enabled'] ?? 1)) {
 			return [
 				'status' => false,
 				'message' => sprintf(_('%s is disabled.'), $mac),
+				'code' => 403,
 			];
 		}
 
@@ -443,7 +445,8 @@ class Endpoint extends Service
 		// anybody, so every client assigned to it is refused without any of those
 		// clients having been touched. The refusal names the profile, because an
 		// operator reading a run of refusals from phones that are individually
-		// fine needs told which one thing to switch back on.
+		// fine needs told which one thing to switch back on. A 403, as for a
+		// disabled client.
 		//
 		// Its uploaded files are refused in fileByName(), which answers callers
 		// with no client behind them and so never reaches this line.
@@ -454,6 +457,7 @@ class Endpoint extends Service
 					_('The %s profile is disabled.'),
 					(string) $client['profile_name']
 				),
+				'code' => 403,
 			];
 		}
 

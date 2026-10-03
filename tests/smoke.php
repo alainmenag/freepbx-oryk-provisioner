@@ -913,8 +913,10 @@ $client = ['id' => '5', 'mac' => '0004f282e824', 'token' => null, 'enabled' => '
 	'tech' => null, 'profile_name' => null, 'profile_enabled' => null];
 $db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => [['id' => '3', 'name' => 'polycom', 'enabled' => '0']]];
 
-is_eq('the vendor profile is the one it gets',
-	$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, 'The polycom profile is disabled.');
+$disabled = $endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
+
+is_eq('the vendor profile is the one it gets', $disabled['message'] ?? null, 'The polycom profile is disabled.');
+is_eq('and a disabled profile is a 403, not a 404', $disabled['code'] ?? 404, 403);
 
 $db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => []];
 
@@ -928,6 +930,12 @@ is_eq('and no vendor, no lookup',
 	[$endpoint->resolveRequest('0004f282e824')['message'] ?? null,
 		(bool) array_filter($db->seen, function ($q) { return strpos($q, 'LOWER(name)') !== false; })],
 	['0004f282e824 has no profile assigned.', false]);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [['enabled' => '0'] + $client]];
+$disabled = $endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
+
+is_eq('a disabled client is a 403 too, before any profile is looked at',
+	[$disabled['code'] ?? 404, $disabled['message'] ?? null], [403, '0004f282e824 is disabled.']);
 
 $db->fetches = ['WHERE pc.mac = :mac' => [['profile_id' => '9', 'profile_name' => 'Own', 'profile_enabled' => '0'] + $client],
 	'WHERE LOWER(name) = LOWER(:name)' => [['id' => '3', 'name' => 'Polycom', 'enabled' => '1']]];

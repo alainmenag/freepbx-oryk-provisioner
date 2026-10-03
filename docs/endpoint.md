@@ -30,9 +30,10 @@ written to disk, so it has to be a phone this module knows — where a fetch doe
 not, since firmware is asked for by name alone. Anything else is a 404 and a
 log line.
 
-A MAC that is not associated, a client with no profile, a client or profile
-that has been switched off, and a filename the profile does not serve are all
-404s. A client that has a token and did not present it is a 401.
+A MAC that is not associated, a client with no profile, and a filename the
+profile does not serve are all 404s. A client that has been switched off, or
+whose profile has, is a 403. A client that has a token and did not present it
+is a 401.
 
 ## A client with no profile
 
