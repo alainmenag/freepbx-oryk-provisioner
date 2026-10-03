@@ -22,6 +22,13 @@ Know what this is before you expose it:
   tell a known one from an unknown one.
 - **Secrets are not masked anywhere in the UI.** The Render links serve the real
   rendered file, secret included.
+- **Open provisioning creates PBX users from an unauthenticated request.**
+  With **Provisioning** Open and **Open Provisioning Networks** blank, anyone
+  who reaches the endpoint can create an extension, account and mailbox per
+  username they invent, each costing a full reload. Set the networks. A wrong
+  password for an existing username is written to FreePBX's security log, which
+  is what FreePBX's own GUI jail watches; new usernames are not failures and
+  are not banned.
 - **Deleting a user deletes its call history and recordings** — see
   [Deleting](users.md#deleting).
 - The provisioning log records metadata only — MAC, file, profile — never the

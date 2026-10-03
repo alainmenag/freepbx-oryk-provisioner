@@ -34,6 +34,54 @@ A MAC that is not associated, a client with no profile, a client or profile
 that has been switched off, and a filename the profile does not serve are all
 404s. A client that has a token and did not present it is a 401.
 
+## A client with no profile
+
+A client with no profile assigned is served the profile **named after the
+vendor its `User-Agent` names**, when there is one — name a profile `Polycom`
+and every Polycom client without a profile of its own gets it. The name is
+matched without regard to case, on every request; nothing is saved to the
+client, so assigning it a profile takes over at once. A disabled vendor
+profile refuses, as any disabled profile does.
+
+| Vendor | `User-Agent` carries |
+| --- | --- |
+| Polycom | `Polycom`, or `Poly` as a word |
+| Yealink, Grandstream, Cisco, Snom, Fanvil, Htek, Avaya, Obihai, Panasonic, Gigaset, Akuvox | the vendor's name |
+| AudioCodes | `AudioCodes` or `AUDC-` |
+| Mitel | `Mitel` or `Aastra` |
+| WebKit | `WebKit` — a browser, or a softphone built on one |
+
+The first that matches, in that order, is the vendor: a phone that also names
+WebKit is its own vendor. A request with no vendor, or no profile by its name,
+is served as a client with no profile — uploaded files by name, and nothing
+else.
+
+## Open provisioning
+
+With **Settings → Provisioning** Open, a request for MAC `000000000000` —
+`/provisioner/000000000000.cfg`, or any other file under that MAC — is
+answered by the HTTP Basic credentials it carries, which are a User Manager
+login:
+
+| | |
+| --- | --- |
+| address not in **Open Provisioning Networks** | 403 |
+| no credentials | 401, the challenge that makes a phone send them |
+| a login that works | that account's default extension |
+| a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives); the username is the email too when it is one. The SIP secret is generated, not the password |
+| a username held under another password | 401, and a line in FreePBX's security log that the GUI's fail2ban jail bans on |
+| no User Manager, or a login with no Extension/User | 409 |
+
+The user's client on an internal MAC (`02…`) is then found, or made — enabled,
+with no profile and the credentials as its token, so it is served its
+vendor's profile (above). The request is answered as that client: `000000000000.cfg` is its `.cfg`, and so on, with
+the same 404s and 401s as any other client. A client on a real phone's MAC is
+never used. The first request for a new user takes as long as Apply Config.
+
+A Polycom asks for `000000000000-directory.xml` and, without a `<mac>.cfg`,
+`000000000000.cfg`. While open provisioning is on, those requests are open
+provisioning's: without credentials they are a 401, not a 404.
+
 ## How a filename is matched
 
 A resource's name is itself a template, and it matches a request two ways:

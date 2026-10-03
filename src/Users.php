@@ -502,8 +502,8 @@ class Users extends Service
 	 * extension -- the extension, its owned User Manager account, its UCP
 	 * assignments and its call history and recordings.
 	 *
-	 * Provisioner clients pointing at it are deleted with it, their stored
-	 * logs included.
+	 * Provisioner clients pointing at it are released -- see
+	 * Clients::releaseDevice().
 	 *
 	 * @param int|string $extension Extension number.
 	 *
@@ -523,7 +523,7 @@ class Users extends Service
 
 		// Nothing in FreePBX knows the custom endpoint file
 		$this->endpoints->forget($user);
-		$this->clients->deleteForDevice($user);
+		$this->clients->releaseDevice($user);
 
 		// A handset or softphone still on the extension keeps it alive
 		if (!$this->extensions->hasDevices($user)) {

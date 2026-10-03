@@ -244,7 +244,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->template,
 			$this->files,
 			$this->logs,
-			$this->provisioningLog
+			$this->provisioningLog,
+			$this->profiles,
+			$this->users,
+			$this->settings
 		);
 
 		$this->pages = new Pages(
@@ -384,53 +387,32 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * @param string|null $requested Filename asked for.
 	 * @param string|null $token     Token offered, when one was.
 	 * @param string      $method    Request method it would be asked with.
+	 * @param string|null $vendor    Vendor a User-Agent names; see Vendor.
 	 *
 	 * @return array<string, mixed> The outcome, for a caller to act on.
 	 */
-	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET')
+	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET', $vendor = null)
 	{
-		return $this->endpoint->resolveRequest($mac, $requested, $token, $method);
+		return $this->endpoint->resolveRequest($mac, $requested, $token, $method, $vendor);
 	}
 
 	/**
-	 * The user a phone's credentials name, made from them when there is none.
+	 * Answer a request for the all-zero MAC by its credentials, and end the
+	 * request.
 	 *
-	 * Called by engine/provisioner.php for the all-zero MAC while
-	 * ORYK_PROVISIONING is OPEN. See Users::findOrCreate().
+	 * Called by engine/provisioner.php while ORYK_PROVISIONING is OPEN. See
+	 * Endpoint::openProvision().
 	 *
-	 * @param mixed $username Username offered.
-	 * @param mixed $password Password offered.
+	 * @param string|null $username  Basic username offered.
+	 * @param string|null $password  Basic password offered.
+	 * @param string|null $requested Filename asked for.
+	 * @param string      $method    GET, HEAD or PUT.
 	 *
-	 * @return array{extension: string, created: bool}|null The user, or null
-	 *                                                       when the username
-	 *                                                       is held under
-	 *                                                       another password.
-	 *
-	 * @throws \InvalidArgumentException When the username or password is unusable.
-	 * @throws \RuntimeException         When the login cannot be used.
-	 * @throws \Exception                When the user could not be saved.
+	 * @return void This ends the request.
 	 */
-	public function findOrCreateUser($username, $password)
+	public function openProvision($username, $password, $requested = null, $method = 'GET')
 	{
-		return $this->users->findOrCreate($username, $password);
-	}
-
-	/**
-	 * The client a device is provisioned as, made when it has none.
-	 *
-	 * Called by engine/provisioner.php after findOrCreateUser(). See
-	 * Clients::findOrCreateForDevice().
-	 *
-	 * @param string      $deviceId FreePBX device id.
-	 * @param string|null $token    Token as typed, user:password; null for none.
-	 *
-	 * @return array{id: int, mac: string, created: bool} The client.
-	 *
-	 * @throws \Exception When the client could not be saved.
-	 */
-	public function findOrCreateClient($deviceId, $token = null)
-	{
-		return $this->clients->findOrCreateForDevice($deviceId, $token);
+		$this->endpoint->openProvision($username, $password, $requested, $method);
 	}
 
 	/**

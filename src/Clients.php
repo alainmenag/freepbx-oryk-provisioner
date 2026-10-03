@@ -266,8 +266,10 @@ class Clients extends Service
 	 * Only a client on an internal MAC counts: one on a real phone's MAC
 	 * stands for that phone and is not handed to anything else asking. A new
 	 * one is made by saveClient() as the editor makes one with a blank MAC --
-	 * enabled, no profile -- and given $token, so the internal MAC is served
-	 * only to whoever holds it.
+	 * enabled, no profile -- with $token. A found one is given $token when
+	 * the one it holds no longer verifies: the
+	 * caller has just logged in with it, and a password changed in UCP
+	 * would otherwise lock the phone out.
 	 *
 	 * @param string      $deviceId FreePBX device id.
 	 * @param string|null $token    Token as typed, user:password; null for none.
@@ -279,7 +281,7 @@ class Clients extends Service
 	public function findOrCreateForDevice($deviceId, $token = null)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac
+			"SELECT pc.id, pc.mac, pc.token
 			FROM `{$this->clientsTable}` pc
 			WHERE pc.device_id = :device_id AND " . self::INTERNAL_EXPR . "
 			ORDER BY pc.id
@@ -289,6 +291,15 @@ class Clients extends Service
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 		if ($row) {
+			$token = (string) $token;
+
+			if ($token !== '' && !password_verify($token, (string) $row['token'])) {
+				$update = $this->db->prepare(
+					"UPDATE `{$this->clientsTable}` SET token = :token WHERE id = :id"
+				);
+				$update->execute([':token' => $this->tokens->hashToken($token), ':id' => (int) $row['id']]);
+			}
+
 			return ['id' => (int) $row['id'], 'mac' => (string) $row['mac'], 'created' => false];
 		}
 
@@ -613,18 +624,23 @@ class Clients extends Service
 	}
 
 	/**
-	 * Delete every client that pointed at a deleted device.
+	 * Take a deleted device off every client that pointed at it.
 	 *
-	 * One by one through deleteClient(), so each one's stored logs go with it.
+	 * A client on an internal MAC has no phone of its own to be pointed
+	 * elsewhere -- open provisioning makes them -- so it is deleted, with its
+	 * stored logs (deleteClient()). One on a real phone's MAC keeps its MAC,
+	 * profile and token and has no device, which is what saveClient() stores
+	 * for None.
 	 *
 	 * @param string $deviceId Device id that has gone.
 	 *
-	 * @return int Clients deleted.
+	 * @return array{deleted: int, released: int} Clients deleted and released.
 	 */
-	public function deleteForDevice($deviceId)
+	public function releaseDevice($deviceId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id FROM `{$this->clientsTable}` WHERE device_id = :id"
+			"SELECT pc.id FROM `{$this->clientsTable}` pc
+			WHERE pc.device_id = :id AND " . self::INTERNAL_EXPR
 		);
 		$stmt->execute([':id' => (string) $deviceId]);
 		$ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
@@ -633,7 +649,12 @@ class Clients extends Service
 			$this->deleteClient($id);
 		}
 
-		return count($ids);
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->clientsTable}` SET device_id = NULL WHERE device_id = :id"
+		);
+		$stmt->execute([':id' => (string) $deviceId]);
+
+		return ['deleted' => count($ids), 'released' => (int) $stmt->rowCount()];
 	}
 
 	/**

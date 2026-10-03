@@ -92,12 +92,19 @@ class StubStatement
 class StubDatabase
 {
 	public $answers = [];
+	/** @var array<string, array> Fragment => rows fetch() hands back, in turn. */
+	public $fetches = [];
 	public $seen = [];
+	public $params = [];
+	public $insertId = 0;
 
 	public function prepare($sql)
 	{
 		$this->seen[] = $sql;
 		$statement = new StubStatement();
+		$statement->onExecute = function ($params) use ($sql) {
+			$this->params[] = [$sql, $params];
+		};
 
 		foreach ($this->answers as $fragment => $value) {
 			if (strpos($sql, $fragment) !== false) {
@@ -107,7 +114,20 @@ class StubDatabase
 			}
 		}
 
+		foreach ($this->fetches as $fragment => $rows) {
+			if (strpos($sql, $fragment) !== false) {
+				$statement->fetchRows = $rows;
+
+				break;
+			}
+		}
+
 		return $statement;
+	}
+
+	public function lastInsertId()
+	{
+		return (string) $this->insertId;
 	}
 
 	public function exec($sql)

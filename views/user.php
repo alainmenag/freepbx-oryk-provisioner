@@ -55,7 +55,7 @@ $confirm = _('Delete this user? The extension, its User Manager account, its voi
 
 if ($clientCount > 0) {
 	$confirm .= ' ' . sprintf(
-		ngettext('%d client points at this user and will be deleted too.', '%d clients point at this user and will be deleted too.', $clientCount),
+		ngettext('%d client points at this user. One without a MAC of its own is deleted; one on a phone\'s MAC is left with no device.', '%d clients point at this user. Those without a MAC of their own are deleted; those on a phone\'s MAC are left with no device.', $clientCount),
 		$clientCount
 	);
 }

@@ -7,8 +7,8 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 /**
  * Answering a provisioning request, and ending it.
  *
- * resolveRequest() decides; serve() and receive() are the only things that end
- * the request. Anything that wants the answer without the exit -- a preview, a
+ * resolveRequest() decides; serve(), receive() and openProvision() are the only
+ * things that end the request. Anything that wants the answer without the exit -- a preview, a
  * console command -- calls resolveRequest().
  */
 class Endpoint extends Service
@@ -31,10 +31,19 @@ class Endpoint extends Service
 	/** @var ProvisioningLog */
 	private $requestLog;
 
+	/** @var Profiles */
+	private $profiles;
+
+	/** @var Users */
+	private $users;
+
+	/** @var Settings */
+	private $settings;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog)
+	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users, Settings $settings)
 	{
 		parent::__construct($freepbx);
 
@@ -44,6 +53,9 @@ class Endpoint extends Service
 		$this->files = $files;
 		$this->logs = $logs;
 		$this->requestLog = $requestLog;
+		$this->profiles = $profiles;
+		$this->users = $users;
+		$this->settings = $settings;
 	}
 
 	/**
@@ -70,7 +82,7 @@ class Endpoint extends Service
 	 */
 	public function serve($mac, $requested = null, $token = null)
 	{
-		$this->answer($this->resolveRequest($mac, $requested, $token), $mac, $requested);
+		$this->answer($this->resolveRequest($mac, $requested, $token, 'GET', self::vendor()), $mac, $requested);
 	}
 
 	/**
@@ -93,7 +105,7 @@ class Endpoint extends Service
 	 */
 	public function receive($mac, $requested = null, $token = null)
 	{
-		$result = $this->resolveRequest($mac, $requested, $token, 'PUT');
+		$result = $this->resolveRequest($mac, $requested, $token, 'PUT', self::vendor());
 
 		// The one thing this does that serve() does not: the body is written
 		// before the request is answered.
@@ -109,6 +121,170 @@ class Endpoint extends Service
 		}
 
 		$this->answer($result, $mac, $requested);
+	}
+
+	/**
+	 * Answer a request for Mac::OPEN by its credentials, and end the request.
+	 *
+	 * Called by engine/provisioner.php while ORYK_PROVISIONING is OPEN. The
+	 * request is served, or received, as the client openClient() finds or
+	 * makes, with the all-zero MAC in the filename swapped for that client's:
+	 * 000000000000.cfg is asked of it as [its mac].cfg.
+	 *
+	 * @param string|null $username  Basic username offered.
+	 * @param string|null $password  Basic password offered.
+	 * @param string|null $requested Filename asked for, or null for the main config.
+	 * @param string      $method    GET, HEAD or PUT.
+	 *
+	 * @return void Never returns; the request ends here.
+	 */
+	public function openProvision($username, $password, $requested = null, $method = 'GET')
+	{
+		$opened = $this->openClient($username, $password, (string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+
+		if (!$opened['status']) {
+			$this->answer($opened, Mac::OPEN, $requested);
+		}
+
+		$requested = (string) $requested;
+		$suffix = $this->matcher->resourceSuffix($requested, Mac::OPEN);
+		$requested = $suffix === $requested ? $requested : $opened['mac'] . $suffix;
+		$token = $username . ':' . $password;
+
+		if ($method === 'PUT') {
+			$this->receive($opened['mac'], $requested, $token);
+		}
+
+		$this->serve($opened['mac'], $requested, $token);
+	}
+
+	/**
+	 * The client a request for Mac::OPEN is answered as, made when need be.
+	 *
+	 * The address is checked against ORYK_OPEN_NETWORKS before any login is
+	 * tried. Then Users::findOrCreate() and Clients::findOrCreateForDevice().
+	 * A username held under another
+	 * password is written to FreePBX's security log as a GUI login failure
+	 * is, so the jail that watches that log bans the address.
+	 *
+	 * @param string|null $username Basic username offered.
+	 * @param string|null $password Basic password offered.
+	 * @param string      $address  Address the request came from.
+	 *
+	 * @return array<string, mixed> status, and mac, extension and created on
+	 *                              success; code and message on a refusal.
+	 */
+	public function openClient($username, $password, $address)
+	{
+		if (!self::addressAllowed((string) $this->settings->get(Settings::OPEN_NETWORKS), $address)) {
+			return ['status' => false, 'code' => 403, 'message' => sprintf(_('%s may not use open provisioning.'), $address)];
+		}
+
+		if ((string) $username === '' || (string) $password === '') {
+			return ['status' => false, 'code' => 401, 'message' => _('Open provisioning needs a username and password.')];
+		}
+
+		try {
+			$user = $this->users->findOrCreate($username, $password);
+
+			if ($user === null) {
+				if (function_exists('freepbx_log_security')) {
+					// Control characters out, so a username cannot write a line of its own
+					\freepbx_log_security(sprintf(
+						'Authentication failure for %s from %s',
+						preg_replace('/[^\x20-\x7E]/', '?', (string) $username),
+						$address
+					));
+				}
+
+				return ['status' => false, 'code' => 401, 'message' => _('That username is held under another password.')];
+			}
+
+			$client = $this->clients->findOrCreateForDevice($user['extension'], $username . ':' . $password);
+		} catch (\InvalidArgumentException $e) {
+			return ['status' => false, 'code' => 400, 'message' => $e->getMessage()];
+		} catch (\RuntimeException $e) {
+			return ['status' => false, 'code' => 409, 'message' => $e->getMessage()];
+		} catch (\Exception $e) {
+			$this->logError('open provisioning failed: ' . $e->getMessage());
+
+			return ['status' => false, 'code' => 500, 'message' => _('The user or client could not be saved.')];
+		}
+
+		return [
+			'status' => true,
+			'mac' => $client['mac'],
+			'extension' => $user['extension'],
+			'created' => $user['created'] || $client['created'],
+		];
+	}
+
+	/**
+	 * Whether an address is in a list of addresses and CIDR ranges.
+	 *
+	 * An entry that is not an address or range matches nothing, so a typo
+	 * shuts open provisioning rather than opening it.
+	 *
+	 * @param string $list    ORYK_OPEN_NETWORKS: comma or space separated;
+	 *                        blank allows every address.
+	 * @param string $address Address to check.
+	 *
+	 * @return bool True when the address is allowed.
+	 */
+	public static function addressAllowed($list, $address)
+	{
+		$entries = preg_split('/[\s,]+/', trim((string) $list), -1, PREG_SPLIT_NO_EMPTY);
+
+		if (!$entries) {
+			return true;
+		}
+
+		$packed = @inet_pton((string) $address);
+
+		if ($packed === false) {
+			return false;
+		}
+
+		foreach ($entries as $entry) {
+			$parts = explode('/', $entry, 2);
+			$network = @inet_pton($parts[0]);
+
+			if ($network === false || strlen($network) !== strlen($packed)) {
+				continue;
+			}
+
+			$width = strlen($network) * 8;
+			$bits = isset($parts[1]) ? $parts[1] : (string) $width;
+
+			if (!ctype_digit($bits) || (int) $bits > $width) {
+				continue;
+			}
+
+			$bytes = intdiv((int) $bits, 8);
+			$rest = (int) $bits % 8;
+
+			if (substr($network, 0, $bytes) !== substr($packed, 0, $bytes)) {
+				continue;
+			}
+
+			if ($rest && ((ord($network[$bytes]) ^ ord($packed[$bytes])) & (0xFF << (8 - $rest)) & 0xFF)) {
+				continue;
+			}
+
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * The vendor this request's User-Agent names.
+	 *
+	 * @return string|null See Vendor::fromUserAgent().
+	 */
+	private static function vendor()
+	{
+		return Vendor::fromUserAgent($_SERVER['HTTP_USER_AGENT'] ?? '');
 	}
 
 	/**
@@ -170,7 +346,7 @@ class Endpoint extends Service
 		}
 
 		if (!$result['status']) {
-			$this->sendText(404, $result['message'] . "\n");
+			$this->sendText($status, $result['message'] . "\n");
 		}
 
 		if (($result['kind'] ?? '') === 'file') {
@@ -196,11 +372,12 @@ class Endpoint extends Service
 	 *
 	 * Three steps, and the first that answers wins:
 	 *
-	 *   1. A MAC naming a client with a profile: that profile's resources, matched
+	 *   1. A MAC naming a client with a profile -- its own, or, when it has
+	 *      none, the one named after $vendor: that profile's resources, matched
 	 *      by name. The profile is the authority -- a name it does not serve is
 	 *      refused here rather than looked for elsewhere, or a profile could never
 	 *      withhold a file.
-	 *   2. No MAC, a MAC naming no client, or a client with no profile: the
+	 *   2. No MAC, a MAC naming no client, or a client still with no profile: the
 	 *      resources that carry an uploaded file, matched by name exactly.
 	 *   3. Nothing.
 	 *
@@ -223,11 +400,13 @@ class Endpoint extends Service
 	 * @param string      $method    Method it is being asked with. PUT and POST
 	 *                               are a phone sending a log; anything else is
 	 *                               a fetch.
+	 * @param string|null $vendor    Vendor the User-Agent names (Vendor), or
+	 *                               null for none.
 	 *
 	 * @return array<string, mixed> Status, what answers when something does,
 	 *                              and a message when nothing did.
 	 */
-	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET')
+	public function resolveRequest($mac, $requested = null, $token = null, $method = 'GET', $vendor = null)
 	{
 		$mac = Mac::normalize($mac);
 		$requested = trim((string) $requested);
@@ -247,6 +426,19 @@ class Endpoint extends Service
 			];
 		}
 
+		// A client with no profile of its own is served the one named after its
+		// vendor, for this request only: nothing is stored, so assigning a
+		// profile, or renaming this one, takes effect on the next request.
+		if ($client && $client['profile_id'] === null && $vendor !== null) {
+			$profile = $this->profiles->profileByName($vendor);
+
+			if ($profile) {
+				$client['profile_id'] = (int) $profile['id'];
+				$client['profile_name'] = (string) $profile['name'];
+				$client['profile_enabled'] = (int) $profile['enabled'];
+			}
+		}
+
 		// The same switch one level up: a disabled profile serves nothing to
 		// anybody, so every client assigned to it is refused without any of those
 		// clients having been touched. The refusal names the profile, because an
@@ -262,37 +454,6 @@ class Endpoint extends Service
 					_('The %s profile is disabled.'),
 					(string) $client['profile_name']
 				),
-			];
-		}
-
-		// Serve profileless clients generated config based on accepted content
-		if ($client && $client['profile_id'] === null) {
-				if (!password_verify($token, $client['token'])) {
-					return [
-						'status' => false,
-						'message' => _('Invalid authentication provided for this client.'),
-						'code' => 401,
-					];
-				}
-
-			$values = $this->template->provisioningValues($client);
-			$template = $this->template->renderTemplate(
-				<<<'TPL'
-				MAC={{device.mac}}
-				HOST={{server.host}}
-				PORT={{server.port}}
-				USER={{device.id}}
-				SECRET={{device.secret}}
-				NAME={{extension.name}}
-				TPL,
-			$values);
-
-			return [
-				'status' => true,
-				'kind' => 'template',
-				'type' => 'template',
-				'resource' => '000000000000.cfg',
-				'config' => $template,
 			];
 		}
 
@@ -562,7 +723,7 @@ class Endpoint extends Service
 	 *
 	 * @return void Never returns.
 	 */
-	public function sendText($code, $body, $type = 'text/plain')
+	private function sendText($code, $body, $type = 'text/plain')
 	{
 		$body = (string) $body;
 

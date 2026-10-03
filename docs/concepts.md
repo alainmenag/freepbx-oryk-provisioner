@@ -53,4 +53,6 @@ resource like every other file, named `.cfg`.
 
 A client with no device still provisions — the device-derived placeholders are
 simply empty, which is what a profile of static configuration wants. A client
-with no profile is served nothing.
+with no profile is served the profile named after its vendor, when there is
+one — see [A client with no profile](endpoint.md#a-client-with-no-profile) —
+and otherwise nothing.

@@ -14,6 +14,12 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 class Mac
 {
 	/**
+	 * The MAC a phone asks with to be provisioned by its credentials; see
+	 * Endpoint::openProvision().
+	 */
+	const OPEN = '000000000000';
+
+	/**
 	 * A MAC address as it is stored: lowercase hexadecimal, no separators.
 	 *
 	 * @param mixed $mac MAC address as it was typed.

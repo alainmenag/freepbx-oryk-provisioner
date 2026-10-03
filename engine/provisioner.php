@@ -21,6 +21,9 @@
  *   PUT /provisioner/0004f282e824-boot.log   a log the phone is sending back,
  *                                            taken when the profile has a
  *                                            resource of type Log by that name
+ *   /provisioner/000000000000.cfg            with Settings -> Provisioning
+ *                                            Open, answered as the client its
+ *                                            Basic credentials log in as
  *
  * GET or HEAD to fetch, PUT to send; the MAC is read from the path, the query
  * string or the User-Agent, and on a fetch may be missing altogether. A
@@ -35,7 +38,7 @@
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, HEAD, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: *');
+header('Access-Control-Allow-Headers: Authorization, Content-Type');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -112,30 +115,15 @@ if ($user !== null && $pass !== null) {
 
 // --- OPEN PROVISIONING ---
 
-// The all-zero MAC is answered here, before any client is looked up, and only
-// while ORYK_PROVISIONING is OPEN. Settings::get() falls back to CLOSED when
-// the setting is not registered yet, so this fails closed.
-//
-// The Basic credentials are a User Manager login: they find the user it
-// belongs to, or make one the way the Users editor does with a blank
-// Extension and give its account that username and password. Then the user's
-// internal-MAC client is found, or made with the credentials as its token, and
-// that MAC is what the phone asks with from then on. The password is never
-// logged.
-if ($mac === '000000000000' && $provisioning === 'OPEN') {
-	$found = $user && $pass ? $provisioner->findOrCreateUser($user, $pass) : null;
-	$client = $found ? $provisioner->findOrCreateClient($found['extension'], $token) : null;
-	// $filename = $client ? str_replace($mac, $client['mac'], $filename) : $filename;
-	$mac = $client ? $client['mac'] : $mac;
+// The all-zero MAC, while ORYK_PROVISIONING is OPEN, is answered by its
+// credentials -- see Endpoint::openProvision(). Settings::get() falls back to
+// CLOSED when the setting is not registered yet, so this fails closed.
+if ($provisioning === 'OPEN'
+	&& \FreePBX\Modules\Oryk_Provisioner\Mac::normalize($mac) === \FreePBX\Modules\Oryk_Provisioner\Mac::OPEN
+	&& in_array($method, ['GET', 'HEAD', 'PUT'], true)) {
+	$provisioner->openProvision($user, $pass, $filename, $method);
+	exit;
 }
-
-// $provisioner->log('asdfadfasf', [
-// 	// $_SERVER' => $_SERVER,
-// 	// '$mac' => $mac,
-// 	// '$filename' => $filename,
-// 	// '$token' => $token,
-// 	'accept' => $_SERVER['HTTP_ACCEPT'] ?? null,
-// ], 'ERROR');
 
 // --- SERVE ---
 

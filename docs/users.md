@@ -42,8 +42,10 @@ other destinations naming the old number are **not** updated.
 > extensions belongs to both, and is removed from the other's history too. Back
 > up `asteriskcdrdb` first if the history matters.
 
-Clients pointed at a deleted user are deleted with it, along with the logs they
-sent. Delete asks first, and says how many clients that is.
+Clients pointed at a deleted user are kept, with no device -- except one with
+no MAC of its own (an internal `02…` MAC, which open provisioning makes), which
+is deleted along with the logs it sent. Delete asks first, and says how many
+clients point at the user.
 
 ## From Domain
 
@@ -55,7 +57,9 @@ adds to the endpoint FreePBX generates. First answer wins:
 2. the PBX-wide **From Domain** (`ORYK_FROM_DOMAIN`), the normal place to set
    it — on the provisioner's **Settings** tab, or in **Settings → Advanced
    Settings → Oryk Provisioner**, which is the same setting;
-3. the PBX hostname, only when it is a real domain name.
+3. the **Hostname** setting (`ORYK_HOSTNAME`), unless it is an address;
+   otherwise the PBX's own hostname -- either only when it is a real domain
+   name.
 
 Nothing resolved takes it off the endpoint. A changed PBX-wide value reaches a
 user on its next save. The file is shared with other modules and only this

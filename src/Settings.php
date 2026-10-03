@@ -40,6 +40,12 @@ class Settings extends Service
 	const PROVISIONING = 'ORYK_PROVISIONING';
 
 	/**
+	 * Addresses and CIDR ranges open provisioning answers, comma or space
+	 * separated; blank for any.
+	 */
+	const OPEN_NETWORKS = 'ORYK_OPEN_NETWORKS';
+
+	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
@@ -68,7 +74,9 @@ class Settings extends Service
 		return [
 			self::HOSTNAME => [
 				'name' => 'Hostname',
-				'description' => 'The hostname of this PBX.',
+				'description' => 'The name phones register to, as {{server.host}} in a template, and the '
+					. 'From Domain when that is blank. Left blank, a template gets the host each request '
+					. 'arrived on, and From Domain the hostname of this machine.',
 				'type' => 'text',
 				'default' => '',
 				'pattern' => EndpointSettings::DOMAIN_PATTERN,
@@ -79,8 +87,8 @@ class Settings extends Service
 				'description' => 'The domain a PJSIP endpoint puts in the From header. '
 					. 'It is written to pjsip.endpoint_custom_post.conf on the next save of each '
 					. 'user, and a user given a From Domain of its own uses that instead. '
-					. 'Left blank, the hostname of this PBX is used when that is a domain name, '
-					. 'and nothing is written when it is not.',
+					. 'Left blank, the Hostname setting is used, or the hostname of this machine when '
+					. 'that is a domain name, and nothing is written when neither is.',
 				'type' => 'text',
 				'default' => '',
 				'pattern' => EndpointSettings::DOMAIN_PATTERN,
@@ -97,17 +105,28 @@ class Settings extends Service
 			self::PROVISIONING => [
 				'name' => 'Provisioning',
 				'description' => 'Open: a request for the MAC address 000000000000 logs in with its '
-					. 'credentials as a User Manager login, and a user is created for a username no account '
-					. 'has. Closed: that request is handled like '
-					. 'any other MAC, and refused when no client has it. Disabled: every request to the '
-					. 'provisioning endpoint is refused with a 503.',
+					. 'credentials as a User Manager login, a user is created for a username no account '
+					. 'has, and the request is served as that user\'s client. Closed: that request is '
+					. 'handled like any other MAC. Disabled: every request to the provisioning endpoint '
+					. 'is refused with a 503.',
 				'type' => 'select',
 				'default' => 'CLOSED',
 				'options' => [
-					'OPEN' => 'Open (000000000000 MAC address will login/register automatically)',
-					'CLOSED' => 'Closed (Only existing clients are served)',
-					'DISABLED' => 'Disabled',
+					'OPEN' => 'Open (000000000000 logs in, or registers, with its credentials)',
+					'CLOSED' => 'Closed (only existing clients are served)',
+					'DISABLED' => 'Disabled (every request is refused)',
 				],
+			],
+			self::OPEN_NETWORKS => [
+				'name' => 'Open Provisioning Networks',
+				'description' => 'The addresses and ranges open provisioning answers, separated by '
+					. 'commas or spaces: 203.0.113.7, 10.0.0.0/8, 2001:db8::/32. Anything else asking '
+					. 'for 000000000000 is refused with a 403 before any login is tried. Blank: any '
+					. 'address, which lets anyone who reaches the endpoint create users.',
+				'type' => 'text',
+				'default' => '',
+				'pattern' => '/^[0-9A-Fa-f:.\/]+([\s,]+[0-9A-Fa-f:.\/]+)*$/',
+				'emptyok' => true,
 			],
 		];
 	}

@@ -275,7 +275,9 @@ class EndpointSettings extends Service
 	}
 
 	/**
-	 * What this PBX calls itself, when that is a domain name.
+	 * What this PBX calls itself, when that is a domain name: the Hostname
+	 * setting unless it is blank or an address, otherwise this machine's
+	 * hostname.
 	 *
 	 * A bare name, a `.local` or localhost is worse in a From header than
 	 * nothing, so it is not used.
@@ -284,7 +286,15 @@ class EndpointSettings extends Service
 	 */
 	public function hostname()
 	{
-		$name = strtolower(trim((string) gethostname()));
+		try {
+			$name = strtolower(trim((string) \FreePBX::Config()->get(Settings::HOSTNAME)));
+		} catch (\Throwable $e) {
+			$name = '';
+		}
+
+		if ($name === '' || filter_var($name, FILTER_VALIDATE_IP) !== false) {
+			$name = strtolower(trim((string) gethostname()));
+		}
 
 		if ($name === '' || strpos($name, '.') === false) {
 			return '';
