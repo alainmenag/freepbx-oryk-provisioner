@@ -50,6 +50,7 @@
  * @var string                               $tab          Tab to open on: resource|clients
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
+ * @var string                            $version  Module version -- see partials/sections.php
  */
 
 $resource = $resource ?? ['id' => 0, 'profile_id' => 0, 'name' => '', 'template' => ''];

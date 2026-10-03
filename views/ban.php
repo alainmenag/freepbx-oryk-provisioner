@@ -15,6 +15,7 @@
  * @var string                              $remote    The address this page was asked from
  * @var array<int, array<string, mixed>>    $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>    $sections Navigator::sections() -- see partials/sections.php
+ * @var string                              $version  Module version -- see partials/sections.php
  */
 
 $ban = isset($ban) && is_array($ban) ? $ban : null;

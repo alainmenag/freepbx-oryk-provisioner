@@ -16,9 +16,11 @@
  * Included by every view, directly before partials/navigator.php.
  *
  * @var array<int, array<string, mixed>> $sections Navigator::sections()
+ * @var string                           $version  The module's, under its name
  */
 
 $sections = isset($sections) && is_array($sections) ? $sections : [];
+$version = isset($version) ? (string) $version : '';
 
 $sectionEscape = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -44,6 +46,13 @@ $sectionEscape = function ($value) {
 		line-height: 26px;
 		font-weight: 700;
 		text-decoration: none;
+	}
+	.oryk-sections .oryk-sections-version {
+		display: block;
+		font-size: 11px;
+		line-height: 14px;
+		font-weight: 400;
+		color: #999;
 	}
 	.oryk-sections ul {
 		display: flex;
@@ -76,7 +85,12 @@ $sectionEscape = function ($value) {
 </style>
 
 <nav class="oryk-sections" aria-label="<?php echo $sectionEscape(_('Provisioner sections')); ?>">
-	<a class="oryk-sections-home" href="?display=oryk_provisioner"><?php echo $sectionEscape(_('Provisioner')); ?></a>
+	<a class="oryk-sections-home" href="?display=oryk_provisioner">
+		<?php echo $sectionEscape(_('Provisioner')); ?>
+		<?php if ($version !== ''): ?>
+			<span class="oryk-sections-version"><?php echo $sectionEscape(sprintf(_('v%s'), $version)); ?></span>
+		<?php endif; ?>
+	</a>
 	<ul>
 		<?php foreach ($sections as $section): ?>
 			<li<?php echo !empty($section['active']) ? ' class="active"' : ''; ?>>

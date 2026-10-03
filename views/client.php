@@ -40,6 +40,7 @@
  * @var string                            $tab            Tab to open on: client|resources|logs
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
+ * @var string                            $version  Module version -- see partials/sections.php
  */
 
 $client = $client ?? ['id' => 0, 'mac' => '', 'device_id' => '', 'profile_id' => 0, 'enabled' => 1];

@@ -36,6 +36,7 @@
  * @var string             $tab    Section to open on, settled by Navigator::section()
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
+ * @var string                            $version  Module version -- see partials/sections.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
  * @var array<string, mixed>              $fail2ban  Fail2ban::status() and its setup command, on the Bans tab
  */

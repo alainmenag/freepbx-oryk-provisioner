@@ -156,7 +156,7 @@ class Pages extends Service
 		// a new one opens on Profile whichever tab is asked for.
 		$tabs = ['resources', 'clients'];
 
-		return load_view(dirname(__DIR__) . '/views/profile.php', [
+		return $this->view('profile', [
 			'profile' => $profile,
 			'sections' => $this->navigator->sections('profiles'),
 			// A profile that has not been written is 'new' rather than an id: it has
@@ -203,7 +203,7 @@ class Pages extends Service
 
 		$available = $this->clientTabs($client);
 
-		return load_view(dirname(__DIR__) . '/views/client.php', [
+		return $this->view('client', [
 			'client' => $client,
 			'sections' => $this->navigator->sections('clients'),
 			'navigator' => $this->navigator->levels([
@@ -245,7 +245,7 @@ class Pages extends Service
 		$extension = (string) $user['extension'];
 		$available = $this->userTabs($user);
 
-		return load_view(dirname(__DIR__) . '/views/user.php', [
+		return $this->view('user', [
 			'user' => $user,
 			'sections' => $this->navigator->sections('users'),
 			'navigator' => $this->navigator->levels([
@@ -284,7 +284,7 @@ class Pages extends Service
 			}
 		}
 
-		return load_view(dirname(__DIR__) . '/views/ban.php', [
+		return $this->view('ban', [
 			'ban' => $ban,
 			'jails' => $jails,
 			'prefill' => (string) Bans::canonical($_REQUEST['ip'] ?? ''),
@@ -422,7 +422,7 @@ class Pages extends Service
 			$resource = $found;
 		}
 
-		return load_view(dirname(__DIR__) . '/views/resource.php', [
+		return $this->view('resource', [
 			'resource' => $resource,
 			'sections' => $this->navigator->sections('profiles'),
 			// Both, because a resource is viewed within its profile: that profile
@@ -460,7 +460,7 @@ class Pages extends Service
 	{
 		$tab = $this->navigator->section($tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab);
 
-		return load_view(dirname(__DIR__) . '/views/admin.php', [
+		return $this->view('admin', [
 			'tab' => $tab,
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
@@ -474,6 +474,34 @@ class Pages extends Service
 			// kind, which is how somebody gets to a row without reading the table.
 			'navigator' => $this->navigator->levels(),
 		]);
+	}
+
+	/**
+	 * Render one view, with what every page's section bar needs added.
+	 *
+	 * @param string               $name View under views/, without `.php`.
+	 * @param array<string, mixed> $vars What that view is handed.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function view($name, array $vars)
+	{
+		return load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+	}
+
+	/**
+	 * The module's version, read off module.xml.
+	 *
+	 * The code on disk rather than what FreePBX last installed: after files are
+	 * copied up and before an upgrade is run, this is the one actually serving.
+	 *
+	 * @return string Version, or '' when module.xml cannot be read.
+	 */
+	private function version()
+	{
+		$xml = @simplexml_load_file(dirname(__DIR__) . '/module.xml');
+
+		return $xml && isset($xml->version) ? trim((string) $xml->version) : '';
 	}
 
 	/**
