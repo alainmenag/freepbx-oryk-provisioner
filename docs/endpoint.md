@@ -111,3 +111,29 @@ Names are unique per profile, not globally — two profiles both serving a
 `text/plain`. Anything else is `text/plain` for a template or a log and
 `application/octet-stream` for an uploaded file — sending a firmware image as
 text is how it arrives corrupted.
+
+## Asking for JSON, XML or plain text
+
+A caller can ask for any template or uploaded config in another format with
+the `Accept` header:
+
+```
+curl -H 'Accept: application/json' https://pbx/provisioner/0004f282e824.cfg
+curl -H 'Accept: text/xml'         https://pbx/provisioner/0004f282e824.cfg
+curl -H 'Accept: text/plain'       https://pbx/provisioner/0004f282e824-phone.xml
+```
+
+| Accept | Answer |
+| --- | --- |
+| missing, or any wildcard anywhere (`*/*`, `text/*`) | as stored |
+| `application/json` | a JSON object |
+| `application/xml`, `text/xml` | XML, sent with the type asked for |
+| `text/plain` | `key=value` lines |
+| only other types | as stored |
+
+A config already in the format asked for is sent exactly as stored. One that
+cannot be rewritten — firmware, anything over 2 MB, or text that is not JSON,
+XML or `key=value` — is a 406. Rewriting drops comments, and anything converted
+out of XML or plain text comes back as strings. A phone that sends no `Accept`
+header, or a wildcard, is never affected.
+

@@ -78,7 +78,7 @@ class Endpoint extends Service
 	 */
 	public function serve($mac, $requested = null, $token = null)
 	{
-		$this->answer($this->resolveRequest($mac, $requested, $token, 'GET', self::vendor()), $mac, $requested);
+		$this->answer($this->resolveRequest($mac, $requested, $token, 'GET', self::vendor()), $mac, $requested, self::accept());
 	}
 
 	/**
@@ -218,6 +218,16 @@ class Endpoint extends Service
 	}
 
 	/**
+	 * The format this request's Accept header explicitly asks for.
+	 *
+	 * @return array{format: string, type: string}|null See Transcoder::target().
+	 */
+	private static function accept()
+	{
+		return Transcoder::target($_SERVER['HTTP_ACCEPT'] ?? '');
+	}
+
+	/**
 	 * Report what was decided, send it, and end the request.
 	 *
 	 * The whole of what serve() and receive() have in common, which is everything
@@ -233,14 +243,22 @@ class Endpoint extends Service
 	 *   log       nothing. A phone uploading a log reads the status and nothing
 	 *             else.
 	 *
-	 * @param array<string, mixed> $result    What resolveRequest() decided.
-	 * @param mixed                $mac       MAC the request was made with.
-	 * @param string|null          $requested Filename as it was asked for.
+	 * A template or file is first transcoded when the request asked for
+	 * another format -- see transcoded().
+	 *
+	 * @param array<string, mixed>                     $result    What resolveRequest() decided.
+	 * @param mixed                                    $mac       MAC the request was made with.
+	 * @param string|null                              $requested Filename as it was asked for.
+	 * @param array{format: string, type: string}|null $target    Format asked for, or null to
+	 *                                                            send as stored.
 	 *
 	 * @return void Never returns; the request ends here.
 	 */
-	private function answer(array $result, $mac, $requested)
+	private function answer(array $result, $mac, $requested, $target = null)
 	{
+		// Before the log lines, so a 406 is logged as one.
+		$result = $this->transcoded($result, $target);
+
 		$status = $result['code'] ?? ($result['status'] ? 200 : 404);
 
 		// The method is read here rather than passed: it is the same fact the
@@ -291,7 +309,57 @@ class Endpoint extends Service
 			$this->sendText(200, '');
 		}
 
-		$this->sendText(200, $result['config'], $this->matcher->contentType((string) $result['resource'], 'template'));
+		$this->sendText(200, $result['config'], $result['contentType'] ?? $this->matcher->contentType((string) $result['resource'], 'template'));
+	}
+
+	/**
+	 * A result rewritten into the format the request asked for.
+	 *
+	 * Left alone when nothing was asked for, when it is not a template or file,
+	 * or when it is already in that format -- then it goes out byte for byte, and
+	 * a file keeps its ETag. Otherwise it comes back as a template carrying the
+	 * rewritten text, or a 406 when it cannot be rewritten: binary, too large,
+	 * or in no format Transcoder reads.
+	 *
+	 * @param array<string, mixed>                     $result What resolveRequest() decided.
+	 * @param array{format: string, type: string}|null $target Format asked for.
+	 *
+	 * @return array<string, mixed> The result to answer with.
+	 */
+	private function transcoded(array $result, $target)
+	{
+		$kind = $result['kind'] ?? '';
+
+		if ($target === null || !$result['status'] || ($kind !== 'template' && $kind !== 'file')) {
+			return $result;
+		}
+
+		$text = $kind === 'template'
+			? (string) $result['config']
+			: Transcoder::readText((string) $result['path']);
+
+		$from = $text === null ? null : Transcoder::detect($text);
+
+		if ($from === $target['format']) {
+			return $result;
+		}
+
+		$body = $from === null ? null : Transcoder::transcode($text, $from, $target['format']);
+
+		if ($body === null) {
+			return [
+				'status' => false,
+				'code' => 406,
+				'message' => sprintf(_('%s cannot be sent as %s.'), (string) $result['resource'], $target['type']),
+			];
+		}
+
+		return [
+			'kind' => 'template',
+			'config' => $body . "\n",
+			'contentType' => $target['type'],
+			'message' => sprintf(_('as %s'), $target['type']),
+		] + $result;
 	}
 
 	/**
@@ -667,6 +735,7 @@ class Endpoint extends Service
 		// A phone that re-reads its config expects what is stored now, not
 		// what a cache kept from the last time it asked.
 		header('Cache-Control: no-store');
+		header('Vary: Accept');
 
 		// A phone HEADs before it GETs. The length is what it asked for; the
 		// body is not.
@@ -718,6 +787,7 @@ class Endpoint extends Service
 		header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $modified) . ' GMT');
 		header('ETag: ' . $etag);
 		header('Cache-Control: no-cache');
+		header('Vary: Accept');
 		header('Accept-Ranges: none');
 
 		$tag = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
