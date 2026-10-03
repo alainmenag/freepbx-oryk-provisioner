@@ -24,7 +24,6 @@ use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionRenumberer;
-use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
@@ -771,89 +770,150 @@ is_eq('and the setting now belongs to this module',
 	FreePBX::Config()->defined[Settings::FROM_DOMAIN]['module'] ?? null, 'oryk_provisioner');
 
 
-echo "\n  fail2ban: what the helper's answer to check means:\n";
+echo "\nbans:\n";
 
-is_eq('no helper installed is missing', Fail2ban::state('missing', null, 1)['state'], 'missing');
-is_eq('no JSON at all is sudo refusing',
-	Fail2ban::state(null, ['ok' => false, 'exit' => 1, 'error' => 'sudo: a password is required'], 1)['state'], 'sudo');
-is_eq('and what sudo said is passed on',
-	Fail2ban::state(null, ['ok' => false, 'exit' => 1, 'error' => 'sudo: a password is required'], 1)['detail'], 'sudo: a password is required');
-is_eq('another version installed is stale',
-	Fail2ban::state(null, ['ok' => true, 'version' => 1, 'exit' => 0], 2)['state'], 'stale');
-is_eq('stale even while fail2ban is down',
-	Fail2ban::state(null, ['ok' => false, 'version' => 1, 'exit' => 69], 2)['state'], 'stale');
-is_eq('a current helper with fail2ban down is fail2ban',
-	Fail2ban::state(null, ['ok' => false, 'version' => 2, 'exit' => 69, 'error' => 'not running'], 2)['state'], 'fail2ban');
-is_eq('a current helper with fail2ban up is ok',
-	Fail2ban::state(null, ['ok' => true, 'version' => 2, 'fail2ban' => '1.0.2', 'exit' => 0], 2)['state'], 'ok');
-is_eq('the shipped helper has a version line',
-	Fail2ban::helperVersion(file_get_contents(__DIR__ . '/../bin/oryk-fail2ban')) > 0, true);
-is_eq('a file without one has none', Fail2ban::helperVersion("#!/bin/sh\n"), null);
+echo "\n  a value is stored in one spelling, or refused:\n";
 
-echo "\n  bans: rows, keys and addresses:\n";
+is_eq('an IPv6 address is spelled canonically', Bans::value('ip', '2001:DB8::0001'), '2001:db8::1');
+is_eq('a range is not an address', Bans::value('ip', '10.0.0.0/8'), null);
+is_eq('nor is a zone id', Bans::value('ip', 'fe80::1%eth0'), null);
+is_eq('a MAC loses its separators and case', Bans::value('mac', '00:04:F2:82:E8:24'), '0004f282e824');
+is_eq('eleven digits are not a MAC', Bans::value('mac', '0004f282e82'), null);
+is_eq('a user is a number', [Bans::value('user', '1001'), Bans::value('user', '10a1')], ['1001', null]);
+is_eq('a client is an id', [Bans::value('client', '5'), Bans::value('client', '0'), Bans::value('client', '-5')], ['5', null, null]);
+is_eq('and so is a profile', [Bans::value('profile', '3'), Bans::value('profile', 'Polycom')], ['3', null]);
+is_eq('an unknown subject is nothing', Bans::value('jail', 'asterisk'), null);
 
-$answer = [
-	'ok' => true,
-	'now' => 1000,
-	'bans' => [
-		['jail' => 'asterisk', 'ip' => '188.165.236.15', 'banned' => '2026-10-01 00:32:58', 'banned_at' => 400, 'bantime' => 3600, 'permanent' => false, 'expires' => '2026-10-01 01:32:58', 'expires_at' => 4000],
-		['jail' => 'asterisk', 'ip' => '51.68.19.88', 'banned' => '2026-10-01 00:39:48', 'banned_at' => 900, 'bantime' => 3600, 'permanent' => false, 'expires' => '2026-10-01 01:39:48', 'expires_at' => 4500],
-		['jail' => 'sshd', 'ip' => '2001:DB8::0001', 'banned' => '2026-10-01 00:10:00', 'banned_at' => 100, 'bantime' => -1, 'permanent' => true, 'expires' => null, 'expires_at' => null],
-		['jail' => 'sshd', 'ip' => 'not an address', 'banned_at' => 1],
-	],
-];
-$rows = Bans::rows($answer);
+is_eq('subjects keep only what is one of its kind, most specific first',
+	Bans::subjects(['ip' => '203.0.113.7', 'mac' => '', 'user' => ['1001', '', '1001'], 'client' => '5', 'jail' => 'x']),
+	['client' => ['5'], 'user' => ['1001'], 'ip' => ['203.0.113.7']]);
 
-is_eq('a row that is not an address is dropped', count($rows), 3);
-is_eq('a row is keyed jail/ip', $rows[0]['id'], 'asterisk/188.165.236.15');
-is_eq('ages are on the helper clock', [$rows[0]['banned_age'], $rows[0]['expires_in']], [600, 3000]);
-is_eq('an IPv6 address is spelled canonically', $rows[2]['ip'], '2001:db8::1');
-is_eq('a permanent ban has no expiry', [$rows[2]['permanent'], $rows[2]['expires_in']], [true, null]);
+echo "\n  the most specific row decides:\n";
 
-$page = Bans::page($rows, 'ip', 'asc', '', 0, 10);
-is_eq('addresses sort by their bytes, IPv4 first',
-	array_column($page['rows'], 'ip'), ['51.68.19.88', '188.165.236.15', '2001:db8::1']);
-is_eq('a permanent ban expires last',
-	array_column(Bans::page($rows, 'expires_at', 'asc', '', 0, 10)['rows'], 'ip'), ['188.165.236.15', '51.68.19.88', '2001:db8::1']);
-is_eq('an unknown sort key sorts by address',
-	array_column(Bans::page($rows, 'nope; DROP', 'asc', '', 0, 10)['rows'], 'ip'), ['51.68.19.88', '188.165.236.15', '2001:db8::1']);
-is_eq('search finds the jail', Bans::page($rows, 'ip', 'asc', 'SSH', 0, 10)['total'], 1);
-is_eq('the total is of what matched, the rows one page of it',
-	[Bans::page($rows, 'ip', 'asc', '', 1, 1)['total'], count(Bans::page($rows, 'ip', 'asc', '', 1, 1)['rows'])], [3, 1]);
+/** A ban row with the subjects given and the rest empty. */
+function ban_row($id, $state, array $set)
+{
+	return ['id' => $id, 'state' => $state] + $set + ['client_id' => null, 'extension' => null, 'mac' => null, 'profile_id' => null, 'ip' => null];
+}
 
-is_eq('a key splits into jail and address', Bans::splitKey('asterisk/2001:DB8::1'), ['asterisk', '2001:db8::1']);
-is_eq('a key with a bad jail is refused', Bans::splitKey('ast;erisk/1.2.3.4'), null);
-is_eq('a key with a range is refused', Bans::splitKey('asterisk/10.0.0.0/8'), null);
-is_eq('a key with no slash is refused', Bans::splitKey('1.2.3.4'), null);
-is_eq('canonical refuses a range', Bans::canonical('10.0.0.0/8'), null);
-is_eq('canonical refuses a zone id', Bans::canonical('fe80::1%eth0'), null);
+$site = ban_row(1, 'banned', ['ip' => '203.0.113.7']);
+$officeAllowed = ban_row(2, 'allow', ['ip' => '203.0.113.7']);
+$macDenied = ban_row(3, 'deny', ['mac' => '0004f282e824']);
+$userDenied = ban_row(4, 'deny', ['extension' => '1001']);
+$userFromSite = ban_row(5, 'allow', ['extension' => '1001', 'ip' => '203.0.113.7']);
+$clientAllowed = ban_row(6, 'allow', ['client_id' => '5']);
 
-is_eq('your own address is refused', Bans::refusal('203.0.113.9', '203.0.113.9', []) !== null, true);
-is_eq('loopback is refused', Bans::refusal('127.0.0.2', '198.51.100.1', []) !== null, true);
-is_eq('IPv6 loopback is refused', Bans::refusal('::1', '198.51.100.1', []) !== null, true);
-is_eq('the PBX\'s own address is refused', Bans::refusal('192.0.2.10', '198.51.100.1', ['192.0.2.10']) !== null, true);
-is_eq('anything else is allowed', Bans::refusal('203.0.113.7', '198.51.100.1', ['192.0.2.10']), null);
+is_eq('nothing matched, nothing decides', Bans::decide([]), null);
+is_eq('a denied MAC beats an allowed address', Bans::decide([$officeAllowed, $macDenied])['id'], 3);
+is_eq('a user beats a MAC', Bans::decide([$macDenied, $userDenied, $site])['id'], 4);
+is_eq('a user from one address beats the user alone', Bans::decide([$userDenied, $userFromSite])['id'], 5);
+$profileDenied = ban_row(8, 'deny', ['profile_id' => '3']);
+is_eq('a profile beats an address', Bans::decide([$officeAllowed, $profileDenied])['id'], 8);
+is_eq('a MAC beats a profile', Bans::decide([ban_row(10, 'allow', ['mac' => '0004f282e824']), $profileDenied])['id'], 10);
+is_eq('a client beats everything', Bans::decide([$site, $macDenied, $userFromSite, $clientAllowed])['id'], 6);
+is_eq('a tie goes to the refusal', Bans::decide([$officeAllowed, $site])['id'], 1);
+is_eq('a row with no subject never decides', Bans::decide([ban_row(9, 'deny', [])]), null);
+is_eq('the refusal names every subject', Bans::refusal(ban_row(7, 'deny', ['extension' => '1001', 'ip' => '203.0.113.7'])),
+	'Denied by ban #7 (user 1001, address 203.0.113.7).');
+is_eq('and a temporary one says banned', Bans::refusal($site), 'Banned by ban #1 (address 203.0.113.7).');
 
-echo "\n  fail2ban: the Settings tab switches the Bans tab on and off:\n";
+echo "\n  check() asks for the rows that match every subject they name:\n";
 
 $s = build();
-FreePBX::$conf = new StubConfig();
-unset(FreePBX::$config[Settings::FAIL2BAN]);
+$db = $s['app']->Database;
+$bans = new Bans($s['app']);
+
+$db->fetchAlls = ['oryk_provisioner_bans' => [$site, $macDenied]];
+is_eq('a deny decides', $bans->check(['ip' => '203.0.113.7', 'mac' => '0004f282e824'])['id'] ?? null, 3);
+
+$db->fetchAlls = ['oryk_provisioner_bans' => [$userDenied, $userFromSite]];
+is_eq('an allow lets it through', $bans->check(['ip' => '203.0.113.7', 'user' => '1001']), null);
+
+$db->fetchAlls = ['oryk_provisioner_bans' => []];
+$bans->check(['ip' => '203.0.113.7', 'user' => ['1001', '1001']]);
+$sql = end($db->seen);
+is_eq('a subject the request has matches it or anything', strpos($sql, 'b.ip IS NULL OR b.ip IN (:ip_0)') !== false, true);
+is_eq('a subject it does not have matches only rows leaving it empty',
+	[strpos($sql, 'AND b.mac IS NULL') !== false, strpos($sql, 'b.client_id IS NULL AND') !== false], [true, true]);
+is_eq('and an expired temporary ban is not in force', strpos($sql, Bans::ACTIVE_EXPR) !== false, true);
+
+echo "\n  what saveBan() refuses before writing:\n";
+
+$db->fetchAlls = [];
+$saved = function ($request) use ($bans) {
+	return $bans->saveBan($request + ['ip' => '203.0.113.7', 'state' => 'banned', 'minutes' => '60'])['status'];
+};
+
+is_eq('no subject at all', $saved(['ip' => '']), false);
+is_eq('a subject that is not one of its kind', $saved(['ip' => '10.0.0.0/8']), false);
+is_eq('a profile that is not there', $saved(['profile' => '3']), false);
+is_eq('even beside a good one', $saved(['user' => '1001', 'mac' => 'nope']), false);
+is_eq('an unknown state', $saved(['state' => 'unban']), false);
+is_eq('a temporary ban with no length', $saved(['minutes' => '']), false);
+is_eq('or one too long', $saved(['minutes' => (string) (Bans::MAX_MINUTES + 1)]), false);
+is_eq('a client that is not there', $saved(['client' => '5']), false);
+
+$db->answers = ['client_id <=> :client_id' => '7'];
+is_eq('exactly the subjects another row has', $bans->saveBan(['ip' => '203.0.113.7', 'state' => 'deny'])['message'] ?? null,
+	'Ban #7 already covers exactly that. Open it to change it.');
+
+$db->answers = [];
+$db->insertId = 9;
+$db->params = [];
+is_eq('a deny needs no length, and is written', $bans->saveBan(['mac' => '00-04-F2-82-E8-24', 'user' => '1001', 'state' => 'deny', 'minutes' => '']), ['status' => true, 'id' => 9]);
+is_eq('with each subject as it is stored, the rest empty',
+	array_intersect_key(end($db->params)[1], array_flip([':client_id', ':extension', ':mac', ':profile_id', ':ip'])),
+	[':client_id' => null, ':extension' => '1001', ':mac' => '0004f282e824', ':profile_id' => null, ':ip' => null]);
+
+echo "\n  the endpoint asks before it answers:\n";
+
 $settings = new Settings($s['app']);
-$fail2ban = new Fail2ban($s['app'], $settings);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+$endpoint = new Endpoint(
+	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
+	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
+	new Profiles($s['app'], new FileRepo($s['app'])), $s['users'], $bans
+);
+$banned = new \ReflectionMethod(Endpoint::class, 'banned');
+$banned->setAccessible(true);
+$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
 
-is_eq('before an install has registered it, it is on', $fail2ban->enabled(), true);
+$db->fetches = ['WHERE pc.mac = :mac' => [['id' => '5', 'device_id' => '1001', 'extension' => '1001']]];
+$db->fetchAlls = ['oryk_provisioner_bans' => [$site]];
+$db->params = [];
+is_eq('a banned address is a 403', $banned->invoke($endpoint, '0004f282e824')['code'] ?? null, 403);
+is_eq('asked of the address, the MAC, the client and its user',
+	end($db->params)[1], [':client_0' => '5', ':user_0' => '1001', ':mac_0' => '0004f282e824', ':ip_0' => '203.0.113.7']);
 
-$settings->register();
+$db->fetches = ['WHERE pc.mac = :mac' => [['id' => '5', 'device_id' => '1001', 'extension' => '1001', 'profile_id' => '3']]];
+$db->params = [];
+$banned->invoke($endpoint, '0004f282e824');
+is_eq('and the profile it is assigned', end($db->params)[1][':profile_0'] ?? null, '3');
 
-is_eq('registered, it starts on', FreePBX::Config()->get(Settings::FAIL2BAN), true);
-is_eq('switched off from the tab it is off',
-	[$settings->set(Settings::FAIL2BAN, '0'), $fail2ban->enabled()], [null, false]);
-is_eq('off, the state is disabled without asking sudo', $fail2ban->status()['state'], 'disabled');
-is_eq('off, every question answers not-ok', [$fail2ban->jails(), $fail2ban->count(), $fail2ban->bans()['ok']], [[], 0, false]);
-is_eq('off, a ban is refused', (new Bans($s['app'], $fail2ban))->saveBan(['jail' => 'asterisk', 'ip' => '203.0.113.7'])['status'], false);
-is_eq('off, an unban is refused', (new Bans($s['app'], $fail2ban))->deleteBan('asterisk/203.0.113.7')['status'], false);
-is_eq('and on again', [$settings->set(Settings::FAIL2BAN, '1'), $settings->get(Settings::FAIL2BAN)], [null, true]);
+$db->fetches = [
+	'WHERE pc.mac = :mac' => [['id' => '5', 'device_id' => '1001', 'extension' => '1001', 'profile_id' => null]],
+	'WHERE LOWER(name) = LOWER(:name)' => [['id' => '4', 'name' => 'Polycom', 'enabled' => '1']],
+];
+$_SERVER['HTTP_USER_AGENT'] = 'FileTransport PolycomVVX-VVX_411-UA/5.9.5.0614';
+$db->params = [];
+$banned->invoke($endpoint, '0004f282e824');
+is_eq('or, with none, the vendor profile it is served', end($db->params)[1][':profile_0'] ?? null, '4');
+unset($_SERVER['HTTP_USER_AGENT']);
+
+$db->fetches = [];
+$db->fetchAlls = ['oryk_provisioner_bans' => []];
+is_eq('nothing matching, nothing refused', $banned->invoke($endpoint, '0004f282e824'), null);
+
+$db->params = [];
+$banned->invoke($endpoint, Mac::OPEN, 'bob1001');
+is_eq('a username that is no number is not asked as a user', in_array('bob1001', end($db->params)[1], true), false);
+$db->params = [];
+$banned->invoke($endpoint, Mac::OPEN, '1001');
+is_eq('which is a user when it is a number', in_array('1001', end($db->params)[1], true), true);
+
+$db->fetches = [];
+$db->fetchAlls = [];
+unset($_SERVER['REMOTE_ADDR']);
 
 echo "\nopen provisioning:\n";
 
@@ -865,7 +925,7 @@ $template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDev
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
-	new Profiles($s['app'], new FileRepo($s['app'])), $s['users']
+	new Profiles($s['app'], new FileRepo($s['app'])), $s['users'], new Bans($s['app'])
 );
 $codes = function ($user, $pass, $address) use ($endpoint) {
 	return $endpoint->openClient($user, $pass, $address)['code'] ?? 200;

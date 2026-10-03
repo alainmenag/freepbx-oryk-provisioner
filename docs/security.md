@@ -35,8 +35,9 @@ Know what this is before you expose it:
   rendered body or any parameter value.
 - Sortable columns are whitelisted and mapped to SQL names before being written
   into a statement; everything else is bound.
-- **The Bans tab is root access, narrowed.** The sudo rule lets the web user run
-  one root-owned file, which checks every argument itself and can do nothing
-  but list, ban and unban. Anyone who can use the FreePBX admin GUI can ban or
-  unban any address — including on `sshd`. Put your own address in `ignoreip`
-  in `/etc/fail2ban/jail.local`.
+- **A ban is not a firewall.** It is answered by the provisioning endpoint
+  after FreePBX has booted for the request, with a 403 — it does not touch SIP,
+  the admin GUI or any other port, and costs the caller no more than a refused
+  request does. A banned MAC or user is only as good as the MAC or username
+  the caller chooses to send; an address ban is the one a caller cannot pick.
+  The 403 says it is a ban, which tells the caller it has been noticed.

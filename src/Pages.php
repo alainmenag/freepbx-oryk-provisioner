@@ -54,13 +54,10 @@ class Pages extends Service
 	/** @var Bans */
 	private $bans;
 
-	/** @var Fail2ban */
-	private $fail2ban;
-
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans)
 	{
 		parent::__construct($freepbx);
 
@@ -76,7 +73,6 @@ class Pages extends Service
 		$this->endpoints = $endpoints;
 		$this->settings = $settings;
 		$this->bans = $bans;
-		$this->fail2ban = $fail2ban;
 	}
 
 	/**
@@ -93,7 +89,7 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
 	 *   ?display=oryk_provisioner&user=<extension>           one user
 	 *   ?display=oryk_provisioner&user=                      a new one
-	 *   ?display=oryk_provisioner&jail=<jail>&ban=<ip>       one ban
+	 *   ?display=oryk_provisioner&ban=<id>                   one ban
 	 *   ?display=oryk_provisioner&ban=                       a new one
 	 *
 	 * A key present but empty is the same page doing the same thing, minus a row
@@ -104,7 +100,7 @@ class Pages extends Service
 	public function showPage()
 	{
 		if (isset($_REQUEST['ban'])) {
-			return $this->showBan((string) ($_REQUEST['jail'] ?? ''), trim((string) $_REQUEST['ban']));
+			return $this->showBan(trim((string) $_REQUEST['ban']));
 		}
 
 		// Checked before ?profile= only because neither URL carries the other's
@@ -259,39 +255,43 @@ class Pages extends Service
 	}
 
 	/**
-	 * Render the ban editor: a new ban's two fields, or one ban's facts.
+	 * Render the ban editor.
 	 *
-	 * A ban cannot be edited, only lifted, so an existing one is read-only and
-	 * its action bar is Unban and Close. A new one may arrive with its address
-	 * already filled in, as `&ip=`.
+	 * A new one may arrive with its subjects already filled in, as `&ban_ip=`,
+	 * `&ban_mac=`, `&ban_user=`, `&ban_client=` and `&ban_profile=`.
 	 *
-	 * @param string $jail Jail of the ban open, or '' for a new one.
-	 * @param string $ip   Its address, or '' for a new one.
+	 * @param string $wanted Ban id, or '' for a new one.
 	 *
 	 * @return string Rendered page output.
 	 */
-	private function showBan($jail, $ip)
+	private function showBan($wanted)
 	{
-		$jails = $this->bans->jailChoices();
-		$ban = null;
+		$ban = ['id' => 0, 'state' => 'banned', 'note' => '', 'expires_in' => null];
 
-		if ($ip !== '') {
-			// doConfigPageInit() has already bounced one that is not banned.
-			$ban = $this->bans->banRow($jail, $ip);
+		foreach (Bans::SUBJECTS as $subject => $column) {
+			$ban[$column] = Bans::value($subject, $_REQUEST['ban_' . $subject] ?? '');
+		}
 
-			if (!$ban) {
+		if ($wanted !== '') {
+			// doConfigPageInit() has already bounced one that has gone.
+			$found = $this->bans->banRow($wanted);
+
+			if (!$found) {
 				return $this->showList('bans');
 			}
+
+			$ban = $found;
 		}
 
 		return $this->view('ban', [
 			'ban' => $ban,
-			'jails' => $jails,
-			'prefill' => (string) Bans::canonical($_REQUEST['ip'] ?? ''),
-			'clients' => $this->bans->clientAddresses(),
+			'users' => $this->users->userChoices(),
+			'clients' => $this->clients->clientChoices(),
+			'profiles' => $this->profiles->profileChoices(),
+			'addresses' => $this->bans->clientAddresses(),
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections('bans'),
-			// A ban is linked to none of the four, so it scopes nothing.
+			// A ban is not one of the four, so it scopes nothing.
 			'navigator' => $this->navigator->levels(),
 		]);
 	}
@@ -349,6 +349,11 @@ class Pages extends Service
 		$tab = trim((string) ($_REQUEST['tab'] ?? ''));
 
 		if ($tab === '') {
+			return '';
+		}
+
+		// A ban has one tab.
+		if (isset($_REQUEST['ban'])) {
 			return '';
 		}
 
@@ -465,10 +470,6 @@ class Pages extends Service
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([Settings::FROM_DOMAIN => $this->endpoints->hostname()])
 				: [],
-			// What the Bans tab draws in place of its table until fail2ban can be asked.
-			'fail2ban' => $tab === 'bans'
-				? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()]
-				: [],
 			'sections' => $this->navigator->sections($tab),
 			// Nothing is viewed, so nothing is scoped: every dropdown lists all of its
 			// kind, which is how somebody gets to a row without reading the table.
@@ -527,18 +528,11 @@ class Pages extends Service
 	 */
 	public function getActionBar($request)
 	{
-		// A ban has nothing to edit: a new one is Save, an existing one Unban.
-		if (isset($_REQUEST['ban'])) {
-			$bar = trim((string) $_REQUEST['ban']) === ''
-				? ['oryksave' => ['name' => 'oryksave', 'id' => 'oryksave', 'value' => _('Save')]]
-				: ['orykdelete' => ['name' => 'orykdelete', 'id' => 'orykdelete', 'value' => _('Unban')]];
-
-			return $bar + ['orykclose' => ['name' => 'orykclose', 'id' => 'orykclose', 'value' => _('Close')]];
-		}
-
 		// Which editor is open, and which of the URL's keys names the row its
 		// buttons act on.
-		if (isset($_REQUEST['user'])) {
+		if (isset($_REQUEST['ban'])) {
+			$row = trim((string) $_REQUEST['ban']);
+		} elseif (isset($_REQUEST['user'])) {
 			$row = trim((string) $_REQUEST['user']);
 		} elseif (isset($_REQUEST['client'])) {
 			$row = trim((string) $_REQUEST['client']);
@@ -603,18 +597,12 @@ class Pages extends Service
 	 */
 	public function doConfigPageInit($page)
 	{
-		// No ban page opens until fail2ban can be asked; the tab says why. An
-		// address that is not banned in that jail -- often one that has just
-		// expired -- goes back to the list. Switched off, there is no tab.
+		// Empty is the new-ban editor. A temporary ban that has just expired is
+		// gone, and goes back to the list like any id that names nothing.
 		if (isset($_REQUEST['ban'])) {
 			$ban = trim((string) $_REQUEST['ban']);
 
-			if (!$this->bans->enabled()) {
-				header('Location: config.php?display=oryk_provisioner');
-				exit;
-			}
-
-			if (!$this->bans->ready() || ($ban !== '' && !$this->bans->banRow((string) ($_REQUEST['jail'] ?? ''), $ban))) {
+			if ($ban !== '' && !$this->bans->banRow($ban)) {
 				header('Location: config.php?display=oryk_provisioner&tab=bans');
 				exit;
 			}

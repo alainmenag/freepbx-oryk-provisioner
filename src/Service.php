@@ -9,7 +9,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * Every subsystem reaches the same three things -- the FreePBX application,
  * the Asterisk database and the manager connection -- so they are taken apart
- * once, here, along with the four table names every repository needs.
+ * once, here, along with the table names every repository needs.
  *
  * The table names stay **properties rather than class constants**,
  * deliberately: every statement in this module is an interpolated string,
@@ -33,6 +33,9 @@ abstract class Service
 
 	/** @var string One row per request the provisioning endpoint answered. */
 	protected $logsTable = 'oryk_provisioner_logs';
+
+	/** @var string Who the endpoint refuses, or answers in spite of a ban. */
+	protected $bansTable = 'oryk_provisioner_bans';
 
 	/** @var string Name of the web-root symlink pointing at engine/. */
 	protected $engineLink = 'provisioner';

@@ -1,49 +1,108 @@
 <?php
 /**
- * views/ban.php -- one fail2ban ban, or a new one.
+ * views/ban.php -- one ban, or a new one.
  *
- * Reached at ?display=oryk_provisioner&jail=<jail>&ban=<ip>, or &ban=
- * (present, empty) for a new one, optionally with &ip= filled in. A ban is
- * fail2ban's, not a row of this module's -- see ARCHITECTURE.md, "Bans" -- and
- * it cannot be edited, only lifted: an existing one is shown, not fielded, and
- * its action bar is Unban and Close.
+ * Reached at ?display=oryk_provisioner&ban=<id>, or &ban= (present, empty) for
+ * a new one, optionally with &ban_ip=, &ban_mac=, &ban_user=, &ban_client= or
+ * &ban_profile= filled in. What a ban matches and which one wins is in ARCHITECTURE.md,
+ * "Bans".
  *
- * @var array<string, mixed>|null           $ban       The ban open, from Bans::banRow(); null when new
- * @var array<int, string>                  $jails     What a new ban can be added to
- * @var string                              $prefill   An address to start a new ban with
- * @var array<string, array<string, mixed>> $clients   Bans::clientAddresses(): clients by public address
+ * @var array<string, mixed>                $ban       Bans::banRow(), or the new row's defaults
+ * @var array<int, array<string, mixed>>    $users     Users::userChoices(): what the User select offers
+ * @var array<int, array<string, mixed>>    $clients   Clients::clientChoices(): what the Client select offers
+ * @var array<int, array<string, mixed>>    $profiles  Profiles::profileChoices(): what the Profile select offers
+ * @var array<string, array<string, mixed>> $addresses Bans::clientAddresses(): clients by public address
  * @var string                              $remote    The address this page was asked from
  * @var array<int, array<string, mixed>>    $navigator Levels the navigator draws -- see partials/navigator.php
- * @var array<int, array<string, mixed>>    $sections Navigator::sections() -- see partials/sections.php
- * @var string                              $version  Module version -- see partials/sections.php
+ * @var array<int, array<string, mixed>>    $sections  Navigator::sections() -- see partials/sections.php
+ * @var string                              $version   Module version -- see partials/sections.php
  */
 
-$ban = isset($ban) && is_array($ban) ? $ban : null;
-$jails = isset($jails) && is_array($jails) ? $jails : [];
+$users = isset($users) && is_array($users) ? $users : [];
 $clients = isset($clients) && is_array($clients) ? $clients : [];
-$isNew = $ban === null;
+$profiles = isset($profiles) && is_array($profiles) ? $profiles : [];
+$addresses = isset($addresses) && is_array($addresses) ? $addresses : [];
+$banId = (int) $ban['id'];
+$extension = (string) ($ban['extension'] ?? '');
+$clientId = (string) ($ban['client_id'] ?? '');
+$profileId = (string) ($ban['profile_id'] ?? '');
+$state = (string) $ban['state'];
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 
+// What is left of a temporary ban, rounded up so saving it unchanged does not
+// shorten it; an hour for anything else.
+$minutes = ($state === 'banned' && $ban['expires_in'] !== null)
+	? max(1, (int) ceil((int) $ban['expires_in'] / 60))
+	: 60;
+
+// A user ban outlives the user it names, so its number is offered even when no
+// user has it.
+$userNumbers = array_map(function ($user) {
+	return (string) $user['extension'];
+}, $users);
+
+if ($extension !== '' && !in_array($extension, $userNumbers, true)) {
+	$users[] = ['extension' => $extension, 'name' => _('(no such user)')];
+}
+
 $tab = 'ban';
 $tabs = [
 	'ban' => [
 		'label' => _('Ban'),
-		'href' => $isNew
-			? '?display=oryk_provisioner&ban='
-			: '?display=oryk_provisioner&jail=' . rawurlencode($ban['jail']) . '&ban=' . rawurlencode($ban['ip']),
+		'href' => '?display=oryk_provisioner&ban=' . ($banId ?: ''),
 	],
 ];
 
-// A read-only line of the existing ban: label, then what is already escaped.
+// One labelled field with its help; $control is already escaped.
+$field = function ($id, $label, $control, $help, $hidden = false) use ($h) {
+	echo '<div class="element-container" id="' . $h($id) . '-container"' . ($hidden ? ' style="display: none;"' : '') . '>';
+	echo '<div class="row"><div class="form-group">';
+	echo '<div class="col-md-4"><label class="control-label" for="' . $h($id) . '">' . $h($label) . '</label>';
+	echo ' <i class="fa fa-question-circle fpbx-help-icon" data-for="' . $h($id) . '"></i></div>';
+	echo '<div class="col-md-8">' . $control . '</div>';
+	echo '</div></div>';
+	echo '<div class="row"><div class="col-md-12"><span class="help-block fpbx-help-block" id="' . $h($id) . '-help">' . $help . '</span></div></div>';
+	echo '</div>';
+};
+
+// A read-only line: label, then what is already escaped.
 $fact = function ($label, $html) use ($h) {
 	echo '<div class="element-container"><div class="row"><div class="form-group">';
 	echo '<div class="col-md-4"><label class="control-label">' . $h($label) . '</label></div>';
 	echo '<div class="col-md-8"><p class="form-control-static">' . $html . '</p></div>';
 	echo '</div></div></div>';
 };
+
+$options = function (array $choices, $selected) use ($h) {
+	$html = '';
+
+	foreach ($choices as $key => $text) {
+		$html .= '<option value="' . $h($key) . '"' . ((string) $key === (string) $selected ? ' selected' : '') . '>' . $h($text) . '</option>';
+	}
+
+	return $html;
+};
+
+$userChoices = ['' => _('Any user')];
+
+foreach ($users as $user) {
+	$userChoices[(string) $user['extension']] = $user['extension'] . (!empty($user['name']) ? ' - ' . $user['name'] : '');
+}
+
+$clientChoices = ['' => _('Any client')];
+
+foreach ($clients as $client) {
+	$clientChoices[(string) $client['id']] = ($client['mac'] ?: '#' . $client['id']) . (!empty($client['description']) ? ' - ' . $client['description'] : '');
+}
+
+$profileChoices = ['' => _('Any profile')];
+
+foreach ($profiles as $profile) {
+	$profileChoices[(string) $profile['id']] = $profile['name'] . ((int) ($profile['enabled'] ?? 1) ? '' : ' ' . _('(disabled)'));
+}
 ?>
 <?php include __DIR__ . '/partials/editor.php'; ?>
 
@@ -63,72 +122,69 @@ $fact = function ($label, $html) use ($h) {
 				<div class="tab-content">
 					<div class="tab-pane oryk-tab-section active" id="oryk_ban">
 
-						<?php if ($isNew): ?>
-
-						<div class="element-container">
-							<div class="row">
-								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label" for="ban_jail"><?php echo _('Jail'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="ban_jail"></i>
-									</div>
-									<div class="col-md-8">
-										<select class="form-control" id="ban_jail">
-											<?php foreach ($jails as $jail): ?>
-											<option value="<?php echo $h($jail); ?>"<?php echo $jail === 'asterisk' ? ' selected' : ''; ?>><?php echo $h($jail); ?></option>
-											<?php endforeach; ?>
-										</select>
-									</div>
-								</div>
-							</div>
-							<div class="row">
-								<div class="col-md-12">
-									<span class="help-block fpbx-help-block" id="ban_jail-help">
-										<?php echo _('Which of fail2ban\'s jails to ban it in. asterisk blocks SIP; sshd blocks SSH. The ban lasts the jail\'s own bantime, as if fail2ban had banned it itself.'); ?>
-									</span>
-								</div>
-							</div>
-						</div>
-
-						<div class="element-container">
-							<div class="row">
-								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label" for="ban_ip"><?php echo _('IP Address'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="ban_ip"></i>
-									</div>
-									<div class="col-md-8">
-										<input type="text" class="form-control oryk-name" id="ban_ip" maxlength="45"
-											autocomplete="off" spellcheck="false" placeholder="203.0.113.7"
-											value="<?php echo $h($prefill ?? ''); ?>">
-									</div>
-								</div>
-							</div>
-							<div class="row">
-								<div class="col-md-12">
-									<span class="help-block fpbx-help-block" id="ban_ip-help">
-										<span class="oryk-help-part"><?php echo _('One IPv4 or IPv6 address. Ranges are not accepted.'); ?></span>
-										<span class="oryk-help-part"><?php echo _('Refused: the address you are connected from, loopback, and this PBX\'s own addresses. An address written on a client as its public address is allowed, after a warning: it blocks every phone at that site.'); ?></span>
-									</span>
-								</div>
-							</div>
-						</div>
-
-						<?php else: ?>
+						<p class="help-block">
+							<?php echo _('Fill in one or more of the five. A request is matched when it matches every one filled in; one left empty matches anything. When several bans match one request, the one naming the most specific thing decides -- Client, then User, then MAC Address, then Profile, then IP Address -- and of those, the one naming more of them.'); ?>
+						</p>
 
 						<?php
-						$fact(_('IP Address'), '<span class="oryk-name">' . $h($ban['ip']) . '</span>');
-						$fact(_('Jail'), $h($ban['jail']));
-						$fact(_('Banned'), $h($ban['banned']) . ' <span class="text-muted" data-oryk-since="' . (int) $ban['banned_age'] . '"></span>');
-						$fact(_('Expires'), $ban['permanent']
-							? $h(_('Never: this jail bans permanently'))
-							: $h((string) $ban['expires']) . ' <span class="text-muted" data-oryk-in="' . (int) $ban['expires_in'] . '"></span>');
-						$fact(_('Client'), $ban['client_id']
-							? '<a href="?display=oryk_provisioner&amp;client=' . (int) $ban['client_id'] . '">' . $h($ban['client']) . '</a> <span class="text-muted">' . $h(_('this address is the client\'s public address')) . '</span>'
-							: '-');
+						$field('ban_ip', _('IP Address'),
+							'<input type="text" class="form-control oryk-name" id="ban_ip" maxlength="45" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any address')) . '" value="' . $h($ban['ip'] ?? '') . '">',
+							$h(_('One IPv4 or IPv6 address, as the request arrives from it. Ranges are not accepted. On its own it matches every phone behind that address; with a user or client, it is where that user or client is allowed or refused from.'))
+						);
+
+						$field('ban_mac', _('MAC Address'),
+							'<input type="text" class="form-control oryk-name" id="ban_mac" maxlength="17" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any MAC')) . '" value="' . $h($ban['mac'] ?? '') . '">',
+							$h(_('Twelve hexadecimal digits, with or without separators. It need not belong to a client: a MAC nobody has added yet can be refused too.'))
+						);
+
+						$field('ban_user', _('User'),
+							'<select class="form-control" id="ban_user">' . $options($userChoices, $extension) . '</select>',
+							$h(_('Every client whose device or extension is this number, and open provisioning with this number as its username. The ban names the number: renumbering the user leaves it behind.'))
+						);
+
+						$field('ban_client', _('Client'),
+							'<select class="form-control" id="ban_client">' . $options($clientChoices, $clientId) . '</select>',
+							$h(_('This client, whatever MAC it is given later. Deleting the client deletes the ban.'))
+						);
+
+						$field('ban_profile', _('Profile'),
+							'<select class="form-control" id="ban_profile">' . $options($profileChoices, $profileId) . '</select>',
+							$h(_('Every client served this profile: assigned it, or given it for its vendor because it has none. A file fetched by name with no client behind it is not matched. Deleting the profile deletes the ban.'))
+						);
+
+						$field('ban_state', _('State'),
+							'<select class="form-control" id="ban_state">' . $options([
+								'banned' => _('Banned (for a while)'),
+								'deny' => _('Deny (until deleted)'),
+								'allow' => _('Allow (until deleted)'),
+							], $state) . '</select>',
+							'<span class="oryk-help-part">' . $h(_('Banned and Deny refuse every request that matches with a 403, written to the Logs tab. Banned lifts itself when its time is up and the row is deleted; Deny stays until it is deleted.')) . '</span>'
+							. '<span class="oryk-help-part">' . $h(_('Allow wins over every less specific ban that matches: an allowed client is served from a banned address, and allowing user 1001 from one address beats denying user 1001. It changes nothing else -- a disabled client, a token or a profile still decide as they do.')) . '</span>'
+						);
+
+						$field('ban_minutes', _('Ban For (minutes)'),
+							'<input type="number" class="form-control" id="ban_minutes" min="1" max="' . (int) \FreePBX\Modules\Oryk_Provisioner\Bans::MAX_MINUTES . '" step="1" value="' . (int) $minutes . '">',
+							$h(_('How long from this save. 60 is an hour, 1440 a day, 10080 a week. Saving an existing ban starts its time again from now.')),
+							$state !== 'banned'
+						);
+
+						$field('ban_note', _('Note'),
+							'<input type="text" class="form-control" id="ban_note" maxlength="255" value="' . $h($ban['note'] ?? '') . '">',
+							$h(_('Why, for whoever reads this list next. Not shown to the phone.'))
+						);
+
+						if ($banId) {
+							$fact(_('Created'), $h($ban['created_at']) . ' <span class="text-muted" data-oryk-since="' . (int) $ban['created_age'] . '"></span>');
+
+							if ($state === 'banned') {
+								$fact(_('Expires'), $h($ban['expires_at']) . ' <span class="text-muted" data-oryk-in="' . (int) $ban['expires_in'] . '"></span>');
+							}
+
+							if (!empty($ban['ip_client'])) {
+								$fact(_('Public IP Of'), '<a href="?display=oryk_provisioner&amp;client=' . (int) $ban['ip_client_id'] . '">' . $h($ban['ip_client']) . '</a>');
+							}
+						}
 						?>
-
-						<p class="help-block"><?php echo _('A ban cannot be edited. Unban lifts it now; otherwise fail2ban lifts it when it expires.'); ?></p>
-
-						<?php endif; ?>
 
 					</div>
 				</div>
@@ -140,8 +196,8 @@ $fact = function ($label, $html) use ($h) {
 
 <script>
 
-	const orykBan = <?php echo json_encode($isNew ? null : ['id' => $ban['id'], 'jail' => $ban['jail'], 'ip' => $ban['ip']]); ?>;
-	const orykBanClients = <?php echo json_encode((object) $clients); ?>;
+	const orykBanId = <?php echo $banId; ?>;
+	const orykBanAddresses = <?php echo json_encode((object) $addresses); ?>;
 	const orykBanRemote = <?php echo json_encode((string) ($remote ?? '')); ?>;
 
 	// Seconds as a coarse age, the way the lists say it.
@@ -170,18 +226,31 @@ $fact = function ($label, $html) use ($h) {
 		$(this).text(left ? `(in ${left})` : '(any moment)');
 	});
 
-	// Registered before orykEditor(), so a declined warning stops its Save. The
-	// server refuses the address you are connected from on its own; a client's
-	// public address is only warned about, because it can be the right thing.
-	$(document).on('click', '#oryksave', function (event) {
-		const ip = $.trim($('#ban_ip').val()).toLowerCase();
-		const client = orykBanClients[ip];
+	// Only a temporary ban has a length.
+	$('#ban_state').on('change', function () {
+		$('#ban_minutes-container').toggle($(this).val() === 'banned');
+	});
 
-		if (ip !== '' && ip === orykBanRemote) {
+	// Registered before orykEditor(), so a declined warning stops its Save. Only
+	// an address on its own refuses a whole site.
+	$(document).on('click', '#oryksave', function (event) {
+		const narrowed = ['#ban_mac', '#ban_user', '#ban_client', '#ban_profile'].some((field) => $.trim($(field).val()) !== '');
+
+		if (narrowed || $('#ban_state').val() === 'allow') {
 			return;
 		}
 
-		if (client && !window.confirm(`${ip} is the public address of ${client.label}${client.count > 1 ? ` and ${client.count - 1} more` : ''}. Banning it blocks every phone at that site. Ban it anyway?`)) {
+		const ip = $.trim($('#ban_ip').val()).toLowerCase();
+		const client = orykBanAddresses[ip];
+		let ask = '';
+
+		if (ip !== '' && ip === orykBanRemote) {
+			ask = `${ip} is the address you are connected from. Phones at your site will not be provisioned. Ban it anyway?`;
+		} else if (client) {
+			ask = `${ip} is the public address of ${client.label}${client.count > 1 ? ` and ${client.count - 1} more` : ''}. Every phone at that site will be refused. Ban it anyway?`;
+		}
+
+		if (ask && !window.confirm(ask)) {
 			event.preventDefault();
 			event.stopImmediatePropagation();
 		}
@@ -190,20 +259,22 @@ $fact = function ($label, $html) use ($h) {
 	orykEditor({
 		save: 'saveBan',
 		remove: 'deleteBan',
-		confirm: orykBan ? `Unban ${orykBan.ip} from ${orykBan.jail}?` : '',
+		confirm: 'Delete this ban? What it matched is answered again from the next request.',
 		values: function () {
 			return {
-				id: orykBan ? orykBan.id : '',
-				jail: $('#ban_jail').val(),
-				ip: $('#ban_ip').val()
+				id: orykBanId || '',
+				ip: $('#ban_ip').val(),
+				mac: $('#ban_mac').val(),
+				user: $('#ban_user').val(),
+				client: $('#ban_client').val(),
+				profile: $('#ban_profile').val(),
+				state: $('#ban_state').val(),
+				minutes: $('#ban_minutes').val(),
+				note: $('#ban_note').val()
 			};
 		},
-		// The key is jail/ip; a jail cannot hold a slash.
 		page: function (id) {
-			const slash = String(id).indexOf('/');
-
-			return '?display=oryk_provisioner&jail=' + encodeURIComponent(String(id).slice(0, slash))
-				+ '&ban=' + encodeURIComponent(String(id).slice(slash + 1));
+			return '?display=oryk_provisioner&ban=' + encodeURIComponent(id);
 		},
 		closed: '?display=oryk_provisioner&tab=bans'
 	});

@@ -267,6 +267,14 @@ class Profiles extends Service
 		$resources = $this->db->prepare("DELETE FROM `{$this->resourcesTable}` WHERE profile_id = :id");
 		$resources->execute([':id' => $id]);
 
+		// Bans naming it go too: the next profile written can be given this id.
+		try {
+			$bans = $this->db->prepare("DELETE FROM `{$this->bansTable}` WHERE profile_id = :id");
+			$bans->execute([':id' => $id]);
+		} catch (\Exception $e) {
+			// No bans table before the upgrade that adds it: nothing to delete.
+		}
+
 		$stmt = $this->db->prepare("DELETE FROM `{$this->profilesTable}` WHERE id = :id");
 		$stmt->execute([':id' => $id]);
 

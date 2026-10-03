@@ -25,10 +25,12 @@ matches `phone.cfg`, and that resource is rendered and served.
 Everything else is that sentence with the edge cases filled in.
 
 A **user** is the other half of the module: a pjsip device that is its own
-extension, managed from the Users tab. A client's device is usually one. See
-[Users](#users). A **ban** is fail2ban's -- one address in one jail -- shown
-and changed from the Bans tab. See [Bans](#bans). Neither is stored in this
-module's tables.
+extension, managed from the Users tab, and stored in none of this module's
+tables. A client's device is usually one. See [Users](#users). A **ban** is a
+rule naming any of an address, a MAC, a user, a client and a profile, and saying what the
+endpoint does with a request that matches all it names: refuse it for a while,
+refuse it for good, or answer it in spite of a less specific ban. See
+[Bans](#bans).
 
 ## Request flow
 
@@ -41,6 +43,8 @@ phone
                                ORYK_PROVISIONING=DISABLED: 503, unlogged
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
      or ::openProvision()                         MAC 000000000000, OPEN only
+  -> Endpoint::banned()                           Bans::check(): 403 before
+                                                  anything is looked up or made
   -> Endpoint::openProvision()                    finds or makes the client its
                                                   credentials log in as, then
                                                   serve()s / receive()s as it
@@ -49,9 +53,11 @@ phone
                                                   status, sends, exits
 ```
 
-`resolveRequest()` is the whole of the decision and is deliberately callable
-without the exit -- previews, console commands and tests use it. **Its order is
-the security of the thing:**
+`resolveRequest()` is the whole of the decision about *what* answers and is
+deliberately callable without the exit -- previews, console commands and tests
+use it. Bans are asked before it, by `serve()` and `receive()`, so a preview is
+never refused for the address an admin is browsing from. **Its order is the
+security of the thing:**
 
 1. disabled client -> 403
 2. a client with no profile: the profile named after the vendor its
@@ -148,8 +154,7 @@ Oryk_provisioner.class.php   BMO contract, src/ autoloader, AJAX dispatch table.
 page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
-bin/                         the fail2ban helper and its setup script -- see Bans
-src/                         36 files, namespace FreePBX\Modules\Oryk_Provisioner
+src/                         35 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -158,7 +163,7 @@ views/                       one view per page, plus views/partials/
 
 | file | what it is |
 | --- | --- |
-| `Service` | base class: FreePBX handle, PDO, manager, the four table names, `rowCount()`, prefixed log helpers |
+| `Service` | base class: FreePBX handle, PDO, manager, the table names, `rowCount()`, prefixed log helpers |
 | `Repo` | base class for the two file directories |
 | `Logs`, `Enabled` | traits: writing to the FreePBX log; the on/off switch two tables share |
 | `Mac` | a MAC as written, and as found in a filename (static) |
@@ -183,10 +188,9 @@ views/                       one view per page, plus views/partials/
 | `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
 | `ExtensionRenumberer` | moving a user to another number, in order |
 | `Users` | saving, deleting and listing a user |
-| `Fail2ban` | the only file that asks fail2ban, through the sudo helper |
-| `Bans` | listing, adding and lifting a ban |
+| `Bans` | the bans table, and the question the endpoint asks it before answering |
 
-The last seven came from `oryk_connect` 1.3.2, which this module replaces for
+`AsteriskConfig` through `Users` came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
 
 `install()` symlinks `engine/` to `<AMPWEBROOT>/provisioner`, which is the short
@@ -196,7 +200,7 @@ friendly URL, and the endpoint stays reachable at its real path.
 
 ## Schema
 
-Four tables. Every `Schema` step is additive and asks `information_schema`
+Five tables. Every `Schema` step is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -245,6 +249,25 @@ file (1.0.7).
 - **Metadata only.** The rendered body carries `device.secret` whenever a
   template asks for it. Nor is which resource answered stored -- the filename as
   the phone spelled it is the fact of the request.
+
+**`oryk_provisioner_bans`** -- `client_id`, `extension`, `mac`, `profile_id`,
+`ip`, `state`, `expires_at`, `note`.
+
+- **The five subjects are five nullable columns**, and NULL is "any". A row
+  matches a request when every column it sets equals one of the request's, so
+  one row can say "user 1001, but only from this address". Each is stored in
+  the one spelling `Bans::value()` gives it -- a canonical address, a bare
+  lowercase MAC, digits -- because it is compared with `=`, not parsed.
+- **No unique key.** MySQL counts NULLs as distinct, so a key over the five
+  would admit two identical rules. `Bans::saveBan()` refuses one with `<=>`
+  instead. An index on each column, since a request names any of them.
+- `state` is VARCHAR(16) rather than an ENUM, for the reason a resource's
+  `type` is one.
+- `expires_at` is set on a `banned` row and nothing else. Written and compared
+  with the database's `NOW()`, never PHP's clock, for the reason Last Seen is.
+- A row naming a client or a profile goes with it, since the next one written
+  can be given the same id. A user is a number and its rows outlive it; a MAC
+  names a handset and its rows outlive any client.
 
 ### Migrations deliberately not written
 
@@ -370,63 +393,67 @@ everywhere.
 
 ## Bans
 
-A ban is a row in none of this module's tables: it is one (jail, address) pair
-in fail2ban, asked for every time it is shown, and named `jail/ip` wherever one
-string has to name it (a jail cannot hold a slash; an address does not). Its
-page is `?jail=<jail>&ban=<ip>`, the way a resource hangs off its profile. A
-ban cannot be edited, so an existing one has Unban and Close and no Save.
+A ban is a row of `oryk_provisioner_bans`: up to five **subjects** -- client,
+user (an extension), MAC, profile, address -- each empty for "any", and a
+**state**:
 
-**`ORYK_FAIL2BAN`** (a [setting](#settings), on by default) switches the whole
-thing. `Fail2ban::enabled()` is the one place it is read: off, every call
-answers not-ok without running sudo and `status()` is `disabled`, and
-`Navigator::section()` leaves the section out of the bar and the list. It does
-not touch the helper or the sudo rule; `--remove` does. `Settings::get()`
-answers a setting's default until install has registered it, so new files on a
-box not yet upgraded do not read it as off.
+| state | does | until |
+| --- | --- | --- |
+| `banned` | refuses | `expires_at`; the row is then deleted |
+| `deny` | refuses | the row is deleted |
+| `allow` | answers in spite of a less specific ban | the row is deleted |
 
-**The privilege boundary.** fail2ban's socket answers root only, and the GUI
-runs as the web user. `Fail2ban` -- the only file that asks -- runs
-`sudo -n /usr/local/sbin/oryk-fail2ban <verb> …` with an argument array, never
-a shell string. The helper is Python because fail2ban already needs it, and it
-is the boundary: it accepts `check`, `jails`, `count`, `list [jail]`,
-`ban <jail> <ip>` and `unban <jail> <ip>`, re-checks every argument (a jail
-fail2ban has; one address, no range, no zone id), runs `fail2ban-client` with a
-fixed argument list, and answers one line of JSON. Exit 64 is a refused
-argument, 69 fail2ban down.
+A row **matches** a request when every subject it names is one of the
+request's. "Address 203.0.113.7" matches every phone behind it; "user 1001,
+address 203.0.113.7" matches only that user from there.
 
-- **The helper sudo runs is a root-owned copy, never the module's file.** The
-  module directory is writable by the web user, so a sudo rule pointing into it
-  would be root for anyone who can write there.
-- **One way to install it:** `bin/oryk-fail2ban-setup`, run as root by hand, or
-  by `install()` when that runs as root. It writes the sudoers file under a
-  dotted name, which `includedir` skips, and renames it into place only after
-  `visudo -c`. It checks the whole sudo configuration first, so a problem
-  already there is reported as that; a wrong mode or owner on another file in
-  `/etc/sudoers.d` -- which sudo tolerates and `visudo -c` does not -- it fixes
-  and says so, and anything else it prints and stops. Nothing about it fails
-  an install; `uninstall()` as root runs `--remove`.
-- **`HELPER_VERSION` is how a stale copy is found.** The tab and the setup
-  script read the same line from both copies; bump it whenever the helper
-  changes.
-- **The tab says what is wrong, in order:** `missing` (no helper), `sudo` (sudo
-  refuses -- no JSON came back), `stale`, `fail2ban` (the helper answers,
-  fail2ban does not), `ok`. Anything but `ok` draws the setup command, built from
-  this module's real path, in place of the table; no ban page opens.
-- **Times are fail2ban's local time**, turned into epochs by the helper, and
-  every age is subtracted on the helper's `now` -- the same reasoning as Last
-  Seen: the browser's clock is not the PBX's.
-- **Each helper call costs a sudo and two Python start-ups.** `Fail2ban` asks
-  each read once per request, and nothing counts bans for a badge.
-- **A ban refuses** the requester's own address, loopback and unspecified
-  addresses, and the PBX's own; a client's public address is warned about in
-  the browser, not refused. **Unbanning** an address no longer banned succeeds:
-  the request says the state wanted, as the enabled switch does.
+**The endpoint asks before it answers anything.** `Endpoint::banned()` runs
+first in `serve()`, `receive()` and `openProvision()`, and hands
+`Bans::check()` every subject the request has: the address it came from
+(`REMOTE_ADDR`), its MAC, the client that MAC names, that client's device id
+and extension, and the profile it is served -- its own, or, with none, its
+vendor's, as `resolveRequest()` would pick -- or, for open provisioning, the
+username, which is a user when it is a number. A file fetched by name with no
+client behind it has no profile, so a profile ban does not stop it. A subject the request does not have matches only rows that
+leave it empty. Open provisioning is asked before `openClient()`, so a refused
+caller never makes a user; the client it is answered as is checked again by
+`serve()`. A refusal is a 403 through `answer()`, so it is logged like any other
+request, and touches nothing else -- no `last_seen`.
 
-## Conventions that hold everywhere
+**The most specific row decides** (`Bans::decide()`): the one whose most
+specific subject comes first in `Bans::SUBJECTS` -- client, user, MAC,
+profile, address -- then the one naming more subjects, then a refusal over an allow. If
+it is `allow` the request goes on, otherwise it is refused. So:
+
+- an allowed client is served from a banned address;
+- "allow user 1001 from 203.0.113.7" beats "deny user 1001";
+- an allowed address does not rescue a denied MAC, or a denied profile.
+
+A profile ranks below a MAC and above an address: it is what a phone is,
+where an address is only where it is.
+
+`allow` overrides bans and nothing else: a disabled client, a token or a
+profile still decide afterwards as they always do.
+
+- **It fails open.** A table that cannot be read refuses nothing, so new files
+  on a PBX not yet upgraded keep provisioning.
+- **An expired ban is never in force.** `check()` filters on
+  `Bans::ACTIVE_EXPR`; the list and the editor delete expired rows first
+  (`prune()`), so the table holds what is in force. Nothing writes on the
+  request path.
+- **Nothing is refused on save** but a subject that is not one of its kind, a
+  row naming nothing, and a row naming exactly what another does. A ban only
+  touches the provisioning endpoint, never the admin GUI, so banning your own
+  address costs you nothing but your phones. The editor warns when an address
+  on its own is yours or a client's public address.
+- A ban's page is `?ban=<id>`; it is edited like any other row, and a
+  temporary ban saved again runs its length from that save.
+
+## Conventions that hold everywhere## Conventions that hold everywhere
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?jail=<jail>&ban=`. The
+  `?ban=`. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
   `showPage()` would be too late to set a header. A user's key is its
@@ -531,7 +558,8 @@ bootstrap FreePBX on its own.
   the token scheme's job and is a change to all the messages at once.
 - No rate limiting or lockout on token verification, or on open
   provisioning, which answers any address and makes a user per new username.
-  Its failed logins reach fail2ban only through FreePBX's security log.
+  Its failed logins reach fail2ban only through FreePBX's security log, and
+  nothing writes a ban but an operator.
 - Copying resources between profiles, or a seeded starting resource. A profile
   is set up one file at a time from empty.
 - No `fwconsole` command. Backup/restore hooks are stubs.

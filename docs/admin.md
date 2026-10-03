@@ -22,7 +22,7 @@ editors below have their own tabs, which are views of that one row.
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 | `&user=<extension>` | one user (`&user=` for a new one) | User, Clients |
-| `&jail=<jail>&ban=<ip>` | one fail2ban ban (`&ban=` for a new one) | Ban |
+| `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor. Save leaves you on
@@ -84,5 +84,4 @@ any, and stays on the tab.
 | --- | --- |
 | **Hostname** (`ORYK_HOSTNAME`) | What phones register to: `{{server.host}}` in a template, and the From Domain when that is blank. Blank: a template gets the host each request arrived on, and From Domain this machine's hostname. |
 | **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](users.md#from-domain). Blank: the Hostname setting, or this machine's hostname, when that is a domain name; the field shows what blank comes to. |
-| **Fail2ban Bans** (`ORYK_FAIL2BAN`) | Yes (the default): the [Bans](fail2ban.md) tab is shown. No: the tab, its pages and its commands are gone and the module asks fail2ban nothing. Switching it off does not uninstall the helper — see [Uninstalling fail2ban access](fail2ban.md#uninstalling-fail2ban-access). |
 | **Provisioning** (`ORYK_PROVISIONING`) | Closed (the default): a request for MAC `000000000000` is treated like any other MAC. Open: that request is answered by its Basic credentials — see [Open provisioning](endpoint.md#open-provisioning). Disabled: every request to the endpoint is refused with a 503, unlogged. |

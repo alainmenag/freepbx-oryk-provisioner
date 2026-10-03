@@ -26,11 +26,6 @@ class Settings extends Service
 	const FROM_DOMAIN = 'ORYK_FROM_DOMAIN';
 
 	/**
-	 * Whether the Bans tab is shown and fail2ban is asked anything at all.
-	 */
-	const FAIL2BAN = 'ORYK_FAIL2BAN';
-
-	/**
 	 * Whether the all-zero MAC logs in, or creates a user, with its credentials.
 	 * OPEN, CLOSED or DISABLED (every request refused with a 503); CLOSED
 	 * unless an admin changes it.
@@ -41,6 +36,12 @@ class Settings extends Service
 	 * What every setting is filed under in Advanced Settings.
 	 */
 	const CATEGORY = 'Oryk Provisioner';
+
+	/**
+	 * Keywords an earlier version registered and this one does not, removed
+	 * by register() so Advanced Settings stops offering them.
+	 */
+	const RETIRED = ['ORYK_FAIL2BAN'];
 
 	/**
 	 * Every setting this module provides, in the order they are shown.
@@ -86,14 +87,6 @@ class Settings extends Service
 				'pattern' => EndpointSettings::DOMAIN_PATTERN,
 				'emptyok' => true,
 			],
-			self::FAIL2BAN => [
-				'name' => 'Fail2ban Bans',
-				'description' => 'Show the Bans tab, where fail2ban bans are listed, added and lifted. '
-					. 'Off hides the tab and the module stops asking fail2ban anything. The helper and '
-					. 'sudo rule the setup script installed stay in place until it is run with --remove.',
-				'type' => 'bool',
-				'default' => true,
-			],
 			self::PROVISIONING => [
 				'name' => 'Provisioning',
 				'description' => 'Open: a request for the MAC address 000000000000 logs in with its '
@@ -118,6 +111,7 @@ class Settings extends Service
 	 * Safe on every install and upgrade: a setting that already exists is
 	 * defined again with its stored value passed back in, so registering can
 	 * never reset one -- including the From Domain oryk_connect left behind.
+	 * A RETIRED keyword still there is removed.
 	 *
 	 * @return bool True when every setting was registered.
 	 */
@@ -125,6 +119,17 @@ class Settings extends Service
 	{
 		$ok = true;
 		$order = 0;
+
+		try {
+			$config = \FreePBX::Config();
+			$retired = array_values(array_filter(self::RETIRED, [$config, 'conf_setting_exists']));
+
+			if ($retired && method_exists($config, 'remove_conf_settings')) {
+				$config->remove_conf_settings($retired);
+			}
+		} catch (\Throwable $e) {
+			$this->logWarning('unable to remove retired settings: ' . $e->getMessage());
+		}
 
 		foreach ($this->definitions() as $keyword => $definition) {
 			$order += 10;
