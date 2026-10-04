@@ -103,7 +103,7 @@ class Fail2ban extends Service
 	 *
 	 * @return array<string, mixed> state, message, detail (what the helper or
 	 *                              sudo said, or the jails missing), fail2ban
-	 *                              (its version).
+	 *                              (its version), jails (the managed ones).
 	 */
 	public static function state($state, $answer, $bundled)
 	{
@@ -141,6 +141,7 @@ class Fail2ban extends Service
 			'message' => $messages[$state],
 			'detail' => $state === 'ok' ? '' : (string) ($answer['error'] ?? ''),
 			'fail2ban' => (string) ($answer['fail2ban'] ?? ''),
+			'jails' => array_values(array_map('strval', (array) ($answer['jails'] ?? []))),
 		];
 	}
 
@@ -187,7 +188,10 @@ class Fail2ban extends Service
 	}
 
 	/**
-	 * Every jail's bans, with times, and every jail's ignore list.
+	 * The managed jails' bans, with times, and their ignore lists.
+	 *
+	 * The helper lists `banned`, `deny` and the jails root named in
+	 * /etc/oryk-fail2ban.conf, and nothing else: sshd is never in the answer.
 	 *
 	 * @return array<string, mixed> ok, error; jails, bans (jail, ip, banned_at,
 	 *                              bantime, permanent, expires_at -- epochs on
@@ -214,7 +218,7 @@ class Fail2ban extends Service
 	/**
 	 * Lift one ban. An address that is not banned is answered as success.
 	 *
-	 * @param string $jail A jail name.
+	 * @param string $jail A managed jail; any other is refused (EX_USAGE).
 	 * @param string $ip   One IP address.
 	 *
 	 * @return array<string, mixed> ok, error.
@@ -225,7 +229,7 @@ class Fail2ban extends Service
 	}
 
 	/**
-	 * Add an address to every jail's ignore list that lacks it.
+	 * Add an address to each managed jail's ignore list that lacks it.
 	 *
 	 * @param string $ip One IP address.
 	 *
@@ -237,7 +241,7 @@ class Fail2ban extends Service
 	}
 
 	/**
-	 * Take an address off every jail's ignore list that has it.
+	 * Take an address off each managed jail's ignore list that has it.
 	 *
 	 * @param string $ip One IP address.
 	 *

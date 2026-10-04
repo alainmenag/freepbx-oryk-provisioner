@@ -892,12 +892,12 @@ is_eq('an existing ban edited onto another row\'s subjects is refused',
 	'Ban #7 already names exactly that. Open it instead, or delete one of the two.');
 
 $db->answers = ['FROM `oryk_provisioner_bans` WHERE `id`' => '1'];
-$db->fetches = ['WHERE b.id = :id' => [ban_row(1, 'banned', ['ip' => '198.51.100.4']) + ['note' => 'scanner', 'source' => 'fail2ban', 'jail' => 'sshd']]];
+$db->fetches = ['WHERE b.id = :id' => [ban_row(1, 'banned', ['ip' => '198.51.100.4']) + ['note' => 'scanner', 'source' => 'fail2ban', 'jail' => 'pbx-gui']]];
 $db->params = [];
 is_eq('the State column changes the state and nothing else',
 	[$bans->setBanState(['id' => '1', 'state' => 'deny'])['status'],
 		array_intersect_key(ban_write($db)[1], array_flip([':ip', ':state', ':note', ':source', ':jail']))],
-	[true, [':ip' => '198.51.100.4', ':state' => 'deny', ':note' => 'scanner', ':source' => 'fail2ban', ':jail' => 'sshd']]);
+	[true, [':ip' => '198.51.100.4', ':state' => 'deny', ':note' => 'scanner', ':source' => 'fail2ban', ':jail' => 'pbx-gui']]);
 is_eq('a Banned picked there still needs its length', $bans->setBanState(['id' => '1', 'state' => 'banned'])['status'], false);
 $db->fetches = [];
 is_eq('and a ban gone since the table was drawn says so', $bans->setBanState(['id' => '1', 'state' => 'deny'])['message'] ?? null, 'That ban has been deleted.');
@@ -998,15 +998,16 @@ is_eq('no JSON at all is sudo refusing', Fail2ban::state(null, ['ok' => false, '
 is_eq('another version installed is stale', Fail2ban::state(null, ['ok' => true, 'version' => 1, 'exit' => 0], 2)['state'], 'stale');
 is_eq('a current helper with fail2ban down is fail2ban', Fail2ban::state(null, ['ok' => false, 'version' => 2, 'exit' => 69], 2)['state'], 'fail2ban');
 is_eq('no deny jail is said, with which',
-	array_intersect_key(Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['asterisk', 'banned', 'sshd']], 2), ['state' => 1, 'detail' => 1]),
+	array_intersect_key(Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['asterisk', 'banned', 'pbx-gui']], 2), ['state' => 1, 'detail' => 1]),
 	['state' => 'nojail', 'detail' => 'deny']);
 is_eq('both of the module\'s jails there is ok, asterisk or not', Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['banned', 'deny']], 2)['state'], 'ok');
-is_eq('the shipped helper is version 4', Fail2ban::helperVersion(file_get_contents(__DIR__ . '/../bin/oryk-fail2ban')), 4);
+is_eq('the managed jails are passed on', Fail2ban::state(null, ['ok' => true, 'version' => 2, 'exit' => 0, 'jails' => ['asterisk', 'banned', 'deny']], 2)['jails'], ['asterisk', 'banned', 'deny']);
+is_eq('the shipped helper is version 5', Fail2ban::helperVersion(file_get_contents(__DIR__ . '/../bin/oryk-fail2ban')), 5);
 
 echo "\n  what one run plans:\n";
 
 /** fail2ban's answer to list, from bans as [jail, ip, banned_at, expires_at or null for permanent]. */
-function listed(array $bans, array $ignore = [], array $jails = ['asterisk', 'banned', 'deny', 'sshd'])
+function listed(array $bans, array $ignore = [], array $jails = ['asterisk', 'banned', 'deny', 'pbx-gui'])
 {
 	return [
 		'ok' => true,
@@ -1032,8 +1033,8 @@ is_eq('a ban with no row is imported', [count($p['insert']), $p['insert'][0]['ja
 $p = BanSync::plan(listed([['recidive', '203.0.113.7', 1000, null]], [], ['recidive', 'deny']), []);
 is_eq('a permanent one comes in permanent', $p['insert'][0]['permanent'] ?? null, true);
 
-$p = BanSync::plan(listed([['asterisk', '203.0.113.7', 1000, 4600], ['sshd', '203.0.113.7', 900, 9000]]), []);
-is_eq('an address in two jails is one row, the longer ban', [count($p['insert']), $p['insert'][0]['jail']], [1, 'sshd']);
+$p = BanSync::plan(listed([['asterisk', '203.0.113.7', 1000, 4600], ['pbx-gui', '203.0.113.7', 900, 9000]]), []);
+is_eq('an address in two jails is one row, the longer ban', [count($p['insert']), $p['insert'][0]['jail']], [1, 'pbx-gui']);
 
 $p = BanSync::plan(listed([['asterisk', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => sync_row(4, 'banned', 'fail2ban', true, true, 4600, 1000)]);
 is_eq('the same ban again refreshes its row, not counted', [$p['update'][0]['id'] ?? null, $p['update'][0]['times'] ?? null, $p['update'][0]['revive'] ?? null], [4, 0, false]);
@@ -1082,23 +1083,23 @@ is_eq('banned holds nothing the table does not either', $p['unban'], [['banned',
 
 echo "\n  a row marked deleted:\n";
 
-$p = BanSync::plan(listed([['deny', '203.0.113.7', 1000, null], ['sshd', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'deny', 'manual', false, true)]);
+$p = BanSync::plan(listed([['deny', '203.0.113.7', 1000, null], ['pbx-gui', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'deny', 'manual', false, true)]);
 is_eq('its copy is lifted, it is purged, and nothing is imported onto it meanwhile',
 	[$p['unban'], $p['purge'], $p['insert'], $p['update']], [[['deny', '203.0.113.7', 10]], [10], [], []]);
 
 $p = BanSync::plan(listed([]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'allow', 'manual', false, true)]);
 is_eq('an Allow comes off the ignore lists first', [$p['unignore'], $p['purge']], [[['203.0.113.7', 10]], [10]]);
 
-$p = BanSync::plan(listed([['sshd', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => ['deleted' => 1, 'jail' => 'sshd'] + sync_row(10, 'banned', 'fail2ban', false, true)]);
-is_eq('one the sync followed is lifted from fail2ban\'s jail', [$p['unban'], $p['purge']], [[['sshd', '203.0.113.7', 10]], [10]]);
+$p = BanSync::plan(listed([['pbx-gui', '203.0.113.7', 1000, 4600]]), ['203.0.113.7' => ['deleted' => 1, 'jail' => 'pbx-gui'] + sync_row(10, 'banned', 'fail2ban', false, true)]);
+is_eq('one the sync followed is lifted from fail2ban\'s jail', [$p['unban'], $p['purge']], [[['pbx-gui', '203.0.113.7', 10]], [10]]);
 
 $p = BanSync::plan(listed([]), ['203.0.113.7' => ['deleted' => 1] + sync_row(10, 'deny', 'manual', false, false)]);
 is_eq('one with no copy left is just purged', [$p['unban'], $p['unignore'], $p['purge']], [[], [], [10]]);
 
-$p = BanSync::plan(listed([['sshd', '203.0.113.7', 1000, 4600]], ['asterisk' => [], 'deny' => [], 'sshd' => []]), ['203.0.113.7' => sync_row(8, 'allow')]);
-is_eq('an allowed address is unbanned and put on the ignore list', [$p['unban'], $p['ignore'], $p['insert']], [[['sshd', '203.0.113.7', null]], [['203.0.113.7', 8]], []]);
+$p = BanSync::plan(listed([['pbx-gui', '203.0.113.7', 1000, 4600]], ['asterisk' => [], 'deny' => [], 'pbx-gui' => []]), ['203.0.113.7' => sync_row(8, 'allow')]);
+is_eq('an allowed address is unbanned and put on the ignore list', [$p['unban'], $p['ignore'], $p['insert']], [[['pbx-gui', '203.0.113.7', null]], [['203.0.113.7', 8]], []]);
 
-$everywhere = ['asterisk' => ['127.0.0.1/8', '203.0.113.7'], 'banned' => ['203.0.113.7'], 'deny' => ['203.0.113.7'], 'sshd' => ['203.0.113.7']];
+$everywhere = ['asterisk' => ['127.0.0.1/8', '203.0.113.7'], 'banned' => ['203.0.113.7'], 'deny' => ['203.0.113.7'], 'pbx-gui' => ['203.0.113.7']];
 $p = BanSync::plan(listed([], $everywhere), ['203.0.113.7' => sync_row(8, 'allow')]);
 is_eq('already on every list by someone else: left unmarked', [$p['ignore'], $p['synced']], [[], []]);
 
@@ -1139,8 +1140,14 @@ $sync->lift($ban);
 is_eq('deleting a Deny lifts it from deny', $f2b->asked, [['unban', 'deny', '203.0.113.7']]);
 
 $f2b->asked = [];
-$sync->lift(['state' => 'banned', 'managed' => 1, 'jail' => 'sshd'] + $ban);
-is_eq('a ban the sync follows is lifted from fail2ban\'s own jail', $f2b->asked, [['unban', 'sshd', '203.0.113.7']]);
+is_eq('a ban the sync follows is lifted from fail2ban\'s own jail',
+	[$sync->lift(['state' => 'banned', 'managed' => 1, 'jail' => 'asterisk'] + $ban), $f2b->asked],
+	[true, [['list'], ['unban', 'asterisk', '203.0.113.7']]]);
+
+$f2b->asked = [];
+is_eq('one from a jail the helper does not manage is let go, nothing asked of fail2ban',
+	[$sync->lift(['state' => 'banned', 'managed' => 1, 'jail' => 'sshd'] + $ban), $f2b->asked],
+	[true, [['list']]]);
 
 $f2b->asked = [];
 $sync->lift(['state' => 'allow'] + $ban);
@@ -1315,6 +1322,20 @@ is_eq('a blank password', thrown(function () use ($s) { $s['users']->findOrCreat
 is_eq('anything at all without User Manager', thrown(function () use ($s) { $s['users']->findOrCreate('bob', 'secret'); }), 'RuntimeException');
 is_eq('and nothing was created', FreePBX::$core->added, null);
 
+echo "\n  what a new open-provisioning username may be:\n";
+
+is_eq('a UUID', Users::signupUsername('26f557af-a431-4b1c-939c-aa9f83e12f9e'), true);
+is_eq('a name with . _ @ -', Users::signupUsername('j.smith_2@site-a.com'), true);
+is_eq('only digits is refused', Users::signupUsername('2001'), false);
+is_eq('an IPv4 address is refused', Users::signupUsername('203.0.113.9'), false);
+is_eq('a dotted name that is not one is not', Users::signupUsername('203.0.113'), true);
+is_eq('an email is allowed', Users::signupUsername('bob@site.com'), true);
+is_eq('a space is refused', Users::signupUsername('x from 203.0.113.9'), false);
+is_eq('a quote or bracket is refused', Users::signupUsername('a"<b>'), false);
+is_eq('a plus is refused', Users::signupUsername('bob+1@site.com'), false);
+is_eq('a trailing newline is refused', Users::signupUsername("bob\n"), false);
+is_eq('65 characters is refused', Users::signupUsername(str_repeat('a', 65)), false);
+
 echo "\n  the client a device is provisioned as:\n";
 
 $s = build();
@@ -1352,6 +1373,40 @@ $s['clients']->findOrCreateForDevice('1001', 'bob:new');
 
 is_eq('a token that still verifies is left alone',
 	(bool) array_filter($db->seen, function ($q) { return strpos($q, 'SET token = :token') !== false; }), false);
+
+echo "\n  a token on save:\n";
+
+$s = build();
+$db = $s['app']->Database;
+$db->insertId = 8;
+$created = $s['clients']->saveClient(['mac' => '', 'token' => '']);
+$written = array_values(array_filter($db->params, function ($p) {
+	return strpos(ltrim($p[0]), 'UPDATE `oryk_provisioner_clients`') === 0;
+}));
+
+is_eq('a new client left empty is given one, returned in the clear',
+	[(bool) preg_match('/^[0-9a-f]{8}:[0-9a-f]{32}$/', (string) ($created['token'] ?? '')),
+		password_verify((string) ($created['token'] ?? ''), (string) ($written[0][1][':token'] ?? ''))],
+	[true, true]);
+
+$s = build();
+$db = $s['app']->Database;
+$db->insertId = 8;
+$created = $s['clients']->saveClient(['mac' => '', 'token' => 'bob:secret']);
+
+is_eq('one typed on a new client is used, and not echoed', isset($created['token']), false);
+
+$s = build();
+$db = $s['app']->Database;
+$db->fetches = [];
+$updated = $s['clients']->saveClient(['id' => '8', 'mac' => '', 'token' => '']);
+$written = array_values(array_filter($db->params, function ($p) {
+	return strpos(ltrim($p[0]), 'UPDATE `oryk_provisioner_clients`') === 0;
+}));
+
+is_eq('an update may leave it empty',
+	[isset($updated['token']), array_key_exists(':token', $written[0][1] ?? []) ? $written[0][1][':token'] : 'unset'],
+	[false, null]);
 
 echo "\ntranscoding by Accept:\n";
 
@@ -1446,6 +1501,36 @@ is_eq('an uploaded file is rewritten too', $asked($file, 'text/plain')['config']
 file_put_contents($uploaded, "\x7fELF\0\0binary");
 is_eq('a binary file is a 406', $asked($file, 'application/json')['code'] ?? null, 406);
 is_eq('a log upload is never touched', $asked(['status' => true, 'kind' => 'log', 'path' => $uploaded], 'application/json')['kind'], 'log');
+
+echo "\n  what a phone's log upload keeps:\n";
+
+$logs = new LogRepo($s['app']);
+$logDir = sys_get_temp_dir() . '/oryk-log-' . getmypid();
+$logPath = $logDir . '/phone-boot.log';
+$body = scratch_file();
+
+file_put_contents($body, "one\ntwo\n");
+$stored = $logs->storeLog($logPath, $body, null);
+is_eq('a small log is kept whole', file_get_contents($logPath), "one\ntwo\n");
+
+$lines = '';
+for ($i = 0; $i < 150000; $i++) {
+	$lines .= sprintf("line %07d\n", $i);
+}
+file_put_contents($body, $lines);
+$stored = $logs->storeLog($logPath, $body, strlen($lines));
+$kept = file_get_contents($logPath);
+is_eq('a large one keeps no more than MAX_KEPT', strlen($kept) <= LogRepo::MAX_KEPT, true);
+is_eq('starting on a whole line', substr($kept, 0, 5), 'line ');
+is_eq('and ending with the newest', substr($kept, -13), "line 0149999\n");
+is_eq('the count says what was sent and kept', [$stored['bytes'], $stored['kept']], [strlen($lines), strlen($kept)]);
+
+$refused = $logs->storeLog($logPath, $body, LogRepo::MAX_BODY + 1);
+is_eq('a body declared over MAX_BODY is a 413', $refused['code'] ?? null, 413);
+is_eq('and nothing is written', file_get_contents($logPath), $kept);
+
+@unlink($logPath);
+@rmdir($logDir);
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);

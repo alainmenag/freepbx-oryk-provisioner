@@ -194,16 +194,50 @@ class Bans extends Service
 	}
 
 	/**
-	 * Every ban not marked deleted, for the navigator: expired ones too, the
-	 * way the Bans tab lists them. Unpaged, like clientChoices().
+	 * Bans not marked deleted, expired included, for the navigator. Never the
+	 * whole table: the sync adds a row per address fail2ban bans.
+	 *
+	 * With $requests: the rows naming any of their subjects, a superset that
+	 * Navigator filters with applies(). Otherwise the newest $limit.
+	 *
+	 * @param array<int, array<string, mixed>>|null $requests Subjects, as check() takes them.
+	 * @param int                                   $limit    The most rows without $requests.
 	 *
 	 * @return array<int, array<string, mixed>> Rows as banRow() hands them out.
 	 */
-	public function banChoices()
+	public function banChoices(?array $requests = null, $limit = 100)
 	{
+		$params = [];
+		$where = 'b.deleted_at IS NULL';
+		$tail = 'ORDER BY b.created_at DESC, b.id DESC';
+
+		if ($requests !== null) {
+			$values = [];
+
+			foreach ($requests as $subjects) {
+				foreach (self::subjects($subjects) as $subject => $list) {
+					$values[$subject] = array_merge($values[$subject] ?? [], $list);
+				}
+			}
+
+			$named = [];
+
+			foreach ($values as $subject => $list) {
+				$named[] = $this->inClause('b.' . self::SUBJECTS[$subject], $list, $subject, $params);
+			}
+
+			if (!$named) {
+				return [];
+			}
+
+			$where .= ' AND (' . implode(' OR ', $named) . ')';
+		} else {
+			$tail .= ' LIMIT ' . max(1, (int) $limit);
+		}
+
 		try {
-			$stmt = $this->db->prepare("{$this->select()} {$this->from()} WHERE b.deleted_at IS NULL ORDER BY b.created_at DESC, b.id DESC");
-			$stmt->execute();
+			$stmt = $this->db->prepare("{$this->select()} {$this->from()} WHERE $where $tail");
+			$stmt->execute($params);
 			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		} catch (\Exception $e) {
 			return [];

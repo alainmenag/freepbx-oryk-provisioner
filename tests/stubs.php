@@ -108,6 +108,11 @@ class StubDatabase
 			$this->params[] = [$sql, $params];
 		};
 
+		// Users::withLock(): the named lock is always had.
+		if (strpos($sql, 'GET_LOCK') !== false) {
+			$statement->column = 1;
+		}
+
 		foreach ($this->answers as $fragment => $value) {
 			if (strpos($sql, $fragment) !== false) {
 				$statement->column = $value;

@@ -14,7 +14,7 @@ at all — `requires_auth="false"` governs menu visibility, not anonymous access
 | `/provisioner/0004f282e824-phone.cfg` | its `phone.cfg` resource |
 | `/provisioner/0004f282e824-directory.xml` | its `directory.xml` resource |
 | `/provisioner/3111-44500-001.sip.ld` | a File resource of any enabled profile, by name alone — a phone fetching firmware sends no MAC |
-| `PUT /provisioner/0004f282e824-boot.log` | stores the body, when that profile has a Log resource answering to the name |
+| `PUT /provisioner/0004f282e824-boot.log` | stores the body, when that profile has a Log resource answering to the name — its newest 1 MiB, from a whole line; a body over 16 MiB is a 413 |
 
 **Who is asking** is read from the path, then the query string, then an
 AudioCodes `User-Agent`. **A MAC in the path always wins over `?mac=`** — which
@@ -33,7 +33,7 @@ log line.
 A MAC that is not associated, a client with no profile, and a filename the
 profile does not serve are all 404s. A client that has been switched off, or
 whose profile has, is a 403, and so is a request a [ban](bans.md) refuses —
-that is asked before anything else. A client that has a token and did not
+that is asked before anything else, and answered with a bare `Forbidden`. A client that has a token and did not
 present it is a 401.
 
 ## A client with no profile
@@ -69,7 +69,8 @@ login:
 | --- | --- |
 | no credentials | 401, the challenge that makes a phone send them |
 | a login that works | that account's default extension |
-| a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives); the username is the email too when it is one. The SIP secret is generated, not the password |
+| a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives), and no email — not even a username that is one, so no welcome email goes to an address nobody has confirmed. The SIP secret is generated, not the password |
+| a username no account holds, using anything but letters, digits, `.` `_` `@` `-`, over 64 characters, only digits, or an IP address | 400 — nothing is made. An existing login is never held to this |
 | a username held under another password | 401, and a line in FreePBX's security log that the GUI's fail2ban jail bans on |
 | no User Manager, or a login with no Extension/User | 409 |
 

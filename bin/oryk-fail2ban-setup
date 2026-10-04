@@ -5,11 +5,16 @@
 #   sudo bash <module>/bin/oryk-fail2ban-setup            install, or bring up to date
 #   sudo bash <module>/bin/oryk-fail2ban-setup --check    report, change nothing
 #   sudo bash <module>/bin/oryk-fail2ban-setup --remove   undo
+#   sudo bash <module>/bin/oryk-fail2ban-setup --jails "asterisk pbx-gui"
+#                                     install, managing those jails ("none": no others)
 #
-# Installs three things and nothing else: a root-owned copy of bin/oryk-fail2ban
+# Installs four things and nothing else: a root-owned copy of bin/oryk-fail2ban
 # at /usr/local/sbin/oryk-fail2ban; /etc/sudoers.d/oryk_provisioner letting the
-# FreePBX web user run that one file as root; and the two permanent jails the
-# module's bans are kept in, `banned` and `deny`. Safe to run again; run it
+# FreePBX web user run that one file as root; the two permanent jails the
+# module's bans are kept in, `banned` and `deny`; and /etc/oryk-fail2ban.conf,
+# the other jails the helper may read, unban in and add ignore entries to.
+# Without --jails that list is written once, from the Asterisk and FreePBX
+# jails fail2ban has, and kept on every later run. Safe to run again; run it
 # after an upgrade that changes the helper. See ARCHITECTURE.md, "Syncing with
 # fail2ban".
 
@@ -22,20 +27,45 @@ HELPER=/usr/local/sbin/oryk-fail2ban
 SUDOERS=/etc/sudoers.d/oryk_provisioner
 # The module's jails: Banned bans until they expire, Deny bans until deleted.
 JAILS="banned deny"
+# The other jails the helper manages. Root's choice, so never the module's.
+CONFIG=/etc/oryk-fail2ban.conf
+# Jails offered by default: Asterisk's and FreePBX's, never sshd or recidive.
+PBX_JAILS='^(asterisk|freepbx|pbx)([-_][A-Za-z0-9_.-]*)?$'
 MARK="# Managed by Oryk Provisioner (oryk-fail2ban-setup)."
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 MODE=install
+# The --jails list, or unset to keep the one installed.
+unset CHOSEN
 
-case "${1:-}" in
-	'') ;;
-	--check) MODE=check ;;
-	--remove) MODE=remove ;;
-	*)
-		echo "usage: $0 [--check|--remove]" >&2
-		exit 64
-		;;
-esac
+usage() {
+	echo "usage: $0 [--check|--remove|--jails \"<jail> ...\"|--jails none]" >&2
+	exit 64
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--check) MODE=check ;;
+		--remove) MODE=remove ;;
+		--jails) [ $# -ge 2 ] || usage; CHOSEN=$2; shift ;;
+		--jails=*) CHOSEN=${1#--jails=} ;;
+		*) usage ;;
+	esac
+	shift
+done
+
+if [ -n "${CHOSEN+set}" ]; then
+	[ "$MODE" = install ] || usage
+	CHOSEN=$(printf '%s' "$CHOSEN" | tr ',' ' ' | xargs)
+	[ "$CHOSEN" = none ] && CHOSEN=
+
+	for NAME in $CHOSEN; do
+		if ! [[ "$NAME" =~ ^[A-Za-z0-9_.-]{1,64}$ ]] || [ "$NAME" = banned ] || [ "$NAME" = deny ]; then
+			echo "--jails: \"$NAME\" is not a jail name to add (banned and deny are always managed)." >&2
+			exit 64
+		fi
+	done
+fi
 
 PROBLEMS=0
 
@@ -69,6 +99,32 @@ sudo_rule() {
 		"# Remove with: bash $HERE/oryk-fail2ban-setup --remove" \
 		"Defaults!$HELPER !requiretty" \
 		"$WEBUSER ALL=(root) NOPASSWD: $HELPER"
+}
+
+# The managed jails CONFIG lists, besides banned and deny.
+config_jails() {
+	sed -n 's/^jails *= *//p' "$CONFIG" 2>/dev/null | head -n 1
+}
+
+config_conf() {
+	printf '%s\n' \
+		"$MARK" \
+		"# The fail2ban jails, besides banned and deny, the module's helper may read," \
+		"# unban in and put an Allow on the ignore list of. Any other jail -- sshd --" \
+		"# it cannot touch. Change with:" \
+		"#   bash $HERE/oryk-fail2ban-setup --jails \"<jail> ...\"" \
+		"jails = $1"
+}
+
+# The Asterisk and FreePBX jails fail2ban has loaded.
+pbx_jails() {
+	fail2ban-client status 2>/dev/null \
+		| sed -n 's/.*Jail list:[[:space:]]*//p' \
+		| tr ',' '\n' \
+		| sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+		| grep -Ei "$PBX_JAILS" \
+		| grep -vx -e banned -e deny \
+		| xargs
 }
 
 jail_conf_path() { echo "/etc/fail2ban/jail.d/$1.conf"; }
@@ -118,6 +174,9 @@ if [ "$MODE" = remove ]; then
 
 	step "removing $HELPER"
 	rm -f "$HELPER" && ok || fail "Could not remove it."
+
+	step "removing $CONFIG"
+	if ours "$CONFIG"; then rm -f "$CONFIG" && ok || fail "Could not remove it."; else ok "not ours, left"; fi
 
 	# Only files this script wrote; a jail of someone else's by the same name stays.
 	step "removing the banned and deny jails"
@@ -275,6 +334,25 @@ $(printf '%s\n' "$CHECKED" | grep -vi 'parsed OK' | sed 's/^/        /')"
 
 	step "reloading fail2ban"
 	fail2ban-client reload >/dev/null 2>&1 && ok || fail "fail2ban-client reload failed; check fail2ban-client -t."
+
+	step "installing $CONFIG"
+
+	if [ -e "$CONFIG" ] && ! ours "$CONFIG"; then
+		fail "$CONFIG exists and was not written by this script. Move it aside, then run this again."
+	elif [ -z "${CHOSEN+set}" ] && ours "$CONFIG"; then
+		ok "kept: banned deny $(config_jails)"
+	else
+		[ -n "${CHOSEN+set}" ] || CHOSEN=$(pbx_jails)
+
+		# Renamed into place, as the helper is: it refuses a file root does not own.
+		TMP=$(mktemp /etc/.oryk-fail2ban.conf.XXXXXX) \
+			&& config_conf "$CHOSEN" > "$TMP" \
+			&& chown root:root "$TMP" \
+			&& chmod 0644 "$TMP" \
+			&& mv -f "$TMP" "$CONFIG" \
+			&& ok "banned deny $CHOSEN" \
+			|| { rm -f "${TMP:-}"; fail "Could not write $CONFIG."; }
+	fi
 fi
 
 step "$HELPER"
@@ -315,6 +393,15 @@ for NAME in $JAILS; do
 		ok
 	fi
 done
+
+step "$CONFIG"
+if ! ours "$CONFIG"; then
+	fail "Not installed. Run this script without --check."
+elif [ "$(stat -c '%u' "$CONFIG")" != 0 ] || [ $((0$(stat -c '%a' "$CONFIG") & 022)) -ne 0 ]; then
+	fail "Must be owned by root and writable by root only, or the helper refuses it. Run this script without --check."
+else
+	ok "banned deny $(config_jails)"
+fi
 
 step "the web user can reach fail2ban"
 ANSWER=$(sudo -u "$WEBUSER" -- sudo -n "$HELPER" check 2>&1)

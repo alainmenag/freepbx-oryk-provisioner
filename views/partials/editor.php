@@ -43,15 +43,6 @@
 	// translate itself.
 	var orykCopied = <?php echo json_encode(_('copied')); ?>;
 	var orykCopyFailed = <?php echo json_encode(_('could not copy')); ?>;
-	var orykRenderText = <?php echo json_encode([
-		'loading' => _('Rendering...'),
-		'copy' => _('Copy'),
-		'copied' => _('Copied'),
-		'close' => _('Close'),
-		'failed' => _('The server could not be reached.'),
-		'empty' => _('(empty)'),
-		'unreadable' => _('This file is %s, binary or too large to show here. Open fetches it as the phone does.'),
-	]); ?>;
 
 	// Every call to the module is a POST to ajax.php with the command in the
 	// query string, which is what FreePBX dispatches on.
@@ -72,8 +63,15 @@
 		$('html, body').animate({ scrollTop: 0 }, 150);
 	}
 
+	// Safe in element text and inside a quoted attribute alike: quotes are
+	// escaped too, which .text().html() never does.
 	function orykEscape(value) {
-		return $('<div>').text(value === null || value === undefined ? '' : value).html();
+		return String(value === null || value === undefined ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 
 	// A byte count as somebody reads it. Firmware is why there is one: a
@@ -132,18 +130,19 @@
 	// Open is the endpoint URL, so the browser is asked for the client's
 	// token when it has one, and the fetch counts as the client being seen.
 	// Render and Download read the same body through the admin's own session
-	// instead.
+	// instead; Render opens it as plain text in a new tab (Endpoint::viewResource()).
 	function orykRenderButtons(row, clientId, resourceId) {
 		if (!row.url) {
 			return [];
 		}
 
-		const download = 'ajax.php?module=oryk_provisioner&command=downloadResource' +
-			'&client_id=' + encodeURIComponent(clientId) +
+		const query = '&client_id=' + encodeURIComponent(clientId) +
 			'&resource_id=' + encodeURIComponent(resourceId);
+		const view = 'ajax.php?module=oryk_provisioner&command=viewResource' + query;
+		const download = 'ajax.php?module=oryk_provisioner&command=downloadResource' + query;
 
 		return [
-			`<button type="button" class="btn btn-default btn-sm oryk-render" data-client="${orykEscape(clientId)}" data-resource="${orykEscape(resourceId)}" title="Render: show this resource as this client receives it" aria-label="Render">${orykIcon('eye')}</button>`,
+			`<a class="btn btn-default btn-sm" href="${orykEscape(view)}" target="_blank" rel="noopener" title="Render: show this resource as this client receives it" aria-label="Render">${orykIcon('eye')}</a>`,
 			`<a class="btn btn-default btn-sm" href="${orykEscape(download)}" title="Download: save this resource as this client receives it" aria-label="Download">${orykIcon('download')}</a>`,
 			`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="Open: fetch this resource from the endpoint, as this client does" aria-label="Open">${orykIcon('open')}</a>`
 		];
@@ -161,91 +160,6 @@
 		return '<svg class="oryk-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"' +
 			' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
 	}
-
-	/**
-	 * Show one resource as one client receives it, in a modal.
-	 *
-	 * The modal is made the first time it is wanted and kept. It has no close
-	 * cross, which Bootstrap 3 and 4 place differently; Close, Escape and the
-	 * backdrop all dismiss it.
-	 *
-	 * @param {*} clientId   Client id.
-	 * @param {*} resourceId Resource id.
-	 */
-	function orykRender(clientId, resourceId) {
-		var modal = $('#oryk_render');
-
-		if (!modal.length) {
-			modal = $(
-				'<div class="modal fade" id="oryk_render" tabindex="-1" role="dialog">' +
-					'<div class="modal-dialog modal-lg" role="document">' +
-						'<div class="modal-content">' +
-							'<div class="modal-header"><h4 class="modal-title oryk-name"></h4></div>' +
-							'<div class="modal-body"><pre class="oryk-template oryk-render-body"></pre></div>' +
-							'<div class="modal-footer">' +
-								'<button type="button" class="btn btn-default oryk-render-copy"></button>' +
-								'<button type="button" class="btn btn-primary oryk-render-close"></button>' +
-							'</div>' +
-						'</div>' +
-					'</div>' +
-				'</div>'
-			).appendTo('body');
-
-			modal.find('.oryk-render-close').text(orykRenderText.close).on('click', function () {
-				modal.modal('hide');
-			});
-
-			modal.find('.oryk-render-copy').on('click', function () {
-				var button = $(this);
-
-				orykCopy(modal.data('body') || '').done(function (copied) {
-					button.text(copied ? orykRenderText.copied : orykCopyFailed);
-
-					window.setTimeout(function () {
-						button.text(orykRenderText.copy);
-					}, 1000);
-				});
-			});
-		}
-
-		var title = modal.find('.modal-title').text(orykRenderText.loading);
-		var body = modal.find('.oryk-render-body').removeClass('text-danger text-muted').text('');
-		var copy = modal.find('.oryk-render-copy').text(orykRenderText.copy).addClass('hidden');
-
-		modal.data('body', '').modal('show');
-
-		orykPost('previewResource', { client_id: clientId, resource_id: resourceId }).done(function (response) {
-			if (!response || !response.status) {
-				title.text('');
-				body.addClass('text-danger').text((response && response.message) || orykRenderText.failed);
-				return;
-			}
-
-			title.text(response.filename);
-
-			if (typeof response.body !== 'string') {
-				body.addClass('text-muted').text(orykRenderText.unreadable.replace('%s', orykBytes(response.size)));
-				return;
-			}
-
-			if (response.body === '') {
-				body.addClass('text-muted').text(orykRenderText.empty);
-				return;
-			}
-
-			modal.data('body', response.body);
-			body.text(response.body);
-			copy.removeClass('hidden');
-		}).fail(function () {
-			title.text('');
-			body.addClass('text-danger').text(orykRenderText.failed);
-		});
-	}
-
-	$(document).on('click', '.oryk-render', function (event) {
-		event.preventDefault();
-		orykRender($(this).data('client'), $(this).data('resource'));
-	});
 
 	/**
 	 * Put text on the clipboard, whichever way this browser allows.
@@ -324,6 +238,7 @@
 	 *
 	 * editor.values()  what to post, including the row id
 	 * editor.save      command that writes it
+	 * editor.saved(r)  optional; runs on a successful save, before the reload
 	 * editor.remove    command that deletes it
 	 * editor.confirm   what Delete asks before it does
 	 * editor.page(id)  this editor's own URL for a row
@@ -342,6 +257,10 @@
 					button.prop('disabled', false);
 					orykShowError(response && response.message);
 					return;
+				}
+
+				if (editor.saved) {
+					editor.saved(response);
 				}
 
 				window.location = editor.page(response.id);

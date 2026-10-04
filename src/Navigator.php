@@ -43,6 +43,9 @@ class Navigator extends Service
 	/** The most log entries the Logs level lists: the newest, in scope. */
 	const LOG_LIMIT = 100;
 
+	/** The most bans the Bans level lists when it is not scoped: the newest. */
+	const BAN_LIMIT = 100;
+
 	/** @var Users */
 	private $users;
 
@@ -89,15 +92,27 @@ class Navigator extends Service
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 
 		$clientRows = $this->clients->clientChoices();
-		$banRows = $this->bans->banChoices();
 		$profileNames = [];
 
 		foreach ($this->profiles->profileChoices() as $row) {
 			$profileNames[(int) $row['id']] = (string) $row['name'];
 		}
 
-		$scope = $this->scoped($at, $clientRows, $banRows);
+		$scope = $this->scoped($at, $clientRows);
 		$from = $this->scopeKey($at);
+
+		// Scoped, the rows that apply were read already; unscoped, the newest
+		// BAN_LIMIT, plus the ban being viewed when it is older than those.
+		$banRows = $scope['banRows'];
+
+		if ($banRows === null) {
+			$banRows = $this->bans->banChoices(null, self::BAN_LIMIT);
+			$viewed = $this->written($ban) ? $this->bans->banRow($ban) : null;
+
+			if ($viewed && !in_array((int) $viewed['id'], array_map('intval', array_column($banRows, 'id')), true)) {
+				$banRows[] = $viewed;
+			}
+		}
 
 		return [
 			$this->userLevel($scope['users'], $user, $from),
@@ -114,22 +129,24 @@ class Navigator extends Service
 	 *
 	 * The one computation behind both a dropdown's options and its title's
 	 * list, so the badge and the table that title opens count the same rows.
-	 * Logs, whose badge stops at LOG_LIMIT, are the exception: the table does not.
+	 * Logs and unscoped Bans, whose badges stop at LOG_LIMIT and BAN_LIMIT, are
+	 * the exception: the table does not.
 	 *
 	 * @param array<string, mixed> $at Row being viewed, as levels() takes it.
 	 *
 	 * @return array<string, mixed> users, clients, profiles, files, bans: ids
 	 *                              or null for unscoped; logs: MACs or null;
 	 *                              ip: address or null; entry: the viewed log
-	 *                              entry's logRow() or null.
+	 *                              entry's logRow() or null; banRows: the bans
+	 *                              that apply, when bans is scoped, or null.
 	 */
 	public function scope(array $at)
 	{
 		if ($this->scopeKey($at) === '') {
-			return $this->scoped([], [], []);
+			return $this->scoped([], []);
 		}
 
-		return $this->scoped($at, $this->clients->clientChoices(), $this->bans->banChoices());
+		return $this->scoped($at, $this->clients->clientChoices());
 	}
 
 	/**
@@ -216,11 +233,10 @@ class Navigator extends Service
 	 *
 	 * @param array<string, mixed>             $at         Row being viewed.
 	 * @param array<int, array<string, mixed>> $clientRows clientChoices().
-	 * @param array<int, array<string, mixed>> $banRows    Bans::banChoices().
 	 *
 	 * @return array<string, mixed> As scope() returns it.
 	 */
-	private function scoped(array $at, array $clientRows, array $banRows)
+	private function scoped(array $at, array $clientRows)
 	{
 		$user = isset($at['user']) ? (string) $at['user'] : null;
 		$client = isset($at['client']) ? (string) $at['client'] : null;
@@ -314,21 +330,25 @@ class Navigator extends Service
 		} elseif ($this->written($ban)) {
 			// The other way round: the clients this ban applies to, and what
 			// they are linked to, plus anything the ban names that has no client.
-			foreach ($banRows as $row) {
-				if ((string) $row['id'] === $ban) {
-					$scope = $this->banScope($row, $clientRows) + $scope;
-					$ip = $row['ip'] !== null ? (string) $row['ip'] : null;
-				}
+			$row = $this->bans->banRow($ban);
+
+			if ($row) {
+				$scope = $this->banScope($row, $clientRows) + $scope;
+				$ip = $row['ip'] !== null ? (string) $row['ip'] : null;
 			}
 		}
 
+		$applying = null;
+
 		if ($requests !== null) {
 			$scope['bans'] = [];
+			$applying = [];
 
-			foreach ($banRows as $row) {
+			foreach ($this->bans->banChoices($requests) as $row) {
 				foreach ($requests as $subjects) {
 					if (Bans::applies($row, $subjects)) {
 						$scope['bans'][] = (int) $row['id'];
+						$applying[] = $row;
 
 						break;
 					}
@@ -336,7 +356,7 @@ class Navigator extends Service
 			}
 		}
 
-		return $scope + ['ip' => $ip, 'entry' => $entry];
+		return $scope + ['ip' => $ip, 'entry' => $entry, 'banRows' => $applying];
 	}
 
 	/**
@@ -756,7 +776,7 @@ class Navigator extends Service
 	 * Each is named by what it names, with its state under it. Viewing a user,
 	 * client, profile or log entry, a new ban is written naming that.
 	 *
-	 * @param array<int, array<string, mixed>> $banRows Bans::banChoices().
+	 * @param array<int, array<string, mixed>> $banRows The bans that apply, or the newest BAN_LIMIT.
 	 * @param array<int, int>|null             $scope   Ids that apply, or null for all.
 	 * @param string|null                      $at      Ban being viewed, 'new', or null.
 	 * @param string|null                      $user    Extension being viewed, or null.

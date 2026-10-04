@@ -10,7 +10,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * ASTLOGDIR/provisioner/[client id]/[filename]. The counterpart of FileRepo
  * and deliberately not the same directory: a file in the repo is something an
  * operator uploaded and the endpoint hands out, and one here is something a
- * phone uploaded and nothing hands out at all.
+ * phone uploaded, handed back only to that client and to Render.
  *
  * **A directory per client, named by the client's id and not its MAC.** A log
  * resource is `-boot.log` for every client on its profile, so what tells two
@@ -26,6 +26,12 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  */
 class LogRepo extends Repo
 {
+	/** The most of a log kept: its newest bytes, starting on a whole line. */
+	const MAX_KEPT = 1048576;
+
+	/** The most a phone may send: a larger body is refused with a 413, not read. */
+	const MAX_BODY = 16777216;
+
 	/**
 	 * The directory logs a phone sent are kept in.
 	 *
@@ -98,20 +104,24 @@ class LogRepo extends Repo
 	/**
 	 * Store what a phone PUT, under the name its resource renders to.
 	 *
-	 * Streamed rather than read into a string, for the reason Endpoint::sendFile()
-	 * gives. Overwritten rather than appended: a phone PUTs the whole of its log
-	 * each time, so appending would store the same lines over and over and grow a
-	 * file nothing prunes.
+	 * Overwritten, not appended: a phone PUTs its whole log each time. Keeps the
+	 * newest MAX_KEPT bytes, from a whole line; a body over MAX_BODY, declared or
+	 * read, is a 413 and nothing is written. Written to `.part` and renamed, so a
+	 * reader never sees half a file.
 	 *
 	 * The path is logFile()'s answer, handed in rather than worked out again here
 	 * -- building it twice is two chances to build it differently.
 	 *
-	 * @param string $path   Absolute path, from logFile().
-	 * @param string $source Stream to read the body from.
+	 * @param string   $path     Absolute path, from logFile().
+	 * @param string   $source   Stream to read the body from.
+	 * @param int|null $declared Content-Length the request declared; null to read
+	 *                           it from $_SERVER.
 	 *
-	 * @return array<string, mixed> Status, the path and byte count, or why not.
+	 * @return array<string, mixed> Status, the path, bytes received and bytes
+	 *                              kept; or why not, with a code when it is the
+	 *                              caller's fault.
 	 */
-	public function storeLog($path, $source = 'php://input')
+	public function storeLog($path, $source = 'php://input', $declared = null)
 	{
 		$path = (string) $path;
 
@@ -122,35 +132,93 @@ class LogRepo extends Repo
 			return ['status' => false, 'message' => _('That is not somewhere a log can be stored.')];
 		}
 
-		// The client's own directory, made by the first PUT that needs it.
-		if (!$this->ensureDirectory(dirname($path))) {
-			return [
-				'status' => false,
-				'message' => sprintf(_('%s cannot be written to.'), dirname($path)),
-			];
+		if ($declared === null && isset($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] !== '') {
+			$declared = (int) $_SERVER['CONTENT_LENGTH'];
+		}
+
+		$tooLarge = [
+			'status' => false,
+			'code' => 413,
+			'message' => sprintf(_('A log may be at most %d bytes.'), self::MAX_BODY),
+		];
+
+		if ($declared !== null && $declared > self::MAX_BODY) {
+			return $tooLarge;
 		}
 
 		$in = @fopen($source, 'rb');
-		$out = $in === false ? false : @fopen($path, 'wb');
 
-		if ($in === false || $out === false) {
-			if (is_resource($in)) {
-				fclose($in);
-			}
+		if ($in === false) {
+			$this->log('oryk_provisioner: could not read a PUT body', null, 'WARNING');
 
-			$this->log(sprintf('oryk_provisioner: could not write %s', $path), null, 'WARNING');
-
-			return ['status' => false, 'message' => sprintf(_('%s could not be written.'), basename($path))];
+			return ['status' => false, 'message' => _('The log could not be read.')];
 		}
 
-		$bytes = (int) stream_copy_to_stream($in, $out);
+		// Never more than twice MAX_KEPT in memory, however much is sent.
+		$tail = '';
+		$received = 0;
+
+		while (!feof($in)) {
+			$chunk = fread($in, 65536);
+
+			if ($chunk === false || $chunk === '') {
+				break;
+			}
+
+			$received += strlen($chunk);
+
+			if ($received > self::MAX_BODY) {
+				fclose($in);
+
+				return $tooLarge;
+			}
+
+			$tail .= $chunk;
+
+			if (strlen($tail) > 2 * self::MAX_KEPT) {
+				$tail = substr($tail, -self::MAX_KEPT);
+			}
+		}
 
 		fclose($in);
-		fclose($out);
+
+		$truncated = strlen($tail) > self::MAX_KEPT || $received > strlen($tail);
+
+		if ($truncated) {
+			$tail = substr($tail, -self::MAX_KEPT);
+			$newline = strpos($tail, "\n");
+
+			// Drop the partial first line, unless there is no newline to cut at.
+			if ($newline !== false && $newline + 1 < strlen($tail)) {
+				$tail = substr($tail, $newline + 1);
+			}
+		}
+
+		// The client's own directory, made by the first PUT that needs it.
+		if (!$this->ensureDirectory(dirname($path))) {
+			$this->log(sprintf('oryk_provisioner: %s cannot be written to', dirname($path)), null, 'WARNING');
+
+			return ['status' => false, 'message' => _('The log could not be stored.')];
+		}
+
+		$temporary = $path . '.part';
+
+		if (@file_put_contents($temporary, $tail) !== strlen($tail) || !@rename($temporary, $path)) {
+			@unlink($temporary);
+			$this->log(sprintf('oryk_provisioner: could not write %s', $path), null, 'WARNING');
+
+			return ['status' => false, 'message' => _('The log could not be stored.')];
+		}
 
 		@chmod($path, 0640);
 
-		return ['status' => true, 'path' => $path, 'bytes' => $bytes, 'name' => basename($path)];
+		return [
+			'status' => true,
+			'path' => $path,
+			'bytes' => $received,
+			'kept' => strlen($tail),
+			'name' => basename($path),
+		];
 	}
 
 	/**

@@ -90,11 +90,18 @@ answered by its Basic credentials instead of a client row
 1. no credentials -> 401, which is the challenge that makes a phone send them
 2. `Users::findOrCreate()`: a User Manager login answers with the account's
    default extension; a username no account holds makes a user, as a blank
-   Extension does, and gives its account that username and password (see
+   Extension does, when it passes `Users::signupUsername()` (`[A-Za-z0-9._@-]`,
+   1-64, not only digits -- a number would be taken for that extension's own
+   account by `UsermanManager::findByExtension()` -- and not an IP address),
+   else 400; the account gets no email, even from a username that is one, so
+   User Manager's welcome email never goes to an unconfirmed address, and gives its account that username and password (see
    [Users](#users)); a username held under another password -> 401, written
    to FreePBX's security log as a GUI login failure is, so the jail that
    watches it bans the address; no User Manager, or a login with no
-   Extension/User -> 409
+   Extension/User -> 409. From the username check to the login being set it
+   holds `Users::LOCK`, the MySQL named lock every `Users::store()` holds, so two
+   sign-ups at once cannot be handed the same number and one cannot rename the
+   other's account
 3. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
    made when there is none, with no profile and the credentials as its
    token; a found one is given the credentials again when its token no longer
@@ -133,6 +140,17 @@ so a phone is never rewritten by accident. Already in that format: sent byte for
 byte, and a file keeps its ETag/304. Otherwise it is rewritten and sent as text;
 binary, over `Transcoder::MAX_BYTES`, or undetectable is a 406. Logs are never
 transcoded.
+
+**Nothing the endpoint sends runs as a page.** `engine/provisioner.php` sends
+`X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox;
+default-src 'none'` on every answer, and `Endpoint::viewResource()` (Render) the
+same pair on a text/plain body: `/provisioner/` shares the GUI's origin, and a
+body -- an `.xml` template, a log a phone PUT -- must not be able to script it.
+Phones ignore both headers.
+
+**A stored log is at most `LogRepo::MAX_KEPT` bytes**, its newest, cut to start on
+a whole line; a body declared or found to be over `LogRepo::MAX_BODY` is a 413 and
+nothing is written. It is written to `<name>.part` and renamed.
 
 Every format is read into one tree (ordered arrays of name => string, tree or
 list) and written out of it:
@@ -458,7 +476,9 @@ client behind it has no profile, so a profile ban does not stop it. A subject th
 leave it empty. Open provisioning is asked before `openClient()`, so a refused
 caller never makes a user; the client it is answered as is checked again by
 `serve()`. A refusal is a 403 through `answer()`, so it is logged like any other
-request, and touches nothing else -- no `last_seen`. The deciding row is counted
+request, and touches nothing else -- no `last_seen`. The caller's body is a bare
+`Forbidden`; which ban, and what it names, go to the provisioning log only,
+since they would map a MAC to its extension. The deciding row is counted
 a hit (`Bans::hit()`), once per PHP request, so open provisioning asking twice
 counts once; that UPDATE is the only write on the request path, and one that
 fails is a count lost, never a request refused.
@@ -509,7 +529,14 @@ profile stays the provisioner's.
 | --- | --- |
 | Banned | banned in **`banned`** until the row expires |
 | Deny | banned in **`deny`** until the row is deleted |
-| Allow | on **every** jail's ignore list, and unbanned wherever it is banned |
+| Allow | on each **managed** jail's ignore list, and unbanned in each one it is banned in |
+
+The **managed jails** are `banned`, `deny`, and the jails root lists in
+`/etc/oryk-fail2ban.conf` -- the Asterisk and FreePBX ones. The helper reads
+that file itself and sees no other jail: it cannot list, unban in or add an
+ignore entry to `sshd`, `recidive` or anything else root left out. Blocking
+stays broad (both module jails ban every port); only what loosens fail2ban is
+narrowed, so an Allow never exempts an address from SSH protection.
 
 **fail2ban answers root only**, and the GUI and FreePBX's scheduler run as the
 web user. So `Fail2ban` -- the only file that asks -- runs
@@ -517,7 +544,8 @@ web user. So `Fail2ban` -- the only file that asks -- runs
 helper (`bin/oryk-fail2ban`, Python) is the privilege boundary: `check`,
 `list`, `ban <banned|deny> <ip>`, `unban <jail> <ip>`, `ignore <ip>`,
 `unignore <ip>`; every argument re-checked (one address, no range, no
-loopback; a jail fail2ban has), one line of JSON back. Exit 64 is a refused
+loopback; a managed jail fail2ban has), one line of JSON back. It refuses a
+`/etc/oryk-fail2ban.conf` that is a link or that anyone but root can write. Exit 64 is a refused
 argument, 69 fail2ban down. It asks fail2ban over fail2ban's own socket with
 fail2ban's own client library (`fail2ban.client.csocket`), one process for a
 whole `list`; where `/usr/bin/python3` cannot import that library it falls back
@@ -530,6 +558,8 @@ the table; Installer and Pages hold `Fail2ban`, only `Bans` holds `BanSync`.
 - **Setup is one script**, `bin/oryk-fail2ban-setup`, run as root by hand or
   by `install()` when that runs as root: helper copy, a sudoers file checked
   with `visudo` before it is renamed into place (sudo skips dotted names),
+  `/etc/oryk-fail2ban.conf` (`--jails "<jail> …"`, or on first install the
+  loaded jails named `asterisk*`, `freepbx*` or `pbx*`; kept on later runs),
   and the module's two jails, `banned` and `deny` (`jail.d/<name>.conf`, a
   filter that never matches, `bantime = -1`, `banaction =
   %(banaction_allports)s`). Permanent in fail2ban, because fail2ban takes no
@@ -553,25 +583,28 @@ the table; Installer and Pages hold `Fail2ban`, only `Bans` holds `BanSync`.
 - **`ORYK_FAIL2BAN_SYNC`** (a [setting](#settings), on by default) pauses it:
   nothing is read or written, and nothing already in fail2ban is undone.
 
-**One run** reads fail2ban (`list`: every jail's bans with ban time and
-bantime, and every ignore list) and the IP-only rows, and `BanSync::plan()` --
+**One run** reads fail2ban (`list`: the managed jails' bans with ban time and
+bantime, and their ignore lists) and the IP-only rows, and `BanSync::plan()` --
 pure, and tested case by case -- decides:
 
-- **fail2ban → table, every jail but `banned` and `deny`.** An address with no row gets one
+- **fail2ban → table, every managed jail but `banned` and `deny`.** An address with no row gets one
   (source `fail2ban`, the jail, Banned -- or Deny when fail2ban's bantime is
   permanent -- with fail2ban's ban time and expiry, `managed` 1). A managed
   row is refreshed, `times` up when the ban time moved. **A row in force that
   the sync does not manage is never changed**; one not in force is revived
   like a reopen and managed again, source kept. An address banned in several
   jails is one row: the longest ban. A managed row in force that fail2ban no
-  longer has is expired, never deleted.
+  longer has is expired, never deleted -- until `BanSync::KEEP_DAYS` after it
+  expired, when a run with no address given prunes it (managed, source
+  `fail2ban`, no copy in fail2ban). That bounds the table by how many addresses
+  fail2ban bans in that time; an address back after it starts `times` again.
 - **table → fail2ban.** `banned` and `deny` are mirrored exactly: each holds
   the rows of ours in force in that state, and anything else in them is
   unbanned. So one rule lifts a copy whether its row expired, changed state or
   was deleted, and a fail2ban ban a person turns into a Deny is lifted from its
   jail and banned in `deny`. A row of ours missing from its jail is banned; one
-  already there is confirmed. An allow missing from any ignore list is added;
-  one already on every list, without `synced_at`, was put there by someone else
+  already there is confirmed. An allow missing from any managed ignore list is
+  added; one already on every one, without `synced_at`, was put there by someone else
   and is never removed by the sync.
 - **A row marked deleted** has its copy lifted -- from the module's jails by
   the mirror, an allow off the ignore lists, a ban the sync followed from
@@ -589,8 +622,10 @@ pure, and tested case by case -- decides:
 **Known limits.** Each push is one `Ban` line in fail2ban's log, which
 `recidive`, where it is enabled, counts like any other ban. An ignore
 entry added at runtime is lost when fail2ban restarts and re-added by the next
-run. An Allow lifted from the ignore lists comes off every jail, including one
-where an administrator had listed it too. Times: fail2ban prints local time;
+run. An Allow lifted from the ignore lists comes off every managed jail, including
+one where an administrator had listed it too. A ban followed from a jail later
+dropped from `/etc/oryk-fail2ban.conf` expires on the next run, and deleting it
+lifts nothing. Times: fail2ban prints local time;
 the helper turns it into epochs and the sync writes them with
 `FROM_UNIXTIME()`, on the database's clock.
 
@@ -614,7 +649,8 @@ the helper turns it into epochs and the sync writes them with
   with it selected, and a linked level with exactly one row shows it selected.
   Logs are linked by MAC: a client's own, a user's or profile's clients'. Logs
   lists only the newest `Navigator::LOG_LIMIT` entries in scope, and its badge
-  counts those. Bans lists the bans that *apply* to the viewed row
+  counts those; an unscoped Bans level likewise lists the newest
+  `Navigator::BAN_LIMIT` (plus the viewed ban). Bans lists the bans that *apply* to the viewed row
   (`Bans::applies()`, check()'s test on one row): every subject a ban sets must
   be one of the row's requests', a client's address being the public one it
   was last seen at; a user or profile is its clients' requests plus the bare
@@ -627,8 +663,10 @@ the helper turns it into epochs and the sync writes them with
   else the section's list with `&scope=<kind>:<id>` naming the viewed row; an
   unscoped level's title is the whole list. `Navigator::scope()` is the one
   computation behind both the dropdowns and every list command asked with
-  `scope`, so a table counts what the badge did -- bar Logs, whose badge stops
-  at `LOG_LIMIT`. A scoped list draws the dropdowns as that row's page does,
+  `scope`, so a table counts what the badge did -- bar Logs and unscoped Bans,
+  whose badges stop at `LOG_LIMIT` and `BAN_LIMIT`. A scoped Bans level reads only
+  the rows naming one of the viewed row's subjects (`Bans::banChoices($requests)`)
+  and asks `applies()` of those, never the whole table. A scoped list draws the dropdowns as that row's page does,
   says what it is narrowed to, and has no Clear on Logs. A tab strip is
   only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
@@ -721,7 +759,8 @@ bootstrap FreePBX on its own.
 ## Not built yet
 
 - A token that *identifies* a client, as `/provisioner/{token}/{file}` would.
-  Tokens are opt-in per client and nothing makes you set one.
+  A new client is given a token when saved without one, but an update can
+  still take it away.
 - Uniform refusals. A failure still says which kind of failure it was, so a
   caller probing MACs can tell a known one from an unknown one. Closing that is
   the token scheme's job and is a change to all the messages at once.

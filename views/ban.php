@@ -112,7 +112,7 @@ if ($banId && !\FreePBX\Modules\Oryk_Provisioner\BanSync::ipOnly($ban)) {
 		. ' <span class="text-muted">' . $h(_('(back in force here if fail2ban bans the address again)')) . '</span>';
 } elseif ($banId && !empty($ban['synced_at'])) {
 	$where = [
-		'allow' => _('On every jail\'s ignore list'),
+		'allow' => _('On the managed jails\' ignore lists'),
 		'deny' => _('Banned in the deny jail'),
 		'banned' => _('Banned in the banned jail'),
 	][$state] ?? '';
@@ -147,7 +147,7 @@ foreach ($profiles as $profile) {
 						$field('ban_ip', _('IP Address'),
 							'<input type="text" class="form-control oryk-name" id="ban_ip" maxlength="45" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any address')) . '" value="' . $h($ban['ip'] ?? '') . '">',
 							'<span class="oryk-help-part">' . $h(_('One IPv4 or IPv6 address, as the request arrives from it. Ranges are not accepted. On its own it matches every phone behind that address; with a user or client, it is where that user or client is allowed or refused from. Loopback cannot be banned.')) . '</span>'
-							. '<span class="oryk-help-part">' . $h(_('With Fail2ban Sync on, a ban naming an address and nothing else also reaches fail2ban: Banned is banned in the banned jail until it expires, Deny in the deny jail until it is deleted -- both on every port -- and Allow goes on every jail\'s ignore list.')) . '</span>'
+							. '<span class="oryk-help-part">' . $h(_('With Fail2ban Sync on, a ban naming an address and nothing else also reaches fail2ban: Banned is banned in the banned jail until it expires, Deny in the deny jail until it is deleted -- both on every port -- and Allow goes on the ignore lists of the PBX jails setup chose, never sshd\'s: an allowed address is still watched there.')) . '</span>'
 						);
 
 						$field('ban_mac', _('MAC Address'),

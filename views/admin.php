@@ -243,7 +243,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 						<div class="alert alert-<?php echo $syncClass; ?>" style="margin: 0; clear: both;">
 							<i class="fa fa-shield"></i>
 							<?php if ($syncState === 'ok'): ?>
-								<?php echo htmlspecialchars(sprintf(_('IP bans sync with fail2ban every minute (fail2ban %s): Banned into the banned jail, Deny into deny (both every port), Allow onto every ignore list.'), (string) ($sync['fail2ban'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>
+								<?php echo htmlspecialchars(sprintf(_('IP bans sync with fail2ban every minute (fail2ban %s): Banned into the banned jail, Deny into deny (both every port), Allow onto the ignore lists of %s only.'), (string) ($sync['fail2ban'] ?? ''), implode(', ', (array) ($sync['jails'] ?? []))), ENT_QUOTES, 'UTF-8'); ?>
 							<?php else: ?>
 								<strong><?php echo htmlspecialchars((string) ($sync['message'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></strong>
 								<?php if (!empty($sync['detail'])): ?>
@@ -293,8 +293,15 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		});
 	}
 
+	// Safe in element text and inside a quoted attribute alike: quotes are
+	// escaped too, which .text().html() never does.
 	function orykEscape(value) {
-		return $('<div>').text(value === null || value === undefined ? '' : value).html();
+		return String(value === null || value === undefined ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 
 	function formatText(value) {
@@ -415,7 +422,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		if (!value) {
 			return '-';
 		}
-		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${value}</a>`;
+		return `<a href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">${orykEscape(value)}</a>`;
 	}
 
 	function formatAssignedClients(value, row) {

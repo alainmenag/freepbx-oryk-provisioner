@@ -39,6 +39,19 @@ class Tokens extends Service
 	}
 
 	/**
+	 * A fresh token, as typed: user:password, both random.
+	 *
+	 * Returned in the clear exactly once, by the save that makes it; only its
+	 * hash is kept, so a token lost after that is replaced, not recovered.
+	 *
+	 * @return string The token, 8 hex characters, a colon, then 32.
+	 */
+	public function generateToken()
+	{
+		return bin2hex(random_bytes(4)) . ':' . bin2hex(random_bytes(16));
+	}
+
+	/**
 	 * Whether a client's token is the one presented.
 	 *
 	 * The same check the endpoint makes, for a caller that has only a MAC. Nothing
