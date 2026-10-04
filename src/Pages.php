@@ -591,7 +591,12 @@ class Pages extends Service
 	 */
 	private function view($name, array $vars)
 	{
-		return $this->stylesheet() . load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+		return $this->stylesheet() . load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + [
+			'version' => $this->version(),
+			'script' => function ($script) {
+				return $this->script($script);
+			},
+		]);
 	}
 
 	/**
@@ -618,6 +623,33 @@ class Pages extends Service
 		}
 
 		return '<style>' . file_get_contents($file) . '</style>';
+	}
+
+	/**
+	 * One of assets/scripts/, for the point in a view that calls `$script()`.
+	 *
+	 * Linked and versioned like stylesheet(), and inlined the same way until the
+	 * symlink exists. Outside assets/js/ for the reason the stylesheet is outside
+	 * assets/css/: FreePBX would link everything in there on every page itself.
+	 *
+	 * @param string $name File under assets/scripts/, without `.js`. Written in a
+	 *                     view, never taken from a request.
+	 *
+	 * @return string A <script>, or '' when the file is missing.
+	 */
+	private function script($name)
+	{
+		$file = dirname(__DIR__) . '/assets/scripts/' . $name . '.js';
+
+		if (!is_file($file)) {
+			return '';
+		}
+
+		if (is_dir(dirname(__DIR__, 3) . '/assets/oryk_provisioner')) {
+			return '<script src="assets/oryk_provisioner/scripts/' . $name . '.js?v=' . (int) filemtime($file) . '"></script>';
+		}
+
+		return '<script>' . file_get_contents($file) . '</script>';
 	}
 
 	/**

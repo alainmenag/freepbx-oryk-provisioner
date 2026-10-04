@@ -110,20 +110,6 @@ $banMac = Bans::value('mac', $mac);
 </div>
 
 <script>
-
 	const orykLogId = <?php echo $entryId; ?>;
-
-	orykEditor({
-		save: '',
-		remove: 'deleteLog',
-		confirm: 'Delete this log entry?',
-		values: function () {
-			return { id: orykLogId };
-		},
-		page: function () {
-			return '?display=oryk_provisioner&log=' + orykLogId;
-		},
-		closed: '?display=oryk_provisioner&tab=logs'
-	});
-
 </script>
+<?php echo $script('log'); ?>

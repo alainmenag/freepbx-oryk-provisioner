@@ -77,6 +77,8 @@ diffing. Never rewrite a file wholesale to reword its comments.
   else lists them.
 - No view contains a `<form>`; fields are read by id and posted over AJAX.
 - CSS goes in `assets/oryk_provisioner.css`, not in a `<style>` in a view.
+- JavaScript goes in `assets/scripts/<view>.js`. A view writes only the
+  `oryk...` constants PHP has to fill in, then `<?php echo $script('<view>'); ?>`.
 - A field's help is a `fpbx-help-icon` with `data-for="<id>"` after the label
   and one `fpbx-help-block` with `id="<id>-help"`; without the pair FreePBX
   never shows it.

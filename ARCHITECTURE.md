@@ -804,6 +804,13 @@ open-signup plan's checklist for a test PBX.
   file's mtime as `?v=`, or inlined until that symlink exists. It is outside
   `assets/css/` on purpose -- FreePBX links everything in there itself, with
   no version, so an edit would be served from cache and the file loaded twice.
+- **Scripts live in `assets/scripts/<view>.js`**, one per view or partial,
+  put where its `<script>` used to be by `<?php echo $script('<view>'); ?>`
+  (`Pages::script()`: linked and versioned like the stylesheet, and outside
+  `assets/js/` for the same reason). A value only PHP knows -- an id, a
+  translated string -- is written by the view as an `oryk...` constant in a
+  small `<script>` just above that call, and the file reads the constant. No
+  other JavaScript is written in a view.
 - **No view contains a `<form>`.** The module page renders inside the FreePBX
   page form and a nested form is dropped by the browser. Fields are read by id
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.
