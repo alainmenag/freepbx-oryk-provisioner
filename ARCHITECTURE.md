@@ -809,11 +809,21 @@ open-signup plan's checklist for a test PBX.
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.
 - **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, not the
   `submit`/`delete` core wires to a `form.fpbx-submit` none of these pages has.
+- **Icons are SVGs in `assets/icons/`, never Font Awesome.** `Icons` reads
+  them; a view prints one with `$icon('<name>')` (handed to every view by
+  `Pages::view()`), and JavaScript with `orykIcon('<name>')`, which the same
+  call puts on every page. Both are inline, so an icon is the colour of the
+  text around it. A table's refresh button is bootstrap-table's own, so the
+  table names ours with `data-icons-prefix="oryk-icon"` and
+  `data-icons='{"refresh":"oryk-icon-refresh"}'`, and `orykFillIcons()` swaps
+  the empty `<i>` it draws for the SVG. A new icon is a new file: one 24-unit
+  outline with `stroke="currentColor"`, named `[a-z0-9-]`.
 - **A field's help is FreePBX's (?) icon.** FreePBX hides every
-  `.fpbx-help-block` until a `<i class="fa fa-question-circle fpbx-help-icon"
-  data-for="<id>">` beside the label is hovered, and then shows the one element
-  with id `<id>-help` -- so help without that pair is never seen. A field with
-  several paragraphs puts them in `.oryk-help-part` spans inside one block.
+  `.fpbx-help-block` until a `<i class="fpbx-help-icon" data-for="<id>">`
+  (holding `$icon('help')`) beside the label is hovered, and then shows the
+  one element with id `<id>-help` -- so help without that pair is never seen.
+  A field with several paragraphs puts them in `.oryk-help-part` spans inside
+  one block.
 - **The only badges are on the navigator's dropdown titles** -- the number of
   options that dropdown lists, from `Navigator`, so it always matches its menu
   and is scoped like it. Neither the section bar nor a tab strip carries one,

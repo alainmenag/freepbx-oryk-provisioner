@@ -89,11 +89,11 @@ $banMac = Bans::value('mac', $mac);
 						$offers = [];
 
 						if ($banIp !== null) {
-							$offers[] = '<a class="btn btn-default" href="?display=oryk_provisioner&amp;ban=&amp;ban_ip=' . $h(rawurlencode($banIp)) . '"><i class="fa fa-ban"></i> ' . $h(_('Ban This Address')) . '</a>';
+							$offers[] = '<a class="btn btn-default" href="?display=oryk_provisioner&amp;ban=&amp;ban_ip=' . $h(rawurlencode($banIp)) . '">' . $icon('ban') . ' ' . $h(_('Ban This Address')) . '</a>';
 						}
 
 						if ($banMac !== null) {
-							$offers[] = '<a class="btn btn-default" href="?display=oryk_provisioner&amp;ban=&amp;ban_mac=' . $h(rawurlencode($banMac)) . '"><i class="fa fa-ban"></i> ' . $h(_('Ban This MAC')) . '</a>';
+							$offers[] = '<a class="btn btn-default" href="?display=oryk_provisioner&amp;ban=&amp;ban_mac=' . $h(rawurlencode($banMac)) . '">' . $icon('ban') . ' ' . $h(_('Ban This MAC')) . '</a>';
 						}
 
 						if ($offers) {

@@ -145,7 +145,7 @@ $tabs = [
 										<label class="control-label" for="resource_name">
 											<?php echo _('Filename'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-										</label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_name"></i>
+										</label> <i class="fpbx-help-icon" data-for="resource_name"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="resource_name"
@@ -184,7 +184,7 @@ $tabs = [
 										<label class="control-label" for="resource_type">
 											<?php echo _('Type'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-										</label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_type"></i>
+										</label> <i class="fpbx-help-icon" data-for="resource_type"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="resource_type">
@@ -217,7 +217,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="resource_file"><?php echo _('File'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_file"></i>
+										<label class="control-label" for="resource_file"><?php echo _('File'); ?></label> <i class="fpbx-help-icon" data-for="resource_file"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<div id="resource_file_present" class="<?php echo $hasFile ? '' : 'hidden'; ?>">
@@ -264,7 +264,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label"><?php echo _('Log'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_log"></i>
+										<label class="control-label"><?php echo _('Log'); ?></label> <i class="fpbx-help-icon" data-for="resource_log"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static">
@@ -294,7 +294,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="resource_template"><?php echo _('Template'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="resource_template"></i>
+										<label class="control-label" for="resource_template"><?php echo _('Template'); ?></label> <i class="fpbx-help-icon" data-for="resource_template"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<textarea class="form-control oryk-template" id="resource_template"
@@ -343,6 +343,8 @@ $tabs = [
 								data-pagination="true"
 								data-search="true"
 								data-show-refresh="true"
+								data-icons-prefix="oryk-icon"
+								data-icons='{"refresh":"oryk-icon-refresh"}'
 								data-unique-id="id"
 								data-row-style="formatClientRow"
 								data-sort-name="mac"

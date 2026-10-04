@@ -57,11 +57,11 @@ $tabs = [
 ];
 
 // One labelled field with its help; $control is already escaped.
-$field = function ($id, $label, $control, $help, $hidden = false) use ($h) {
+$field = function ($id, $label, $control, $help, $hidden = false) use ($h, $icon) {
 	echo '<div class="element-container" id="' . $h($id) . '-container"' . ($hidden ? ' style="display: none;"' : '') . '>';
 	echo '<div class="row"><div class="form-group">';
 	echo '<div class="col-md-4"><label class="control-label" for="' . $h($id) . '">' . $h($label) . '</label>';
-	echo ' <i class="fa fa-question-circle fpbx-help-icon" data-for="' . $h($id) . '"></i></div>';
+	echo ' <i class="fpbx-help-icon" data-for="' . $h($id) . '">' . $icon('help') . '</i></div>';
 	echo '<div class="col-md-8">' . $control . '</div>';
 	echo '</div></div>';
 	echo '<div class="row"><div class="col-md-12"><span class="help-block fpbx-help-block" id="' . $h($id) . '-help">' . $help . '</span></div></div>';

@@ -584,6 +584,9 @@ class Pages extends Service
 	/**
 	 * Render one view, with what every page's section bar needs added.
 	 *
+	 * Every view is also handed `$icon($name, $class = '')`, an icon from
+	 * assets/icons/ as markup -- see Icons.
+	 *
 	 * @param string               $name View under views/, without `.php`.
 	 * @param array<string, mixed> $vars What that view is handed.
 	 *
@@ -591,7 +594,12 @@ class Pages extends Service
 	 */
 	private function view($name, array $vars)
 	{
-		return $this->stylesheet() . load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version()]);
+		$icon = function ($name, $class = '') {
+			return Icons::svg($name, $class);
+		};
+
+		return $this->stylesheet() . Icons::script()
+			. load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version(), 'icon' => $icon]);
 	}
 
 	/**

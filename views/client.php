@@ -151,7 +151,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_mac"><?php echo _('MAC Address'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_mac"></i>
+										<label class="control-label" for="client_mac"><?php echo _('MAC Address'); ?></label> <i class="fpbx-help-icon" data-for="client_mac"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="client_mac"
@@ -173,7 +173,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_device_id"><?php echo _('Device'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_device_id"></i>
+										<label class="control-label" for="client_device_id"><?php echo _('Device'); ?></label> <i class="fpbx-help-icon" data-for="client_device_id"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="client_device_id">
@@ -220,7 +220,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_profile_id"><?php echo _('Profile'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_profile_id"></i>
+										<label class="control-label" for="client_profile_id"><?php echo _('Profile'); ?></label> <i class="fpbx-help-icon" data-for="client_profile_id"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="client_profile_id">
@@ -255,7 +255,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_private_ip"><?php echo _('Private IP'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_private_ip"></i>
+										<label class="control-label" for="client_private_ip"><?php echo _('Private IP'); ?></label> <i class="fpbx-help-icon" data-for="client_private_ip"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="client_private_ip"
@@ -277,7 +277,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_public_ip"><?php echo _('Public IP'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_public_ip"></i>
+										<label class="control-label" for="client_public_ip"><?php echo _('Public IP'); ?></label> <i class="fpbx-help-icon" data-for="client_public_ip"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="client_public_ip"
@@ -299,7 +299,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_token"><?php echo _('Token'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_token"></i>
+										<label class="control-label" for="client_token"><?php echo _('Token'); ?></label> <i class="fpbx-help-icon" data-for="client_token"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-token" id="client_token"
@@ -322,7 +322,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="client_enabled"><?php echo _('Status'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_enabled"></i>
+										<label class="control-label" for="client_enabled"><?php echo _('Status'); ?></label> <i class="fpbx-help-icon" data-for="client_enabled"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="client_enabled">
@@ -346,7 +346,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label"><?php echo _('Last Seen'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="client_last_seen"></i>
+										<label class="control-label"><?php echo _('Last Seen'); ?></label> <i class="fpbx-help-icon" data-for="client_last_seen"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static">
@@ -378,7 +378,7 @@ $tabs = [
 
 							<div id="resource_toolbar" class="oryk-toolbar">
 								<a class="btn btn-default" href="?display=oryk_provisioner&amp;profile=<?php echo $profileId; ?>&amp;tab=resources">
-									<i class="fa fa-cog"></i> <?php echo _('Edit Profile'); ?>
+									<?php echo $icon('cog'); ?> <?php echo _('Edit Profile'); ?>
 								</a>
 							</div>
 
@@ -392,6 +392,8 @@ $tabs = [
 								data-pagination="true"
 								data-search="true"
 								data-show-refresh="true"
+								data-icons-prefix="oryk-icon"
+								data-icons='{"refresh":"oryk-icon-refresh"}'
 								data-unique-id="id"
 								data-sort-name="name"
 								data-sort-order="asc">

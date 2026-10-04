@@ -36,7 +36,7 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	<?php // Clear empties one MAC or the lot; a scope is neither, so it has no Clear. ?>
 	<?php if ($logScope === ''): ?>
 	<button type="button" class="btn btn-danger" name="log_clear">
-		<i class="fa fa-trash"></i>
+		<?php echo $icon('trash'); ?>
 		<?php echo $logNarrowed ? _('Clear This Client\'s Log') : _('Clear Log'); ?>
 	</button>
 	<?php endif; ?>
@@ -52,6 +52,8 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	data-pagination="true"
 	data-search="true"
 	data-show-refresh="true"
+	data-icons-prefix="oryk-icon"
+	data-icons='{"refresh":"oryk-icon-refresh"}'
 	data-unique-id="id"
 	data-sort-name="created_at"
 	data-sort-order="desc">
