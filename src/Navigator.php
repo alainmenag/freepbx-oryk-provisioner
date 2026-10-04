@@ -15,8 +15,8 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * The page being viewed sets the scope; ARCHITECTURE.md, "Conventions that
  * hold everywhere", has the rules. A new row has no links yet, so it scopes
- * nothing. Choosing an option is a page load to that row, and the row of
- * dropdowns re-scopes around it.
+ * nothing. Choosing an option is a page load to that row -- or, on Overview,
+ * to Overview on it -- and the row of dropdowns re-scopes around it.
  *
  * Two keys are places rather than values, and are built here because only the
  * level knows what they cost:
@@ -77,13 +77,20 @@ class Navigator extends Service
 	 * `profile` and `resource` together, `log` or `ban`. Each is an id, or 'new'
 	 * on a page writing one that does not exist yet. Empty on a page viewing no row.
 	 *
-	 * @param array<string, mixed> $at Row being viewed.
+	 * On Overview the Users and Clients options re-open Overview on the row
+	 * chosen, since choosing one is how that page is pointed at something.
+	 *
+	 * @param array<string, mixed> $at      Row being viewed.
+	 * @param string               $section Section the page is in, when its
+	 *                                      options depend on it: 'overview'.
 	 *
 	 * @return array<int, array<string, mixed>> Users, clients, profiles,
 	 *                                           resources, logs, bans.
 	 */
-	public function levels(array $at = [])
+	public function levels(array $at = [], $section = '')
 	{
+		$overview = $section === 'overview';
+
 		$user = isset($at['user']) ? (string) $at['user'] : null;
 		$client = isset($at['client']) ? (string) $at['client'] : null;
 		$profile = isset($at['profile']) ? (string) $at['profile'] : null;
@@ -115,8 +122,8 @@ class Navigator extends Service
 		}
 
 		return [
-			$this->userLevel($scope['users'], $user, $from),
-			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile, $from),
+			$this->userLevel($scope['users'], $user, $from, $overview),
+			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile, $from, $overview),
 			$this->profileLevel($profileNames, $scope['profiles'], $profile, $from),
 			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
 			$this->logLevel($scope['logs'], $scope['ip'], $log, $scope['entry'], $client, $from),
@@ -209,6 +216,19 @@ class Navigator extends Service
 		}
 
 		return $href;
+	}
+
+	/**
+	 * Overview, on one user or client.
+	 *
+	 * @param string     $kind user|client.
+	 * @param int|string $id   Extension, or client id.
+	 *
+	 * @return string Its address.
+	 */
+	public static function overviewHref($kind, $id)
+	{
+		return self::listHref('overview', $kind . ':' . $id);
 	}
 
 	/**
@@ -365,20 +385,26 @@ class Navigator extends Service
 	 * Exactly one is active on every page: the branch the page is in, not the
 	 * URL's `tab` -- a resource page is in Profiles.
 	 *
-	 * @param string $section clients|profiles|users|logs|bans|settings.
+	 * On a user's or client's page, Overview opens on that row.
+	 *
+	 * @param string               $section clients|profiles|users|logs|bans|overview|settings.
+	 * @param array<string, mixed> $at      Row being viewed, as levels() takes it.
 	 *
 	 * @return array<int, array<string, mixed>> Each: key, text, href, active.
 	 */
-	public function sections($section)
+	public function sections($section, array $at = [])
 	{
 		$section = $this->section($section);
+		$target = Overview::target($at);
 		$bar = [];
 
 		foreach ($this->sectionNames() as $key => $text) {
 			$bar[] = [
 				'key' => $key,
 				'text' => $text,
-				'href' => '?display=oryk_provisioner&tab=' . $key,
+				'href' => ($key === 'overview' && $target && $this->written((string) current($target)))
+					? self::overviewHref((string) key($target), (string) current($target))
+					: '?display=oryk_provisioner&tab=' . $key,
 				'active' => $key === $section,
 			];
 		}
@@ -418,6 +444,7 @@ class Navigator extends Service
 			'profiles' => _('Profiles'),
 			'logs' => _('Logs'),
 			'bans' => _('Bans'),
+			'overview' => _('Overview'),
 			'settings' => _('Settings'),
 		];
 	}
@@ -427,11 +454,12 @@ class Navigator extends Service
 	 *
 	 * @param array<int, string>|null $scope Extensions linked, or null for all.
 	 * @param string|null             $at    Extension being viewed, 'new', or null.
-	 * @param string                  $from  scopeKey() of the viewed row, or ''.
+	 * @param string                  $from     scopeKey() of the viewed row, or ''.
+	 * @param bool                    $overview Whether an option opens Overview on its user.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function userLevel($scope, $at, $from)
+	private function userLevel($scope, $at, $from, $overview = false)
 	{
 		$rows = [];
 
@@ -442,7 +470,8 @@ class Navigator extends Service
 				'id' => $extension,
 				'text' => $extension,
 				'note' => (string) (isset($row['name']) ? $row['name'] : ''),
-				'href' => '?display=oryk_provisioner&user=' . rawurlencode($extension),
+				'href' => $overview ? self::overviewHref('user', $extension) : '?display=oryk_provisioner&user=' . rawurlencode($extension),
+				'page' => '?display=oryk_provisioner&user=' . rawurlencode($extension),
 			];
 		}
 
@@ -469,10 +498,11 @@ class Navigator extends Service
 	 * @param string|null                      $user       Extension being viewed, or null.
 	 * @param string|null                      $profile    Profile being viewed, or null.
 	 * @param string                           $from       scopeKey() of the viewed row, or ''.
+	 * @param bool                             $overview   Whether an option opens Overview on its client.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function clientLevel(array $clientRows, $scope, $at, $user, $profile, $from)
+	private function clientLevel(array $clientRows, $scope, $at, $user, $profile, $from, $overview = false)
 	{
 		$rows = [];
 
@@ -483,7 +513,8 @@ class Navigator extends Service
 				'id' => (int) $row['id'],
 				'text' => $mac === '' ? '-' : $mac,
 				'note' => (string) (isset($row['description']) ? $row['description'] : ''),
-				'href' => '?display=oryk_provisioner&client=' . (int) $row['id'],
+				'href' => $overview ? self::overviewHref('client', (int) $row['id']) : '?display=oryk_provisioner&client=' . (int) $row['id'],
+				'page' => '?display=oryk_provisioner&client=' . (int) $row['id'],
 			];
 		}
 
@@ -862,7 +893,9 @@ class Navigator extends Service
 	 * The row being viewed is the active one. A scope of exactly one row makes
 	 * that row active too: it is the only thing this level can be, here.
 	 *
-	 * @param array<int, array<string, mixed>> $rows  Each: id, text, note, href.
+	 * @param array<int, array<string, mixed>> $rows  Each: id, text, note, href,
+	 *                                                and page where the row's
+	 *                                                own page is not its href.
 	 * @param array<int, mixed>|null           $scope Ids to keep, or null for all.
 	 * @param string|null                      $at    Id being viewed, 'new', or null.
 	 * @param array<string, mixed>             $meta  key, title, mono, new,
@@ -904,7 +937,7 @@ class Navigator extends Service
 
 			if ($active) {
 				$text = $row['text'];
-				$href = $row['href'];
+				$href = isset($row['page']) ? $row['page'] : $row['href'];
 			}
 		}
 

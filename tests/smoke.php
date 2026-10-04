@@ -31,7 +31,9 @@ use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Mac;
+use FreePBX\Modules\Oryk_Provisioner\Navigator;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
+use FreePBX\Modules\Oryk_Provisioner\Overview;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
@@ -1872,6 +1874,127 @@ is_eq('it comes down when nothing waits', isset($s['app']->Notifications->up['or
 
 @unlink($etc . '/pjsip.endpoint.conf');
 @rmdir($etc);
+
+echo "\n  Overview:\n";
+
+is_eq('a user scope is a target', Overview::target(['user' => '1001']), ['user' => '1001']);
+is_eq('so is a client', Overview::target(['client' => '5']), ['client' => '5']);
+is_eq('a profile is not', Overview::target(['profile' => '2']), []);
+is_eq('nor an id in another spelling, which Navigator would not scope', Overview::target(['client' => '05']), []);
+is_eq('nor a new row', Overview::target(['user' => 'new']), []);
+is_eq('its address', Navigator::overviewHref('user', '1001'), '?display=oryk_provisioner&tab=overview&scope=user:1001');
+
+$subject = ['user' => '1001', 'clients' => [5, 6], 'macs' => ['0004f282e824']];
+is_eq('a ban on its client names it', Overview::names(ban_row(1, 'deny', ['client_id' => '5']), $subject), true);
+is_eq('a ban on its extension names it', Overview::names(ban_row(2, 'deny', ['extension' => '1001', 'ip' => '203.0.113.7']), $subject), true);
+is_eq('a ban on its MAC names it', Overview::names(ban_row(3, 'deny', ['mac' => '0004f282e824']), $subject), true);
+is_eq('a ban stored with "any" as Bans::ANY reads the same', Overview::names(['client_id' => 0, 'extension' => '', 'mac' => '0004f282e824'], $subject), true);
+is_eq('an address ban only applies', Overview::names(ban_row(4, 'banned', ['ip' => '203.0.113.7']), $subject), false);
+is_eq('a profile ban only applies', Overview::names(ban_row(5, 'deny', ['profile_id' => '2']), $subject), false);
+is_eq('another user\'s ban does not', Overview::names(ban_row(6, 'deny', ['extension' => '1002']), $subject), false);
+is_eq('a client scope has no extension to name', Overview::names(ban_row(7, 'deny', ['extension' => '1001']), ['user' => null, 'clients' => [5], 'macs' => []]), false);
+
+/** Overview over stubs, with one client (5, on user 1001) and whatever bans are given. */
+function overview_build(array $bans)
+{
+	$s = build();
+	$app = $s['app'];
+	$files = new FileRepo($app);
+	$bans = array_map(function ($ban) {
+		return $ban + ['note' => '', 'active' => '1'];
+	}, $bans);
+	$profiles = new Profiles($app, $files);
+	$requestLog = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($app);
+	$banRepo = new Bans($app);
+	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo);
+	$client = ['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk'];
+
+	$app->Database->fetches = [
+		'WHERE pc.id = :id' => [$client + ['token' => null, 'enabled' => '1', 'last_seen' => null, 'private_ip' => null, 'last_seen_age' => null]],
+		'WHERE b.id = :id' => $bans,
+	];
+	$app->Database->fetchAlls = [
+		'ORDER BY pc.mac' => [$client],
+		'ORDER BY b.created_at DESC' => $bans,
+	];
+
+	return $s + ['navigator' => $navigator, 'overview' => new Overview($app, $navigator, $s['users'], $s['clients'], $banRepo, $requestLog, new LogRepo($app))];
+}
+
+/** The statements that deleted from a table: [sql, params]. */
+function overview_deletes($db, $table)
+{
+	return array_values(array_filter($db->params, function ($call) use ($table) {
+		return preg_match('/^\s*DELETE FROM `' . $table . '`/', $call[0]) === 1;
+	}));
+}
+
+$s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824']), ban_row(12, 'banned', ['ip' => '203.0.113.7'])]);
+$found = $s['overview']->inventory(['client' => '5']);
+is_eq('a client\'s inventory is its own', [$found['kind'], $found['clients'], $found['macs']], ['client', [5], ['0004f282e824']]);
+is_eq('the MAC ban names it', $found['named'], [11]);
+is_eq('the address ban applies too', $found['applying'], [11, 12]);
+is_eq('nothing for a client that is not there', $s['overview']->inventory(['client' => 'x']), null);
+is_eq('nor for a profile', $s['overview']->inventory(['profile' => '2']), null);
+
+$s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824'])]);
+$purged = $s['overview']->purge(['client' => '5']);
+is_eq('Delete all on a client', $purged, ['status' => true, 'bans' => 1, 'clients' => 1]);
+$deleted = overview_deletes($s['app']->Database, 'oryk_provisioner_bans');
+is_eq('deletes the ban naming it by id', $deleted[0][1] ?? null, [':id' => 11]);
+is_eq('and the client', count(overview_deletes($s['app']->Database, 'oryk_provisioner_clients')), 1);
+is_eq('and never its user', FreePBX::$core->deleted, []);
+
+$s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824']), ban_row(13, 'deny', ['extension' => '1001']), ban_row(12, 'banned', ['ip' => '203.0.113.7'])]);
+$s['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+FreePBX::$core->devices['1001'] = ['id' => '1001', 'user' => '1001', 'tech' => 'pjsip'];
+$found = $s['overview']->inventory(['user' => '1001']);
+is_eq('a user\'s inventory has its clients', [$found['kind'], $found['clients'], $found['macs']], ['user', [5], ['0004f282e824']]);
+is_eq('the bans on its extension and its client\'s MAC name it', $found['named'], [11, 13]);
+$s['app']->Database->answers = ['WHERE user = ? AND id <> ?' => 1];
+is_eq('with another device on the extension, the ban on it is not named', $s['overview']->inventory(['user' => '1001'])['named'], [11]);
+$s['app']->Database->answers = [];
+$purged = $s['overview']->purge(['user' => '1001']);
+is_eq('Delete all on a user', $purged, ['status' => true, 'reload' => true, 'bans' => 2, 'clients' => 1]);
+is_eq('deletes its device', FreePBX::$core->deleted[0][0] ?? null, '1001');
+$byId = array_values(array_filter(array_map(function ($call) {
+	return $call[1][':id'] ?? null;
+}, overview_deletes($s['app']->Database, 'oryk_provisioner_bans'))));
+is_eq('and the two bans naming it, not the address one', $byId, [11, 13]);
+
+$levels = [];
+foreach ($s['navigator']->levels(['client' => '5'], 'overview') as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('on Overview a client option re-opens Overview', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&tab=overview&scope=client:5');
+is_eq('while the crumb still names the client\'s page', $levels['client']['href'], '?display=oryk_provisioner&client=5');
+$levels = [];
+foreach ($s['navigator']->levels(['client' => '5']) as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('anywhere else it opens the client', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&client=5');
+$bar = array_column($s['navigator']->sections('users', ['user' => '1001']), 'href', 'key');
+is_eq('from a user\'s page the bar\'s Overview opens on it', $bar['overview'], '?display=oryk_provisioner&tab=overview&scope=user:1001');
+$bar = array_column($s['navigator']->sections('users', ['user' => 'new']), 'href', 'key');
+is_eq('but not from a new one', $bar['overview'], '?display=oryk_provisioner&tab=overview');
+is_eq('Users is still where a bare URL lands', $s['navigator']->section(''), 'users');
+
+$s = overview_build([]);
+$s['app']->Database->fetches = [];
+is_eq('Delete all on a row that has gone is refused', $s['overview']->purge(['client' => '5'])['status'], false);
+is_eq('and deletes nothing', count(overview_deletes($s['app']->Database, 'oryk_provisioner_clients')), 0);
+
+$s = build();
+$log = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']);
+$log->clearFor([]);
+$cleared = overview_deletes($s['app']->Database, 'oryk_provisioner_logs');
+is_eq('clearing no MACs can match no row', strpos($cleared[0][0], 'WHERE 1 = 0') !== false, true);
+$log->clearFor(['0004f282e824']);
+$cleared = overview_deletes($s['app']->Database, 'oryk_provisioner_logs');
+is_eq('clearing a MAC binds it', $cleared[1][1], [':mac_0' => '0004f282e824']);
+
+$logs = new LogRepo($s['app']);
+is_eq('a client that sent nothing has nothing stored', $logs->clientLogStats(987654321), ['files' => 0, 'bytes' => 0]);
 
 
 foreach ($TEMPORARY as $path) {

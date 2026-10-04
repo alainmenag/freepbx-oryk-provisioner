@@ -166,6 +166,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Navigator */
 	private $navigator;
 
+	/** @var Overview */
+	private $overview;
+
 	/** @var Pages */
 	private $pages;
 
@@ -263,6 +266,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans);
+		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge);
 
@@ -295,7 +299,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->endpointSettings,
 			$this->settings,
 			$this->bans,
-			$this->fail2ban
+			$this->fail2ban,
+			$this->overview
 		);
 	}
 
@@ -573,6 +578,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveBan':
 			case 'setBanState':
 			case 'deleteBan':
+			case 'listOverviewBans':
+			case 'countOverviewHistory':
+			case 'clearOverviewLogs':
+			case 'clearOverviewStored':
+			case 'purgeOverview':
 				return true;
 			default:
 				return false;
@@ -718,6 +728,23 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteBan':
 				return $this->bans->deleteBan($_REQUEST['id'] ?? null);
+
+			// Overview's own: each is given the `&scope=` and nothing else, and
+			// works out what is related itself.
+			case 'listOverviewBans':
+				return $this->overview->listBans(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'countOverviewHistory':
+				return $this->overview->history(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'clearOverviewLogs':
+				return $this->overview->clearLogs(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'clearOverviewStored':
+				return $this->overview->clearStored(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'purgeOverview':
+				return $this->overview->purge(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
 
 			default:
 				return null;

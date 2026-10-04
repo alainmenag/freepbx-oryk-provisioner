@@ -2,7 +2,7 @@
 /**
  * views/partials/sections.php -- the module's main nav, over every page.
  *
- * Six fixed destinations, always in the same place, so they are a bar rather
+ * Seven fixed destinations, always in the same place, so they are a bar rather
  * than a searchable dropdown. Everything under the section -- a row, a file of
  * that row -- is partials/navigator.php's, and a tab strip under that only
  * ever means views of the one row that is open.

@@ -5,7 +5,7 @@ carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 Every page is topped by the same bar of sections — Users, Clients, Profiles,
-Logs, Bans, Settings — with the one you are in underlined, so any section is
+Logs, Bans, Overview, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
 Users, Clients, Profiles, Resources, Logs, Bans — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
@@ -25,6 +25,7 @@ which are views of that one row.
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
 | `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log` or `ban` row scopes | — |
+| `&tab=overview&scope=user:<extension>` or `client:<id>` | [Overview](#overview): everything tied to that user or client | — |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
@@ -51,7 +52,9 @@ does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
 
 **Deleting a client** deletes the logs it sent and every Logs tab entry for its
-MAC, including those from before it was added.
+MAC, including those from before it was added. The trash can on the Clients
+list does not delete: it opens [Overview](#overview) on that client, where what
+goes with it is listed first.
 
 **The phone's web interface** is one button on the Clients list, on the rows
 that have a private address on them: it opens `http://<address>` in a new tab.
@@ -80,6 +83,41 @@ same body, any size, under the filename this client asks for it by.
 **Deleting a profile** that clients are still assigned to is refused rather than
 cascading; its resources do cascade, since a resource has no existence apart
 from the profile that serves it.
+
+## Overview
+
+Everything tied to one user or one client, on one page, so it can be cleaned
+up: pick the user or the client from the dropdowns under the section bar and
+the page reloads on it. The trash can on the Users and Clients lists leads
+here, and from a user's or client's own page the section bar's **Overview**
+opens on that row.
+
+| | For a user | For a client |
+| --- | --- | --- |
+| **Clients** | every client on it, each with its own delete | — |
+| **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
+| **Stored phone logs** | the files its clients have sent | the files it has sent |
+| **Bans** | every ban naming it or applying to it | the same |
+| **FreePBX** | its User Manager account, mailbox and call history | its user, which is kept |
+
+Each part can be removed where it is listed: a client or a ban by its trash
+can, the log entries with **Clear These Entries**, the stored logs with the
+trash can beside their count.
+
+**Delete All**, in the action bar, removes the user or client and everything
+listed for it in one go, after saying how much that is. For a user that is the
+whole of [deleting a user](users.md#deleting) — extension, account, voicemail,
+call history and recordings — plus its clients, their logs and the bans naming
+it. There is no undo.
+
+The Bans table says what Delete All does with each ban. **Removes**: the ban
+names this client, its MAC or this user's extension. **Keeps**: the ban only
+applies to it, through an address or a profile, and is about more than this
+row — delete it from its own trash can if you mean to.
+
+When another device is on a user's extension, the page says so: deleting the
+user then removes its own device and clients, and the extension, account,
+voicemail and history stay.
 
 ## Settings
 

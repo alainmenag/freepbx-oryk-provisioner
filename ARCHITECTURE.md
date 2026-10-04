@@ -358,7 +358,8 @@ file (1.0.7).
   with the database's `NOW()`, never PHP's clock, for the reason Last Seen is.
 - A row naming a client or a profile goes with it, since the next one written
   can be given the same id. A user is a number and its rows outlive it; a MAC
-  names a handset and its rows outlive any client.
+  names a handset and its rows outlive any client. [Overview](#overview)'s
+  Delete All is the exception: it takes the bans naming the extension or MAC.
 - `source` and `jail` are what created the row -- `manual` by default, or
   whatever adds bans on its own naming itself, with the fail2ban jail or rule
   that fired. Fields on a ban's page (not list columns), written on create and
@@ -746,6 +747,63 @@ count is back under it.
 a registered contact survives the move from row to file are on the
 open-signup plan's checklist for a test PBX.
 
+## Overview
+
+`?tab=overview&scope=user:<ext>` or `&scope=client:<id>`: everything tied to
+one user or one client on one page, each part removable there, and all of it
+by **Delete All**. It is a section like the lists, and the `&scope=` is the
+lists' own (`Navigator::scopeAt()`); `Overview::target()` keeps a user or a
+client and reads anything else as no row, which is the prompt to choose one.
+Choosing is the dropdowns: on Overview the Users and Clients options re-open
+Overview on the row chosen (`Navigator::levels($at, 'overview')`), while the
+crumb's name still links to the row's own page. From a user's or client's
+page, the section bar's Overview opens on that row. A row's trash can on the Users
+and Clients lists is a link here, not a delete.
+
+`Overview::inventory()` is the one answer to "what is tied to it", read by the
+pane, by every command and by Delete All:
+
+| | user | client |
+| --- | --- | --- |
+| clients | every client on the device | itself |
+| provisioning log | rows with those clients' MACs | rows with its MAC |
+| stored phone logs | `LogRepo::clientLogStats()` of each | its own |
+| bans **naming** it | by `client_id`, by the extension, by one of the MACs | by `client_id` or its MAC |
+| bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
+| FreePBX side | `Users::related()`: owned account, mailbox, whether another device shares the extension | -- |
+
+A user's call history is counted by `countOverviewHistory` after the page is
+up (`CdrHistory::count()`, the scan `purge()` makes), never on the way in.
+
+**Naming is not applying** (`Overview::names()`). A ban reaching the row only
+through its profile or an address is about something else: it is listed,
+marked Keeps, and Delete All leaves it. One naming the client, its MAC or the
+user's extension is marked Removes -- including the extension and MAC bans
+that survive an ordinary delete (see [Schema](#schema)), since here cleaning
+up after the row is the point and a freed number is handed out again. Where
+another device keeps the extension in service, the extension is not going and
+the bans naming it are kept with it.
+
+**Every command is posted the scope and nothing else** -- `listOverviewBans`,
+`countOverviewHistory`, `clearOverviewLogs`, `clearOverviewStored`,
+`purgeOverview` -- and resolves it with `inventory()`, so nothing is deleted
+by an id a page sent. `clearOverviewLogs` is a command of its own because
+`clearLogs` with nothing narrowing it is the whole log;
+`ProvisioningLog::clearFor()` with no MACs deletes nothing.
+
+**Delete All** (`Overview::purge()`): the bans naming it first, each through
+`Bans::deleteBan()` so a copy in fail2ban is lifted, and a ban that cannot be
+deleted stops it there, before the row goes; then `Users::deleteUser()` -- the
+whole of a user's [delete](#users), clients and FreePBX side included, Apply
+Config raised -- or `Clients::deleteClient()`. A client's user is shown and
+never deleted. The FreePBX side is all or nothing with the user: nothing here
+purges history or a mailbox and keeps the extension.
+
+The tables on the pane are the lists' own -- same ids, columns and formatters
+-- so `views/admin.php`'s handlers answer their buttons, and a client's trash
+can deletes in place there. The counts are printed by the server, so a delete
+made from one of those tables is answered by loading the page again.
+
 ## Conventions that hold everywhere
 
 - **Everything the module edits is a page**, told apart by which key the URL
@@ -784,7 +842,8 @@ open-signup plan's checklist for a test PBX.
   whose badges stop at `LOG_LIMIT` and `BAN_LIMIT`. A scoped Bans level reads only
   the rows naming one of the viewed row's subjects (`Bans::banChoices($requests)`)
   and asks `applies()` of those, never the whole table. A scoped list draws the dropdowns as that row's page does,
-  says what it is narrowed to, and has no Clear on Logs. A tab strip is
+  says what it is narrowed to, and has no Clear on Logs ([Overview](#overview)
+  has its own). A tab strip is
   only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
   rendered, and `views/partials/tabs.php` draws the rest as links. A tab with
@@ -807,7 +866,8 @@ open-signup plan's checklist for a test PBX.
 - **No view contains a `<form>`.** The module page renders inside the FreePBX
   page form and a nested form is dropped by the browser. Fields are read by id
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.
-- **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, not the
+- **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, and
+  Overview's `orykpurge`, not the
   `submit`/`delete` core wires to a `form.fpbx-submit` none of these pages has.
 - **Icons are SVGs in `assets/icons/`, never Font Awesome.** `Icons` reads
   them; a view prints one with `$icon('<name>')` (handed to every view by

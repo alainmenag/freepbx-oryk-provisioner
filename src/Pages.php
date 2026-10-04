@@ -57,10 +57,13 @@ class Pages extends Service
 	/** @var Fail2ban */
 	private $fail2ban;
 
+	/** @var Overview */
+	private $overview;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview)
 	{
 		parent::__construct($freepbx);
 
@@ -77,6 +80,7 @@ class Pages extends Service
 		$this->settings = $settings;
 		$this->bans = $bans;
 		$this->fail2ban = $fail2ban;
+		$this->overview = $overview;
 	}
 
 	/**
@@ -88,6 +92,9 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
 	 *                                                        the list, narrowed
 	 *                                                        to what that row scopes
+	 *   ?display=oryk_provisioner&tab=overview&scope=<user|client>:<id>
+	 *                                                        everything tied to
+	 *                                                        that user or client
 	 *   ?display=oryk_provisioner&client=<id>                one client
 	 *   ?display=oryk_provisioner&client=                    a new one
 	 *   ?display=oryk_provisioner&profile=<id>               one profile
@@ -213,7 +220,7 @@ class Pages extends Service
 
 		return $this->view('client', [
 			'client' => $client,
-			'sections' => $this->navigator->sections('clients'),
+			'sections' => $this->navigator->sections('clients', ['client' => $client['id'] ? (int) $client['id'] : 'new']),
 			'navigator' => $this->navigator->levels([
 				'client' => $client['id'] ? (int) $client['id'] : 'new',
 			]),
@@ -255,7 +262,7 @@ class Pages extends Service
 
 		return $this->view('user', [
 			'user' => $user,
-			'sections' => $this->navigator->sections('users'),
+			'sections' => $this->navigator->sections('users', ['user' => $extension !== '' ? $extension : 'new']),
 			'navigator' => $this->navigator->levels([
 				'user' => $extension !== '' ? $extension : 'new',
 			]),
@@ -504,6 +511,11 @@ class Pages extends Service
 	private function showList($tab = null)
 	{
 		$tab = $this->navigator->section($tab === null ? (string) ($_REQUEST['tab'] ?? '') : $tab);
+
+		if ($tab === 'overview') {
+			return $this->showOverview();
+		}
+
 		$at = Navigator::scopeAt((string) ($_REQUEST['scope'] ?? ''));
 		$navigator = $this->navigator->levels($at);
 		$scope = $this->scopeBanner($tab, $at, $navigator);
@@ -535,6 +547,30 @@ class Pages extends Service
 			// nothing is viewed and every dropdown lists all of its kind.
 			'navigator' => $navigator,
 			'scope' => $scope,
+		]);
+	}
+
+	/**
+	 * Overview: everything tied to the user or client `&scope=` names, or the
+	 * prompt to choose one when it names neither.
+	 *
+	 * The dropdowns are scoped as on that row's own page, and their Users and
+	 * Clients options re-open Overview -- see Navigator::levels().
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showOverview()
+	{
+		$at = Overview::target(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+		$found = $at ? $this->overview->inventory($at) : null;
+
+		return $this->view('admin', [
+			'tab' => 'overview',
+			'overview' => $found,
+			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
+			'sections' => $this->navigator->sections('overview'),
+			'navigator' => $this->navigator->levels($found ? $at : [], 'overview'),
+			'scope' => null,
 		]);
 	}
 
@@ -646,9 +682,9 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors, a log entry and the Settings tab have any: the list's other tabs
-	 * carry their own controls, and a single button in the header could not say
-	 * which tab it meant.
+	 * Only the editors, a log entry, the Settings tab and Overview on a row
+	 * have any: the list's other tabs carry their own controls, and a single
+	 * button in the header could not say which tab it meant.
 	 *
 	 * Deliberately not the usual submit/delete names -- core wires those to a
 	 * `form.fpbx-submit`, and none of these pages has a form. These are ours, and
@@ -659,6 +695,8 @@ class Pages extends Service
 	 * that is not there would write empty strings over the row. Delete and Close
 	 * act on the row rather than the fields, and the row's id is printed into
 	 * every one of its tabs.
+	 *
+	 * Overview's Delete All is bound by views/partials/overview.php.
 	 *
 	 * @param string $request Current page request.
 	 *
@@ -705,6 +743,11 @@ class Pages extends Service
 					'value' => _('Save'),
 				],
 			];
+		} elseif (($_REQUEST['tab'] ?? '') === 'overview') {
+			// Nothing to delete until it is pointed at a row that exists.
+			return $this->overview->exists(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
+				? ['orykpurge' => ['name' => 'orykpurge', 'id' => 'orykpurge', 'value' => _('Delete All')]]
+				: [];
 		} else {
 			return [];
 		}

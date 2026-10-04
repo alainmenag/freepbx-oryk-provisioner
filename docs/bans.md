@@ -123,7 +123,8 @@ time it comes back into force. Blank turns it off.
 
 Deleting a client or a profile deletes every ban naming it. A ban naming a user keeps the
 number when the user is deleted or renumbered; a ban naming a MAC stays when its
-client is deleted. Nothing else removes a ban you made or saved: expired ones
+client is deleted. [Overview](admin.md#overview)'s **Delete All** is the one
+delete that takes those too. Nothing else removes a ban you made or saved: expired ones
 stay until you delete them. A ban the fail2ban sync imported, and nobody has
 saved, is deleted 30 days after it expires. A ban synced with fail2ban that can't be taken out of fail2ban when
 you delete it is finished off by the sync — see

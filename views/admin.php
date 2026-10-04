@@ -1,7 +1,7 @@
 <?php
 /**
  * The module page: one pane per section -- Users, Clients, Profiles, Logs,
- * Bans and Settings.
+ * Bans, Overview and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -11,8 +11,8 @@
  *
  * Neither a client nor a profile is edited here. Both are pages of their own
  * -- views/client.php and views/profile.php -- which the Add and Edit buttons
- * link to. What is left on the list is deletion and the switch, which is the
- * other thing that needs no page: one column, changed on the row it is shown
+ * link to. What is left on the list is a profile's deletion and the switch,
+ * which needs no page: one column, changed on the row it is shown
  * on. The clients table and the profiles table both have one, they mean the
  * same thing -- the endpoint answers this row, or it answers nothing for it
  * -- so both are drawn and handled by the same three functions below. The
@@ -32,6 +32,11 @@
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
  *
+ * Overview is everything tied to one user or client, drawn by
+ * partials/overview.php from the lists' own tables. It is where a list's
+ * trash can on a user or a client leads: deleting either is decided there,
+ * with what goes with it in view.
+ *
  * Opened from a navigator title, a table is narrowed to what that title's badge
  * counted: `$scope` names the row, and every list command is asked with it.
  *
@@ -44,6 +49,7 @@
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
  * @var int                               $expireDays ORYK_OPEN_EXPIRE_DAYS, on the Users tab: Expired is offered above 0
+ * @var array<string, mixed>|null         $overview  Overview::inventory(), on Overview -- see partials/overview.php
  */
 
 $tab = (string) ($tab ?? 'users');
@@ -282,6 +288,12 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					</div>
 					<?php endif; ?>
 
+					<?php if ($tab === 'overview'): ?>
+					<div class="tab-pane active" id="oryk_overview">
+						<?php include __DIR__ . '/partials/overview.php'; ?>
+					</div>
+					<?php endif; ?>
+
 					<?php if ($tab === 'settings'): ?>
 					<div class="tab-pane oryk-tab-section active" id="oryk_settings">
 						<?php include __DIR__ . '/partials/settings.php'; ?>
@@ -299,6 +311,13 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 <script>
 
 	const orykAjax = 'ajax.php?module=oryk_provisioner&command=';
+
+	// On Overview a row's trash can deletes; on a list it leads to Overview.
+	const orykOnOverview = <?php echo json_encode($tab === 'overview'); ?>;
+
+	function orykOverviewUrl(kind, id) {
+		return `?display=oryk_provisioner&tab=overview&scope=${kind}:${encodeURIComponent(id)}`;
+	}
 
 	// Said in one place because the client editor says the same thing about
 	// the same client, and the two reading differently would be two answers
@@ -534,8 +553,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 	// Editing a client is a page, not a dialog, so Edit is a link: the
 	// row's id is the whole of what the editor needs, and it reads the
-	// client back itself rather than being handed one. Beside it are the two
-	// things that need no page -- the switch, and deletion -- and, on a
+	// client back itself rather than being handed one. Beside it are the
+	// switch, which needs no page, the way to Overview to delete it, and, on a
 	// client somebody has written an address for, the way to the phone
 	// itself. That one is drawn only when there is an address to draw it
 	// from: a button that led nowhere on most rows would be worse than no
@@ -554,7 +573,9 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		}
 
 		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}">${orykIcon('trash')}</button>`);
+		actions.push(orykOnOverview
+			? `<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}" title="Delete">${orykIcon('trash')}</button>`
+			: `<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('client', row.id)}" title="Review what goes with this client, then delete">${orykIcon('trash')}</a>`);
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 
 		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
@@ -575,10 +596,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		].join('');
 	}
 
-	// Deleting is the one action on either tab that needs no page of its own.
-	//
-	// Only one table is on the page -- the tab that was asked for is the only
-	// pane rendered -- so only that one is refreshed.
+	// A client is deleted in place only on Overview, where what goes with it
+	// is on the page; a profile on its own list.
 
 	$(document).on('click', '[name="client_delete"]', function () {
 		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
@@ -655,7 +674,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">${orykIcon('external')}</a>`,
-			`<button type="button" class="btn btn-danger btn-sm" name="user_delete" value="${orykEscape(row.extension)}" data-clients="${Number(row.clients) || 0}">${orykIcon('trash')}</button>`,
+			`<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Review what goes with this user, then delete">${orykIcon('trash')}</a>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');
@@ -716,38 +735,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			orykPending(response);
 			$('#user_table').bootstrapTable('refresh');
 			notie.alert(1, `Deleted ${response.deleted}${response.skipped ? `, skipped ${response.skipped}` : ''}.`, 3);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
-		});
-	});
-
-	// Permanent, and it takes the call history and recordings with it, so it
-	// says so -- and what happens to the clients pointing at it.
-	$(document).on('click', '[name="user_delete"]', function () {
-		const clients = Number($(this).data('clients')) || 0;
-		let ask = 'Delete this user? The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently. This cannot be undone.';
-
-		if (clients) {
-			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be deleted too, with the logs ${clients === 1 ? 'it' : 'they'} sent.`;
-		}
-
-		if (!window.confirm(ask)) {
-			return;
-		}
-
-		const button = $(this).prop('disabled', true);
-
-		orykPost('deleteUser', { id: button.val() }).done(function (response) {
-			if (!response || !response.status) {
-				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			orykPending(response);
-			$('#user_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
 		}).fail(function () {
 			button.prop('disabled', false);
 			notie.alert(3, 'Could not delete.', 4);

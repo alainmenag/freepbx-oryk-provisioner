@@ -297,6 +297,52 @@ class ProvisioningLog extends Service
 	}
 
 	/**
+	 * How many entries some MACs have.
+	 *
+	 * @param array<int, string> $macs MACs, as the log stores them.
+	 *
+	 * @return int Rows; 0 for no MACs, or a table that is not there.
+	 */
+	public function countFor(array $macs)
+	{
+		$params = [];
+		$where = $this->inClause('mac', $macs, 'mac', $params);
+
+		try {
+			$stmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->logsTable}` WHERE $where");
+			$stmt->execute($params);
+
+			return (int) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			return 0;
+		}
+	}
+
+	/**
+	 * Delete every entry some MACs have: Overview's Clear.
+	 *
+	 * No MACs deletes nothing -- never the whole log, which is clearLogs()'s.
+	 *
+	 * @param array<int, string> $macs MACs, as the log stores them.
+	 *
+	 * @return array<string, mixed> Status, and `deleted`, the rows removed.
+	 */
+	public function clearFor(array $macs)
+	{
+		$params = [];
+		$where = $this->inClause('mac', $macs, 'mac', $params);
+
+		try {
+			$stmt = $this->db->prepare("DELETE FROM `{$this->logsTable}` WHERE $where");
+			$stmt->execute($params);
+		} catch (\Exception $e) {
+			return ['status' => false, 'message' => _('The provisioning log could not be cleared.')];
+		}
+
+		return ['status' => true, 'deleted' => (int) $stmt->rowCount()];
+	}
+
+	/**
 	 * Record one provisioning request.
 	 *
 	 * Written on the way out of serve(), whichever way that went, and by the

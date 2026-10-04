@@ -334,7 +334,7 @@ class Users extends Service
 	}
 
 	/**
-	 * Delete from the editor or the list.
+	 * Delete from the editor, or Overview's Delete All.
 	 *
 	 * @param mixed $extension Extension number.
 	 *
@@ -349,6 +349,53 @@ class Users extends Service
 		$this->remove($extension);
 
 		return ['status' => true, 'reload' => true];
+	}
+
+	/**
+	 * What a user has in FreePBX that goes with it, for Overview.
+	 *
+	 * Says what remove() will do, not what exists: an account this module does
+	 * not own is not listed, and `shared` is the case remove() stops short in.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> account (the owned User Manager username,
+	 *                              or ''), mailbox (bool), shared (bool:
+	 *                              another device is on the extension, so the
+	 *                              extension, account, mailbox and history stay).
+	 */
+	public function related($extension)
+	{
+		$extension = (string) $extension;
+		$account = $this->userman->ownedAccount($extension);
+
+		try {
+			$stmt = $this->db->prepare('SELECT COUNT(*) FROM devices WHERE user = ? AND id <> ?');
+			$stmt->execute([$extension, $extension]);
+			$shared = (int) $stmt->fetchColumn() > 0;
+		} catch (\Exception $e) {
+			$shared = false;
+		}
+
+		return [
+			'account' => $account ? (string) $account['username'] : '',
+			'mailbox' => $this->voicemail->hasMailbox($extension),
+			'shared' => $shared,
+		];
+	}
+
+	/**
+	 * How much call history a user's delete would remove.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array{calls: int, recordings: int}|null CdrHistory::count(); null
+	 *                                                 for no such user, or no
+	 *                                                 history to read.
+	 */
+	public function history($extension)
+	{
+		return $this->userRow($extension) ? $this->cdr->count($extension) : null;
 	}
 
 	/**

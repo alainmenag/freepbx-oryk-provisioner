@@ -296,6 +296,42 @@ class CdrHistory extends Service
 	}
 
 	/**
+	 * What purge() would remove for an extension, without removing it.
+	 *
+	 * The same scan purge() makes, so it is asked for on its own rather than
+	 * on the way into a page.
+	 *
+	 * @param int|string $extension Number to count for.
+	 *
+	 * @return array{calls: int, recordings: int}|null Calls it was part of and
+	 *                                                 the recordings they made;
+	 *                                                 null when there is no
+	 *                                                 history to read.
+	 */
+	public function count($extension)
+	{
+		$extension = trim((string) $extension);
+
+		if (!preg_match('/^[0-9]{1,20}$/', $extension)) {
+			return null;
+		}
+
+		$cdrdb = $this->handle('count ' . $extension . ' in');
+
+		if ($cdrdb === null) {
+			return null;
+		}
+
+		$tables = $this->tables($cdrdb);
+		$calls = $this->findCalls($cdrdb, $tables, $extension);
+
+		return [
+			'calls' => count($calls),
+			'recordings' => $calls ? count($this->findRecordings($cdrdb, $tables, $calls)) : 0,
+		];
+	}
+
+	/**
 	 * Find the calls an extension was part of.
 	 *
 	 * Both the record's own identifier and its chain identifier are

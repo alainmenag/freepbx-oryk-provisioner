@@ -6,7 +6,7 @@
 | [Clients, profiles and resources](concepts.md) | what each one is, tokens, a phone's addresses |
 | [The provisioning endpoint](endpoint.md) | the URLs a phone asks, and how a filename finds its resource |
 | [Template placeholders](templates.md) | every `{{name}}` a template can use |
-| [The admin interface](admin.md) | the pages, tabs and previews, and the Settings tab |
+| [The admin interface](admin.md) | the pages, tabs and previews, Overview, and the Settings tab |
 | [Users](users.md) | creating, renumbering and deleting extensions, and From Domain |
 | [Bans](bans.md) | refusing or allowing an address, MAC, user or client at the endpoint |
 | [Syncing with fail2ban](fail2ban.md) | IP bans kept in step with fail2ban, and the one-time root setup |
