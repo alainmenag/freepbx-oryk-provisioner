@@ -459,7 +459,10 @@ run, the endpoint file is written and **Apply Config is raised, never run**
 (`needreload()`; the AJAX answer carries `reload` so a page that is not
 reloaded raises the bar itself). A delete is the same. Nothing in the module
 reloads. A blank number keeps the user's own (a new one
-takes the next free `999…`); a blank secret keeps the stored one. A number held
+takes the one after the highest `999…` held, stepping over any number
+`pjsip.endpoint.conf` still has -- a user deleted but not yet applied, whose
+endpoint would win over a new sign-up's bridge rows; once applied, a freed
+number is reused); a blank secret keeps the stored one. A number held
 by any device, extension or account is refused before anything is written.
 
 **A custom username** -- given by open provisioning, as the extension form's

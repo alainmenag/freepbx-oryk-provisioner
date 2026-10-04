@@ -1798,6 +1798,19 @@ $block = RealtimeBridge::block('settings', ['ps_endpoints => odbc,x,y'], true);
 is_eq('the block adds to a section the file has', strpos($block, "[settings](+)\n") !== false, true);
 is_eq('and comes back out leaving the rest', trim(RealtimeBridge::withoutBlock($text . "\n" . $block)), trim($text));
 
+echo "\n  a generated number steps over one Apply Config still has:\n";
+
+$etc = sys_get_temp_dir() . '/oryk-numbers-' . getmypid();
+@mkdir($etc);
+file_put_contents($etc . '/pjsip.endpoint.conf', "[9990000013]\ntype=endpoint\n[9990000013-auth]\ntype=auth\n[9990000014]\ntype=endpoint\n");
+$s = build();
+$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012'];
+is_eq('deleted but not applied: skipped', (new NumberAllocator($s['app'], $s['userman'], $etc))->generate(), '9990000015');
+file_put_contents($etc . '/pjsip.endpoint.conf', "[9990000001]\ntype=endpoint\n");
+is_eq('applied away: reused, as in any PBX', (new NumberAllocator($s['app'], $s['userman'], $etc))->generate(), '9990000013');
+@unlink($etc . '/pjsip.endpoint.conf');
+@rmdir($etc);
+
 echo "\n  the minute sweep:\n";
 
 $etc = sys_get_temp_dir() . '/oryk-etc-' . getmypid();
