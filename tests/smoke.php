@@ -1416,6 +1416,18 @@ is_eq('an update may leave it empty',
 	[isset($updated['token']), array_key_exists(':token', $written[0][1] ?? []) ? $written[0][1][':token'] : 'unset'],
 	[false, null]);
 
+$s = build();
+$db = $s['app']->Database;
+$db->insertId = 9;
+$created = $s['clients']->saveClient(['mac' => '00:04:F2:82:E8:24', 'token' => '']);
+$inserted = array_values(array_filter($db->params, function ($p) {
+	return strpos(ltrim($p[0]), 'INSERT INTO `oryk_provisioner_clients` (mac') === 0;
+}));
+
+is_eq('a new client with a MAC typed in is inserted with it',
+	[$created['status'] ?? null, $created['id'] ?? null, $inserted[0][1][':mac'] ?? null, isset($created['token'])],
+	[true, 9, '0004f282e824', true]);
+
 echo "\ntranscoding by Accept:\n";
 
 echo "\n  what a header asks for:\n";
