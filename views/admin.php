@@ -44,14 +44,12 @@
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
  * @var int                               $expireDays ORYK_OPEN_EXPIRE_DAYS, on the Users tab: Expired is offered above 0
- * @var string                            $lobbyContext ORYK_OPEN_CONTEXT, which the Context column reads as Lobby
  */
 
 $tab = (string) ($tab ?? 'users');
 $sync = isset($sync) && is_array($sync) ? $sync : [];
 $scope = isset($scope) && is_array($scope) ? $scope : null;
 $expireDays = (int) ($expireDays ?? 0);
-$lobbyContext = (string) ($lobbyContext ?? '');
 // Appended to every list command's URL, so a refresh stays narrowed.
 $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) : '', ENT_QUOTES, 'UTF-8');
 ?>
@@ -668,15 +666,9 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		$('#user_table').bootstrapTable('refresh', { pageNumber: 1 });
 	});
 
-	// The context a user's calls are placed in; the sign-up context reads as Lobby.
-	const orykLobbyContext = <?php echo json_encode($lobbyContext); ?>;
-
+	// The context a user's calls are placed in, as it is named.
 	function formatUserContext(value) {
-		if (!value) {
-			return '-';
-		}
-
-		return value === orykLobbyContext ? 'Lobby' : orykEscape(value);
+		return value ? orykEscape(value) : '-';
 	}
 
 	// Raises FreePBX's Apply Config bar when an answer says something is pending,

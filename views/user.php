@@ -204,7 +204,7 @@ if ($clientCount > 0) {
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static oryk-name" id="user_context">
-											<?php echo $h($inLobby ? _('Lobby') . ' (' . $context . ')' : ($context !== '' ? $context : '-')); ?>
+											<?php echo $h($context !== '' ? $context : '-'); ?>
 											<?php if ($inLobby): ?>
 											&nbsp;<button type="button" class="btn btn-default btn-sm" id="user_promote"><?php echo _('Promote'); ?></button>
 											<?php endif; ?>

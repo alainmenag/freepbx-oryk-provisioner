@@ -263,7 +263,7 @@ class Pages extends Service
 			'pbxDomain' => $this->endpoints->fromDomain(null),
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
-			// What the context reads as, and whether Promote is offered.
+			// Whether Promote is offered.
 			'lobbyContext' => $this->users->lobbyContext(),
 		]);
 	}
@@ -525,7 +525,6 @@ class Pages extends Service
 				: [],
 			// Whether the Users table offers Expired: Lobby Expiry is on.
 			'expireDays' => $tab === 'users' ? (int) $this->settings->get(Settings::OPEN_EXPIRE_DAYS) : 0,
-			'lobbyContext' => $this->users->lobbyContext(),
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
 			// What the State column warns with before refusing your own address.
