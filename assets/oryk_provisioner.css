@@ -21,6 +21,12 @@
 	margin: 0;
 }
 
+.provisioner .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* ----------------------------------------------------------------------
  * Shared: utilities, list rows, editors (views/partials/editor.php)
  * ---------------------------------------------------------------------- */
