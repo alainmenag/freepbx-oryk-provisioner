@@ -44,6 +44,30 @@ class Settings extends Service
 	 */
 	const BAN_DENY_AFTER = 'ORYK_BAN_DENY_AFTER';
 
+	/** The context every open-provisioning sign-up is put in. See LobbyContext. */
+	const OPEN_CONTEXT = 'ORYK_OPEN_CONTEXT';
+
+	/** Open-provisioning sign-ups one address may make in a minute; 0 is no limit. */
+	const OPEN_PER_MINUTE = 'ORYK_OPEN_PER_MINUTE';
+
+	/** Open-provisioning sign-ups one address may make in a rolling day; 0 is no limit. */
+	const OPEN_PER_DAY = 'ORYK_OPEN_PER_DAY';
+
+	/** Open-provisioning sign-ups the whole PBX takes in a rolling day; 0 is no limit. */
+	const OPEN_PER_DAY_TOTAL = 'ORYK_OPEN_PER_DAY_TOTAL';
+
+	/** Calls one lobby extension may place at once; 0 is no limit. */
+	const OPEN_CALLS = 'ORYK_OPEN_CALLS';
+
+	/** The emergency caller id a sign-up is given; blank leaves Core's (the extension). */
+	const OPEN_EMERGENCY_CID = 'ORYK_OPEN_EMERGENCY_CID';
+
+	/** Days a lobby user may go unseen before the Users tab lists it as expired; 0 is off. */
+	const OPEN_EXPIRE_DAYS = 'ORYK_OPEN_EXPIRE_DAYS';
+
+	/** What a context name may be: it is written into the dialplan and the bridge. */
+	const CONTEXT_PATTERN = '/^[A-Za-z0-9_-]{1,79}$/';
+
 	/**
 	 * What every setting is filed under in Advanced Settings.
 	 */
@@ -136,7 +160,96 @@ class Settings extends Service
 				'max' => 1000,
 				'default' => '',
 			],
+			self::OPEN_CONTEXT => [
+				'name' => 'Sign-up Context',
+				'description' => 'The context every user open provisioning creates is put in. The module generates '
+					. 'lobby: internal extensions, conferences, voicemail and emergency routes only, no other '
+					. 'outbound route, and no forward or transfer out of it. Any other name is a context you '
+					. 'provide yourself. Promote moves a user out of it. Takes effect on Apply Config.',
+				'type' => 'text',
+				'default' => 'lobby',
+				'pattern' => self::CONTEXT_PATTERN,
+			],
+			self::OPEN_PER_MINUTE => [
+				'name' => 'Sign-ups per Minute',
+				'description' => 'How many users open provisioning may create for one address (an IPv6 /64) '
+					. 'in a minute. 0 is no limit. An Allow ban on the address lifts every limit.',
+				'type' => 'int',
+				'min' => 0,
+				'max' => 1000,
+				'default' => '1',
+			],
+			self::OPEN_PER_DAY => [
+				'name' => 'Sign-ups per Day',
+				'description' => 'How many users open provisioning may create for one address (an IPv6 /64) '
+					. 'in any 24 hours. 0 is no limit. An Allow ban on the address lifts every limit.',
+				'type' => 'int',
+				'min' => 0,
+				'max' => 100000,
+				'default' => '5',
+			],
+			self::OPEN_PER_DAY_TOTAL => [
+				'name' => 'Sign-ups per Day, PBX',
+				'description' => 'How many users open provisioning may create in any 24 hours, from every '
+					. 'address together. 0 is no limit. Reaching it puts a notice on the dashboard.',
+				'type' => 'int',
+				'min' => 0,
+				'max' => 1000000,
+				'default' => '0',
+			],
+			self::OPEN_CALLS => [
+				'name' => 'Lobby Calls',
+				'description' => 'How many calls one lobby extension may place at once. 0 is no limit. '
+					. 'Takes effect on Apply Config.',
+				'type' => 'int',
+				'min' => 0,
+				'max' => 100,
+				'default' => '1',
+			],
+			self::OPEN_EMERGENCY_CID => [
+				'name' => 'Lobby Emergency Caller ID',
+				'description' => 'The emergency caller id a user open provisioning creates is given -- normally '
+					. 'the site\'s main number, which an emergency operator can call back. Left blank, it is the '
+					. 'extension itself, which means nothing outside this PBX. Check what your jurisdiction '
+					. 'requires of emergency calls from a multi-line system.',
+				'type' => 'text',
+				'default' => '',
+				'pattern' => '/^\+?[0-9]{1,20}$/',
+				'emptyok' => true,
+			],
+			self::OPEN_EXPIRE_DAYS => [
+				'name' => 'Lobby Expiry',
+				'description' => 'After this many days without its phone being seen -- or, never seen, this many '
+					. 'days after it signed up -- a lobby user is listed under Expired on the Users tab, '
+					. 'where it can be deleted. Nothing is deleted on its own. 0 is off.',
+				'type' => 'int',
+				'min' => 0,
+				'max' => 3650,
+				'default' => '0',
+			],
 		];
+	}
+
+	/**
+	 * What a save is allowed to do but should say something about.
+	 *
+	 * @param array<string, mixed> $values Validated values about to be stored, by keyword.
+	 *
+	 * @return array<int, string> Warnings, translated.
+	 */
+	public function warnings(array $values)
+	{
+		$warnings = [];
+		$context = (string) ($values[self::OPEN_CONTEXT] ?? '');
+
+		if (stripos($context, 'from-') === 0) {
+			$warnings[] = sprintf(
+				_('Sign-ups will be put in %s. A from- context is usually one with outbound routes, which is what the lobby exists to keep strangers out of.'),
+				$context
+			);
+		}
+
+		return $warnings;
 	}
 
 	/**
@@ -283,7 +396,8 @@ class Settings extends Service
 	 *
 	 * @param array<string, mixed> $request The request; values under `settings`.
 	 *
-	 * @return array<string, mixed> status, and message when it failed.
+	 * @return array<string, mixed> status, and message when it failed; on
+	 *                              success, warnings() about what changed.
 	 */
 	public function saveSettings(array $request)
 	{
@@ -327,7 +441,7 @@ class Settings extends Service
 			}
 		}
 
-		return ['status' => true];
+		return ['status' => true, 'warnings' => $this->warnings($changes)];
 	}
 
 	/**

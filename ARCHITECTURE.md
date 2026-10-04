@@ -43,8 +43,9 @@ phone
                                ORYK_PROVISIONING=DISABLED: 503, unlogged
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
      or ::openProvision()                         MAC 000000000000, OPEN only
-  -> Endpoint::banned()                           Bans::check(): 403 before
-                                                  anything is looked up or made
+  -> Endpoint::banned()                           Bans::decision(): 403 before
+                                                  anything is looked up or made;
+                                                  an allow lifts sign-up limits
   -> Endpoint::openProvision()                    finds or makes the client its
                                                   credentials log in as, then
                                                   serve()s / receive()s as it
@@ -88,31 +89,86 @@ answered by its Basic credentials instead of a client row
 (`Endpoint::openClient()`), in this order:
 
 1. no credentials -> 401, which is the challenge that makes a phone send them
-2. `Users::findOrCreate()`: a User Manager login answers with the account's
-   default extension; a username no account holds makes a user, as a blank
-   Extension does, when it passes `Users::signupUsername()` (`[A-Za-z0-9._@-]`,
-   1-64, not only digits -- a number would be taken for that extension's own
-   account by `UsermanManager::findByExtension()` -- and not an IP address),
-   else 400; the account gets no email, even from a username that is one, so
-   User Manager's welcome email never goes to an unconfirmed address, and gives its account that username and password (see
-   [Users](#users)); a username held under another password -> 401, written
-   to FreePBX's security log as a GUI login failure is, so the jail that
-   watches it bans the address; no User Manager, or a login with no
-   Extension/User -> 409. From the username check to the login being set it
-   holds `Users::LOCK`, the MySQL named lock every `Users::store()` holds, so two
-   sign-ups at once cannot be handed the same number and one cannot rename the
-   other's account
-3. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
+2. `Users::findLogin()`: a User Manager login answers with the account's
+   default extension, and its client (step 4) -- no lock, no limits, nothing
+   made; no User Manager, or a login with no Extension/User -> 409
+3. otherwise a **sign-up**, all of it under `Users::LOCK` (one `withLock()`
+   in `openClient()` around `Users::signUp()`, the client and the bridge; the
+   lock is re-entrant, so `store()` inside it takes nothing more):
+   1. a username held under another password -> 401, the one line written to
+      FreePBX's security log as a GUI login failure, so the jail that watches
+      it bans the address
+   2. `Users::signupUsername()` (`[A-Za-z0-9._@-]`, 1-64, not only digits --
+      a number would be taken for that extension's own account by
+      `UsermanManager::findByExtension()` -- and not an IP address), else 400
+   3. `Users::reservedUsername()`: `Users::RESERVED` and `RESERVED_PREFIX`,
+      on the whole name and the part before `@`, and any address at
+      `ORYK_HOSTNAME`'s or `ORYK_FROM_DOMAIN`'s domain -> 400. A list in the
+      code, deliberately not a setting. Asked even when an allow decided
+   4. `Endpoint::admit()`, unless an **allow** decided the request: the
+      address's sign-ups (`Clients::signupKey()`: an IPv4 address, or an IPv6
+      /64) in the last minute and day, then the PBX's in the last day, against
+      `ORYK_OPEN_PER_MINUTE`, `_PER_DAY`, `_PER_DAY_TOTAL` (0 is none) -> 429
+      with `Retry-After`. Counted from client rows, which is why the check and
+      the client's write are under one lock -- outside it, fifty parallel
+      requests all count zero
+   5. `Users::store()` with the lobby: `context` `ORYK_OPEN_CONTEXT`,
+      `emergency_cid` `ORYK_OPEN_EMERGENCY_CID`, `max_contacts=1`,
+      `remove_existing=yes`; no email, even from a username that is one, so
+      User Manager's welcome email never goes to an unconfirmed address. The
+      account gets that username and password (see [Users](#users)), then
+      `UsermanManager::denyUcp()`: a per-user `ucp|Global allowLogin` of false
+   6. the client (step 4) is made `created`, with `signup_ip`, and its
+      endpoint, auth and AOR go into the [Realtime bridge](#the-realtime-bridge)
+4. `Clients::findOrCreateForDevice()`: the user's client on an internal MAC,
    made when there is none, with no profile and the credentials as its
    token; a found one is given the credentials again when its token no longer
    verifies, so a password changed in UCP does not lock the phone out. A client
    on a real phone's MAC is never used.
 
+Every sign-up and every refusal at 3.3-3.4 is a `SecurityLog` line, and none
+of them says `Authentication failure`, so a phone retrying after a 429 does
+not get its site banned. `SignupRefused` carries a refusal's reason, status
+and retry from where it is decided to where it is logged.
+
 The request is then served or received as that client, `000000000000` in the
 filename swapped for its MAC, so the ordinary order above -- token included --
 decides the answer -- including the vendor's profile, since the client has
-none of its own. A user made here costs a full reload, inside the phone's
-request.
+none of its own. **Nothing reloads**: the sign-up raises Apply Config like any
+save.
+
+**The lobby** (`LobbyContext`, a dialplan hook at priority 900, after Core):
+with `ORYK_OPEN_CONTEXT` `lobby`, `[lobby]` counts the calling endpoint's
+calls in `GROUP(oryk-lobby)` against `ORYK_OPEN_CALLS` and goes on to
+`[lobby-dial]`, which includes `ext-local`, `ext-meetme`, `app-vmmain`,
+`app-dialvm`, the `outrt-<id>` of each route flagged emergency, and last
+`[lobby-deny]` ("no service") -- searched in order, so deny only catches what
+nothing allowed matched. No other route, no ring group, queue or paging, no
+other feature code. Counted by `CHANNEL(endpoint)`, which a phone cannot set as
+it can its caller id. Two ways out are closed besides the dial plan:
+
+- **a forward**: a callee's 302 is followed by Dial in `FORWARD_CONTEXT`,
+  which FreePBX sets to `from-internal`; `__FORWARD_CONTEXT` is spliced onto
+  every extension in `ORYK_OPEN_CONTEXT` at `ext-local` priority 1, whatever
+  the context is called;
+- **a transfer**: `allow_transfer=no` on every endpoint in it, written by
+  `Users::endpointExtras()` to `pjsip.endpoint_custom_post.conf` and by the
+  bridge.
+
+A context leaves with **Promote** (`Users::promote()`): `from-internal`,
+`restoreUcp()` (the per-user setting cleared, so UCP follows the groups), the
+bridge rows rewritten; the call limit, forward guard and transfer guard follow
+the context on the next apply. `store()` takes `context` on a new user or a
+promote only, and `saveUser()` passes only the editor's fields, so a request
+can set neither. **Expired** (`ORYK_OPEN_EXPIRE_DAYS`): a lobby user whose
+newest client was last seen, or whose sign-up client was made, more than N days
+ago -- `Users::expired()` in PHP and `expiredExpr()` in SQL, which must agree:
+the list shows what the SQL matches, and `deleteExpired()` deletes only what
+the PHP still says yes to.
+
+**Unverified**: the forward guard, the included context names and UCP's
+per-user override are written from FreePBX's and Asterisk's documentation and
+are on the open-signup plan's checklist for a test PBX.
 
 ## Matching a filename
 
@@ -172,8 +228,9 @@ Oryk_provisioner.class.php   BMO contract, src/ autoloader, AJAX dispatch table.
 page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
-bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban
-src/                         37 files, namespace FreePBX\Modules\Oryk_Provisioner
+bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
+                             the open-provisioning sweep -- see The Realtime bridge
+src/                         44 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -210,6 +267,11 @@ views/                       one view per page, plus views/partials/
 | `Bans` | the bans table, and the question the endpoint asks it before answering |
 | `Fail2ban` | the only file that asks fail2ban, through the sudo helper |
 | `BanSync` | IP bans and fail2ban in step: the minute job, and a save carried over at once |
+| `SecurityLog`, `SignupRefused` | lines in FreePBX's security log; a refused sign-up, on its way there (static; exception) |
+| `RealtimeBridge` | a sign-up's endpoint, auth and AOR, live before Apply Config |
+| `Notices` | the module's dashboard notices, raised and cleared on a change only |
+| `SignupSweep` | the minute job behind open provisioning: out of the bridge once applied; the notices |
+| `LobbyContext` | the lobby's dialplan, on Apply Config |
 
 `AsteriskConfig` through `Users` came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
@@ -221,7 +283,7 @@ friendly URL, and the endpoint stays reachable at its real path.
 
 ## Schema
 
-Five tables. Every `Schema` step is additive and asks `information_schema`
+Five tables, and the bridge's three (below). Every `Schema` step is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -237,6 +299,8 @@ a dead connection on every MySQL build this runs on.
 | `enabled` | NOT NULL DEFAULT 1. A three-state column would have a value meaning "nobody has said" |
 | `public_ip`, `private_ip` | written down by whoever set the phone up, never discovered. `private_ip` becomes an `href` on the Clients list, which is why both are `filter_var`-validated on the way in |
 | `last_seen` | nullable, no default. On the client rather than derived from the log, because the log is prunable and when a phone last checked in must survive its requests being thrown away |
+| `state` | `provisioned` (the default, and every row older than 1.2.5) or `created`: a sign-up whose extension Apply Config has not yet been seen to write. Read by the [sweep](#the-realtime-bridge) |
+| `signup_ip` | the address open provisioning made the client for, as `Clients::signupKey()` stores it -- an IPv6 address as its /64, since that is what the limits count by. NULL on every other client. Keyed with `created_at`, which is what the limits count. Deleting a user deletes its clients and so lowers the count; only an admin can |
 
 **`oryk_provisioner_profiles`** -- `name` (unique), `enabled`. A profile has no
 template of its own; the main config is a resource named `.cfg` like any other
@@ -389,8 +453,10 @@ only keywords the driver names, plus `Users::CUSTOM`, are carried, so a setting
 made in FreePBX survives and nothing stray is written to `sip`. On every save
 `media_encryption=sdes` and `media_encryption_optimistic=yes` are forced, the
 account, extension name, User Manager name and both emails are synced, EPM is
-run, the endpoint file is written and a full reload runs -- so the AJAX call
-takes as long as Apply Config. A blank number keeps the user's own (a new one
+run, the endpoint file is written and **Apply Config is raised, never run**
+(`needreload()`; the AJAX answer carries `reload` so a page that is not
+reloaded raises the bar itself). A delete is the same. Nothing in the module
+reloads. A blank number keeps the user's own (a new one
 takes the next free `999…`); a blank secret keeps the stored one. A number held
 by any device, extension or account is refused before anything is written.
 
@@ -411,7 +477,7 @@ repointed** (`Clients::repointDevice()`); UCP access moves before the history
 it opens; the history is rewritten in place (`src`, `dst`, `cnum`, `clid`, both
 channel names; recording file names are left, since they must match the file).
 
-**A delete** removes the device and its endpoint section and **deletes** every
+**A delete** removes the device, its endpoint section and its bridge rows, and **deletes** every
 client pointing at it, whatever its MAC (`Clients::deleteForDevice()`, each with
 its stored logs and its provisioning-log rows, as for any deleted client). Once no
 other device points at the extension, the extension, the account this module
@@ -467,14 +533,15 @@ address 203.0.113.7" matches only that user from there.
 
 **The endpoint asks before it answers anything.** `Endpoint::banned()` runs
 first in `serve()`, `receive()` and `openProvision()`, and hands
-`Bans::check()` every subject the request has: the address it came from
+`Bans::decision()` -- the deciding row, an allow included; `check()` is it
+with an allow read as nothing refusing -- every subject the request has: the address it came from
 (`REMOTE_ADDR`), its MAC, the client that MAC names, that client's device id
 and extension, and the profile it is served -- its own, or, with none, its
 vendor's, as `resolveRequest()` would pick -- or, for open provisioning, the
 username, which is a user when it is a number. A file fetched by name with no
 client behind it has no profile, so a profile ban does not stop it. A subject the request does not have matches only rows that
 leave it empty. Open provisioning is asked before `openClient()`, so a refused
-caller never makes a user; the client it is answered as is checked again by
+caller never makes a user, and an allow that decides lifts its sign-up limits; the client it is answered as is checked again by
 `serve()`. A refusal is a 403 through `answer()`, so it is logged like any other
 request, and touches nothing else -- no `last_seen`. The caller's body is a bare
 `Forbidden`; which ban, and what it names, go to the provisioning log only,
@@ -629,6 +696,51 @@ lifts nothing. Times: fail2ban prints local time;
 the helper turns it into epochs and the sync writes them with
 `FROM_UNIXTIME()`, on the database's clock.
 
+## The Realtime bridge
+
+A sign-up must work before anyone presses Apply Config, and the module never
+reloads. So its endpoint, auth and AOR are also written to three tables --
+`oryk_provisioner_ps_endpoints`, `_ps_auths`, `_ps_aors`, `id` the key, every
+other column a VARCHAR named as the Asterisk option it holds
+(`RealtimeBridge::COLUMNS`) -- and Asterisk is told to read them:
+
+- `extconfig.conf` maps `ps_endpoints`, `ps_auths`, `ps_aors` to them over
+  `RealtimeBridge::ODBC`, FreePBX's CDR connection, which logs in as the
+  FreePBX database user; the tables are named database-qualified
+  (`AMPDBNAME.table`) for that reason;
+- `sorcery.conf` `[res_pjsip]` maps each type to `config,pjsip.conf` first and
+  `realtime` second -- so once Apply Config has written an id to the files,
+  the files win and the row is ignored. A `sorcery.conf` that already has a
+  `[res_pjsip]` is not touched: two mappings would read the files twice.
+
+Both are a block between `RealtimeBridge::BEGIN` and `END`, added or replaced
+by `install()` and taken out by `uninstall()`. A sorcery mapping is read when
+Asterisk starts, so it needs one restart. `available()` -- tables there, both
+blocks there -- gates every write; without it a sign-up works from the next
+apply, and nothing fails.
+
+The rows (`RealtimeBridge::rows()`, pure) are built from the device as Core
+holds it after `store()`, named as FreePBX names its own (endpoint and AOR the
+extension, auth `<ext>-auth`), with the device's own context, secret and media
+encryption, and `allow_transfer=no` in the lobby. An edit, promote, renumber or
+delete of a user in the bridge rewrites or removes its rows, or its phone would
+keep the old password or context until the apply.
+
+**The sweep** (`SignupSweep`, `bin/oryk-signup-sweep`, every minute, as the
+web user) never reloads. While FreePBX's need-reload flag is up it does
+nothing. Once it is down, a `created` client whose extension has a section in
+`pjsip.endpoint.conf` -- or whose user is gone -- has its rows removed and
+becomes `provisioned`. The flag alone is not enough: a sign-up during an apply
+can end with the flag down and its endpoint not yet written. It also keeps the
+dashboard notices true (`Notices`, raised or cleared on a change only):
+`BRIDGE_STALE` while any sign-up has waited over a day, and `OPEN_CAP`, raised
+by `admit()` when `ORYK_OPEN_PER_DAY_TOTAL` refuses and cleared once the day's
+count is back under it.
+
+**Unverified**: ODBC, the qualified table names, the sorcery mapping and that
+a registered contact survives the move from row to file are on the
+open-signup plan's checklist for a test PBX.
+
 ## Conventions that hold everywhere
 
 - **Everything the module edits is a page**, told apart by which key the URL
@@ -764,9 +876,10 @@ bootstrap FreePBX on its own.
 - Uniform refusals. A failure still says which kind of failure it was, so a
   caller probing MACs can tell a known one from an unknown one. Closing that is
   the token scheme's job and is a change to all the messages at once.
-- No rate limiting or lockout on token verification, or on open
-  provisioning, which answers any address and makes a user per new username.
-  Its failed logins reach fail2ban only through FreePBX's security log.
+- No rate limiting or lockout on token verification. Open provisioning's
+  sign-ups are limited per address and per PBX, but a wrong password for an
+  existing login reaches fail2ban only through FreePBX's security log, and the
+  limits trust `REMOTE_ADDR` -- behind a proxy every sign-up is one address.
 - Copying resources between profiles, or a seeded starting resource. A profile
   is set up one file at a time from empty.
 - No `fwconsole` command. Backup/restore hooks are stubs.

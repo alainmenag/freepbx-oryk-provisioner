@@ -378,6 +378,146 @@ class StubLogger
 	}
 }
 
+/**
+ * The parts of User Manager this module calls: accounts by id, username and
+ * default extension, and the per-account module settings.
+ */
+class StubUserman
+{
+	public $users = [];
+	public $settings = [];
+	public $nextId = 1;
+	public $logins = [];
+
+	public function checkCredentials($username, $password)
+	{
+		return $this->logins[$username . ':' . $password] ?? false;
+	}
+
+	public function getUserByID($id)
+	{
+		return $this->users[$id] ?? [];
+	}
+
+	public function getUserByUsername($username)
+	{
+		foreach ($this->users as $user) {
+			if ((string) $user['username'] === (string) $username) {
+				return $user;
+			}
+		}
+
+		return [];
+	}
+
+	public function getUserByDefaultExtension($extension)
+	{
+		foreach ($this->users as $user) {
+			if ((string) $user['default_extension'] === (string) $extension) {
+				return $user;
+			}
+		}
+
+		return [];
+	}
+
+	public function processQuickCreate($tech, $extension, $data)
+	{
+		$id = $this->nextId++;
+		$this->users[$id] = ['id' => $id, 'username' => (string) $extension, 'default_extension' => (string) $extension,
+			'displayname' => $data['name'] ?? '', 'email' => $data['email'] ?? '', 'description' => ''];
+	}
+
+	public function updateUser($id, $prevUsername, $username, $default = null, $description = null, $extraData = [], $password = null, $nullPassword = false)
+	{
+		$this->users[$id]['username'] = (string) $username;
+		$this->users[$id] = $extraData + $this->users[$id];
+
+		return ['status' => true];
+	}
+
+	public function setModuleSettingByID($id, $module, $setting, $value = null)
+	{
+		$this->settings[$id][$module][$setting] = $value;
+	}
+
+	public function getModuleSettingByID($id, $module, $setting)
+	{
+		return isset($this->settings[$id][$module]) && array_key_exists($setting, $this->settings[$id][$module])
+			? $this->settings[$id][$module][$setting]
+			: false;
+	}
+
+	public function deleteUserByID($id)
+	{
+		unset($this->users[$id]);
+	}
+}
+
+/** FreePBX's dashboard notices, as a list of what is up. */
+class StubNotifications
+{
+	public $up = [];
+	public $writes = 0;
+
+	public function exists($module, $id)
+	{
+		return isset($this->up[$module . '/' . $id]);
+	}
+
+	public function add_warning($module, $id, $text, $extended = '', $link = '', $reset = true, $candelete = false)
+	{
+		$this->up[$module . '/' . $id] = $text;
+		$this->writes++;
+	}
+
+	public function delete($module, $id)
+	{
+		unset($this->up[$module . '/' . $id]);
+		$this->writes++;
+	}
+}
+
+/** Dialplan as FreePBX's extensions class collects it: what was added, spliced and included. */
+class StubExtensions
+{
+	public $added = [];
+	public $includes = [];
+	public $spliced = [];
+
+	public function add($context, $exten, $label, $command)
+	{
+		$this->added[$context][$exten][] = [$label, $command];
+	}
+
+	public function addInclude($context, $include)
+	{
+		$this->includes[$context][] = $include;
+	}
+
+	public function splice($context, $exten, $priority, $command)
+	{
+		$this->spliced[] = [$context, $exten, $priority, $command];
+	}
+}
+
+/** One dialplan application, as FreePBX's ext_* classes are: a name and its arguments. */
+class StubApplication
+{
+	public $app;
+	public $args;
+
+	public function __construct($app, array $args)
+	{
+		$this->app = $app;
+		$this->args = $args;
+	}
+}
+
+foreach (['answer', 'goto', 'gotoif', 'hangup', 'playback', 'set'] as $application) {
+	eval("class ext_$application extends StubApplication { public function __construct(...\$args) { parent::__construct('$application', \$args); } }");
+}
+
 class StubApp
 {
 	public $Modules;
@@ -385,6 +525,7 @@ class StubApp
 	public $Logger;
 	public $Config;
 	public $astman;
+	public $Notifications;
 
 	public function __construct()
 	{
@@ -420,6 +561,17 @@ class FreePBX
 		}
 
 		return self::$conf;
+	}
+
+	public static $userman;
+
+	public static function Userman()
+	{
+		if (self::$userman === null) {
+			self::$userman = new StubUserman();
+		}
+
+		return self::$userman;
 	}
 
 	public static $cdr;

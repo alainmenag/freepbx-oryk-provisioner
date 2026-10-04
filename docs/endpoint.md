@@ -69,8 +69,10 @@ login:
 | --- | --- |
 | no credentials | 401, the challenge that makes a phone send them |
 | a login that works | that account's default extension |
-| a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives), and no email — not even a username that is one, so no welcome email goes to an address nobody has confirmed. The SIP secret is generated, not the password |
+| a username no account holds | a **sign-up**: a new user, the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives), and no email — not even a username that is one, so no welcome email goes to an address nobody has confirmed. The SIP secret is generated, not the password. It is put in the **lobby** (below) |
 | a username no account holds, using anything but letters, digits, `.` `_` `@` `-`, over 64 characters, only digits, or an IP address | 400 — nothing is made. An existing login is never held to this |
+| a username no account holds that is **reserved** (below) | 400 — nothing is made, even from an address with an Allow ban |
+| a sign-up over a limit (below) | 429 with `Retry-After` — nothing is made |
 | a username held under another password | 401, and a line in FreePBX's security log that the GUI's fail2ban jail bans on |
 | no User Manager, or a login with no Extension/User | 409 |
 
@@ -78,7 +80,79 @@ The user's client on an internal MAC (`02…`) is then found, or made — enable
 with no profile and the credentials as its token, so it is served its
 vendor's profile (above). The request is answered as that client: `000000000000.cfg` is its `.cfg`, and so on, with
 the same 404s and 401s as any other client. A client on a real phone's MAC is
-never used. The first request for a new user takes as long as Apply Config.
+never used.
+
+### The lobby
+
+Every sign-up is put in **Settings → Sign-up Context** (`ORYK_OPEN_CONTEXT`),
+`lobby` unless you change it. The lobby is written by the module on Apply
+Config. A lobby phone can call:
+
+- other extensions, conferences, and voicemail (`*97`, `*98`);
+- the outbound routes marked **Emergency** — and no other route;
+
+and anything else gets "no service": an outside number, a ring group, a queue,
+paging, and every other feature code. A lobby phone may place
+**Settings → Lobby Calls** (`ORYK_OPEN_CALLS`, 1) calls at once. A call to a
+lobby phone that the phone forwards (a SIP 302) is followed in the lobby too,
+and a lobby phone cannot transfer, so neither can take a call out to the PSTN.
+A lobby account has no UCP login, and one phone at a time registers with its
+credentials — a second replaces the first. Its emergency caller id is
+**Settings → Lobby Emergency Caller ID** (`ORYK_OPEN_EMERGENCY_CID`) — set it
+to a number an emergency operator can call back, and check what your
+jurisdiction requires of emergency calls from a multi-line system. A user
+leaves the lobby when you **Promote** it — see [The lobby](users.md#the-lobby).
+
+An Allow ban on the phone's address does **not** take it out of the lobby.
+
+### Reserved usernames
+
+A sign-up may not take any of these, in any case, as the whole username or as
+the part before an `@`:
+
+`admin` `administrator` `root` `sysadmin` `superuser` `system` `sys` `owner`
+`manager` `master` `webmaster` `hostmaster` `postmaster` `security` `abuse`
+`noc` `it` `reception` `receptionist` `frontdesk` `front-desk` `front.desk`
+`front_desk` `operator` `attendant` `switchboard` `main` `office` `lobby`
+`support` `help` `helpdesk` `service` `info` `contact` `sales` `billing`
+`accounts` `accounting` `finance` `hr` `marketing` `orders` `noreply`
+`no-reply` `pbx` `freepbx` `asterisk` `sip` `voip` `ucp` `voicemail` `fax`
+`conference` `paging` `intercom` `queue` `ringgroup` `emergency` `oryk`
+`provisioner` `provisioning` `guest` `user` `test` `demo` `default` `null`
+`anonymous` `unknown` `nobody`
+
+nor `admin`, `sysadmin` or `root` followed by `.`, `_`, `-` or a digit
+(`admin2`, `admin.ny`), nor any address at the **Hostname** or **From Domain**
+setting's domain or a subdomain of it. Existing logins, and users you make on
+the Users tab, are never held to this.
+
+### Limits
+
+Unless an Allow ban decides the request, a sign-up is refused with a 429 once
+its address — for IPv6, its /64 — has made **Sign-ups per Minute**
+(`ORYK_OPEN_PER_MINUTE`, 1) in the last minute or **Sign-ups per Day**
+(`ORYK_OPEN_PER_DAY`, 5) in the last 24 hours, or the whole PBX has made
+**Sign-ups per Day, PBX** (`ORYK_OPEN_PER_DAY_TOTAL`, off) — which also puts a
+notice on the dashboard. 0 is no limit. A site deploying many phones from one
+address gets an Allow ban on that address. Only the address the request
+arrived from counts: behind a reverse proxy every sign-up is one address.
+
+Every sign-up, and every refused one, is a line in FreePBX's security log.
+Only a wrong password for an existing username is worded as the login failure
+FreePBX's fail2ban jail bans for, so a phone retrying after a 429 does not get
+its site banned.
+
+### Registering before Apply Config
+
+A sign-up never reloads anything. It raises Apply Config, and until someone
+applies, the new extension reaches Asterisk through the **Realtime bridge**:
+its endpoint, auth and AOR are written to three tables of this module's that
+Asterisk is told to read after its config files, so the phone can register at
+once. A minute job takes the rows out once Apply Config has written the
+extension; a sign-up still waiting a day later puts a notice on the dashboard.
+Install sets the bridge up and says so — it needs Asterisk restarted once, and
+`res_odbc`, `res_config_odbc` and `res_sorcery_realtime` loaded. Without it, a
+sign-up works from the next Apply Config.
 
 A Polycom asks for `000000000000-directory.xml` and, without a `<mac>.cfg`,
 `000000000000.cfg`. While open provisioning is on, those requests are open

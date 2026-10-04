@@ -191,6 +191,43 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a clients table written before 1.2.5 up to date.
+	 *
+	 * `state` is `created` while a sign-up's extension is live only through the
+	 * Realtime bridge and `provisioned` once Apply Config has written it -- see
+	 * ARCHITECTURE.md, "The Realtime bridge". Every existing row is provisioned.
+	 * `signup_ip` is the address open provisioning made the client for, which
+	 * the sign-up limits count by; NULL on every client nobody signed up for.
+	 *
+	 * @return void
+	 */
+	public function addClientSignupColumns()
+	{
+		$columns = [
+			'state' => "ADD COLUMN `state` VARCHAR(16) NOT NULL DEFAULT 'provisioned' AFTER `private_ip`",
+			'signup_ip' => 'ADD COLUMN `signup_ip` VARCHAR(45) NULL DEFAULT NULL AFTER `state`',
+		];
+
+		foreach ($columns as $column => $clause) {
+			if (!$this->schemaHas($this->clientsTable, 'column', $column)) {
+				$this->db->exec("ALTER TABLE `{$this->clientsTable}` $clause");
+			}
+		}
+
+		$indexes = [
+			'signup_ip_created' => 'ADD KEY `signup_ip_created` (`signup_ip`, `created_at`)',
+			'created_at' => 'ADD KEY `created_at` (`created_at`)',
+			'state' => 'ADD KEY `state` (`state`)',
+		];
+
+		foreach ($indexes as $index => $clause) {
+			if (!$this->schemaHas($this->clientsTable, 'index', $index)) {
+				$this->db->exec("ALTER TABLE `{$this->clientsTable}` $clause");
+			}
+		}
+	}
+
+	/**
 	 * Bring a bans table written before 1.3.0 up to date.
 	 *
 	 * The current ban period, how many times it has come back into force, when

@@ -22,6 +22,9 @@ class UsermanManager extends Service
 	 */
 	const OWNER = ['oryk_provisioner', 'owned'];
 
+	/** The User Manager module setting that says whether an account may log in to UCP. */
+	const UCP = ['ucp|Global', 'allowLogin'];
+
 	/**
 	 * Whether User Manager is installed and enabled.
 	 *
@@ -128,6 +131,63 @@ class UsermanManager extends Service
 			throw new \Exception(trim(strip_tags((string) ($status['message'] ?? ''))));
 		}
 	}
+	/**
+	 * Switch UCP login off for the account this module owns for an extension:
+	 * a per-user setting, which wins over whatever its groups allow.
+	 *
+	 * @param int|string $extension Extension/user number.
+	 *
+	 * @return bool True when it was written.
+	 */
+	public function denyUcp($extension)
+	{
+		return $this->setUcpLogin($extension, false);
+	}
+
+	/**
+	 * Undo denyUcp(): the per-user setting is cleared, so the account follows
+	 * its groups again rather than being switched on for its own sake.
+	 *
+	 * @param int|string $extension Extension/user number.
+	 *
+	 * @return bool True when it was written.
+	 */
+	public function restoreUcp($extension)
+	{
+		return $this->setUcpLogin($extension, null);
+	}
+
+	/**
+	 * Write the per-user UCP login setting of an account this module owns.
+	 *
+	 * @param int|string $extension Extension/user number.
+	 * @param bool|null  $allowed   False to refuse login; null to leave it to the groups.
+	 *
+	 * @return bool True when it was written.
+	 */
+	private function setUcpLogin($extension, $allowed)
+	{
+		if (!$this->available()) {
+			return false;
+		}
+
+		try {
+			$user = $this->ownedAccount($extension);
+
+			if ($user === null) {
+				return false;
+			}
+
+			\FreePBX::Userman()->setModuleSettingByID($user['id'], self::UCP[0], self::UCP[1], $allowed);
+		} catch (\Exception $e) {
+			$this->logError('unable to set UCP login for ' . $extension . ': ' . $e->getMessage());
+
+			return false;
+		}
+
+		return true;
+	}
+
 	/**
 	 * Look up the User Manager account tied to an extension.
 	 *

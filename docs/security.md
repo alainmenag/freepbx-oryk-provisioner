@@ -30,12 +30,20 @@ Know what this is before you expose it:
   over 16 MiB is refused. Anyone who can PUT for a client can still overwrite
   that client's log.
 - **Open provisioning creates PBX users from an unauthenticated request.**
-  With **Provisioning** Open, anyone who reaches the endpoint, from any address,
-  can create an extension, account and mailbox per username they invent, each
-  costing a full reload; nothing limits the rate. A wrong
-  password for an existing username is written to FreePBX's security log, which
-  is what FreePBX's own GUI jail watches; new usernames are not failures and
-  are not banned.
+  With **Provisioning** Open, anyone who reaches the endpoint can create an
+  extension, account and mailbox per username they invent. Each one is put in
+  the [lobby](endpoint.md#the-lobby) — internal calls and emergency routes
+  only, no forward or transfer out, no UCP — and the number is limited per
+  address and, if you set it, per PBX; a set of names is
+  [reserved](endpoint.md#reserved-usernames). The limits key on the address
+  the request arrived from, so a stranger with many addresses gets more. What
+  stops the lobby reaching your outbound routes is dialplan the module writes
+  and you can change — keep it that way, and Promote only users you know. A
+  wrong password for an existing username is written to FreePBX's security log,
+  which is what FreePBX's own GUI jail watches; sign-ups and refused sign-ups
+  are logged there too, worded so that jail does not ban for them.
+- **The Realtime bridge holds a sign-up's SIP secret** in a table of the FreePBX
+  database until Apply Config has written it, as the `sip` table always does.
 - **Deleting a user deletes its call history and recordings** — see
   [Deleting](users.md#deleting).
 - The provisioning log records metadata only — MAC, file, profile — never the

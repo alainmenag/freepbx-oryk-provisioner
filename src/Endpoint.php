@@ -41,10 +41,19 @@ class Endpoint extends Service
 	/** @var Bans */
 	private $bans;
 
+	/** @var RealtimeBridge|null Null where nothing is bridged: the tests. */
+	private $bridge;
+
+	/** @var SignupSweep|null Raises the PBX-cap notice; null in the tests. */
+	private $sweep;
+
+	/** @var Settings */
+	private $settings;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users, Bans $bans)
+	public function __construct($freepbx, Clients $clients, Matcher $matcher, Template $template, FileRepo $files, LogRepo $logs, ProvisioningLog $requestLog, Profiles $profiles, Users $users, Bans $bans, ?RealtimeBridge $bridge = null, ?SignupSweep $sweep = null)
 	{
 		parent::__construct($freepbx);
 
@@ -57,6 +66,9 @@ class Endpoint extends Service
 		$this->profiles = $profiles;
 		$this->users = $users;
 		$this->bans = $bans;
+		$this->bridge = $bridge;
+		$this->sweep = $sweep;
+		$this->settings = new Settings($freepbx);
 	}
 
 	/**
@@ -144,7 +156,8 @@ class Endpoint extends Service
 	 * Served or received as the client openClient() returns, with the all-zero
 	 * MAC in the filename swapped for that client's. The address, and the
 	 * username as a user, are checked against Bans before anything is looked up
-	 * or made; the client found is checked by serve() or receive().
+	 * or made -- an Allow that decides lifts the sign-up limits -- and the client
+	 * found is checked by serve() or receive().
 	 *
 	 * @param string|null $username  Basic username offered.
 	 * @param string|null $password  Basic password offered.
@@ -155,13 +168,13 @@ class Endpoint extends Service
 	 */
 	public function openProvision($username, $password, $requested = null, $method = 'GET')
 	{
-		$banned = $this->banned(Mac::OPEN, $username);
+		$banned = $this->banned(Mac::OPEN, $username, $trusted);
 
 		if ($banned) {
 			$this->answer($banned, Mac::OPEN, $requested);
 		}
 
-		$opened = $this->openClient($username, $password, (string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+		$opened = $this->openClient($username, $password, (string) ($_SERVER['REMOTE_ADDR'] ?? ''), $trusted);
 
 		if (!$opened['status']) {
 			$this->answer($opened, Mac::OPEN, $requested);
@@ -182,40 +195,87 @@ class Endpoint extends Service
 	/**
 	 * The client a request for Mac::OPEN is answered as, made when need be.
 	 *
-	 * A username held under another password is written to FreePBX's security
-	 * log as a GUI login failure, which FreePBX's own fail2ban jail watches.
+	 * An existing login is answered as its user. A username no account holds
+	 * is a sign-up: under Users::LOCK, the name is checked (taken, malformed,
+	 * reserved), the limits are counted unless $trusted, and the user, its
+	 * client and its bridge rows are written -- see ARCHITECTURE.md, "Open
+	 * provisioning". Every sign-up, and every refusal, is a line in FreePBX's
+	 * security log; only a username held under another password is written as
+	 * the GUI login failure FreePBX's own fail2ban jail bans for.
 	 *
 	 * @param string|null $username Basic username offered.
 	 * @param string|null $password Basic password offered.
 	 * @param string      $address  Address the request came from, for the
-	 *                              security log.
+	 *                              limits and the security log.
+	 * @param bool        $trusted  Whether an Allow ban decided the request:
+	 *                              no limits. Never the context.
 	 *
 	 * @return array<string, mixed> status, and mac, extension and created on
-	 *                              success; code and message on a refusal.
+	 *                              success; code, message and, on a 429,
+	 *                              retry (seconds) on a refusal.
 	 */
-	public function openClient($username, $password, $address)
+	public function openClient($username, $password, $address, $trusted = false)
 	{
 		if ((string) $username === '' || (string) $password === '') {
 			return ['status' => false, 'code' => 401, 'message' => _('Open provisioning needs a username and password.')];
 		}
 
-		try {
-			$user = $this->users->findOrCreate($username, $password);
+		$username = (string) $username;
+		$token = $username . ':' . $password;
 
-			if ($user === null) {
-				if (function_exists('freepbx_log_security')) {
-					// Control characters out, so a username cannot write a line of its own
-					\freepbx_log_security(sprintf(
-						'Authentication failure for %s from %s',
-						preg_replace('/[^\x20-\x7E]/', '?', (string) $username),
-						$address
-					));
+		try {
+			$user = $this->users->findLogin($username, $password);
+
+			if ($user) {
+				$client = $this->clients->findOrCreateForDevice($user['extension'], $token);
+			} else {
+				// One lock across the user, its client and its bridge rows: the
+				// limits count clients, so a second sign-up must not count before
+				// this one's client is written.
+				$made = $this->users->withLock(function () use ($username, $password, $token, $address, $trusted) {
+					$user = $this->users->signUp($username, $password, function () use ($address, $trusted) {
+						$this->admit($address, $trusted);
+					});
+
+					if ($user === null) {
+						return null;
+					}
+
+					$client = $this->clients->findOrCreateForDevice($user['extension'], $token, $address);
+
+					if ($this->bridge) {
+						$this->bridge->add($user['extension']);
+					}
+
+					return [$user, $client];
+				});
+
+				if ($made === null) {
+					SecurityLog::write(sprintf('Authentication failure for %s from %s', SecurityLog::scrub($username), SecurityLog::scrub($address)));
+
+					return ['status' => false, 'code' => 401, 'message' => _('That username is held under another password.')];
 				}
 
-				return ['status' => false, 'code' => 401, 'message' => _('That username is held under another password.')];
-			}
+				list($user, $client) = $made;
 
-			$client = $this->clients->findOrCreateForDevice($user['extension'], $username . ':' . $password);
+				SecurityLog::write(sprintf(
+					'Open provisioning sign-up: user %s extension %s context %s from %s%s',
+					SecurityLog::scrub($username),
+					$user['extension'],
+					$this->users->lobbyContext(),
+					SecurityLog::scrub($address),
+					$trusted ? ' (allowed)' : ''
+				));
+			}
+		} catch (SignupRefused $e) {
+			SecurityLog::write(sprintf(
+				'Open provisioning sign-up refused (%s) for %s from %s',
+				$e->reason(),
+				SecurityLog::scrub($username),
+				SecurityLog::scrub($address)
+			));
+
+			return ['status' => false, 'code' => $e->status(), 'message' => $e->getMessage(), 'retry' => $e->retry()];
 		} catch (\InvalidArgumentException $e) {
 			return ['status' => false, 'code' => 400, 'message' => $e->getMessage()];
 		} catch (\RuntimeException $e) {
@@ -235,19 +295,69 @@ class Endpoint extends Service
 	}
 
 	/**
+	 * Whether one more sign-up from an address is allowed, by the limits.
+	 *
+	 * Per address (an IPv6 /64 -- Clients::signupKey()) in a minute and in a
+	 * rolling day, then the whole PBX in a day; 0 is no limit. Asked under
+	 * Users::LOCK, so what it counts is everything already written.
+	 *
+	 * @param string $address Address the request came from.
+	 * @param bool   $trusted Whether an Allow ban decided the request.
+	 *
+	 * @return void
+	 *
+	 * @throws SignupRefused A 429, with how long to wait, when a limit is reached.
+	 */
+	private function admit($address, $trusted)
+	{
+		if ($trusted) {
+			return;
+		}
+
+		$limits = [
+			'per-minute' => [(int) $this->settings->get(Settings::OPEN_PER_MINUTE), 60, $address],
+			'per-day' => [(int) $this->settings->get(Settings::OPEN_PER_DAY), 86400, $address],
+			'daily total' => [(int) $this->settings->get(Settings::OPEN_PER_DAY_TOTAL), 86400, null],
+		];
+
+		foreach ($limits as $reason => list($limit, $window, $from)) {
+			if ($limit <= 0) {
+				continue;
+			}
+
+			$count = $from === null
+				? $this->clients->signupsSince($window)
+				: $this->clients->signupsFrom($from, $window);
+
+			if ($count < $limit) {
+				continue;
+			}
+
+			if ($from === null && $this->sweep) {
+				$this->sweep->capReached($limit);
+			}
+
+			throw new SignupRefused($reason, 429, $from === null
+				? _('Open provisioning has taken all the sign-ups it takes in a day; try again later.')
+				: _('Too many sign-ups from this address; try again later.'), $this->clients->signupRetry($from, $window));
+		}
+	}
+
+	/**
 	 * The 403 a ban answers this request with, or null when none does.
 	 *
 	 * Asked of the address it came from, its MAC, the client that MAC names, that
 	 * client's device and extension, and the profile it is served -- its own, or
 	 * its vendor's as resolveRequest() would pick -- or, with no client, the open
-	 * provisioning username. See Bans::check() for which row decides.
+	 * provisioning username. See Bans::decision() for which row decides.
 	 *
 	 * @param mixed       $mac      MAC the request was made with.
 	 * @param string|null $username Open provisioning's Basic username, or null.
+	 * @param bool|null   $trusted  Set to whether an allow decided it.
 	 *
 	 * @return array<string, mixed>|null A refusal for answer(), or null.
 	 */
-	private function banned($mac, $username = null)
+	private function banned($mac, $username = null, &$trusted = null)
 	{
 		$mac = Mac::normalize($mac);
 		$client = $mac === '' ? null : $this->clients->clientByMac($mac);
@@ -258,7 +368,7 @@ class Endpoint extends Service
 			$profile = $vendor ? $vendor['id'] : null;
 		}
 
-		$row = $this->bans->check([
+		$row = $this->bans->decision([
 			'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
 			'mac' => $mac,
 			'client' => $client ? (string) $client['id'] : '',
@@ -268,8 +378,14 @@ class Endpoint extends Service
 				: [(string) $username],
 		]);
 
+		$trusted = $row !== null && $row['state'] === 'allow';
+
+		if ($row === null || $trusted) {
+			return null;
+		}
+
 		// The ban's details go to the provisioning log only: they map a MAC to its extension.
-		return $row === null ? null : [
+		return [
 			'status' => false,
 			'code' => 403,
 			'message' => Bans::refusal($row),
@@ -366,6 +482,10 @@ class Endpoint extends Service
 		// Only a 200 -- see touchClient().
 		if ($status === 200) {
 			$this->clients->touchClient($mac);
+		}
+
+		if (!empty($result['retry'])) {
+			header('Retry-After: ' . (int) $result['retry']);
 		}
 
 		if (!$result['status']) {
