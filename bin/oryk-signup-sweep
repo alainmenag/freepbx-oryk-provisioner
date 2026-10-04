@@ -1,0 +1,33 @@
+#!/usr/bin/env php
+<?php
+/**
+ * bin/oryk-signup-sweep -- one run of the open-provisioning sweep.
+ *
+ * FreePBX's scheduler runs this every minute, as the web user; install()
+ * registers it. Safe to run by hand: `php bin/oryk-signup-sweep`. It never
+ * reloads: it takes sign-ups out of the Realtime bridge once Apply Config has
+ * written them, and keeps the dashboard notices true -- see ARCHITECTURE.md,
+ * "The Realtime bridge". Exits 0.
+ */
+
+if (PHP_SAPI !== 'cli') {
+	exit(1);
+}
+
+// One run at a time.
+$lock = @fopen(sys_get_temp_dir() . '/oryk-signup-sweep.lock', 'c');
+
+if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) {
+	exit(0);
+}
+
+$bootstrap_settings = ['freepbx_auth' => false];
+$restrict_mods = true;
+
+require '/etc/freepbx.conf';
+
+$result = \FreePBX::Oryk_provisioner()->sweepSignups();
+
+echo implode(', ', array_map(function ($what, $count) {
+	return "$what $count";
+}, array_keys($result), $result)), "\n";

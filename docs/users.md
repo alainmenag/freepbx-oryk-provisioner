@@ -13,13 +13,36 @@ device, extension, User Manager account and mailbox, kept in step.
 | **From Domain** | See below. Blank follows the PBX; the field shows what blank comes to. |
 | **Secret** | The SIP password. Never shown. Blank on a new user: generated; on an existing one: unchanged. |
 
-Every save turns SDES media encryption on and applies the configuration, so
-it takes as long as *Apply Config*. Settings you gave an extension in FreePBX
-that this form has no field for are kept.
+Every save turns SDES media encryption on and raises FreePBX's **Apply
+Config** bar, as a save in Core's Extensions page does: the change reaches
+Asterisk when you apply it. So does a delete. Settings you gave an extension
+in FreePBX that this form has no field for are kept.
+
+The list's **Context** column says where each user's calls are placed —
+*Lobby* for users open provisioning made — and **Last Seen** when any of its
+phones was last answered.
 
 The user's **Clients** tab lists the phones provisioned for it, and its **Add
 Client** opens a new client already pointed at this user. The client editor
 links back to its user.
+
+## The lobby
+
+Users made by [open provisioning](endpoint.md#the-lobby) are in the lobby:
+internal calls and emergency routes only. The **Lobby** choice above the
+Users table lists them.
+
+**Promote**, on a lobby user's page beside its **Context**, moves it to
+`from-internal`: after Apply Config it can use your outbound routes, it can
+transfer and place calls without the lobby's limit, and its UCP login follows
+its User Manager groups again. Promote asks first. To put a user back in the
+lobby, set its context in Extensions.
+
+With **Settings → Lobby Expiry** (`ORYK_OPEN_EXPIRE_DAYS`) above 0, a lobby
+user whose phone has not been answered for that many days — or never, and it
+signed up that long ago — is listed under **Expired**. **Delete listed**
+deletes those, as Delete would, after asking; one whose phone was seen in the
+meantime is skipped. Nothing is deleted on its own.
 
 ## Renumbering
 

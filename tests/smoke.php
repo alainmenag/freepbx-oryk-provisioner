@@ -32,7 +32,13 @@ use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Mac;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
+use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
+use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
+use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
+use FreePBX\Modules\Oryk_Provisioner\SecurityLog;
+use FreePBX\Modules\Oryk_Provisioner\SignupRefused;
+use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\Tokens;
 use FreePBX\Modules\Oryk_Provisioner\Transcoder;
@@ -84,6 +90,8 @@ function build()
 	FreePBX::$cdr = new StubCdr();
 	FreePBX::$conf = new StubConfig();
 	FreePBX::$config = ['ASTSPOOLDIR' => '/var/spool/asterisk'];
+	FreePBX::$userman = new StubUserman();
+	\FreePBX\Modules\Oryk_Provisioner\SecurityLog::$written = [];
 
 	$app = new StubApp();
 
@@ -1300,7 +1308,7 @@ is_eq('a profile of its own wins over the vendor',
 
 $db->fetches = [];
 
-echo "\n  what findOrCreate() refuses before asking User Manager anything:\n";
+echo "\n  what findLogin() refuses before asking User Manager anything:\n";
 
 /** The class of what a call threw, or null when it returned. */
 function thrown(callable $call)
@@ -1316,10 +1324,10 @@ function thrown(callable $call)
 
 $s = build();
 
-is_eq('a blank username', thrown(function () use ($s) { $s['users']->findOrCreate('', 'secret'); }), 'InvalidArgumentException');
-is_eq('a username with a space around it', thrown(function () use ($s) { $s['users']->findOrCreate(' bob', 'secret'); }), 'InvalidArgumentException');
-is_eq('a blank password', thrown(function () use ($s) { $s['users']->findOrCreate('bob', ''); }), 'InvalidArgumentException');
-is_eq('anything at all without User Manager', thrown(function () use ($s) { $s['users']->findOrCreate('bob', 'secret'); }), 'RuntimeException');
+is_eq('a blank username', thrown(function () use ($s) { $s['users']->findLogin('', 'secret'); }), 'InvalidArgumentException');
+is_eq('a username with a space around it', thrown(function () use ($s) { $s['users']->findLogin(' bob', 'secret'); }), 'InvalidArgumentException');
+is_eq('a blank password', thrown(function () use ($s) { $s['users']->findLogin('bob', ''); }), 'InvalidArgumentException');
+is_eq('anything at all without User Manager', thrown(function () use ($s) { $s['users']->findLogin('bob', 'secret'); }), 'RuntimeException');
 is_eq('and nothing was created', FreePBX::$core->added, null);
 
 echo "\n  what a new open-provisioning username may be:\n";
@@ -1531,6 +1539,328 @@ is_eq('and nothing is written', file_get_contents($logPath), $kept);
 
 @unlink($logPath);
 @rmdir($logDir);
+
+echo "\nopen sign-ups:\n";
+
+echo "\n  reserved usernames:\n";
+
+$own = ['pbx.example.com', 'example.com', '203.0.113.5'];
+
+foreach (['admin', 'Admin', 'ADMINISTRATOR', 'support', 'reception', 'front.desk', 'lobby', 'guest'] as $name) {
+	is_eq("$name is reserved", Users::reservedUsername($name, $own), true);
+}
+
+is_eq('the part before @ counts at any domain', Users::reservedUsername('support@gmail.com', $own), true);
+is_eq('admin2 is reserved', Users::reservedUsername('admin2', $own), true);
+is_eq('admin.ny is reserved', Users::reservedUsername('admin.ny', $own), true);
+is_eq('root_1 is reserved', Users::reservedUsername('root_1', $own), true);
+is_eq('rootsmith is not', Users::reservedUsername('rootsmith', $own), false);
+is_eq('administrators is not', Users::reservedUsername('administrators', $own), false);
+is_eq('anything at the own domain is', Users::reservedUsername('jane@example.com', $own), true);
+is_eq('and at a subdomain of it', Users::reservedUsername('jane@ny.example.com', $own), true);
+is_eq('a domain that merely ends the same is not', Users::reservedUsername('jane@notexample.com', $own), false);
+is_eq('an own "domain" that is an address is skipped', Users::reservedUsername('jane@203.0.113.5', $own), false);
+is_eq('an ordinary address passes', Users::reservedUsername('alice@gmail.com', $own), false);
+is_eq('an ordinary name passes', Users::reservedUsername('j.smith_2', $own), false);
+
+echo "\n  what a sign-up's address is counted under:\n";
+
+is_eq('an IPv4 address as it is', Clients::signupKey('203.0.113.9'), '203.0.113.9');
+is_eq('an IPv6 address as its /64', Clients::signupKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), '2001:db8:1:2::/64');
+is_eq('so two in one /64 count together',
+	Clients::signupKey('2001:db8:1:2::1') === Clients::signupKey('2001:db8:1:2:ffff::9'), true);
+is_eq('and one in the next /64 does not',
+	Clients::signupKey('2001:db8:1:2::1') === Clients::signupKey('2001:db8:1:3::1'), false);
+
+echo "\n  when a lobby user is expired:\n";
+
+is_eq('off, never', Users::expired(null, 99999999, 0), false);
+is_eq('seen recently, not', Users::expired(3600, 99999999, 7), false);
+is_eq('seen long ago, yes', Users::expired(8 * 86400, 1, 7), true);
+is_eq('never seen, signed up recently, not', Users::expired(null, 3600, 7), false);
+is_eq('never seen, signed up long ago, yes', Users::expired(null, 8 * 86400, 7), true);
+is_eq('nothing known, not', Users::expired(null, null, 7), false);
+
+echo "\n  the settings it adds:\n";
+
+$s = build();
+$settings = new Settings($s['app']);
+is_eq('sign-ups go to lobby by default', $settings->get(Settings::OPEN_CONTEXT), 'lobby');
+is_eq('one a minute', $settings->get(Settings::OPEN_PER_MINUTE), '1');
+is_eq('five a day', $settings->get(Settings::OPEN_PER_DAY), '5');
+is_eq('no PBX cap', $settings->get(Settings::OPEN_PER_DAY_TOTAL), '0');
+is_eq('a context that is not a name is refused',
+	$settings->saveSettings(['settings' => [Settings::OPEN_CONTEXT => 'lobby; DROP']])['status'], false);
+is_eq('an emergency caller id that is not a number is refused',
+	$settings->saveSettings(['settings' => [Settings::OPEN_EMERGENCY_CID => '555-1212']])['status'], false);
+$saved = $settings->saveSettings(['settings' => [Settings::OPEN_EMERGENCY_CID => '+15551234567']]);
+is_eq('a leading + is fine', $saved['status'], true);
+$saved = $settings->saveSettings(['settings' => [Settings::OPEN_CONTEXT => 'from-internal']]);
+is_eq('a from- context saves', $saved['status'], true);
+is_eq('with a warning', count($saved['warnings']), 1);
+
+echo "\n  bans: an allow is read as one:\n";
+
+$allow = ['id' => 9, 'client_id' => '0', 'extension' => '', 'mac' => '', 'profile_id' => '0', 'ip' => '203.0.113.7', 'state' => 'allow'];
+$s = build();
+$bans = new Bans($s['app']);
+$s['app']->Database->fetchAlls = ['oryk_provisioner_bans' => [$allow]];
+is_eq('decision() hands the allow back', $bans->decision(['ip' => '203.0.113.7'])['state'] ?? null, 'allow');
+is_eq('check() reads it as nothing refusing', $bans->check(['ip' => '203.0.113.7']), null);
+
+echo "\n  a sign-up, made:\n";
+
+/** A build with User Manager on, and the next number 9990000013. */
+function signup_build()
+{
+	$s = build();
+	$s['app']->Modules->active = ['userman'];
+	$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012'];
+
+	return $s;
+}
+
+$s = signup_build();
+FreePBX::$config[Settings::OPEN_EMERGENCY_CID] = '+15551234567';
+FreePBX::$conf = new class extends StubConfig {
+	public function conf_setting_exists($keyword)
+	{
+		return $keyword === Settings::OPEN_EMERGENCY_CID || parent::conf_setting_exists($keyword);
+	}
+};
+$admitted = 0;
+$made = $s['users']->signUp('bob', 'secret', function () use (&$admitted) {
+	$admitted++;
+});
+$settings = FreePBX::$core->added['settings'];
+$account = FreePBX::Userman()->getUserByDefaultExtension('9990000013');
+
+is_eq('a user is made', $made, ['extension' => '9990000013', 'created' => true]);
+is_eq('the limits were asked once', $admitted, 1);
+is_eq('in the lobby', $settings['context']['value'] ?? null, 'lobby');
+is_eq('with the lobby emergency caller id', $settings['emergency_cid']['value'] ?? null, '+15551234567');
+is_eq('one contact, replacing the last', [$settings['max_contacts']['value'] ?? null, $settings['remove_existing']['value'] ?? null], ['1', 'yes']);
+is_eq('its account is the username', $account['username'] ?? null, 'bob');
+is_eq('with UCP login switched off', FreePBX::Userman()->getModuleSettingByID($account['id'], 'ucp|Global', 'allowLogin'), false);
+is_eq('and transfer off on its endpoint', strpos((string) file_get_contents($s['conf']), 'allow_transfer=no') !== false, true);
+FreePBX::$config = ['ASTSPOOLDIR' => '/var/spool/asterisk'];
+FreePBX::$conf = new StubConfig();
+
+$s = signup_build();
+is_eq('a reserved name is refused', thrown(function () use ($s) { $s['users']->signUp('support', 'pw'); }), SignupRefused::class);
+is_eq('before anything is written', FreePBX::$core->added, null);
+
+$s = signup_build();
+is_eq('a refusal from the limits stops it', thrown(function () use ($s) {
+	$s['users']->signUp('carol', 'pw', function () {
+		throw new SignupRefused('per-minute', 429, 'slow down', 30);
+	});
+}), SignupRefused::class);
+is_eq('before anything is written either', FreePBX::$core->added, null);
+
+$s = signup_build();
+FreePBX::Userman()->processQuickCreate('pjsip', '1001', ['name' => 'Taken']);
+FreePBX::Userman()->users[1]['username'] = 'dave';
+is_eq('a username already held is not made again', $s['users']->signUp('dave', 'pw'), null);
+
+echo "\n  what the editor may not set:\n";
+
+$s = build();
+$s['users']->saveUser(['id' => '', 'extension' => '1001', 'name' => 'Desk', 'context' => 'from-trunk', 'lobby' => '1']);
+is_eq('a posted context is ignored', FreePBX::$core->added['settings']['context']['value'] ?? null, null);
+is_eq('and so is lobby', FreePBX::$core->added['settings']['max_contacts']['value'] ?? null, null);
+is_eq('a save says Apply Config is pending', $s['users']->saveUser(['id' => '', 'extension' => '1002'])['reload'] ?? null, true);
+
+echo "\n  what openClient() answers a sign-up:\n";
+
+/** The endpoint, over a build. */
+function signup_endpoint(array $s)
+{
+	$settings = new Settings($s['app']);
+	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+
+	return new Endpoint(
+		$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
+		new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
+		new Profiles($s['app'], new FileRepo($s['app'])), $s['users'], new Bans($s['app'])
+	);
+}
+
+$s = signup_build();
+// The retry is asked with the same WHERE, so it is listed first
+$s['app']->Database->answers = ['TIMESTAMPDIFF(SECOND, NOW(), MIN(created_at)' => 42] + $s['app']->Database->answers;
+$s['app']->Database->answers['signup_ip = :ip AND created_at'] = 1;
+$result = signup_endpoint($s)->openClient('erin', 'pw', '203.0.113.9');
+is_eq('a second sign-up in the minute is a 429', $result['code'] ?? null, 429);
+is_eq('told when to come back', $result['retry'] ?? null, 42);
+is_eq('nothing is made', FreePBX::$core->added, null);
+is_eq('and the security log says why', SecurityLog::$written, ['Open provisioning sign-up refused (per-minute) for erin from 203.0.113.9']);
+
+$s = signup_build();
+$s['app']->Database->answers['signup_ip = :ip AND created_at'] = 1;
+$s['app']->Database->insertId = 7;
+$s['app']->Database->answers['FROM devices WHERE id'] = '9990000013';
+$result = signup_endpoint($s)->openClient('erin', 'pw', '203.0.113.9', true);
+is_eq('an Allow lifts the limits', [$result['status'], $result['extension'] ?? null], [true, '9990000013']);
+is_eq('not the context', FreePBX::$core->added['settings']['context']['value'] ?? null, 'lobby');
+is_eq('the sign-up is logged, marked allowed',
+	SecurityLog::$written, ['Open provisioning sign-up: user erin extension 9990000013 context lobby from 203.0.113.9 (allowed)']);
+$marked = array_values(array_filter($s['app']->Database->params, function ($p) {
+	return strpos($p[0], "SET state = 'created'") !== false;
+}));
+is_eq('its client is created, counted under its address', $marked[0][1][':ip'] ?? null, '203.0.113.9');
+
+$s = signup_build();
+$result = signup_endpoint($s)->openClient('Admin', 'pw', '203.0.113.9', true);
+is_eq('a reserved name is a 400 even from an Allow', $result['code'] ?? null, 400);
+is_eq('logged as reserved', SecurityLog::$written, ['Open provisioning sign-up refused (reserved) for Admin from 203.0.113.9']);
+
+$s = signup_build();
+FreePBX::Userman()->processQuickCreate('pjsip', '1001', ['name' => 'Taken']);
+FreePBX::Userman()->users[1]['username'] = 'dave';
+$result = signup_endpoint($s)->openClient('dave', 'wrong', "203.0.113.9\n");
+is_eq('a held name under another password is a 401', $result['code'] ?? null, 401);
+is_eq('the one line FreePBX\'s jail bans for, scrubbed', SecurityLog::$written, ['Authentication failure for dave from 203.0.113.9?']);
+
+$lines = ['Open provisioning sign-up: user x extension 1 context lobby from 1.2.3.4',
+	'Open provisioning sign-up refused (per-day) for x from 1.2.3.4',
+	'Open provisioning user 1 promoted to from-internal by admin'];
+is_eq('no other line looks like a login failure', array_filter($lines, function ($line) {
+	return stripos($line, 'authentication failure') !== false;
+}), []);
+
+echo "\n  promote:\n";
+
+$s = signup_build();
+$s['users']->signUp('frank', 'pw');
+FreePBX::$core->devices['9990000013'] = FreePBX::$core->added['settings'] ? array_map(function ($setting) {
+	return $setting['value'];
+}, FreePBX::$core->added['settings']) + ['id' => '9990000013', 'tech' => 'pjsip'] : [];
+$s['app']->Database->fetches = ['WHERE d.id = :id' => [['extension' => '9990000013', 'name' => 'Frank', 'context' => 'lobby']]];
+$result = $s['users']->promote('9990000013');
+$account = FreePBX::Userman()->getUserByDefaultExtension('9990000013');
+is_eq('a lobby user is promoted', [$result['status'] ?? null, $result['reload'] ?? null], [true, true]);
+is_eq('to from-internal', FreePBX::$core->added['settings']['context']['value'] ?? null, 'from-internal');
+is_eq('keeping its name', FreePBX::$core->added['settings']['description']['value'] ?? null, 'Frank');
+is_eq('and UCP follows its groups again', FreePBX::Userman()->getModuleSettingByID($account['id'], 'ucp|Global', 'allowLogin'), null);
+is_eq('transfer is back on', strpos((string) file_get_contents($s['conf']), 'allow_transfer') === false, true);
+
+$s = build();
+$s['app']->Database->fetches = ['WHERE d.id = :id' => [['extension' => '1001', 'name' => 'Desk', 'context' => 'from-internal']]];
+is_eq('one not in the lobby is refused', $s['users']->promote('1001')['status'] ?? null, false);
+
+echo "\n  the lobby's dialplan:\n";
+
+is_eq('only the routes flagged emergency', LobbyContext::emergencyContexts([
+	['route_id' => '1', 'emergency_route' => ''],
+	['route_id' => '2', 'emergency_route' => 'YES'],
+	['route_id' => 'x', 'emergency_route' => 'YES'],
+]), ['outrt-2']);
+
+$s = build();
+$s['app']->Database->fetchAlls = ["keyword = 'context'" => ['9990000013']];
+$ext = new StubExtensions();
+(new LobbyContext($s['app'], new Settings($s['app'])))->generate($ext);
+is_eq('lobby goes on to lobby-dial', isset($ext->added['lobby']['_[0-9*#+].']), true);
+is_eq('which searches the allowed contexts, deny last',
+	$ext->includes['lobby-dial'] ?? null, ['ext-local', 'ext-meetme', 'app-vmmain', 'app-dialvm', 'lobby-deny']);
+is_eq('lobby-dial has an extension of its own, or FreePBX never writes it',
+	isset($ext->added['lobby-dial']['i']), true);
+is_eq('and an unmatched number gets no service, not a dropped call',
+	$ext->added['lobby-dial']['i'][1][1]->args ?? null, ['ss-noservice']);
+is_eq('no outbound route is included',
+	array_filter($ext->includes['lobby-dial'] ?? [], function ($include) { return strpos($include, 'outrt-') === 0; }), []);
+is_eq('and lobby-deny says no service', $ext->added['lobby-deny']['_[0-9*#+].'][1][1]->args ?? null, ['ss-noservice']);
+is_eq('calls are counted against ORYK_OPEN_CALLS',
+	strpos($ext->added['lobby']['_[0-9*#+].'][2][1]->args[0] ?? '', '> 1]') !== false, true);
+is_eq('a call to a lobby extension is forwarded in the lobby',
+	[$ext->spliced[0][0] ?? null, $ext->spliced[0][1] ?? null, $ext->spliced[0][3]->args ?? null],
+	['ext-local', '9990000013', ['__FORWARD_CONTEXT', 'lobby']]);
+
+echo "\n  the Realtime bridge:\n";
+
+$rows = RealtimeBridge::rows([
+	'id' => '9990000013', 'description' => 'Bob "B" <x>', 'secret' => 's3cret', 'context' => 'lobby',
+	'media_encryption' => 'sdes', 'max_contacts' => '1', 'transport' => '0.0.0.0-udp',
+], 'lobby');
+is_eq('named as FreePBX names them', [$rows['endpoint']['id'], $rows['endpoint']['auth'], $rows['auth']['id'], $rows['aor']['id']],
+	['9990000013', '9990000013-auth', '9990000013-auth', '9990000013']);
+is_eq('the device\'s own context and secret', [$rows['endpoint']['context'], $rows['auth']['password']], ['lobby', 's3cret']);
+is_eq('one contact', $rows['aor']['max_contacts'], '1');
+is_eq('no transfer from the lobby', $rows['endpoint']['allow_transfer'], 'no');
+is_eq('a caller id that cannot break out of its quotes', $rows['endpoint']['callerid'], '"Bob B x" <9990000013>');
+is_eq('every column is one the table has', array_diff(array_keys($rows['endpoint']), array_merge(['id'], RealtimeBridge::COLUMNS['endpoint'])), []);
+$promoted = RealtimeBridge::rows(['id' => '1001', 'context' => 'from-internal'], 'lobby');
+is_eq('transfer stays on outside it', $promoted['endpoint']['allow_transfer'], 'yes');
+
+$text = "[settings]\nfoo => bar\n";
+$block = RealtimeBridge::block('settings', ['ps_endpoints => odbc,x,y'], true);
+is_eq('the block adds to a section the file has', strpos($block, "[settings](+)\n") !== false, true);
+is_eq('and comes back out leaving the rest', trim(RealtimeBridge::withoutBlock($text . "\n" . $block)), trim($text));
+
+echo "\n  a generated number steps over one Apply Config still has:\n";
+
+$etc = sys_get_temp_dir() . '/oryk-numbers-' . getmypid();
+@mkdir($etc);
+file_put_contents($etc . '/pjsip.endpoint.conf', "[9990000013]\ntype=endpoint\n[9990000013-auth]\ntype=auth\n[9990000014]\ntype=endpoint\n");
+$s = build();
+$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012'];
+is_eq('deleted but not applied: skipped', (new NumberAllocator($s['app'], $s['userman'], $etc))->generate(), '9990000015');
+file_put_contents($etc . '/pjsip.endpoint.conf', "[9990000001]\ntype=endpoint\n");
+is_eq('applied away: reused, as in any PBX', (new NumberAllocator($s['app'], $s['userman'], $etc))->generate(), '9990000013');
+@unlink($etc . '/pjsip.endpoint.conf');
+@rmdir($etc);
+
+echo "\n  the minute sweep:\n";
+
+$etc = sys_get_temp_dir() . '/oryk-etc-' . getmypid();
+@mkdir($etc);
+file_put_contents($etc . '/pjsip.endpoint.conf', "[9990000013]\ntype=endpoint\n");
+
+/** A sweep over a build, with Notifications, reading $etc. */
+function sweep_build($etc)
+{
+	$s = build();
+	$s['app']->Notifications = new StubNotifications();
+	$s['bridge'] = new RealtimeBridge($s['app'], $etc);
+	$s['sweep'] = new SignupSweep($s['app'], $s['clients'], $s['bridge'], new Settings($s['app']), new Notices($s['app']), $etc);
+	FreePBX::$core->devices['9990000013'] = ['id' => '9990000013'];
+	FreePBX::$core->devices['9990000014'] = ['id' => '9990000014'];
+
+	return $s;
+}
+
+$pending = [['id' => '7', 'device_id' => '9990000013', 'age' => '30'], ['id' => '8', 'device_id' => '9990000014', 'age' => '30']];
+
+$s = sweep_build($etc);
+$s['app']->Database->fetchAlls = ["WHERE state = 'created'" => $pending];
+$s['app']->Database->answers = ["variable = 'need_reload'" => 'true'];
+is_eq('nothing moves while Apply Config is pending', $s['sweep']->run(), ['provisioned' => 0, 'pending' => 2]);
+
+$s = sweep_build($etc);
+$s['app']->Database->fetchAlls = ["WHERE state = 'created'" => $pending];
+$s['app']->Database->answers = ["variable = 'need_reload'" => 'false'];
+is_eq('applied: only the one the file has is done', $s['sweep']->run(), ['provisioned' => 1, 'pending' => 1]);
+$marked = array_values(array_filter($s['app']->Database->params, function ($p) {
+	return strpos($p[0], "SET state = 'provisioned'") !== false;
+}));
+is_eq('and that one is marked', $marked[0][1] ?? null, [':id_0' => '7']);
+
+$s = sweep_build($etc);
+$s['app']->Database->fetchAlls = ["WHERE state = 'created'" => [['id' => '8', 'device_id' => '9990000014', 'age' => '90000']]];
+$s['app']->Database->answers = ["variable = 'need_reload'" => 'true'];
+$s['sweep']->run();
+is_eq('a day waiting raises BRIDGE_STALE', isset($s['app']->Notifications->up['oryk_provisioner/BRIDGE_STALE']), true);
+$writes = $s['app']->Notifications->writes;
+$s['sweep']->run();
+is_eq('and the next run does not write it again', $s['app']->Notifications->writes, $writes);
+$s['app']->Database->fetchAlls = [];
+$s['sweep']->run();
+is_eq('it comes down when nothing waits', isset($s['app']->Notifications->up['oryk_provisioner/BRIDGE_STALE']), false);
+
+@unlink($etc . '/pjsip.endpoint.conf');
+@rmdir($etc);
+
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);

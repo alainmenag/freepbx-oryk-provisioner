@@ -278,12 +278,30 @@ class Bans extends Service
 	/**
 	 * Whether a request is refused, and by which row.
 	 *
+	 * decision() with an allow read as nothing refusing.
+	 *
+	 * @param array<string, mixed> $subjects See decision().
+	 *
+	 * @return array<string, mixed>|null The deciding banned or deny row; null
+	 *                                   when nothing refuses, or an allow decides.
+	 */
+	public function check(array $subjects)
+	{
+		$row = $this->decision($subjects);
+
+		return ($row && $row['state'] !== 'allow') ? $row : null;
+	}
+
+	/**
+	 * The row that decides a request, whatever its state.
+	 *
 	 * Every row in force that matches is read in one query -- each subject a row
 	 * sets is one of the request's, each it leaves empty is anything -- and
 	 * decide() picks the one that counts. That row -- allow or not -- is counted
 	 * a hit, once per PHP request however often this is asked (open provisioning
 	 * asks twice). Fails open: a table that cannot be read refuses nothing, so new
-	 * files on a PBX not yet upgraded keep provisioning.
+	 * files on a PBX not yet upgraded keep provisioning -- and trusts nothing, so
+	 * an allow is never read out of a table that cannot be read.
 	 *
 	 * @param array<string, mixed> $subjects What the request is: ip, mac, client
 	 *                                       and profile (ids), user (an
@@ -291,10 +309,10 @@ class Bans extends Service
 	 *                                       not have is absent or empty, and then
 	 *                                       only rows leaving it empty match.
 	 *
-	 * @return array<string, mixed>|null The deciding banned or deny row; null
-	 *                                   when nothing refuses, or an allow decides.
+	 * @return array<string, mixed>|null The deciding row, allow included, or
+	 *                                   null when none matches.
 	 */
-	public function check(array $subjects)
+	public function decision(array $subjects)
 	{
 		$subjects = self::subjects($subjects);
 		$clauses = [];
@@ -337,7 +355,7 @@ class Bans extends Service
 			$this->hit((int) $row['id']);
 		}
 
-		return ($row && $row['state'] !== 'allow') ? $row : null;
+		return $row;
 	}
 
 	/**

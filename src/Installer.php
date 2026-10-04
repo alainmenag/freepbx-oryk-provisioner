@@ -8,10 +8,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Installing and uninstalling the module.
  *
  * The tables, the module's settings, the repo directory, the web-root symlink
- * that gives a phone a short URL, and the fail2ban sync: its minute job and,
- * when this runs as root, its helper. Nothing about the symlink or the sync
- * fails the install: without them the module still works, minus a friendly URL
- * or minus fail2ban.
+ * that gives a phone a short URL, the fail2ban sync -- its minute job and,
+ * when this runs as root, its helper -- and open provisioning's minute sweep
+ * and Realtime bridge. Nothing about the symlink, the sync or the bridge fails
+ * the install: without them the module still works, minus a friendly URL,
+ * fail2ban, or sign-ups that register before Apply Config.
  */
 class Installer extends Service
 {
@@ -30,13 +31,19 @@ class Installer extends Service
 	/** @var Fail2ban */
 	private $fail2ban;
 
+	/** @var RealtimeBridge|null */
+	private $bridge;
+
 	/** The FreePBX job the minute sync is registered as. */
 	const SYNC_JOB = 'fail2ban-sync';
+
+	/** The FreePBX job the open-provisioning sweep is registered as. */
+	const SWEEP_JOB = 'signup-sweep';
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null)
 	{
 		parent::__construct($freepbx);
 
@@ -45,6 +52,7 @@ class Installer extends Service
 		$this->logs = $logs;
 		$this->settings = $settings;
 		$this->fail2ban = $fail2ban;
+		$this->bridge = $bridge;
 	}
 
 	/**
@@ -122,6 +130,9 @@ class Installer extends Service
 		// last_seen is on the client rather than derived from the provisioning log,
 		// because the log is prunable and when a phone last checked in is the one
 		// fact about a client that must survive its requests being thrown away.
+		//
+		// state and signup_ip are open provisioning's -- see
+		// Schema::addClientSignupColumns().
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->clientsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -133,12 +144,17 @@ class Installer extends Service
 				`last_seen` DATETIME NULL DEFAULT NULL,
 				`public_ip` VARCHAR(45) NULL DEFAULT NULL,
 				`private_ip` VARCHAR(45) NULL DEFAULT NULL,
+				`state` VARCHAR(16) NOT NULL DEFAULT 'provisioned',
+				`signup_ip` VARCHAR(45) NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
 				UNIQUE KEY `mac` (`mac`),
 				KEY `device_id` (`device_id`),
-				KEY `profile_id` (`profile_id`)
+				KEY `profile_id` (`profile_id`),
+				KEY `signup_ip_created` (`signup_ip`, `created_at`),
+				KEY `created_at` (`created_at`),
+				KEY `state` (`state`)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
@@ -227,6 +243,7 @@ class Installer extends Service
 		$this->schema->relaxClientMacColumn();
 		$this->schema->addCoreIndexes();
 		$this->schema->addBanSyncColumns();
+		$this->schema->addClientSignupColumns();
 
 		// Advanced Settings -> Oryk Provisioner. Registering again on an upgrade
 		// keeps whatever is set there.
@@ -254,8 +271,17 @@ class Installer extends Service
 			));
 		}
 
-		$this->registerSyncJob();
+		$this->registerJob(self::SYNC_JOB, 'oryk-fail2ban-sync', 'the fail2ban sync');
+		$this->registerJob(self::SWEEP_JOB, 'oryk-signup-sweep', 'the open-provisioning sweep');
 		$this->setUpFail2ban();
+
+		// Like the symlink, nothing about the bridge fails the install: without
+		// it a sign-up works from the next Apply Config.
+		if ($this->bridge) {
+			foreach ($this->bridge->install() as $line) {
+				$this->installMessage('Provisioner: ' . $line);
+			}
+		}
 
 		return true;
 	}
@@ -265,7 +291,8 @@ class Installer extends Service
 	 *
 	 * The tables are deliberately left in place; the symlink is not, since it
 	 * would be left pointing into a directory that has gone, and nor are the
-	 * sync job and, when this runs as root, the fail2ban helper, its sudo rule
+	 * minute jobs, the bridge's lines in Asterisk's config, the dashboard
+	 * notices and, when this runs as root, the fail2ban helper, its sudo rule
 	 * and the banned and deny jails.
 	 *
 	 * @return void
@@ -274,11 +301,21 @@ class Installer extends Service
 	{
 		$this->unlinkEngine();
 
-		try {
-			$this->FreePBX->Job->remove('oryk_provisioner', self::SYNC_JOB);
-		} catch (\Throwable $e) {
-			// No Job BMO: nothing was registered.
+		foreach ([self::SYNC_JOB, self::SWEEP_JOB] as $job) {
+			try {
+				$this->FreePBX->Job->remove('oryk_provisioner', $job);
+			} catch (\Throwable $e) {
+				// No Job BMO: nothing was registered.
+			}
 		}
+
+		if ($this->bridge) {
+			$this->bridge->uninstall();
+		}
+
+		$notices = new Notices($this->FreePBX);
+		$notices->clear(Notices::OPEN_CAP);
+		$notices->clear(Notices::BRIDGE_STALE);
 
 		if ($this->runningAsRoot()) {
 			foreach ($this->fail2ban->runSetup(['--remove']) as $line) {
@@ -288,25 +325,29 @@ class Installer extends Service
 	}
 
 	/**
-	 * Register bin/oryk-fail2ban-sync with FreePBX's scheduler, every minute.
+	 * Register one of bin/'s minute jobs with FreePBX's scheduler.
 	 *
 	 * Removed and added again on every install, so the path in it is this
 	 * install's. It runs as the web user, like every FreePBX job; the sync
 	 * reaches fail2ban through the sudo helper.
 	 *
+	 * @param string $job    Job name, one of the *_JOB constants.
+	 * @param string $script File name under bin/.
+	 * @param string $what   What it is, for the message when it cannot be.
+	 *
 	 * @return void
 	 */
-	private function registerSyncJob()
+	private function registerJob($job, $script, $what)
 	{
 		$php = is_executable(PHP_BINDIR . '/php') ? PHP_BINDIR . '/php' : 'php';
-		$script = (realpath(dirname(__DIR__) . '/bin') ?: dirname(__DIR__) . '/bin') . '/oryk-fail2ban-sync';
+		$path = (realpath(dirname(__DIR__) . '/bin') ?: dirname(__DIR__) . '/bin') . '/' . $script;
 
 		try {
-			$job = $this->FreePBX->Job;
-			$job->remove('oryk_provisioner', self::SYNC_JOB);
-			$job->addCommand('oryk_provisioner', self::SYNC_JOB, escapeshellarg($php) . ' ' . escapeshellarg($script), '* * * * *', 50);
+			$jobs = $this->FreePBX->Job;
+			$jobs->remove('oryk_provisioner', $job);
+			$jobs->addCommand('oryk_provisioner', $job, escapeshellarg($php) . ' ' . escapeshellarg($path), '* * * * *', 50);
 		} catch (\Throwable $e) {
-			$this->installMessage('Provisioner: could not schedule the fail2ban sync: ' . $e->getMessage());
+			$this->installMessage('Provisioner: could not schedule ' . $what . ': ' . $e->getMessage());
 		}
 	}
 

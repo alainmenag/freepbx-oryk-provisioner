@@ -248,8 +248,8 @@
 		$(document).on('click', '#oryksave', function (event) {
 			event.preventDefault();
 
-			// Held down until the answer: a user's save runs a full reload,
-			// and a second press would post the form again underneath it.
+			// Held down until the answer: a second press would post the form
+			// again underneath it.
 			var button = $(this).prop('disabled', true);
 
 			orykPost(editor.save, editor.values()).done(function (response) {

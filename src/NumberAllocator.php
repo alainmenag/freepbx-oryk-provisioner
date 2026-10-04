@@ -11,7 +11,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * account at once, so it is free only when all three are. A number accepted
  * while something holds it does not fail, it overwrites that extension.
  * Generated ids come from above the highest number held anywhere, never
- * from a gap, so a freed number is not handed out again.
+ * from a gap. Deleting the highest user frees its number for the next one, as
+ * in any PBX -- but not while Apply Config still has it in the PJSIP files,
+ * where its old endpoint would win over the new user's Realtime bridge rows.
  */
 class NumberAllocator extends Service
 {
@@ -32,22 +34,37 @@ class NumberAllocator extends Service
 	 */
 	private $userman;
 
+	/** @var string Asterisk's config directory, where the applied endpoints are read. */
+	private $etc;
+
 	/**
 	 * @param object         $freepbx FreePBX application instance.
 	 * @param UsermanManager $userman User Manager accounts.
+	 * @param string|null    $etc     Asterisk's config directory, if not ASTETCDIR.
 	 */
-	public function __construct($freepbx, UsermanManager $userman)
+	public function __construct($freepbx, UsermanManager $userman, $etc = null)
 	{
 		parent::__construct($freepbx);
 
 		$this->userman = $userman;
+
+		if ($etc === null) {
+			try {
+				$etc = (string) \FreePBX::Config()->get('ASTETCDIR');
+			} catch (\Throwable $e) {
+				$etc = '';
+			}
+		}
+
+		$this->etc = rtrim($etc !== '' ? $etc : '/etc/asterisk', '/');
 	}
 
 	/**
 	 * Generate the next sequential device identifier.
 	 *
 	 * NUMBER_LENGTH digits starting with NUMBER_PREFIX; the highest id held
-	 * by a device or a user is incremented, so a freed id is never reused.
+	 * by a device or a user is incremented, stepping over any number Apply
+	 * Config still has an endpoint for -- a user deleted but not yet applied.
 	 *
 	 * @return string Device identifier.
 	 *
@@ -72,6 +89,11 @@ class NumberAllocator extends Service
 		$highest = (int) $sth->fetchColumn();
 
 		$next = ($highest >= $floor ? $highest : $floor) + 1;
+		$applied = $this->appliedEndpoints();
+
+		while (isset($applied[(string) $next])) {
+			$next++;
+		}
 
 		if ($next > $ceiling) {
 			throw new \Exception(sprintf(
@@ -82,6 +104,23 @@ class NumberAllocator extends Service
 		}
 
 		return (string) $next;
+	}
+
+	/**
+	 * The ids Apply Config last wrote an endpoint section for.
+	 *
+	 * Read off pjsip.endpoint.conf, as SignupSweep reads it; a file that
+	 * cannot be read steps over nothing.
+	 *
+	 * @return array<string, true> Section names, as keys.
+	 */
+	private function appliedEndpoints()
+	{
+		$text = (string) @file_get_contents($this->etc . '/pjsip.endpoint.conf');
+
+		preg_match_all('/^\[([0-9]+)\]/m', $text, $matches);
+
+		return array_fill_keys($matches[1], true);
 	}
 
 	/**

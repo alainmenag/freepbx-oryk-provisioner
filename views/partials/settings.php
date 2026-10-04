@@ -105,6 +105,11 @@ $h = function ($value) {
 				return;
 			}
 
+			// Saved already: said before the reload, which would wipe a notice.
+			if (response.warnings && response.warnings.length) {
+				window.alert(response.warnings.join('\n\n'));
+			}
+
 			window.location = '?display=oryk_provisioner&tab=settings';
 		}).fail(function () {
 			failed('The server could not be reached.');

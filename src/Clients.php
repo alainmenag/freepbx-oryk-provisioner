@@ -274,15 +274,19 @@ class Clients extends Service
 	 * that phone's. A found one whose token no longer verifies is given
 	 * $token, so a password changed in UCP does not lock the phone out.
 	 *
+	 * A new client made for a sign-up is written `created`, with the address
+	 * the limits count it under -- see signupKey().
+	 *
 	 * @param string      $deviceId FreePBX device id.
 	 * @param string|null $token    Token as typed, user:password; a new client
 	 *                              given none gets a generated one.
+	 * @param string|null $signupIp Address a sign-up came from, or null.
 	 *
 	 * @return array{id: int, mac: string, created: bool} The client.
 	 *
 	 * @throws \Exception When saveClient() refuses.
 	 */
-	public function findOrCreateForDevice($deviceId, $token = null)
+	public function findOrCreateForDevice($deviceId, $token = null, $signupIp = null)
 	{
 		$stmt = $this->db->prepare(
 			"SELECT pc.id, pc.mac, pc.token
@@ -319,7 +323,144 @@ class Clients extends Service
 
 		$id = (int) $saved['id'];
 
+		if ($signupIp !== null) {
+			$this->db->prepare(
+				"UPDATE `{$this->clientsTable}` SET state = 'created', signup_ip = :ip, updated_at = updated_at WHERE id = :id"
+			)->execute([':ip' => self::signupKey($signupIp), ':id' => $id]);
+		}
+
 		return ['id' => $id, 'mac' => Mac::internal($id), 'created' => true];
+	}
+
+	/**
+	 * What a sign-up's address is counted under: an IPv4 address as it is, an
+	 * IPv6 one as its /64 -- a single host is routinely given a whole /64, and
+	 * counted by address it would have a fresh limit per address.
+	 *
+	 * @param string $ip Address the request came from.
+	 *
+	 * @return string The key stored in `signup_ip` and counted by.
+	 */
+	public static function signupKey($ip)
+	{
+		$ip = trim((string) $ip);
+		$packed = @inet_pton($ip);
+
+		if ($packed === false) {
+			return $ip;
+		}
+
+		if (strlen($packed) === 4) {
+			return inet_ntop($packed);
+		}
+
+		return inet_ntop(substr($packed, 0, 8) . str_repeat("\0", 8)) . '/64';
+	}
+
+	/**
+	 * How many sign-ups came from one address in the last $seconds.
+	 *
+	 * @param string $ip      Address the request came from.
+	 * @param int    $seconds How far back to count.
+	 *
+	 * @return int Sign-ups.
+	 */
+	public function signupsFrom($ip, $seconds)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT COUNT(*) FROM `{$this->clientsTable}`
+			WHERE signup_ip = :ip AND created_at > NOW() - INTERVAL :seconds SECOND"
+		);
+		$stmt->execute([':ip' => self::signupKey($ip), ':seconds' => (int) $seconds]);
+
+		return (int) $stmt->fetchColumn();
+	}
+
+	/**
+	 * How many sign-ups there were in the last $seconds, from anywhere.
+	 *
+	 * @param int $seconds How far back to count.
+	 *
+	 * @return int Sign-ups.
+	 */
+	public function signupsSince($seconds)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT COUNT(*) FROM `{$this->clientsTable}`
+			WHERE signup_ip IS NOT NULL AND created_at > NOW() - INTERVAL :seconds SECOND"
+		);
+		$stmt->execute([':seconds' => (int) $seconds]);
+
+		return (int) $stmt->fetchColumn();
+	}
+
+	/**
+	 * Seconds until the oldest sign-up from an address inside the last
+	 * $seconds leaves that window -- what a 429 tells the phone to wait.
+	 *
+	 * @param string|null $ip      Address, or null for every sign-up.
+	 * @param int         $seconds The window.
+	 *
+	 * @return int Seconds, at least 1.
+	 */
+	public function signupRetry($ip, $seconds)
+	{
+		$where = $ip === null ? 'signup_ip IS NOT NULL' : 'signup_ip = :ip';
+		$params = [':seconds' => (int) $seconds];
+
+		if ($ip !== null) {
+			$params[':ip'] = self::signupKey($ip);
+		}
+
+		$stmt = $this->db->prepare(
+			"SELECT TIMESTAMPDIFF(SECOND, NOW(), MIN(created_at) + INTERVAL :seconds SECOND)
+			FROM `{$this->clientsTable}`
+			WHERE $where AND created_at > NOW() - INTERVAL :seconds SECOND"
+		);
+		$stmt->execute($params);
+
+		return max(1, (int) $stmt->fetchColumn());
+	}
+
+	/**
+	 * Sign-ups whose extension is not yet known to be in the PJSIP files.
+	 *
+	 * @return array<int, array<string, mixed>> id, device_id, age (seconds since made).
+	 */
+	public function pendingSignups()
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id, device_id, TIMESTAMPDIFF(SECOND, created_at, NOW()) AS age
+			FROM `{$this->clientsTable}`
+			WHERE state = 'created'
+			ORDER BY id"
+		);
+		$stmt->execute();
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+	}
+
+	/**
+	 * Mark sign-ups as written to the PJSIP files.
+	 *
+	 * @param array<int, int|string> $ids Client ids.
+	 *
+	 * @return void
+	 */
+	public function markProvisioned(array $ids)
+	{
+		$ids = array_values(array_map('intval', $ids));
+
+		if (!$ids) {
+			return;
+		}
+
+		$params = [];
+		$in = $this->inClause('id', $ids, 'id', $params);
+
+		$this->db->prepare(
+			"UPDATE `{$this->clientsTable}` SET state = 'provisioned', updated_at = updated_at WHERE $in"
+		)->execute($params);
 	}
 
 	/**

@@ -19,18 +19,22 @@ use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
+use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Logs;
 use FreePBX\Modules\Oryk_Provisioner\Matcher;
 use FreePBX\Modules\Oryk_Provisioner\Navigator;
+use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
 use FreePBX\Modules\Oryk_Provisioner\Pages;
 use FreePBX\Modules\Oryk_Provisioner\Previews;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\ProvisioningLog;
+use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\Resources;
 use FreePBX\Modules\Oryk_Provisioner\Schema;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
+use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
 use FreePBX\Modules\Oryk_Provisioner\Template;
 use FreePBX\Modules\Oryk_Provisioner\Tokens;
 use FreePBX\Modules\Oryk_Provisioner\UcpAssignments;
@@ -104,6 +108,14 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *
  *   Fail2ban         the only file that asks fail2ban, through the sudo helper
  *   BanSync          the minute job, and a save carried to fail2ban at once
+ *
+ * and, for open provisioning's sign-ups -- see ARCHITECTURE.md, "Open
+ * provisioning" and "The Realtime bridge":
+ *
+ *   RealtimeBridge   a sign-up live before Apply Config writes it
+ *   SignupSweep      the minute job: out of the bridge once written; notices
+ *   Notices          the module's dashboard notices
+ *   LobbyContext     the lobby's dialplan, on Apply Config
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
@@ -138,6 +150,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Installer */
 	private $installer;
+
+	/** @var LobbyContext */
+	private $lobby;
+
+	/** @var SignupSweep */
+	private $sweep;
 
 	/** @var LogRepo */
 	private $logs;
@@ -214,6 +232,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
 
+		$bridge = new RealtimeBridge($freepbx);
+		$this->sweep = new SignupSweep($freepbx, $this->clients, $bridge, $this->settings, new Notices($freepbx));
+		$this->lobby = new LobbyContext($freepbx, $this->settings);
+
 		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
@@ -231,7 +253,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$ucp,
 			$cdr,
 			$this->endpointSettings,
-			$this->clients
+			$this->clients,
+			$bridge
 		);
 
 		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
@@ -241,7 +264,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans);
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge);
 
 		$this->endpoint = new Endpoint(
 			$freepbx,
@@ -253,7 +276,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->provisioningLog,
 			$this->profiles,
 			$this->users,
-			$this->bans
+			$this->bans,
+			$bridge,
+			$this->sweep
 		);
 
 		$this->pages = new Pages(
@@ -429,6 +454,44 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * One run of the open-provisioning sweep. Called every minute by
+	 * bin/oryk-signup-sweep, which FreePBX's scheduler runs.
+	 *
+	 * @return array<string, int> What was done; see SignupSweep::run().
+	 */
+	public function sweepSignups()
+	{
+		return $this->sweep->run();
+	}
+
+	/**
+	 * When this module's dialplan is written, among every module's: after
+	 * Core's, since the forward guard splices into ext-local.
+	 *
+	 * @return int Priority.
+	 */
+	public function myDialplanHooks()
+	{
+		return 900;
+	}
+
+	/**
+	 * Write the lobby's dialplan. See LobbyContext.
+	 *
+	 * @param object $ext      FreePBX's extensions object.
+	 * @param string $engine   Dialplan engine; only asterisk is written for.
+	 * @param int    $priority The priority myDialplanHooks() asked for.
+	 *
+	 * @return void
+	 */
+	public function doDialplanHook(&$ext, $engine, $priority)
+	{
+		if ($engine === 'asterisk') {
+			$this->lobby->generate($ext);
+		}
+	}
+
+	/**
 	 * Record one provisioning request.
 	 *
 	 * Public because the endpoint logs the requests that never reach serve()
@@ -503,6 +566,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listUsers':
 			case 'saveUser':
 			case 'deleteUser':
+			case 'promoteUser':
+			case 'deleteExpiredUsers':
 			case 'saveSettings':
 			case 'listBans':
 			case 'saveBan':
@@ -626,12 +691,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listUsers':
 				return $this->users->listUsers($scope['users']);
 
-			// A save runs a full reload, so it answers as slowly as Apply Config.
+			// A save or delete raises Apply Config; nothing here reloads.
 			case 'saveUser':
 				return $this->users->saveUser($_REQUEST);
 
 			case 'deleteUser':
 				return $this->users->deleteUser($_REQUEST['id'] ?? null);
+
+			case 'promoteUser':
+				return $this->users->promote($_REQUEST['id'] ?? null);
+
+			case 'deleteExpiredUsers':
+				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
 
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);

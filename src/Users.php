@@ -25,6 +25,9 @@ class Users extends Service
 	 */
 	const SHAPE = "d.tech = 'pjsip' AND d.id = d.user";
 
+	/** A user's context, over `devices d`. Interpolated, so a literal. */
+	const CONTEXT_EXPR = "(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'context' LIMIT 1)";
+
 	/** Driver settings written on every save, over the defaults and the form alike. */
 	const FORCED = [
 		'media_encryption' => 'sdes',
@@ -57,6 +60,31 @@ class Users extends Service
 	 * and IP addresses (they read as one in the security log).
 	 */
 	const SIGNUP_USERNAME = '/\A[A-Za-z0-9._@-]{1,64}\z/';
+
+	/**
+	 * Names a sign-up may not take, lowercase: the roles and shared mailboxes a
+	 * stranger could take before the real account is made. Matched by
+	 * reservedUsername(), on the whole name and on the part before an `@`.
+	 */
+	const RESERVED = [
+		// administration
+		'admin', 'administrator', 'root', 'sysadmin', 'superuser', 'system', 'sys', 'owner',
+		'manager', 'master', 'webmaster', 'hostmaster', 'postmaster', 'security', 'abuse', 'noc', 'it',
+		// front of house
+		'reception', 'receptionist', 'frontdesk', 'front-desk', 'front.desk', 'front_desk', 'operator',
+		'attendant', 'switchboard', 'main', 'office', 'lobby',
+		// shared mailboxes
+		'support', 'help', 'helpdesk', 'service', 'info', 'contact', 'sales', 'billing', 'accounts',
+		'accounting', 'finance', 'hr', 'marketing', 'orders', 'noreply', 'no-reply',
+		// telephony, and the PBX itself
+		'pbx', 'freepbx', 'asterisk', 'sip', 'voip', 'ucp', 'voicemail', 'fax', 'conference', 'paging',
+		'intercom', 'queue', 'ringgroup', 'emergency', 'oryk', 'provisioner', 'provisioning',
+		// placeholders
+		'guest', 'user', 'test', 'demo', 'default', 'null', 'anonymous', 'unknown', 'nobody',
+	];
+
+	/** admin, sysadmin or root followed by a separator or a digit: admin2, admin.ny, root_1 -- not rootsmith. */
+	const RESERVED_PREFIX = '/^(admin|sysadmin|root)[._0-9-]/';
 
 	/** The MySQL named lock every save and every open-provisioning sign-up holds. */
 	const LOCK = 'oryk_provisioner_users';
@@ -94,6 +122,12 @@ class Users extends Service
 	/** @var Clients */
 	private $clients;
 
+	/** @var RealtimeBridge|null Null where nothing is bridged: the tests. */
+	private $bridge;
+
+	/** @var Settings|null Made when first asked for; see settings(). */
+	private $settings;
+
 	/**
 	 * @param object              $freepbx    FreePBX application instance.
 	 * @param NumberAllocator     $numbers    Number allocation.
@@ -105,6 +139,7 @@ class Users extends Service
 	 * @param CdrHistory          $cdr        Call history.
 	 * @param EndpointSettings    $endpoints  Custom pjsip endpoint settings.
 	 * @param Clients             $clients    Provisioner clients pointing at a user.
+	 * @param RealtimeBridge|null $bridge     Sign-ups live before Apply Config.
 	 */
 	public function __construct(
 		$freepbx,
@@ -116,7 +151,8 @@ class Users extends Service
 		UcpAssignments $ucp,
 		CdrHistory $cdr,
 		EndpointSettings $endpoints,
-		Clients $clients
+		Clients $clients,
+		?RealtimeBridge $bridge = null
 	) {
 		parent::__construct($freepbx);
 
@@ -129,6 +165,7 @@ class Users extends Service
 		$this->cdr = $cdr;
 		$this->endpoints = $endpoints;
 		$this->clients = $clients;
+		$this->bridge = $bridge;
 	}
 
 	/**
@@ -151,6 +188,8 @@ class Users extends Service
 			'email' => 'email',
 			'clients' => 'clients',
 			'secure' => 'secure',
+			'context' => 'context',
+			'last_seen' => 'last_seen',
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['extension'];
@@ -165,6 +204,23 @@ class Users extends Service
 
 		if ($extensions !== null) {
 			$where .= ' AND ' . $this->inClause('d.id', $extensions, 'extension', $params);
+		}
+
+		// Whitelisted: anything else is the whole list. Both values are bound.
+		$filter = (string) ($_REQUEST['filter'] ?? '');
+
+		if ($filter === 'lobby' || $filter === 'expired') {
+			$where .= ' AND ' . self::CONTEXT_EXPR . ' = :lobby';
+			$params[':lobby'] = $this->lobbyContext();
+		}
+
+		if ($filter === 'expired') {
+			$days = $this->expireDays();
+			$where .= $days > 0 ? ' AND ' . $this->expiredExpr() : ' AND 0';
+
+			if ($days > 0) {
+				$params[':days'] = $days;
+			}
 		}
 
 		if ($search !== '') {
@@ -186,7 +242,7 @@ class Users extends Service
 			LIMIT :limit OFFSET :offset"
 		);
 		foreach ($params as $key => $value) {
-			$stmt->bindValue($key, $value);
+			$stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
 		}
 		$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
 		$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
@@ -253,21 +309,28 @@ class Users extends Service
 	/**
 	 * Save from the editor.
 	 *
+	 * Only the editor's fields are passed on: store() also takes what open
+	 * provisioning and Promote set, and a request may not.
+	 *
 	 * @param array<string, mixed> $request id (current number, '' for new),
 	 *                                      extension, name, email,
 	 *                                      from_domain, secret.
 	 *
-	 * @return array<string, mixed> Status and the number saved, or a message.
+	 * @return array<string, mixed> Status and the number saved, and `reload`
+	 *                              (Apply Config is pending); or a message.
 	 */
 	public function saveUser($request)
 	{
+		$request = is_array($request) ? $request : [];
+		$input = array_intersect_key($request, array_flip(array_merge(['id', 'extension'], array_values(self::FIELDS))));
+
 		try {
-			$id = $this->store(is_array($request) ? $request : []);
+			$id = $this->store($input);
 		} catch (\Exception $e) {
 			return ['status' => false, 'message' => $e->getMessage()];
 		}
 
-		return ['status' => true, 'id' => $id];
+		return ['status' => true, 'id' => $id, 'reload' => true];
 	}
 
 	/**
@@ -275,7 +338,7 @@ class Users extends Service
 	 *
 	 * @param mixed $extension Extension number.
 	 *
-	 * @return array<string, mixed> Status, and a message when it was refused.
+	 * @return array<string, mixed> Status and `reload`, or a message when it was refused.
 	 */
 	public function deleteUser($extension)
 	{
@@ -285,30 +348,155 @@ class Users extends Service
 
 		$this->remove($extension);
 
-		return ['status' => true];
+		return ['status' => true, 'reload' => true];
 	}
 
 	/**
-	 * The user a phone's credentials name, made from them when there is none.
+	 * Move a lobby user to from-internal: Promote, on its page.
 	 *
-	 * A User Manager login answers with its account's default extension. A
-	 * username no account holds makes a user as the editor does with a blank
-	 * Extension, and its account is given that username and password. The SIP
-	 * secret stays Core's generated one.
+	 * The context is written, UCP follows the account's groups again, and the
+	 * user's bridge rows, if it has any, are rewritten; the call limit and the
+	 * forward and transfer guards go with the context on the next Apply Config.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> Status, id and `reload`; or a message.
+	 */
+	public function promote($extension)
+	{
+		try {
+			return $this->withLock(function () use ($extension) {
+				$row = $this->userRow($extension);
+
+				if (!$row) {
+					return ['status' => false, 'message' => _('That user no longer exists.')];
+				}
+
+				if ((string) $row['context'] !== $this->lobbyContext()) {
+					return ['status' => false, 'message' => _('That user is not in the lobby.')];
+				}
+
+				// The name is passed back, or a blank one would rename it to its number
+				$id = $this->store([
+					'id' => (string) $row['extension'],
+					'name' => (string) $row['name'],
+					'context' => 'from-internal',
+					'promote' => true,
+				]);
+
+				if (!$this->userman->restoreUcp($id)) {
+					$this->logWarning('could not restore UCP for promoted user ' . $id);
+				}
+
+				SecurityLog::write(sprintf(
+					'Open provisioning user %s promoted to from-internal by %s',
+					$id,
+					SecurityLog::admin()
+				));
+
+				return ['status' => true, 'id' => $id, 'reload' => true];
+			});
+		} catch (\Exception $e) {
+			return ['status' => false, 'message' => $e->getMessage()];
+		}
+	}
+
+	/**
+	 * Delete the expired lobby users an admin was shown: Delete listed.
+	 *
+	 * Each extension posted is asked again, here, whether it is still expired
+	 * -- its phone may have been seen since the list was drawn, it may have
+	 * been promoted, or the setting changed -- and is skipped when it is not.
+	 *
+	 * @param mixed $extensions Extensions, as posted.
+	 *
+	 * @return array<string, mixed> status, deleted and skipped counts, `reload`.
+	 */
+	public function deleteExpired($extensions)
+	{
+		$days = $this->expireDays();
+
+		if ($days <= 0) {
+			return ['status' => false, 'message' => _('Lobby Expiry is off.')];
+		}
+
+		$extensions = array_values(array_unique(array_filter(array_map('strval', is_array($extensions) ? $extensions : []), 'ctype_digit')));
+		$deleted = 0;
+		$skipped = 0;
+
+		try {
+			$this->withLock(function () use ($extensions, $days, &$deleted, &$skipped) {
+				foreach ($extensions as $extension) {
+					$row = $this->userRow($extension);
+					$still = $row
+						&& (string) $row['context'] === $this->lobbyContext()
+						&& self::expired($row['last_seen_age'], $row['signed_up_age'], $days);
+
+					if ($still && $this->remove($extension)) {
+						$deleted++;
+					} else {
+						$skipped++;
+					}
+				}
+			});
+		} catch (\Exception $e) {
+			return ['status' => false, 'message' => $e->getMessage()];
+		}
+
+		return ['status' => true, 'deleted' => $deleted, 'skipped' => $skipped, 'reload' => $deleted > 0];
+	}
+
+	/**
+	 * Whether a lobby user has gone unseen too long.
+	 *
+	 * Seen: expired once that is more than $days ago. Never seen: once signing
+	 * up is. Neither known: never. **expiredExpr() is this in SQL** -- the two
+	 * must agree.
+	 *
+	 * @param int|string|null $seenAge     Seconds since its phone was last answered, or null.
+	 * @param int|string|null $signedUpAge Seconds since it signed up, or null.
+	 * @param int             $days        ORYK_OPEN_EXPIRE_DAYS; 0 or less is never.
+	 *
+	 * @return bool True when it is expired.
+	 */
+	public static function expired($seenAge, $signedUpAge, $days)
+	{
+		$days = (int) $days;
+		$age = $seenAge !== null && $seenAge !== '' ? $seenAge : $signedUpAge;
+
+		if ($days <= 0 || $age === null || $age === '') {
+			return false;
+		}
+
+		return (int) $age > $days * 86400;
+	}
+
+	/**
+	 * ORYK_OPEN_EXPIRE_DAYS, as a number.
+	 *
+	 * @return int Days; 0 is off.
+	 */
+	private function expireDays()
+	{
+		return max(0, (int) $this->settings()->get(Settings::OPEN_EXPIRE_DAYS));
+	}
+
+	/**
+	 * The user an existing User Manager login names: its account's default
+	 * extension. Takes no lock and makes nothing -- see signUp() for a username
+	 * no account holds.
 	 *
 	 * @param mixed $username Username offered.
 	 * @param mixed $password Password offered.
 	 *
-	 * @return array{extension: string, created: bool}|null Null when the
-	 *                                                       username is held
-	 *                                                       under another password.
+	 * @return array{extension: string, created: bool}|null Null when they are
+	 *                                                       not a login.
 	 *
 	 * @throws \InvalidArgumentException When the username or password is unusable.
 	 * @throws \RuntimeException         When User Manager is not available, or
 	 *                                   the account has no Extension/User.
-	 * @throws \Exception                When the user could not be saved.
 	 */
-	public function findOrCreate($username, $password)
+	public function findLogin($username, $password)
 	{
 		$username = (string) $username;
 		$password = (string) $password;
@@ -328,26 +516,68 @@ class Users extends Service
 
 		$account = $this->userman->authenticate($username, $password);
 
-		if ($account) {
-			$extension = (string) ($account['default_extension'] ?? '');
-
-			if (!$this->userRow($extension)) {
-				throw new \RuntimeException(_('That login has no Extension/User.'));
-			}
-
-			return ['extension' => $extension, 'created' => false];
+		if (!$account) {
+			return null;
 		}
 
-		// Locked from the username check to setLogin(): otherwise two sign-ups get
-		// the same next number and the second renames the first's account.
-		return $this->withLock(function () use ($username, $password) {
+		$extension = (string) ($account['default_extension'] ?? '');
+
+		if (!$this->userRow($extension)) {
+			throw new \RuntimeException(_('That login has no Extension/User.'));
+		}
+
+		return ['extension' => $extension, 'created' => false];
+	}
+
+	/**
+	 * Make a user for an open-provisioning username no account holds.
+	 *
+	 * Made as the editor does with a blank Extension, then put in the lobby:
+	 * ORYK_OPEN_CONTEXT, the lobby emergency caller id, one contact, and no UCP
+	 * login. Its account is given the username and password; the SIP secret
+	 * stays Core's generated one. Nothing is reloaded -- see ARCHITECTURE.md,
+	 * "Open provisioning".
+	 *
+	 * Holds LOCK from the username check to the UCP lock-down, so two sign-ups
+	 * cannot get the same number and $admit counts what is already written. A
+	 * caller that writes more under the same lock (the client, the bridge) wraps
+	 * this in withLock() itself.
+	 *
+	 * @param string        $username Username offered; findLogin() found no login.
+	 * @param string        $password Password offered.
+	 * @param callable|null $admit    Run once the name is accepted and before
+	 *                                anything is written; throws SignupRefused
+	 *                                to refuse.
+	 *
+	 * @return array{extension: string, created: bool}|null Null when the
+	 *                                                       username is held
+	 *                                                       under another password.
+	 *
+	 * @throws \InvalidArgumentException When the username is not one a sign-up may take.
+	 * @throws SignupRefused             When it is reserved, or $admit refuses.
+	 * @throws \Exception                When the user could not be saved.
+	 */
+	public function signUp($username, $password, ?callable $admit = null)
+	{
+		$username = (string) $username;
+		$password = (string) $password;
+
+		return $this->withLock(function () use ($username, $password, $admit) {
 			if ($this->userman->usernameTaken($username)) {
 				return null;
 			}
 
-			// Only a username being made is held to this; an existing login is not.
+			// Only a username being made is held to these; an existing login is not.
 			if (!self::signupUsername($username)) {
 				throw new \InvalidArgumentException(_('A new username may use only letters, digits, ".", "_", "@" and "-", up to 64 characters, and may not be only digits or an IP address.'));
+			}
+
+			if (self::reservedUsername($username, $this->ownDomains())) {
+				throw new SignupRefused('reserved', 400, _('That username is reserved.'));
+			}
+
+			if ($admit) {
+				$admit();
 			}
 
 			// No email, even when the username is one: it is unverified, and User
@@ -356,6 +586,9 @@ class Users extends Service
 				'extension' => '',
 				'name' => '',
 				'email' => '',
+				'context' => $this->lobbyContext(),
+				'emergency_cid' => (string) $this->settings()->get(Settings::OPEN_EMERGENCY_CID),
+				'lobby' => true,
 			]);
 
 			// A user whose login could not be set is one nobody can provision as
@@ -367,8 +600,100 @@ class Users extends Service
 				throw $e;
 			}
 
+			// Logged, not thrown: the phone still needs its user, and the account
+			// is listed under Lobby for an admin to look at.
+			if (!$this->userman->denyUcp($extension)) {
+				$this->logWarning('could not switch UCP off for sign-up ' . $extension);
+			}
+
 			return ['extension' => $extension, 'created' => true];
 		});
+	}
+
+	/**
+	 * Whether a new username is one sign-up may not take.
+	 *
+	 * RESERVED and RESERVED_PREFIX are asked of the whole name and of the part
+	 * before an `@`, whatever the domain; an address at one of $domains, or a
+	 * subdomain of one, is reserved whatever comes before it. Case is ignored.
+	 * Existing logins are never asked this.
+	 *
+	 * @param string             $username Username offered.
+	 * @param array<int, string> $domains  The PBX's own domains; an IP
+	 *                                     address among them is skipped.
+	 *
+	 * @return bool True when it is reserved.
+	 */
+	public static function reservedUsername($username, array $domains = [])
+	{
+		$name = strtolower((string) $username);
+		$at = strrpos($name, '@');
+		$local = $at === false ? $name : substr($name, 0, $at);
+		$domain = $at === false ? '' : substr($name, $at + 1);
+
+		foreach (array_unique([$name, $local]) as $candidate) {
+			if (in_array($candidate, self::RESERVED, true) || preg_match(self::RESERVED_PREFIX, $candidate)) {
+				return true;
+			}
+		}
+
+		if ($domain === '') {
+			return false;
+		}
+
+		foreach ($domains as $own) {
+			$own = strtolower(trim((string) $own, " \t."));
+
+			if ($own === '' || filter_var($own, FILTER_VALIDATE_IP) !== false) {
+				continue;
+			}
+
+			if ($domain === $own || substr($domain, -strlen($own) - 1) === '.' . $own) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * The domains a sign-up may not take an address at: ORYK_HOSTNAME and
+	 * ORYK_FROM_DOMAIN, whichever are set.
+	 *
+	 * @return array<int, string> Domains, possibly none.
+	 */
+	private function ownDomains()
+	{
+		return array_values(array_filter([
+			(string) $this->settings()->get(Settings::HOSTNAME),
+			(string) $this->settings()->get(Settings::FROM_DOMAIN),
+		], 'strlen'));
+	}
+
+	/**
+	 * The context open-provisioning sign-ups are put in.
+	 *
+	 * @return string ORYK_OPEN_CONTEXT, or its default when it is not a context name.
+	 */
+	public function lobbyContext()
+	{
+		$context = (string) $this->settings()->get(Settings::OPEN_CONTEXT);
+
+		return preg_match(Settings::CONTEXT_PATTERN, $context) ? $context : 'lobby';
+	}
+
+	/**
+	 * The module's settings, made when first asked for.
+	 *
+	 * @return Settings
+	 */
+	private function settings()
+	{
+		if ($this->settings === null) {
+			$this->settings = new Settings($this->FreePBX);
+		}
+
+		return $this->settings;
 	}
 
 	/**
@@ -497,6 +822,24 @@ class Users extends Service
 			$generated[$keyword] = ['value' => $value, 'flag' => $generated[$keyword]['flag'] ?? 0];
 		}
 
+		// Open provisioning's and Promote's, never the editor's: saveUser() posts
+		// only FIELDS. A new user takes them; an existing one keeps its own, so
+		// editing a lobby user keeps it in the lobby, until promote() moves it.
+		if ((!$stored || !empty($input['promote'])) && isset($input['context'])
+			&& preg_match(Settings::CONTEXT_PATTERN, (string) $input['context'])) {
+			$generated['context'] = ['value' => (string) $input['context'], 'flag' => $generated['context']['flag'] ?? 0];
+		}
+
+		if (!$stored && trim((string) ($input['emergency_cid'] ?? '')) !== '') {
+			$generated['emergency_cid'] = ['value' => trim((string) $input['emergency_cid']), 'flag' => $generated['emergency_cid']['flag'] ?? 0];
+		}
+
+		// One phone per set of credentials: a second registration replaces the first
+		if (!$stored && !empty($input['lobby'])) {
+			$generated['max_contacts'] = ['value' => '1', 'flag' => $generated['max_contacts']['flag'] ?? 0];
+			$generated['remove_existing'] = ['value' => 'yes', 'flag' => $generated['remove_existing']['flag'] ?? 0];
+		}
+
 		// oryk_connect lists a device by this, so while both are installed a
 		// user saved here still reads as an Extension/User there
 		$generated['kind'] = ['value' => 'pjsip', 'flag' => $generated['kind']['flag'] ?? 0];
@@ -554,10 +897,46 @@ class Users extends Service
 
 		\FreePBX::Core()->processEPM($uid, 'pjsip', true);
 
-		$this->endpoints->apply($uid);
-		$this->reload();
+		$this->endpoints->apply($uid, $this->endpointExtras((string) ($generated['context']['value'] ?? '')));
+		self::pending();
+
+		// A user still live only through the bridge is rewritten there, or its
+		// phone keeps the old password or context until Apply Config
+		if ($stored && $this->bridge && $this->bridge->has((string) $stored['id'])) {
+			$this->bridge->remove((string) $stored['id']);
+			$this->bridge->add((string) $uid);
+		}
 
 		return (string) $uid;
+	}
+
+	/**
+	 * What a user's endpoint section carries for its context, beyond the From
+	 * Domain every user gets.
+	 *
+	 * A lobby endpoint may not transfer: a blind transfer is dialled in a
+	 * context the transferring phone does not choose. Blank takes the setting
+	 * off, which is what Promote relies on.
+	 *
+	 * @param string $context The user's context.
+	 *
+	 * @return array<string, string> Settings for EndpointSettings::apply().
+	 */
+	private function endpointExtras($context)
+	{
+		return ['allow_transfer' => $context === $this->lobbyContext() ? 'no' : ''];
+	}
+
+	/**
+	 * Raise FreePBX's Apply Config bar. Nothing in this module reloads.
+	 *
+	 * @return void
+	 */
+	private static function pending()
+	{
+		if (function_exists('needreload')) {
+			needreload();
+		}
 	}
 
 	/**
@@ -610,36 +989,11 @@ class Users extends Service
 			}
 		}
 
-		$this->reload();
-
-		return true;
-	}
-
-	/**
-	 * Apply the pending configuration, the way Apply Config does.
-	 *
-	 * The flag is raised first so it stays visible if the reload fails, and a
-	 * failure is logged rather than thrown so a save is never lost behind it.
-	 *
-	 * @return bool True when the reload completed.
-	 */
-	public function reload()
-	{
-		needreload();
-
-		try {
-			$result = \FreePBX::Framework()->doReload();
-		} catch (\Throwable $e) {
-			$this->logError('reload failed: ' . $e->getMessage());
-
-			return false;
+		if ($this->bridge) {
+			$this->bridge->remove($user);
 		}
 
-		if (empty($result['status'])) {
-			$this->logError('reload failed: ' . ($result['message'] ?? 'unknown error'));
-
-			return false;
-		}
+		self::pending();
 
 		return true;
 	}
@@ -673,13 +1027,54 @@ class Users extends Service
 			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'email' LIMIT 1) AS email,
 			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
 			COALESCE((SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
-			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id) AS clients";
+			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id) AS clients,
+			" . self::CONTEXT_EXPR . " AS context,
+			" . $this->lastSeenExpr() . " AS last_seen,
+			TIMESTAMPDIFF(SECOND, " . $this->lastSeenExpr() . ", NOW()) AS last_seen_age,
+			" . $this->signedUpExpr() . " AS signed_up,
+			TIMESTAMPDIFF(SECOND, " . $this->signedUpExpr() . ", NOW()) AS signed_up_age";
+	}
+
+	/**
+	 * When a user's clients were last answered, the newest of them, over `devices d`.
+	 *
+	 * @return string SQL; the table name is the module's own.
+	 */
+	private function lastSeenExpr()
+	{
+		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id)";
+	}
+
+	/**
+	 * When open provisioning signed a user up: its sign-up client's creation, over `devices d`.
+	 *
+	 * @return string SQL; the table name is the module's own.
+	 */
+	private function signedUpExpr()
+	{
+		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id AND pc.signup_ip IS NOT NULL)";
+	}
+
+	/**
+	 * expired() in SQL, for the Expired filter, over `devices d` with `:days`
+	 * bound. **The two must agree**: the list shows what this matches, and
+	 * deleteExpired() deletes only what expired() still says yes to.
+	 *
+	 * @return string SQL.
+	 */
+	private function expiredExpr()
+	{
+		$since = 'COALESCE(' . $this->lastSeenExpr() . ', ' . $this->signedUpExpr() . ')';
+
+		return "($since IS NOT NULL AND $since < NOW() - INTERVAL :days DAY)";
 	}
 
 	/**
 	 * Run $work holding LOCK, a MySQL named lock, so saves and sign-ups from
 	 * different requests happen one at a time. Re-entrant within a request: only
-	 * the outermost call takes and releases it.
+	 * the outermost call takes and releases it, so a caller may wrap a store() or
+	 * signUp() together with what it writes after, and hold the lock across all
+	 * of it.
 	 *
 	 * @param callable $work What to run.
 	 *
@@ -687,7 +1082,7 @@ class Users extends Service
 	 *
 	 * @throws \RuntimeException When the lock is not had within LOCK_WAIT seconds.
 	 */
-	private function withLock(callable $work)
+	public function withLock(callable $work)
 	{
 		if ($this->lockDepth === 0) {
 			$stmt = $this->db->prepare('SELECT GET_LOCK(:name, :wait)');

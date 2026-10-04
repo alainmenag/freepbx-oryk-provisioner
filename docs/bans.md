@@ -81,6 +81,11 @@ The caller's address, and its username when it is a number, are checked before
 any user or client is looked up or made — a refused caller creates nothing. The
 client it is answered as is then checked like any other.
 
+An **Allow** that decides the request lifts the
+[sign-up limits](endpoint.md#limits) — the way to let one site deploy many
+phones. It does not take a sign-up out of the lobby, and does not unreserve a
+username.
+
 ## Source and jail
 
 A ban's page has two fields for what created it: **Source** — `manual` unless
