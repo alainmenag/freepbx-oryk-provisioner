@@ -1861,6 +1861,61 @@ is_eq('it comes down when nothing waits', isset($s['app']->Notifications->up['or
 @unlink($etc . '/pjsip.endpoint.conf');
 @rmdir($etc);
 
+echo "\nmatching a filename (ARCHITECTURE.md, Matching a filename):\n";
+
+$m = build();
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($m['app'], new PbxDevices($m['app']), new Settings($m['app']));
+$matcher = new \FreePBX\Modules\Oryk_Provisioner\Matcher($m['app'], $template);
+$mac = '0004f282e824';
+$values = ['device.mac' => $mac, 'extension.number' => '1001'];
+
+is_eq('a placeholder is filled', $template->renderTemplate('{{device.mac}}-phone.cfg', $values), $mac . '-phone.cfg');
+is_eq('spaces inside the braces are allowed', $template->renderTemplate('{{ device.mac }}.cfg', $values), $mac . '.cfg');
+is_eq('a name nothing answers to becomes nothing', $template->renderTemplate('a{{nope}}b', $values), 'ab');
+is_eq('single braces are not a placeholder', $template->renderTemplate('{device.mac}', $values), '{device.mac}');
+
+foreach ([
+	'MAC-name: the joining dash goes' => ['0004f282e824-phone.cfg', 'phone.cfg'],
+	'MAC.ext: the dot stays with the name' => ['0004f282e824.cfg', '.cfg'],
+	'colons and an underscore' => ['00:04:f2:82:e8:24_phone.cfg', 'phone.cfg'],
+	'upper case' => ['0004F282E824.cfg', '.cfg'],
+	'another MAC is left whole' => ['000000000000-directory.xml', '000000000000-directory.xml'],
+	'a leading separator is not a MAC' => ['-0004f282e824.cfg', '-0004f282e824.cfg'],
+	'no MAC at all' => ['phone.cfg', 'phone.cfg'],
+] as $label => $case) {
+	is_eq($label, $matcher->resourceSuffix($case[0], $mac), $case[1]);
+}
+
+$db = $m['app']->Database;
+$tail = ['id' => '1', 'name' => 'phone.cfg'];
+$whole = ['id' => '2', 'name' => '{{device.mac}}-phone.cfg'];
+
+$db->fetchAlls = ['oryk_provisioner_resources' => [$tail, $whole]];
+is_eq('a name written out in full beats a bare tail',
+	$matcher->matchResource(1, $mac . '-phone.cfg', 'phone.cfg', $values)['id'] ?? null, '2');
+is_eq('case is ignored',
+	$matcher->matchResource(1, '0004F282E824-PHONE.CFG', 'PHONE.CFG', $values)['id'] ?? null, '2');
+$db->fetchAlls = ['oryk_provisioner_resources' => [$tail]];
+is_eq('the tail answers when nothing else does',
+	$matcher->matchResource(1, $mac . '-phone.cfg', 'phone.cfg', $values)['id'] ?? null, '1');
+is_eq('nothing matching is null', $matcher->matchResource(1, $mac . '-other.cfg', 'other.cfg', $values), null);
+$db->fetchAlls = [];
+
+foreach ([
+	'a bare name is asked for joined to the MAC' => ['phone.cfg', $mac . '-phone.cfg', '/provisioner/' . $mac . '-phone.cfg'],
+	'an extension is joined without a dash' => ['.cfg', $mac . '.cfg', '/provisioner/' . $mac . '.cfg'],
+	'a rendered name carrying this MAC' => ['{{device.mac}}.xml', $mac . '.xml', '/provisioner/' . $mac . '.xml'],
+	'another MAC is served but not linked' => ['000000000000-directory.xml', '000000000000-directory.xml', ''],
+	'no MAC in the name: ?mac= says it' => ['{{extension.number}}.cfg', '1001.cfg', '/provisioner/1001.cfg?mac=' . $mac],
+] as $label => $case) {
+	is_eq($label, $matcher->resourceRequest($case[0], $values, $mac), ['filename' => $case[1], 'url' => $case[2]]);
+}
+
+is_eq('.xml is XML', $matcher->contentType('Phone.XML'), 'text/xml');
+is_eq('an unknown template is text', $matcher->contentType('fw.bin'), 'text/plain');
+is_eq('an unknown file is binary', $matcher->contentType('fw.bin', 'file'), 'application/octet-stream');
+is_eq('colons are left in a link', $matcher->engineUrl('00:04:f2:82:e8:24.cfg'), '/provisioner/00:04:f2:82:e8:24.cfg');
+is_eq('anything else is escaped', $matcher->engineUrl('a b.cfg'), '/provisioner/a%20b.cfg');
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# bin/check -- everything a change has to pass before it is pushed.
+#
+#   bin/check            lint, smoke tests, and PHPStan when it is installed
+#
+# Runs anywhere with PHP on the PATH; nothing has to be installed. CI runs the
+# same script (.github/workflows/ci.yml), so green here is green there.
+# Exits non-zero on the first step that fails.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+step() { printf '\n== %s\n' "$1"; }
+
+step 'php -l'
+fails=0
+while IFS= read -r -d '' f; do
+	out=$(php -l "$f" 2>&1) || { echo "$out"; fails=1; }
+done < <(git ls-files -z --cached --others --exclude-standard -- '*.php' 'bin/oryk-fail2ban-sync' 'bin/oryk-signup-sweep' 2>/dev/null \
+	|| find . -name '*.php' -not -path './.git/*' -print0)
+[ "$fails" = 0 ] || exit 1
+echo ok
+
+step 'helpers'
+bash -n bin/oryk-fail2ban-setup
+if command -v python3 >/dev/null; then
+	python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' bin/oryk-fail2ban
+fi
+echo ok
+
+if command -v node >/dev/null; then
+	step 'node --check'
+	for f in assets/scripts/*.js; do
+		[ -e "$f" ] && node --check "$f"
+	done
+	echo ok
+fi
+
+for t in tests/smoke.php; do
+	step "$t"
+	php "$t" | grep -v '^  \[ok\]'
+done
+
+phpstan=''
+if [ -x vendor/bin/phpstan ]; then phpstan=vendor/bin/phpstan
+elif command -v phpstan >/dev/null; then phpstan=phpstan
+elif [ -f phpstan.phar ]; then phpstan='php phpstan.phar'
+fi
+if [ -n "$phpstan" ]; then
+	step 'phpstan'
+	$phpstan analyse --no-progress --memory-limit=1G
+else
+	printf '\n(phpstan not installed: skipped. brew install phpstan to run it here.)\n'
+fi
+
+printf '\nall checks passed\n'

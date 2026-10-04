@@ -16,13 +16,16 @@ trait Logs
 	/**
 	 * Write a line to the FreePBX log.
 	 *
+	 * No native `mixed`: PHP 7.4 (FreePBX 16) reads it as a class name and
+	 * every call throws a TypeError.
+	 *
 	 * @param mixed  $message What happened.
 	 * @param mixed  $data    Anything worth carrying with it; encoded if it is not a string.
 	 * @param string $level   FreePBX log level, without the FPBX_LOG_ prefix.
 	 *
 	 * @return void
 	 */
-	public function log(mixed $message = '', mixed $data = '', $level = 'DEBUG')
+	public function log($message = '', $data = '', $level = 'DEBUG')
 	{
 		$constant = 'FPBX_LOG_' . $level;
 		$data = is_string($data) ? $data : ($data ? json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '');

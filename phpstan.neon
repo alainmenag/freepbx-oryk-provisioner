@@ -1,0 +1,32 @@
+# PHPStan, run by bin/check and CI. Views are left out: their variables come
+# from load_view(), which PHPStan cannot see.
+#
+# phpstan-baseline.neon holds what was already there when this was added. Fix
+# an entry when you touch its line and regenerate the baseline:
+#     phpstan analyse --generate-baseline
+# Never add to it to get a new error past.
+includes:
+	- phpstan-baseline.neon
+
+parameters:
+	level: 5
+	phpVersion:
+		min: 70400
+		max: 80599
+	paths:
+		- Oryk_provisioner.class.php
+		- page.oryk_provisioner.php
+		- src
+		- engine
+		- bin/oryk-fail2ban-sync
+		- bin/oryk-signup-sweep
+	scanFiles:
+		- tests/stubs.php
+		- tests/phpstan-stubs.php
+	ignoreErrors:
+		# The real config only exists on a PBX.
+		- identifier: require.fileNotFound
+		# FreePBX::<Module>() is FreePBX's __callStatic module lookup.
+		-
+			message: '#^Call to an undefined static method FreePBX::[A-Za-z_]+\(\)\.$#'
+			identifier: staticMethod.notFound

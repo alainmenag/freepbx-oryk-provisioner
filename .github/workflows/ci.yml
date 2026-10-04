@@ -1,0 +1,31 @@
+# Runs bin/check on every push and pull request: the same script a person or
+# Claude runs locally, so the two cannot disagree about what passing means.
+# PHP 7.4 is FreePBX 16's, 8.2 FreePBX 17's.
+name: Check
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '7.4'
+            tools: ''
+          - php: '8.2'
+            tools: phpstan
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: ${{ matrix.tools }}
+          coverage: none
+
+      - run: bin/check
