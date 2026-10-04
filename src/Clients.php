@@ -506,10 +506,11 @@ class Clients extends Service
 			);
 			$stmt->execute([':enabled' => 0]);
 			$id = (int) $this->db->lastInsertId();
-		}
 
-		if (!$id) {
-			return ['status' => false, 'message' => _('Failed to generate a client ID.')];
+			// Only here: a new client with a MAC has no id yet, and is inserted below.
+			if (!$id) {
+				return ['status' => false, 'message' => _('Failed to generate a client ID.')];
+			}
 		}
 
 		if (!$mac) {
