@@ -4,9 +4,14 @@ Guidance for Claude Code working in this repository.
 
 ## Hard rules
 
-- `.vscode/sftp.json` points a save-watcher at a live PBX
-  (`/var/www/html/admin/modules/oryk_provisioner`). Assume anything written
-  here can reach that box. `.vscode/` is gitignored; do not add files to it.
+- `.vscode/sftp.json` points a save-watcher at pbx-east-1
+  (`/var/www/html/admin/modules/oryk_provisioner`). It is a **dev box** and
+  the auto-upload is wanted: anything written here, including a branch
+  switch, reaches it. Work on an `amena-<topic>` branch or on the current
+  branch directly, as asked. `.vscode/` is gitignored; do not add files to it.
+- Scratch -- tarballs, patches, helper scripts -- goes in `Claude outputs/`
+  (gitignored, and in the watcher's ignore list), never anywhere else in the
+  tree.
 
 ## Where to look first
 
@@ -95,9 +100,32 @@ diffing. Never rewrite a file wholesale to reword its comments.
 
 ## Working practices
 
-- `php tests/smoke.php` runs standalone checks against stubs, with nothing
-  installed; it covers the Users subsystems, not the provisioning side. `php -l`
-  is the other check. Neither is always to hand -- the sandbox Claude runs
-  commands in on this machine has no PHP -- so run them wherever there is one:
-  a container, or the PBX itself.
+- **`bin/check` is the one check**: `php -l` on every PHP file, the root
+  helpers' syntax, `node --check` on `assets/scripts/`, `tests/smoke.php`
+  (stubs, nothing installed), and PHPStan when it is installed. CI
+  (`.github/workflows/ci.yml`) runs the same script on PHP 7.4 and 8.2 for
+  every push.
+- Alain's Mac has PHP (Homebrew) and runs `bin/check` itself. Claude's shell
+  on that Mac is a Linux VM without PHP: tar the working tree into
+  `Claude outputs/`, stage it, and run `bin/check` in the cloud workspace
+  (PHPStan: `curl -sSLo phpstan.phar
+  https://github.com/phpstan/phpstan/releases/latest/download/phpstan.phar`;
+  `bin/check` picks up `./phpstan.phar`).
+- `.claude/settings.json` lints every file Claude Code writes (php -l,
+  node --check) and hands an error straight back.
+- PHPStan runs at level 5 against `phpstan-baseline.neon`. Never add to the
+  baseline; when a line in it is fixed, regenerate it
+  (`phpstan analyse --generate-baseline`).
+- The code must run on PHP 7.4 (FreePBX 16): no `mixed`, union or nullsafe
+  syntax, no `str_contains()`, `match` or named arguments.
 - Branches are named `amena-<topic>` and merged to `main` through a PR.
+  Claude's VM has no GitHub credentials: commit there, and Alain pushes.
+
+## Done means
+
+1. `bin/check` passes.
+2. A changed behaviour has a test in `tests/smoke.php` when stubs can reach it.
+3. The comment above anything changed, and any `ARCHITECTURE.md` section it
+   makes wrong, are fixed in the same commit.
+4. A change an operator would notice gets a line in `module.xml`'s
+   `<changelog>` with the next version bump (`docs/releasing.md`).
