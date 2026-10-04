@@ -275,7 +275,8 @@ class Clients extends Service
 	 * $token, so a password changed in UCP does not lock the phone out.
 	 *
 	 * @param string      $deviceId FreePBX device id.
-	 * @param string|null $token    Token as typed, user:password; null for none.
+	 * @param string|null $token    Token as typed, user:password; a new client
+	 *                              given none gets a generated one.
 	 *
 	 * @return array{id: int, mac: string, created: bool} The client.
 	 *
@@ -326,17 +327,22 @@ class Clients extends Service
 	 *
 	 * `token` is the field here that is not simply written: what arrives is either
 	 * a token to hash or the hash of one, told apart by the colon -- see
-	 * hashToken(). The two addresses are the fields that can be refused; see
-	 * address(). The MAC is optional and is the one field stored as NULL rather
-	 * than '' when it is empty.
+	 * hashToken(). **A new client always gets one**: left empty, it is
+	 * generated, and the response's `token` carries it in the clear -- the only
+	 * time it is ever readable. An update may empty it. The two addresses are
+	 * the fields that can be refused; see address(). The MAC is optional and
+	 * is the one field stored as NULL rather than '' when it is empty.
 	 *
 	 * @param array<string, mixed> $request Submitted form values.
 	 *
-	 * @return array<string, mixed> Status, and a message when it was refused.
+	 * @return array<string, mixed> Status, id, a message when it was refused,
+	 *                              and `token` when one was generated.
 	 */
 	public function saveClient($request)
 	{
 		$id = (int) ($request['id'] ?? 0);
+		// Read before the MAC-less INSERT below gives a new row its id.
+		$isNew = !$id;
 
 		// Optional, so the empty box and the mistyped one have to be told apart
 		// before normalize() flattens both to '': `00156` is a mistake worth
@@ -419,9 +425,15 @@ class Clients extends Service
 		// this yet. The corollary is real -- a token typed without a colon is
 		// stored as typed and verifies against nothing.
 		//
-		// An empty box is the token being taken away, and the only way it is.
+		// On an update an empty box is the token being taken away, and the only
+		// way it is. On a create it is a token to generate.
 		$token = trim((string) ($request['token'] ?? ''));
 		$tokenHash = null;
+		$generated = null;
+
+		if ($isNew && $token === '') {
+			$token = $generated = $this->tokens->generateToken();
+		}
 
 		// Enabled unless the page said otherwise -- see enabledSubmitted().
 		$enabled = self::enabledSubmitted($request);
@@ -457,7 +469,7 @@ class Clients extends Service
 				':id' => $id,
 			]);
 
-			return ['status' => true, 'id' => $id];
+			return ['status' => true, 'id' => $id] + ($generated !== null ? ['token' => $generated] : []);
 		}
 
 		$stmt = $this->db->prepare(
@@ -474,7 +486,8 @@ class Clients extends Service
 			':private_ip' => $privateIp,
 		]);
 
-		return ['status' => true, 'id' => (int) $this->db->lastInsertId()];
+		return ['status' => true, 'id' => (int) $this->db->lastInsertId()]
+			+ ($generated !== null ? ['token' => $generated] : []);
 	}
 
 	/**

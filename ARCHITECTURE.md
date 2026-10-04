@@ -529,7 +529,14 @@ profile stays the provisioner's.
 | --- | --- |
 | Banned | banned in **`banned`** until the row expires |
 | Deny | banned in **`deny`** until the row is deleted |
-| Allow | on **every** jail's ignore list, and unbanned wherever it is banned |
+| Allow | on each **managed** jail's ignore list, and unbanned in each one it is banned in |
+
+The **managed jails** are `banned`, `deny`, and the jails root lists in
+`/etc/oryk-fail2ban.conf` -- the Asterisk and FreePBX ones. The helper reads
+that file itself and sees no other jail: it cannot list, unban in or add an
+ignore entry to `sshd`, `recidive` or anything else root left out. Blocking
+stays broad (both module jails ban every port); only what loosens fail2ban is
+narrowed, so an Allow never exempts an address from SSH protection.
 
 **fail2ban answers root only**, and the GUI and FreePBX's scheduler run as the
 web user. So `Fail2ban` -- the only file that asks -- runs
@@ -537,7 +544,8 @@ web user. So `Fail2ban` -- the only file that asks -- runs
 helper (`bin/oryk-fail2ban`, Python) is the privilege boundary: `check`,
 `list`, `ban <banned|deny> <ip>`, `unban <jail> <ip>`, `ignore <ip>`,
 `unignore <ip>`; every argument re-checked (one address, no range, no
-loopback; a jail fail2ban has), one line of JSON back. Exit 64 is a refused
+loopback; a managed jail fail2ban has), one line of JSON back. It refuses a
+`/etc/oryk-fail2ban.conf` that is a link or that anyone but root can write. Exit 64 is a refused
 argument, 69 fail2ban down. It asks fail2ban over fail2ban's own socket with
 fail2ban's own client library (`fail2ban.client.csocket`), one process for a
 whole `list`; where `/usr/bin/python3` cannot import that library it falls back
@@ -550,6 +558,8 @@ the table; Installer and Pages hold `Fail2ban`, only `Bans` holds `BanSync`.
 - **Setup is one script**, `bin/oryk-fail2ban-setup`, run as root by hand or
   by `install()` when that runs as root: helper copy, a sudoers file checked
   with `visudo` before it is renamed into place (sudo skips dotted names),
+  `/etc/oryk-fail2ban.conf` (`--jails "<jail> …"`, or on first install the
+  loaded jails named `asterisk*`, `freepbx*` or `pbx*`; kept on later runs),
   and the module's two jails, `banned` and `deny` (`jail.d/<name>.conf`, a
   filter that never matches, `bantime = -1`, `banaction =
   %(banaction_allports)s`). Permanent in fail2ban, because fail2ban takes no
@@ -573,11 +583,11 @@ the table; Installer and Pages hold `Fail2ban`, only `Bans` holds `BanSync`.
 - **`ORYK_FAIL2BAN_SYNC`** (a [setting](#settings), on by default) pauses it:
   nothing is read or written, and nothing already in fail2ban is undone.
 
-**One run** reads fail2ban (`list`: every jail's bans with ban time and
-bantime, and every ignore list) and the IP-only rows, and `BanSync::plan()` --
+**One run** reads fail2ban (`list`: the managed jails' bans with ban time and
+bantime, and their ignore lists) and the IP-only rows, and `BanSync::plan()` --
 pure, and tested case by case -- decides:
 
-- **fail2ban → table, every jail but `banned` and `deny`.** An address with no row gets one
+- **fail2ban → table, every managed jail but `banned` and `deny`.** An address with no row gets one
   (source `fail2ban`, the jail, Banned -- or Deny when fail2ban's bantime is
   permanent -- with fail2ban's ban time and expiry, `managed` 1). A managed
   row is refreshed, `times` up when the ban time moved. **A row in force that
@@ -593,8 +603,8 @@ pure, and tested case by case -- decides:
   unbanned. So one rule lifts a copy whether its row expired, changed state or
   was deleted, and a fail2ban ban a person turns into a Deny is lifted from its
   jail and banned in `deny`. A row of ours missing from its jail is banned; one
-  already there is confirmed. An allow missing from any ignore list is added;
-  one already on every list, without `synced_at`, was put there by someone else
+  already there is confirmed. An allow missing from any managed ignore list is
+  added; one already on every one, without `synced_at`, was put there by someone else
   and is never removed by the sync.
 - **A row marked deleted** has its copy lifted -- from the module's jails by
   the mirror, an allow off the ignore lists, a ban the sync followed from
@@ -612,8 +622,10 @@ pure, and tested case by case -- decides:
 **Known limits.** Each push is one `Ban` line in fail2ban's log, which
 `recidive`, where it is enabled, counts like any other ban. An ignore
 entry added at runtime is lost when fail2ban restarts and re-added by the next
-run. An Allow lifted from the ignore lists comes off every jail, including one
-where an administrator had listed it too. Times: fail2ban prints local time;
+run. An Allow lifted from the ignore lists comes off every managed jail, including
+one where an administrator had listed it too. A ban followed from a jail later
+dropped from `/etc/oryk-fail2ban.conf` expires on the next run, and deleting it
+lifts nothing. Times: fail2ban prints local time;
 the helper turns it into epochs and the sync writes them with
 `FROM_UNIXTIME()`, on the database's clock.
 
@@ -747,7 +759,8 @@ bootstrap FreePBX on its own.
 ## Not built yet
 
 - A token that *identifies* a client, as `/provisioner/{token}/{file}` would.
-  Tokens are opt-in per client and nothing makes you set one.
+  A new client is given a token when saved without one, but an update can
+  still take it away.
 - Uniform refusals. A failure still says which kind of failure it was, so a
   caller probing MACs can tell a known one from an unknown one. Closing that is
   the token scheme's job and is a change to all the messages at once.

@@ -9,9 +9,13 @@ own: fail2ban only knows addresses.
 | --- | --- |
 | **Banned** | banned in the `banned` jail — every port, until it expires |
 | **Deny** | banned in the `deny` jail — every port, until you delete it |
-| **Allow** | added to every jail's ignore list, and unbanned wherever it is banned |
+| **Allow** | added to the ignore list of each PBX jail (below), and unbanned there |
 
-And the other way: every address fail2ban bans, in any jail, appears on the
+An Allow never reaches `sshd`, `recidive` or any jail setup didn't pick: an
+allowed address is still watched by them. A Deny or Banned still blocks every
+port, SSH included.
+
+And the other way: every address fail2ban bans in one of those jails appears on the
 Bans tab with **Source** `fail2ban` and the **Jail** it came from — Banned until
 fail2ban's own expiry, or Deny when that jail bans permanently (`recidive`, say).
 When fail2ban lets it go, the ban shows as expired. Nothing is deleted.
@@ -52,8 +56,24 @@ else — each minute they are made to match the Bans tab exactly.
 - `deny` holds your Deny bans until you delete them.
 
 **A ban on your own address locks you out of the PBX**, the GUI included.
-fail2ban's own jails (`asterisk`, `sshd`, `recidive`, …) are left to fail2ban;
-their bans show on the Bans tab, but nothing is pushed into them.
+fail2ban's own jails are left to fail2ban; nothing is pushed into them.
+
+## Which of fail2ban's jails the module sees
+
+Only the ones root lists in `/etc/oryk-fail2ban.conf`. On first install, setup
+fills it with the Asterisk and FreePBX jails fail2ban has loaded (names starting
+`asterisk`, `freepbx` or `pbx` — `asterisk`, `pbx-gui`, …) and keeps it on later
+runs. Their bans show on the Bans tab and an Allow goes on their ignore lists.
+Every other jail — `sshd`, `recidive` — the module can't read or loosen at all.
+To change the list:
+
+```bash
+sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup --jails "asterisk pbx-gui"
+sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup --jails none
+```
+
+The file must stay owned by root and writable by root only, or the helper
+refuses to run.
 
 ## Setting it up
 
@@ -67,11 +87,12 @@ sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup
 run, the Bans tab says what is missing and shows the command. It needs fail2ban
 0.11 or later, running.
 
-It installs three things and nothing else:
+It installs four things and nothing else:
 
 | | |
 | --- | --- |
-| `/usr/local/sbin/oryk-fail2ban` | a root-owned copy of the module's `bin/oryk-fail2ban`. It can list, ban in `banned` or `deny`, unban, and add or remove an ignore entry — one address at a time, never loopback — and refuses anything else |
+| `/usr/local/sbin/oryk-fail2ban` | a root-owned copy of the module's `bin/oryk-fail2ban`. It can list, ban in `banned` or `deny`, unban, and add or remove an ignore entry — one address at a time, never loopback, only in the managed jails — and refuses anything else |
+| `/etc/oryk-fail2ban.conf` | the PBX jails the helper may touch besides `banned` and `deny` (above) |
 | `/etc/sudoers.d/oryk_provisioner` | lets the FreePBX web user run that one file as root. Checked with `visudo` before it is used |
 | `/etc/fail2ban/jail.d/banned.conf`, `deny.conf` and their `filter.d` files | the `banned` and `deny` jails. Setup refuses to write over a jail of either name it didn't write |
 
@@ -96,7 +117,7 @@ provisioner, and nothing already in fail2ban is undone.
 sudo bash /var/www/html/admin/modules/oryk_provisioner/bin/oryk-fail2ban-setup --remove
 ```
 
-Deletes the helper, the sudo rule and the `banned` and `deny` jails (and so the bans in them),
+Deletes the helper, the sudo rule, `/etc/oryk-fail2ban.conf` and the `banned` and `deny` jails (and so the bans in them),
 and reloads fail2ban. The Bans tab keeps every ban. `fwconsole ma uninstall`, run
 as root, does the same; uninstalled from the GUI it cannot, so run `--remove`
 first — the script goes with the module.

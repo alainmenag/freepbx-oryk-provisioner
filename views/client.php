@@ -312,7 +312,7 @@ $tabs = [
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block" id="client_token-help">
-										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. Empty the box to take the token away. While one is set, the endpoint answers this client nothing until it presents those credentials: a request without them, or with the wrong ones, is a 401. A client with no token is served to anyone who knows its MAC address.'); ?>
+										<?php echo _('A secret this client proves itself with. Type it as -- username:password -- and it is hashed when you save; what the box holds from then on is that hash, which is why leaving it alone leaves the token alone. A new client saved with the box empty is given a generated token, shown once when you save. Empty the box on an existing client to take the token away. While one is set, the endpoint answers this client nothing until it presents those credentials: a request without them, or with the wrong ones, is a 401. A client with no token is served to anyone who knows its MAC address.'); ?>
 									</span>
 								</div>
 							</div>
@@ -470,6 +470,13 @@ $tabs = [
 				token: $('#client_token').val(),
 				enabled: $('#client_enabled').val()
 			};
+		},
+		// A generated token is in the clear only in this response, so it is
+		// shown -- in a prompt, to be copied -- before the reload loses it.
+		saved: function (response) {
+			if (response.token) {
+				window.prompt(<?php echo json_encode(_('A token was generated for this client. Copy it now: it is not shown again.')); ?>, response.token);
+			}
 		},
 		// This client's own page: the same address on a save that changed it,
 		// the new row's first address on a save that wrote it.

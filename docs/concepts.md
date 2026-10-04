@@ -32,7 +32,9 @@ A client can also be given a **token**: a secret typed as `user:password` —
 `username:password` — and hashed with `password_hash()` when you save. The
 Token box holds that hash from then on, so leaving it alone leaves the token
 alone, typing a new `user:password` over it replaces it, and emptying it takes
-it away. **A colon is what marks a value as a token still to be hashed**; a
+it away. A new client saved with the box empty is given a generated one — a
+random `user:password`, shown once in a prompt when you save, and never again.
+**A colon is what marks a value as a token still to be hashed**; a
 value without one is stored as it was typed and verifies against nothing.
 
 While a client has a token, the endpoint refuses it everything until it

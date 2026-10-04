@@ -6,12 +6,16 @@ Runs as root: bin/oryk-fail2ban-setup installs a root-owned copy at
 **This file is the privilege boundary**, so every argument is checked here
 whatever the module checked first. See ARCHITECTURE.md, "Syncing with fail2ban".
 
-    oryk-fail2ban check               version; is fail2ban up; its jails
-    oryk-fail2ban list                every jail's bans, with times, and ignore lists
+It sees only the managed jails: `banned`, `deny`, and those root lists in
+CONFIG. Every other jail -- sshd above all -- it cannot read, unban in or add
+an ignore entry to, so an Allow never exempts an address from them.
+
+    oryk-fail2ban check               version; is fail2ban up; the managed jails
+    oryk-fail2ban list                the managed jails' bans, with times, and ignore lists
     oryk-fail2ban ban <jail> <ip>     ban one address in `banned` or `deny`
-    oryk-fail2ban unban <jail> <ip>   lift it; an address not banned is not an error
-    oryk-fail2ban ignore <ip>         add to every jail's ignore list where missing
-    oryk-fail2ban unignore <ip>       take it off every jail's ignore list
+    oryk-fail2ban unban <jail> <ip>   lift it from a managed jail; not banned is not an error
+    oryk-fail2ban ignore <ip>         add to each managed jail's ignore list where missing
+    oryk-fail2ban unignore <ip>       take it off each managed jail's ignore list
 
 Every answer is one line of JSON on stdout. Exit 0 is success, 64 a refused
 argument, 69 fail2ban not installed or not answering, 70 anything else.
@@ -21,13 +25,14 @@ import ipaddress
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
 
 # Bump whenever this file changes: the Bans tab and the setup script compare it
 # with the installed copy.
-HELPER_VERSION = 4
+HELPER_VERSION = 5
 
 CLIENTS = ('/usr/bin/fail2ban-client', '/usr/local/bin/fail2ban-client', '/bin/fail2ban-client')
 JAIL = re.compile(r'\A[A-Za-z0-9_.-]{1,64}\Z')
@@ -36,8 +41,12 @@ STAMP = r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)'
 WITH_TIME = re.compile(r'\A(\S+)\s+' + STAMP + r'\s*\+\s*(-?\d+)\s*=\s*' + STAMP)
 LISTED = re.compile(r'\A[|`]-\s*(\S+)\s*\Z')
 
-# The only jails anything is banned in from here.
+# The only jails anything is banned in from here; always managed.
 BANNABLE = ('banned', 'deny')
+
+# Root's list of the other jails the module may manage: `jails = a b c`.
+# Written by bin/oryk-fail2ban-setup; absent means banned and deny only.
+CONFIG = '/etc/oryk-fail2ban.conf'
 
 EX_USAGE, EX_UNAVAILABLE, EX_SOFTWARE = 64, 69, 70
 
@@ -139,16 +148,46 @@ def fail2ban(*args):
 	return TRANSPORT[0](args)
 
 
-def jails():
-	"""The jail names, from `status`."""
-	listed = dict(fail2ban('status')).get('Jail list', '')
-	names = [name.strip() for name in str(listed).split(',')]
+def configured():
+	"""The jails CONFIG adds to BANNABLE.
 
-	return [name for name in names if JAIL.match(name)]
+	CONFIG is what keeps sshd out of the module's reach, so a file anyone but
+	root could have written is refused outright rather than read.
+	"""
+	try:
+		fd = os.open(CONFIG, os.O_RDONLY | os.O_NOFOLLOW)
+	except FileNotFoundError:
+		return []
+	except OSError as error:
+		raise Refused('cannot read ' + CONFIG + ': ' + error.strerror, EX_SOFTWARE)
+
+	with os.fdopen(fd) as handle:
+		info = os.fstat(handle.fileno())
+
+		if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+			raise Refused(CONFIG + ' must be a file owned by root and writable by root only', EX_SOFTWARE)
+
+		names = []
+
+		for line in handle:
+			key, _, value = line.partition('=')
+
+			if key.strip() == 'jails':
+				names = [name for name in value.split() if JAIL.match(name)]
+
+	return names
+
+
+def jails():
+	"""The managed jails fail2ban has: BANNABLE and configured(), from `status`."""
+	listed = dict(fail2ban('status')).get('Jail list', '')
+	managed = set(BANNABLE) | set(configured())
+
+	return [name for name in (name.strip() for name in str(listed).split(',')) if name in managed]
 
 
 def jail(name, allowed=None):
-	"""A jail name that is well formed, one of fail2ban's own, and allowed here."""
+	"""A jail name that is well formed, managed, loaded, and allowed here."""
 	if not JAIL.match(name) or (allowed is not None and name not in allowed) or name not in jails():
 		raise Refused('no such jail here: ' + name[:64], EX_USAGE)
 

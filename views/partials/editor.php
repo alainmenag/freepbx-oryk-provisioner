@@ -238,6 +238,7 @@
 	 *
 	 * editor.values()  what to post, including the row id
 	 * editor.save      command that writes it
+	 * editor.saved(r)  optional; runs on a successful save, before the reload
 	 * editor.remove    command that deletes it
 	 * editor.confirm   what Delete asks before it does
 	 * editor.page(id)  this editor's own URL for a row
@@ -256,6 +257,10 @@
 					button.prop('disabled', false);
 					orykShowError(response && response.message);
 					return;
+				}
+
+				if (editor.saved) {
+					editor.saved(response);
 				}
 
 				window.location = editor.page(response.id);

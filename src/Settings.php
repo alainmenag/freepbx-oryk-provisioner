@@ -118,7 +118,8 @@ class Settings extends Service
 				'name' => 'Fail2ban Sync',
 				'description' => 'Keep IP bans in step with fail2ban, both ways, every minute: fail2ban\'s bans '
 					. 'appear on the Bans tab, Banned and Deny bans made there are banned (every port) in the '
-					. 'banned and deny jails, and Allow puts the address on every jail\'s ignore list. Needs the setup '
+					. 'banned and deny jails, and Allow puts the address on the ignore lists of the PBX jails setup chose -- '
+					. 'never sshd\'s. Needs the setup '
 					. 'script run once as root. Off pauses it; nothing already in fail2ban is undone.',
 				'type' => 'bool',
 				'default' => true,

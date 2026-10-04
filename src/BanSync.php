@@ -76,7 +76,9 @@ class BanSync extends Service
 	 * Take a row's copy out of fail2ban, and say it has none.
 	 *
 	 * For a row about to be deleted, or changed so its copy no longer fits. Only
-	 * a row with `synced_at` set has a copy. Never throws.
+	 * a row with `synced_at` set has a copy, and a ban followed from a jail the
+	 * helper no longer manages has none it can reach: that one is simply let go.
+	 * Never throws.
 	 *
 	 * @param array<string, mixed>|null $row The row as Bans::banRow() reads it.
 	 *
@@ -101,6 +103,14 @@ class BanSync extends Service
 		if ($row['state'] === 'allow') {
 			$answer = $this->fail2ban->unignore($ip);
 		} elseif (!empty($row['managed']) && !empty($row['jail'])) {
+			$listed = $this->fail2ban->listAll();
+
+			if (!empty($listed['ok']) && !in_array((string) $row['jail'], (array) ($listed['jails'] ?? []), true)) {
+				$this->markSynced([(int) $row['id']], false);
+
+				return true;
+			}
+
 			$answer = $this->fail2ban->unban((string) $row['jail'], $ip);
 		} else {
 			$answer = $this->fail2ban->unban(self::jailFor($row['state']), $ip);
@@ -182,8 +192,9 @@ class BanSync extends Service
 	 * Pure, so every case is tested. The module's two jails, `banned` and
 	 * `deny`, are mirrored exactly: each holds the rows of ours in force in that
 	 * state and nothing else, so a row that expires, changes state or is deleted
-	 * is lifted by the same rule. Every other jail is fail2ban's own and is
-	 * followed into the table. A row in force that the sync does not manage --
+	 * is lifted by the same rule. Every other jail listed -- the helper lists
+	 * only the jails it manages -- is fail2ban's own and is followed into the
+	 * table. A row in force that the sync does not manage --
 	 * `managed` 0: made on the Bans tab, or a fail2ban ban a person has since
 	 * saved -- is never changed by it. A row marked deleted has its copy lifted
 	 * and is then purged.
@@ -550,7 +561,7 @@ class BanSync extends Service
 		}
 
 		foreach ($plan['ignore'] as list($ip, $id)) {
-			if ($this->said($this->fail2ban->ignore($ip), "ignoring $ip in every jail (ban #$id)")) {
+			if ($this->said($this->fail2ban->ignore($ip), "ignoring $ip in the managed jails (ban #$id)")) {
 				$synced[] = $id;
 				$done['ignored']++;
 			}
