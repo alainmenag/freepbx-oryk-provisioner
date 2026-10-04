@@ -535,6 +535,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * The commands whose lists a navigator title can narrow (`&scope=`).
+	 *
+	 * @var string[]
+	 */
+	const SCOPED_COMMANDS = ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans'];
+
+	/**
 	 * Which AJAX commands this module answers.
 	 *
 	 * @param string $req     Command being requested.
@@ -544,183 +551,159 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function ajaxRequest($req, &$setting)
 	{
-		switch ($req) {
-			case 'listClients':
-			case 'listProfiles':
-			case 'saveClient':
-			case 'saveProfile':
-			case 'deleteClient':
-			case 'setClientEnabled':
-			case 'setProfileEnabled':
-			case 'deleteProfile':
-			case 'listResources':
-			case 'viewResource':
-			case 'downloadResource':
-			case 'saveResource':
-			case 'deleteResource':
-			case 'uploadResourceFile':
-			case 'deleteResourceFile':
-			case 'listLogs':
-			case 'clearLogs':
-			case 'deleteLog':
-			case 'listUsers':
-			case 'saveUser':
-			case 'deleteUser':
-			case 'promoteUser':
-			case 'deleteExpiredUsers':
-			case 'saveSettings':
-			case 'listBans':
-			case 'saveBan':
-			case 'setBanState':
-			case 'deleteBan':
-				return true;
-			default:
-				return false;
-		}
+		return isset($this->commands()[$req]);
 	}
 
 	/**
 	 * Process an AJAX request.
-	 *
-	 * A dispatch table over the subsystems, with one thing done here rather than
-	 * in either of them: the two list commands are decorated with the filename
-	 * each row's client-and-resource pairing produces, when they were asked from
-	 * one of the preview tabs. That decoration needs both tables and so belongs to
-	 * neither.
 	 *
 	 * @return array<string, mixed>|null AJAX response data.
 	 */
 	public function ajaxHandler()
 	{
 		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
+		$commands = $this->commands();
+
+		if (!isset($commands[$command])) {
+			return null;
+		}
 
 		// A list opened from a navigator title is narrowed the way that title's
 		// badge was counted: `&scope=<kind>:<id>` names the row, Navigator says
-		// what it scopes. Read only by the list commands.
-		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans'], true)
+		// what it scopes.
+		$scope = in_array($command, self::SCOPED_COMMANDS, true)
 			? $this->navigator->scope(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
 			: null;
 
-		switch ($command) {
-			case 'listClients':
+		return $commands[$command]($scope);
+	}
+
+	/**
+	 * Every AJAX command, and what answers it.
+	 *
+	 * The one list both ajaxRequest() and ajaxHandler() read: a new command is
+	 * added here and nowhere else. Each is handed the navigator scope, which is
+	 * null except for SCOPED_COMMANDS.
+	 *
+	 * @return array<string, callable(array<string, mixed>|null): mixed>
+	 */
+	private function commands()
+	{
+		$id = function () {
+			return $_REQUEST['id'] ?? null;
+		};
+
+		return [
+			'listClients' => function ($scope) {
 				$result = $this->clients->listClients($scope['clients']);
 
 				// Only the page that was read, and only when a resource was asked about:
-				// rendering a name costs this client's values.
+				// rendering a name costs this client's values. The decoration needs both
+				// tables, so it is done here rather than in either subsystem.
 				if (isset($_REQUEST['resource_id'])) {
-					$result['rows'] = $this->previews->withResourceFilenames(
-						$result['rows'],
-						$_REQUEST['resource_id']
-					);
+					$result['rows'] = $this->previews->withResourceFilenames($result['rows'], $_REQUEST['resource_id']);
 				}
 
 				return $result;
-
-			case 'listProfiles':
+			},
+			'listProfiles' => function ($scope) {
 				return $this->profiles->listProfiles($scope['profiles']);
-
-			case 'saveClient':
+			},
+			'saveClient' => function () {
 				return $this->clients->saveClient($_REQUEST);
-
-			case 'saveProfile':
+			},
+			'saveProfile' => function () {
 				return $this->profiles->saveProfile($_REQUEST);
-
-			case 'deleteClient':
-				return $this->clients->deleteClient($_REQUEST['id'] ?? null);
-
+			},
+			'deleteClient' => function () use ($id) {
+				return $this->clients->deleteClient($id());
+			},
 			// One column, changed from the row it is shown on. Not folded into
 			// saveClient: that writes every field the editor holds, and a list row does
 			// not hold them. Same for a profile -- see src/Enabled.php.
-			case 'setClientEnabled':
+			'setClientEnabled' => function () {
 				return $this->clients->setClientEnabled($_REQUEST);
-
-			case 'setProfileEnabled':
+			},
+			'setProfileEnabled' => function () {
 				return $this->profiles->setProfileEnabled($_REQUEST);
-
-			case 'deleteProfile':
-				return $this->profiles->deleteProfile($_REQUEST['id'] ?? null);
-
-			case 'listResources':
+			},
+			'deleteProfile' => function () use ($id) {
+				return $this->profiles->deleteProfile($id());
+			},
+			'listResources' => function () {
 				$result = $this->resources->listResources();
 
 				// The client editor's Resources tab asks the same question of the same
 				// table, from the other side: these files, for that one phone.
 				if (isset($_REQUEST['client_id'])) {
-					$result['rows'] = $this->previews->withClientFilenames(
-						$result['rows'],
-						$_REQUEST['client_id']
-					);
+					$result['rows'] = $this->previews->withClientFilenames($result['rows'], $_REQUEST['client_id']);
 				}
 
 				return $result;
+			},
+			// These two never return: the body is the answer, not JSON.
+			'viewResource' => function () {
+				$this->endpoint->viewResource($_REQUEST['client_id'] ?? null, $_REQUEST['resource_id'] ?? null);
 
-			// Never return: the body is the answer, not JSON.
-			case 'viewResource':
-				$this->endpoint->viewResource(
-					$_REQUEST['client_id'] ?? null,
-					$_REQUEST['resource_id'] ?? null
-				);
-
-			case 'downloadResource':
-				$this->endpoint->downloadResource(
-					$_REQUEST['client_id'] ?? null,
-					$_REQUEST['resource_id'] ?? null
-				);
-
-			case 'saveResource':
-				return $this->resources->saveResource($_REQUEST);
-
-			case 'deleteResource':
-				return $this->resources->deleteResource($_REQUEST['id'] ?? null);
-
-			case 'uploadResourceFile':
-				return $this->resources->uploadResourceFile($_REQUEST);
-
-			case 'deleteResourceFile':
-				return $this->resources->deleteResourceFile($_REQUEST);
-
-			case 'listLogs':
-				return $this->provisioningLog->listLogs($scope['logs'], $scope['ip']);
-
-			case 'clearLogs':
-				return $this->provisioningLog->clearLogs($_REQUEST);
-
-			case 'deleteLog':
-				return $this->provisioningLog->deleteLog($_REQUEST['id'] ?? null);
-
-			case 'listUsers':
-				return $this->users->listUsers($scope['users']);
-
-			// A save or delete raises Apply Config; nothing here reloads.
-			case 'saveUser':
-				return $this->users->saveUser($_REQUEST);
-
-			case 'deleteUser':
-				return $this->users->deleteUser($_REQUEST['id'] ?? null);
-
-			case 'promoteUser':
-				return $this->users->promote($_REQUEST['id'] ?? null);
-
-			case 'deleteExpiredUsers':
-				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
-
-			case 'saveSettings':
-				return $this->settings->saveSettings($_REQUEST);
-
-			case 'listBans':
-				return $this->bans->listBans($scope['bans']);
-
-			case 'saveBan':
-				return $this->bans->saveBan($_REQUEST);
-
-			case 'setBanState':
-				return $this->bans->setBanState($_REQUEST);
-
-			case 'deleteBan':
-				return $this->bans->deleteBan($_REQUEST['id'] ?? null);
-
-			default:
 				return null;
-		}
+			},
+			'downloadResource' => function () {
+				$this->endpoint->downloadResource($_REQUEST['client_id'] ?? null, $_REQUEST['resource_id'] ?? null);
+
+				return null;
+			},
+			'saveResource' => function () {
+				return $this->resources->saveResource($_REQUEST);
+			},
+			'deleteResource' => function () use ($id) {
+				return $this->resources->deleteResource($id());
+			},
+			'uploadResourceFile' => function () {
+				return $this->resources->uploadResourceFile($_REQUEST);
+			},
+			'deleteResourceFile' => function () {
+				return $this->resources->deleteResourceFile($_REQUEST);
+			},
+			'listLogs' => function ($scope) {
+				return $this->provisioningLog->listLogs($scope['logs'], $scope['ip']);
+			},
+			'clearLogs' => function () {
+				return $this->provisioningLog->clearLogs($_REQUEST);
+			},
+			'deleteLog' => function () use ($id) {
+				return $this->provisioningLog->deleteLog($id());
+			},
+			'listUsers' => function ($scope) {
+				return $this->users->listUsers($scope['users']);
+			},
+			// A save or delete raises Apply Config; nothing here reloads.
+			'saveUser' => function () {
+				return $this->users->saveUser($_REQUEST);
+			},
+			'deleteUser' => function () use ($id) {
+				return $this->users->deleteUser($id());
+			},
+			'promoteUser' => function () use ($id) {
+				return $this->users->promote($id());
+			},
+			'deleteExpiredUsers' => function () {
+				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
+			},
+			'saveSettings' => function () {
+				return $this->settings->saveSettings($_REQUEST);
+			},
+			'listBans' => function ($scope) {
+				return $this->bans->listBans($scope['bans']);
+			},
+			'saveBan' => function () {
+				return $this->bans->saveBan($_REQUEST);
+			},
+			'setBanState' => function () {
+				return $this->bans->setBanState($_REQUEST);
+			},
+			'deleteBan' => function () use ($id) {
+				return $this->bans->deleteBan($id());
+			},
+		];
 	}
 }

@@ -833,8 +833,9 @@ open-signup plan's checklist for a test PBX.
   assigns `updated_at = updated_at` on purpose -- the column is
   ON UPDATE CURRENT_TIMESTAMP, so without it every phone that booted would read
   as a client somebody had just edited.
-- A new AJAX command must be named in **both** `ajaxRequest()` and
-  `ajaxHandler()`.
+- **An AJAX command is one entry in `Oryk_provisioner::commands()`**, which
+  both `ajaxRequest()` and `ajaxHandler()` read. A list a navigator title can
+  narrow is also named in `SCOPED_COMMANDS`, and its handler is given the scope.
 - PHP and views are indented with **tabs**. Operator-facing strings go through
   `_()`.
 
