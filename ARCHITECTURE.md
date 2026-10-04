@@ -143,7 +143,9 @@ calls in `GROUP(oryk-lobby)` against `ORYK_OPEN_CALLS` and goes on to
 `[lobby-dial]`, which includes `ext-local`, `ext-meetme`, `app-vmmain`,
 `app-dialvm`, the `outrt-<id>` of each route flagged emergency, and last
 `[lobby-deny]` ("no service") -- searched in order, so deny only catches what
-nothing allowed matched. No other route, no ring group, queue or paging, no
+nothing allowed matched. `lobby` and `lobby-dial` also get an `i` ("no
+service"): FreePBX writes a context only when it has an extension of its own,
+and `lobby-dial` would otherwise be all includes and never written. No other route, no ring group, queue or paging, no
 other feature code. Counted by `CHANNEL(endpoint)`, which a phone cannot set as
 it can its caller id. Two ways out are closed besides the dial plan:
 

@@ -105,6 +105,16 @@ class LobbyContext extends Service
 			$ext->add($deny, $pattern, '', new \ext_hangup());
 		}
 
+		// FreePBX writes a context only when it has an extension of its own, so
+		// lobby-dial, which is otherwise all includes, gets `i`: without it the
+		// context is never written and every lobby call is dropped. `i` also
+		// answers anything that reaches lobby or lobby-dial unmatched.
+		foreach ([self::NAME, $dial] as $context) {
+			$ext->add($context, 'i', '', new \ext_answer());
+			$ext->add($context, 'i', '', new \ext_playback('ss-noservice'));
+			$ext->add($context, 'i', '', new \ext_hangup());
+		}
+
 		// Searched in order, and the first that matches wins: deny is last.
 		foreach (array_merge(self::INCLUDES, $this->emergencyRoutes()) as $include) {
 			$ext->addInclude($dial, $include);

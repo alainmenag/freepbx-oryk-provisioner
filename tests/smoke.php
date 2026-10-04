@@ -1764,6 +1764,10 @@ $ext = new StubExtensions();
 is_eq('lobby goes on to lobby-dial', isset($ext->added['lobby']['_[0-9*#+].']), true);
 is_eq('which searches the allowed contexts, deny last',
 	$ext->includes['lobby-dial'] ?? null, ['ext-local', 'ext-meetme', 'app-vmmain', 'app-dialvm', 'lobby-deny']);
+is_eq('lobby-dial has an extension of its own, or FreePBX never writes it',
+	isset($ext->added['lobby-dial']['i']), true);
+is_eq('and an unmatched number gets no service, not a dropped call',
+	$ext->added['lobby-dial']['i'][1][1]->args ?? null, ['ss-noservice']);
 is_eq('no outbound route is included',
 	array_filter($ext->includes['lobby-dial'] ?? [], function ($include) { return strpos($include, 'outrt-') === 0; }), []);
 is_eq('and lobby-deny says no service', $ext->added['lobby-deny']['_[0-9*#+].'][1][1]->args ?? null, ['ss-noservice']);
