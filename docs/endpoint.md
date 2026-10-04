@@ -69,7 +69,8 @@ login:
 | --- | --- |
 | no credentials | 401, the challenge that makes a phone send them |
 | a login that works | that account's default extension |
-| a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives); the username is the email too when it is one. The SIP secret is generated, not the password |
+| a username no account holds | a new user: the next free number, as a blank Extension in the Users editor, with an account of that username and password (as *Use Custom Username* gives), and no email — not even a username that is one, so no welcome email goes to an address nobody has confirmed. The SIP secret is generated, not the password |
+| a username no account holds, using anything but letters, digits, `.` `_` `@` `-`, over 64 characters, only digits, or an IP address | 400 — nothing is made. An existing login is never held to this |
 | a username held under another password | 401, and a line in FreePBX's security log that the GUI's fail2ban jail bans on |
 | no User Manager, or a login with no Extension/User | 409 |
 

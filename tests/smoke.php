@@ -1315,6 +1315,20 @@ is_eq('a blank password', thrown(function () use ($s) { $s['users']->findOrCreat
 is_eq('anything at all without User Manager', thrown(function () use ($s) { $s['users']->findOrCreate('bob', 'secret'); }), 'RuntimeException');
 is_eq('and nothing was created', FreePBX::$core->added, null);
 
+echo "\n  what a new open-provisioning username may be:\n";
+
+is_eq('a UUID', Users::signupUsername('26f557af-a431-4b1c-939c-aa9f83e12f9e'), true);
+is_eq('a name with . _ @ -', Users::signupUsername('j.smith_2@site-a.com'), true);
+is_eq('only digits is refused', Users::signupUsername('2001'), false);
+is_eq('an IPv4 address is refused', Users::signupUsername('203.0.113.9'), false);
+is_eq('a dotted name that is not one is not', Users::signupUsername('203.0.113'), true);
+is_eq('an email is allowed', Users::signupUsername('bob@site.com'), true);
+is_eq('a space is refused', Users::signupUsername('x from 203.0.113.9'), false);
+is_eq('a quote or bracket is refused', Users::signupUsername('a"<b>'), false);
+is_eq('a plus is refused', Users::signupUsername('bob+1@site.com'), false);
+is_eq('a trailing newline is refused', Users::signupUsername("bob\n"), false);
+is_eq('65 characters is refused', Users::signupUsername(str_repeat('a', 65)), false);
+
 echo "\n  the client a device is provisioned as:\n";
 
 $s = build();

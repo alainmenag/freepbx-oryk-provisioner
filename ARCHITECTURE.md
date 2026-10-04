@@ -90,7 +90,11 @@ answered by its Basic credentials instead of a client row
 1. no credentials -> 401, which is the challenge that makes a phone send them
 2. `Users::findOrCreate()`: a User Manager login answers with the account's
    default extension; a username no account holds makes a user, as a blank
-   Extension does, and gives its account that username and password (see
+   Extension does, when it passes `Users::signupUsername()` (`[A-Za-z0-9._@-]`,
+   1-64, not only digits -- a number would be taken for that extension's own
+   account by `UsermanManager::findByExtension()` -- and not an IP address),
+   else 400; the account gets no email, even from a username that is one, so
+   User Manager's welcome email never goes to an unconfirmed address, and gives its account that username and password (see
    [Users](#users)); a username held under another password -> 401, written
    to FreePBX's security log as a GUI login failure is, so the jail that
    watches it bans the address; no User Manager, or a login with no

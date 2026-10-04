@@ -51,6 +51,14 @@ class Users extends Service
 	 */
 	const DERIVED = ['id', 'tech', 'devicetype', 'account', 'dial', 'mailbox', 'user', 'description', 'callerid'];
 
+	/**
+	 * What a username open provisioning makes may be. On top of it
+	 * signupUsername() refuses only digits -- a number is taken by
+	 * UsermanManager::findByExtension() for that extension's own account -- and
+	 * an IP address, which would read as one in the security log.
+	 */
+	const SIGNUP_USERNAME = '/\A[A-Za-z0-9._@-]{1,64}\z/';
+
 	/** The MySQL named lock every save and every open-provisioning sign-up holds. */
 	const LOCK = 'oryk_provisioner_users';
 
@@ -339,10 +347,17 @@ class Users extends Service
 				return null;
 			}
 
+			// Only a username being made is held to this; an existing login is not.
+			if (!self::signupUsername($username)) {
+				throw new \InvalidArgumentException(_('A new username may use only letters, digits, ".", "_", "@" and "-", up to 64 characters, and may not be only digits or an IP address.'));
+			}
+
+			// No email, even when the username is one: nobody has shown they own it,
+			// and User Manager sends a welcome email to whatever address it is given.
 			$extension = $this->store([
 				'extension' => '',
 				'name' => '',
-				'email' => filter_var($username, FILTER_VALIDATE_EMAIL) !== false ? $username : '',
+				'email' => '',
 			]);
 
 			// A user whose login could not be set is one nobody can provision as
@@ -356,6 +371,23 @@ class Users extends Service
 
 			return ['extension' => $extension, 'created' => true];
 		});
+	}
+
+	/**
+	 * Whether open provisioning may make a user with this username:
+	 * SIGNUP_USERNAME, not only digits, and not an IP address.
+	 *
+	 * @param string $username Username offered.
+	 *
+	 * @return bool True when it may.
+	 */
+	public static function signupUsername($username)
+	{
+		$username = (string) $username;
+
+		return preg_match(self::SIGNUP_USERNAME, $username) === 1
+			&& !ctype_digit($username)
+			&& filter_var($username, FILTER_VALIDATE_IP) === false;
 	}
 
 	/**
