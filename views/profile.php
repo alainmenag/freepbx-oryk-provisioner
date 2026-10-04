@@ -115,7 +115,7 @@ $tabs = [
 										<label class="control-label" for="profile_name">
 											<?php echo _('Name'); ?>
 											<span class="text-danger" title="<?php echo _('Required'); ?>">*</span>
-										</label> <i class="fa fa-question-circle fpbx-help-icon" data-for="profile_name"></i>
+										</label> <i class="fpbx-help-icon" data-for="profile_name"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="profile_name"
@@ -137,7 +137,7 @@ $tabs = [
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="profile_enabled"><?php echo _('Status'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="profile_enabled"></i>
+										<label class="control-label" for="profile_enabled"><?php echo _('Status'); ?></label> <i class="fpbx-help-icon" data-for="profile_enabled"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<select class="form-control" id="profile_enabled">
@@ -165,7 +165,7 @@ $tabs = [
 
 							<div id="resource_toolbar" class="oryk-toolbar">
 								<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=<?php echo $id; ?>&amp;resource=">
-									<i class="fa fa-plus"></i> <?php echo _('Add Resource'); ?>
+									<?php echo $icon('plus'); ?> <?php echo _('Add Resource'); ?>
 								</a>
 							</div>
 
@@ -179,6 +179,8 @@ $tabs = [
 								data-pagination="true"
 								data-search="true"
 								data-show-refresh="true"
+								data-icons-prefix="oryk-icon"
+								data-icons='{"refresh":"oryk-icon-refresh"}'
 								data-unique-id="id"
 								data-sort-name="name"
 								data-sort-order="asc">
@@ -208,6 +210,8 @@ $tabs = [
 								data-pagination="true"
 								data-search="true"
 								data-show-refresh="true"
+								data-icons-prefix="oryk-icon"
+								data-icons='{"refresh":"oryk-icon-refresh"}'
 								data-unique-id="id"
 								data-row-style="formatClientRow"
 								data-sort-name="mac"
@@ -252,7 +256,7 @@ $tabs = [
 	function formatResourceActions(value, row) {
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
-			`<button type="button" class="btn btn-danger btn-sm" name="resource_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`<button type="button" class="btn btn-danger btn-sm" name="resource_delete" value="${row.id}">${orykIcon('trash')}</button>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');

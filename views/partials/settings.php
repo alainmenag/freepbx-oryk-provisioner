@@ -32,7 +32,7 @@ $h = function ($value) {
 			<div class="form-group">
 				<div class="col-md-4">
 					<label class="control-label" for="<?php echo $h($id); ?>"><?php echo $h(_($setting['name'])); ?></label>
-					<i class="fa fa-question-circle fpbx-help-icon" data-for="<?php echo $h($id); ?>"></i>
+					<i class="fpbx-help-icon" data-for="<?php echo $h($id); ?>"><?php echo $icon('help'); ?></i>
 				</div>
 				<div class="col-md-8">
 					<?php if ($setting['type'] === 'bool'): ?>

@@ -81,7 +81,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					<div class="tab-pane active" id="oryk_clients">
 						<div id="client_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;client=">
-								<i class="fa fa-plus"></i> <?php echo _('Add Client'); ?>
+								<?php echo $icon('plus'); ?> <?php echo _('Add Client'); ?>
 							</a>
 						</div>
 
@@ -95,6 +95,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							data-pagination="true"
 							data-search="true"
 							data-show-refresh="true"
+							data-icons-prefix="oryk-icon"
+							data-icons='{"refresh":"oryk-icon-refresh"}'
 							data-unique-id="id"
 							data-row-style="orykRowClasses"
 							data-sort-name="mac"
@@ -120,7 +122,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					<div class="tab-pane active" id="oryk_profiles">
 						<div id="profile_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;profile=">
-								<i class="fa fa-plus"></i> <?php echo _('Add Profile'); ?>
+								<?php echo $icon('plus'); ?> <?php echo _('Add Profile'); ?>
 							</a>
 						</div>
 
@@ -134,6 +136,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							data-pagination="true"
 							data-search="true"
 							data-show-refresh="true"
+							data-icons-prefix="oryk-icon"
+							data-icons='{"refresh":"oryk-icon-refresh"}'
 							data-unique-id="id"
 							data-row-style="orykRowClasses"
 							data-sort-name="name"
@@ -154,7 +158,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					<div class="tab-pane active" id="oryk_users">
 						<div id="user_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;user=">
-								<i class="fa fa-plus"></i> <?php echo _('Add User'); ?>
+								<?php echo $icon('plus'); ?> <?php echo _('Add User'); ?>
 							</a>
 							<select class="form-control oryk-user-filter" id="user_filter" aria-label="<?php echo _('Show'); ?>">
 								<option value=""><?php echo _('All users'); ?></option>
@@ -164,7 +168,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 								<?php endif; ?>
 							</select>
 							<button type="button" class="btn btn-danger hidden" id="user_delete_expired">
-								<i class="fa fa-trash"></i> <?php echo _('Delete listed'); ?>
+								<?php echo $icon('trash'); ?> <?php echo _('Delete listed'); ?>
 							</button>
 						</div>
 
@@ -179,6 +183,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							data-pagination="true"
 							data-search="true"
 							data-show-refresh="true"
+							data-icons-prefix="oryk-icon"
+							data-icons='{"refresh":"oryk-icon-refresh"}'
 							data-unique-id="extension"
 							data-sort-name="extension"
 							data-sort-order="asc">
@@ -215,7 +221,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					<div class="tab-pane active" id="oryk_bans">
 						<div id="ban_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;ban=">
-								<i class="fa fa-plus"></i> <?php echo _('Add Ban'); ?>
+								<?php echo $icon('plus'); ?> <?php echo _('Add Ban'); ?>
 							</a>
 						</div>
 
@@ -229,6 +235,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							data-pagination="true"
 							data-search="true"
 							data-show-refresh="true"
+							data-icons-prefix="oryk-icon"
+							data-icons='{"refresh":"oryk-icon-refresh"}'
 							data-unique-id="id"
 							data-row-style="orykBanRowClasses"
 							data-sort-name="created_at"
@@ -256,7 +264,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 						?>
 						<?php if ($syncState !== ''): ?>
 						<div class="alert alert-<?php echo $syncClass; ?>" style="margin: 0; clear: both;">
-							<i class="fa fa-shield"></i>
+							<?php echo $icon('shield'); ?>
 							<?php if ($syncState === 'ok'): ?>
 								<?php echo htmlspecialchars(sprintf(_('IP bans sync with fail2ban every minute (fail2ban %s): Banned into the banned jail, Deny into deny (both every port), Allow onto the ignore lists of %s only.'), (string) ($sync['fail2ban'] ?? ''), implode(', ', (array) ($sync['jails'] ?? []))), ENT_QUOTES, 'UTF-8'); ?>
 							<?php else: ?>
@@ -487,7 +495,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			` name="oryk_enabled" value="${row.id}" data-enabled="${enabled ? 1 : 0}"`,
 			` data-command="${command}" data-table="${table}" data-confirm="${ask}"`,
 			` title="${title}">`,
-			`<i class="fa ${enabled ? 'fa-toggle-on' : 'fa-toggle-off'}" style="margin: 0;"></i>`,
+			orykIcon(enabled ? 'toggle-on' : 'toggle-off'),
 			`</button>`
 		].join('');
 	}
@@ -541,12 +549,12 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			actions.push(
 				`<a class="btn btn-default btn-sm" href="${phone}" target="_blank" rel="noopener noreferrer"` +
 				` title="Open this phone's web interface at ${orykEscape(row.private_ip)}">` +
-				`<i class="fa fa-external-link" style="margin: 0;"></i></a>`
+				`${orykIcon('external')}</a>`
 			);
 		}
 
 		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`);
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}">${orykIcon('trash')}</button>`);
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 
 		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
@@ -561,7 +569,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			orykSwitch(row, 'setProfileEnabled', '#profile_table', 'profile', 'every client assigned to it is refused'),
-			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}">${orykIcon('trash')}</button>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');
@@ -646,8 +654,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
-			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions"><i class="fa fa-external-link" style="margin: 0;"></i></a>`,
-			`<button type="button" class="btn btn-danger btn-sm" name="user_delete" value="${orykEscape(row.extension)}" data-clients="${Number(row.clients) || 0}"><i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">${orykIcon('external')}</a>`,
+			`<button type="button" class="btn btn-danger btn-sm" name="user_delete" value="${orykEscape(row.extension)}" data-clients="${Number(row.clients) || 0}">${orykIcon('trash')}</button>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');
@@ -816,8 +824,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		const labels = { banned: 'label-warning', deny: 'label-danger', allow: 'label-success' };
 		const active = Number(row.active);
 		const label = active
-			? `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)} <i class="fa fa-caret-down"></i></span>`
-			: `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired <i class="fa fa-caret-down"></i></span>`;
+			? `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)} ${orykIcon('chevron-down')}</span>`
+			: `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired ${orykIcon('chevron-down')}</span>`;
 		const items = orykBanStates
 			.filter(function (choice) {
 				// What it already is, in force, is not a change -- but a Banned
@@ -895,9 +903,9 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			note,
-			`<i class="fa fa-sticky-note-o" style="margin: 0;"></i></button>`,
+			`${orykIcon('note')}</button>`,
 			`<button type="button" class="btn btn-danger btn-sm" name="ban_delete" value="${orykEscape(row.id)}" title="Delete">`,
-			`<i class="fa fa-trash" style="margin: 0;"></i></button>`,
+			`${orykIcon('trash')}</button>`,
 			`<a class="btn btn-primary btn-sm" href="${orykBanUrl(row)}">Edit</a>`,
 			`</div>`
 		].join('');

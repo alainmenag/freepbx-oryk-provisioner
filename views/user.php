@@ -86,7 +86,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_extension"><?php echo _('Extension'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_extension"></i>
+										<label class="control-label" for="user_extension"><?php echo _('Extension'); ?></label> <i class="fpbx-help-icon" data-for="user_extension"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="user_extension"
@@ -109,7 +109,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_name"><?php echo _('Name'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_name"></i>
+										<label class="control-label" for="user_name"><?php echo _('Name'); ?></label> <i class="fpbx-help-icon" data-for="user_name"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control" id="user_name" maxlength="255"
@@ -131,7 +131,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_email"><?php echo _('Email'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_email"></i>
+										<label class="control-label" for="user_email"><?php echo _('Email'); ?></label> <i class="fpbx-help-icon" data-for="user_email"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="email" class="form-control" id="user_email" maxlength="255"
@@ -153,7 +153,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_from_domain"><?php echo _('From Domain'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_from_domain"></i>
+										<label class="control-label" for="user_from_domain"><?php echo _('From Domain'); ?></label> <i class="fpbx-help-icon" data-for="user_from_domain"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="text" class="form-control oryk-name" id="user_from_domain" maxlength="255"
@@ -176,7 +176,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_secret"><?php echo _('Secret'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_secret"></i>
+										<label class="control-label" for="user_secret"><?php echo _('Secret'); ?></label> <i class="fpbx-help-icon" data-for="user_secret"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<input type="password" class="form-control" id="user_secret" maxlength="255"
@@ -200,7 +200,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="form-group">
 									<div class="col-md-4">
-										<label class="control-label" for="user_context"><?php echo _('Context'); ?></label> <i class="fa fa-question-circle fpbx-help-icon" data-for="user_context"></i>
+										<label class="control-label" for="user_context"><?php echo _('Context'); ?></label> <i class="fpbx-help-icon" data-for="user_context"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
 										<p class="form-control-static oryk-name" id="user_context">
@@ -250,7 +250,7 @@ if ($clientCount > 0) {
 
 						<div id="user_client_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;client=&amp;device_id=<?php echo rawurlencode($extension); ?>">
-								<i class="fa fa-plus"></i> <?php echo _('Add Client'); ?>
+								<?php echo $icon('plus'); ?> <?php echo _('Add Client'); ?>
 							</a>
 						</div>
 
@@ -264,6 +264,8 @@ if ($clientCount > 0) {
 							data-pagination="true"
 							data-search="true"
 							data-show-refresh="true"
+							data-icons-prefix="oryk-icon"
+							data-icons='{"refresh":"oryk-icon-refresh"}'
 							data-unique-id="id"
 							data-row-style="orykUserClientRow"
 							data-sort-name="mac"

@@ -29,7 +29,7 @@
  *
  * A field's help follows FreePBX's own convention, which is the only one its
  * CSS shows: a `.fpbx-help-block` is hidden until the
- * `<i class="fa fa-question-circle fpbx-help-icon" data-for="<id>">` after the
+ * `<i class="fpbx-help-icon" data-for="<id>">` (holding `$icon('help')`) after the
  * label is hovered, and then the element with id `<id>-help` is shown.
  *
  * The placeholder chips below the template are copied by clicking one, which
@@ -144,21 +144,8 @@
 		return [
 			`<a class="btn btn-default btn-sm" href="${orykEscape(view)}" target="_blank" rel="noopener" title="Render: show this resource as this client receives it" aria-label="Render">${orykIcon('eye')}</a>`,
 			`<a class="btn btn-default btn-sm" href="${orykEscape(download)}" title="Download: save this resource as this client receives it" aria-label="Download">${orykIcon('download')}</a>`,
-			`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="Open: fetch this resource from the endpoint, as this client does" aria-label="Open">${orykIcon('open')}</a>`
+			`<a class="btn btn-default btn-sm" href="${orykEscape(row.url)}" target="_blank" title="Open: fetch this resource from the endpoint, as this client does" aria-label="Open">${orykIcon('external')}</a>`
 		];
-	}
-
-	// A row button's symbol: a 24-unit outline in the button's own colour,
-	// so it follows the theme. The name is ours, never a request's.
-	function orykIcon(name) {
-		const paths = {
-			eye: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
-			download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
-			open: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/>'
-		};
-
-		return '<svg class="oryk-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"' +
-			' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
 	}
 
 	/**

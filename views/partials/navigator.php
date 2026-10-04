@@ -87,7 +87,7 @@ $e = function ($value) {
 						. $e($chosen ? $level['text'] : $level['prompt']) . '</span>';
 					echo $link !== '' ? '<a class="oryk-nav-link" href="' . $e($link) . '">' . $crumb . '</a>' : $crumb;
 					?>
-					<svg class="oryk-nav-caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M1.5 3.5 5 7l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 				</div>
 
 				<ul class="dropdown-menu oryk-nav-menu">

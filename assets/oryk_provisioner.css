@@ -21,6 +21,12 @@
 	margin: 0;
 }
 
+.provisioner .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* ----------------------------------------------------------------------
  * Shared: utilities, list rows, editors (views/partials/editor.php)
  * ---------------------------------------------------------------------- */
@@ -87,7 +93,15 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-tab-section {
 	padding-top: 15px;
 }
+/* An assets/icons/ SVG (see src/Icons.php), in the colour of the text around it. */
 .oryk-icon {
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	vertical-align: -2px;
+}
+/* A row button's whole label: as tall as a line of its text, so it lines up with Edit beside it. */
+.btn-sm > .oryk-icon {
 	display: block;
 	margin: 2px 0;
 }
@@ -261,9 +275,12 @@ tr.oryk-disabled > td a:not(.btn) {
 
 /* The same chevron on every crumb: what says it opens, whatever it reads. */
 .oryk-nav .oryk-nav-caret {
+	width: 10px;
+	height: 10px;
 	margin-left: 6px;
 	vertical-align: 2px;
 	color: #999;
+	stroke-width: 3;
 }
 
 /* Nothing chosen at this level yet. An invitation, not a value. */
@@ -390,8 +407,12 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-ban-state > [data-toggle="dropdown"]:focus {
 	text-decoration: none;
 }
-.oryk-ban-state .fa-caret-down {
+.oryk-ban-state .oryk-icon {
+	width: 9px;
+	height: 9px;
 	margin: 0 0 0 2px;
+	vertical-align: 0;
+	stroke-width: 3;
 }
 /* bootstrap-table's empty clearfix after the Bans table: the sync line under it clears the floats itself. */
 #oryk_bans > .bootstrap-table + .clearfix {
