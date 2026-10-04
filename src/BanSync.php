@@ -21,9 +21,8 @@ class BanSync extends Service
 	const SOURCE = 'fail2ban';
 
 	/**
-	 * Days a row the sync made is kept after it expires. Without a limit the
-	 * table grows by a row per address fail2ban ever bans; the price is that an
-	 * address back after this long starts its Times count again.
+	 * Days prune() keeps a sync-made row after it expires. Bounds the table; an
+	 * address back after this starts its Times count again.
 	 */
 	const KEEP_DAYS = 30;
 
@@ -620,8 +619,8 @@ class BanSync extends Service
 	}
 
 	/**
-	 * Delete the rows the sync made, still its own, that expired over KEEP_DAYS
-	 * ago and have no copy in fail2ban. A row anybody saved is never pruned.
+	 * Delete sync-made rows, still managed, expired over KEEP_DAYS ago, with no
+	 * copy in fail2ban. A row anybody saved is never pruned.
 	 *
 	 * @return int Rows deleted.
 	 */

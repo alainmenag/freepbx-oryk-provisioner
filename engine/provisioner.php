@@ -39,8 +39,8 @@
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, HEAD, PUT, OPTIONS');
 header('Access-Control-Allow-Headers: Authorization, *');
-// Nothing answered here is a page: a body -- a log a phone PUT, an XML
-// template -- must never run as one on the GUI's origin, which this shares.
+// No answer may run as a page: /provisioner/ shares the GUI's origin.
+// The same pair as Endpoint::inertHeaders().
 header('X-Content-Type-Options: nosniff');
 header("Content-Security-Policy: sandbox; default-src 'none'");
 

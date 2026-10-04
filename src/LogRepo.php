@@ -104,12 +104,10 @@ class LogRepo extends Repo
 	/**
 	 * Store what a phone PUT, under the name its resource renders to.
 	 *
-	 * Overwritten rather than appended: a phone PUTs the whole of its log each
-	 * time, so appending would store the same lines over and over. Only the newest
-	 * MAX_KEPT bytes are kept, cut to start on a whole line -- the end of a log is
-	 * the part about now -- so no request can fill the disk. A body declared or
-	 * found to be over MAX_BODY is refused with a 413 and nothing is written.
-	 * Written to a temporary file and renamed, so a reader never sees half of one.
+	 * Overwritten, not appended: a phone PUTs its whole log each time. Keeps the
+	 * newest MAX_KEPT bytes, from a whole line; a body over MAX_BODY, declared or
+	 * read, is a 413 and nothing is written. Written to `.part` and renamed, so a
+	 * reader never sees half a file.
 	 *
 	 * The path is logFile()'s answer, handed in rather than worked out again here
 	 * -- building it twice is two chances to build it differently.
@@ -190,8 +188,7 @@ class LogRepo extends Repo
 			$tail = substr($tail, -self::MAX_KEPT);
 			$newline = strpos($tail, "\n");
 
-			// The first line is almost always a piece of one; a log with no newline
-			// in its last megabyte is kept as it is.
+			// Drop the partial first line, unless there is no newline to cut at.
 			if ($newline !== false && $newline + 1 < strlen($tail)) {
 				$tail = substr($tail, $newline + 1);
 			}

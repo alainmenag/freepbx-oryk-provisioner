@@ -194,13 +194,11 @@ class Bans extends Service
 	}
 
 	/**
-	 * Bans not marked deleted, for the navigator: expired ones too, the way the
-	 * Bans tab lists them. Never the whole table, which the fail2ban sync can
-	 * grow by a row per address fail2ban bans.
+	 * Bans not marked deleted, expired included, for the navigator. Never the
+	 * whole table: the sync adds a row per address fail2ban bans.
 	 *
-	 * With $requests, the rows naming any subject of any of them -- every row
-	 * that can apply, and some that do not: Navigator still asks applies() of
-	 * each. Otherwise the newest $limit.
+	 * With $requests: the rows naming any of their subjects, a superset that
+	 * Navigator filters with applies(). Otherwise the newest $limit.
 	 *
 	 * @param array<int, array<string, mixed>>|null $requests Subjects, as check() takes them.
 	 * @param int                                   $limit    The most rows without $requests.

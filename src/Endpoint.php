@@ -268,8 +268,7 @@ class Endpoint extends Service
 				: [(string) $username],
 		]);
 
-		// Which ban, and the extension, client and profile it names, go to the
-		// provisioning log only: told to the caller, they map a MAC to its extension.
+		// The ban's details go to the provisioning log only: they map a MAC to its extension.
 		return $row === null ? null : [
 			'status' => false,
 			'code' => 403,
@@ -648,11 +647,9 @@ class Endpoint extends Service
 	 * One resource as one client is sent it, as text in a tab of its own, and
 	 * end the request.
 	 *
-	 * The Render button. Always text/plain, with nosniff and a sandboxing CSP:
-	 * this is served on the admin GUI's origin, and a body -- a log a phone PUT
-	 * included -- must never be able to run as a page there. A file
-	 * Transcoder::readText() will not read is answered with its size, not its
-	 * bytes. Not transcoded.
+	 * The Render button. text/plain with inertHeaders(): this is the GUI's
+	 * origin, and the body may be a log a phone PUT. A file readText() will not
+	 * read is answered with its size. Not transcoded.
 	 *
 	 * @param mixed $clientId   Client id.
 	 * @param mixed $resourceId Resource id.
@@ -686,9 +683,8 @@ class Endpoint extends Service
 	}
 
 	/**
-	 * The headers that keep a response from being run as a page by a browser:
-	 * no sniffing, and a CSP that sandboxes it and loads nothing. A phone ignores
-	 * both. engine/provisioner.php sends the same pair for every endpoint answer.
+	 * Headers that stop a browser running a response as a page: nosniff, and a
+	 * sandboxing CSP. Phones ignore both; engine/provisioner.php sends the same pair.
 	 *
 	 * @return void
 	 */

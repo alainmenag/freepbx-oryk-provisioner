@@ -52,10 +52,9 @@ class Users extends Service
 	const DERIVED = ['id', 'tech', 'devicetype', 'account', 'dial', 'mailbox', 'user', 'description', 'callerid'];
 
 	/**
-	 * What a username open provisioning makes may be. On top of it
-	 * signupUsername() refuses only digits -- a number is taken by
-	 * UsermanManager::findByExtension() for that extension's own account -- and
-	 * an IP address, which would read as one in the security log.
+	 * What a new open-provisioning username may be. signupUsername() also refuses
+	 * only digits (findByExtension() would take it for that extension's account)
+	 * and IP addresses (they read as one in the security log).
 	 */
 	const SIGNUP_USERNAME = '/\A[A-Za-z0-9._@-]{1,64}\z/';
 
@@ -339,9 +338,8 @@ class Users extends Service
 			return ['extension' => $extension, 'created' => false];
 		}
 
-		// From the username check to the login being set, under the lock: two
-		// sign-ups at once would otherwise be handed the same next number, and the
-		// second's setLogin() would rename the first's account to its own.
+		// Locked from the username check to setLogin(): otherwise two sign-ups get
+		// the same next number and the second renames the first's account.
 		return $this->withLock(function () use ($username, $password) {
 			if ($this->userman->usernameTaken($username)) {
 				return null;
@@ -352,8 +350,8 @@ class Users extends Service
 				throw new \InvalidArgumentException(_('A new username may use only letters, digits, ".", "_", "@" and "-", up to 64 characters, and may not be only digits or an IP address.'));
 			}
 
-			// No email, even when the username is one: nobody has shown they own it,
-			// and User Manager sends a welcome email to whatever address it is given.
+			// No email, even when the username is one: it is unverified, and User
+			// Manager would mail it a welcome.
 			$extension = $this->store([
 				'extension' => '',
 				'name' => '',
