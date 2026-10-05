@@ -428,6 +428,26 @@ class Overview extends Service
 	}
 
 	/**
+	 * Delete one voicemail message of a user.
+	 *
+	 * The one Overview command given an id as well as the scope: it is looked
+	 * up among that user's own messages and nowhere else.
+	 *
+	 * @param array<string, string> $at target().
+	 * @param mixed                 $id The message, as listVoicemail() lists it.
+	 *
+	 * @return array<string, mixed> Users::deleteVoicemail(); refused on a client.
+	 */
+	public function deleteVoicemail(array $at, $id)
+	{
+		$at = self::target($at);
+
+		return isset($at['user'])
+			? $this->users->deleteVoicemail($at['user'], $id)
+			: ['status' => false, 'message' => _('Voicemail belongs to a user. Open its Overview to clear it.')];
+	}
+
+	/**
 	 * Delete a user's voicemail messages, keeping the mailbox and the user.
 	 *
 	 * @param array<string, string> $at target().

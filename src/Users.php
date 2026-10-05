@@ -452,6 +452,25 @@ class Users extends Service
 	}
 
 	/**
+	 * Delete one of a user's voicemail messages.
+	 *
+	 * @param mixed $extension Extension number.
+	 * @param mixed $id        The message, as listVoicemail() lists it.
+	 *
+	 * @return array<string, mixed> Status; or a message.
+	 */
+	public function deleteVoicemail($extension, $id)
+	{
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		return $this->voicemail->deleteIn($this->voicemail->mailboxPath($extension), (string) $id)
+			? ['status' => true]
+			: ['status' => false, 'message' => _('That message is no longer there. Refresh the table.')];
+	}
+
+	/**
 	 * Delete a user's voicemail messages and keep the mailbox and the user.
 	 *
 	 * @param mixed $extension Extension number.

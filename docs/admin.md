@@ -112,7 +112,7 @@ the user. It is what deleting the user does to its history, so a call between
 two extensions is removed from the other's history too, and there is no undo —
 back up `asteriskcdrdb` first if the history matters. **Clear Voicemail**
 deletes every message in the user's mailbox and keeps the mailbox and its
-greetings; a phone's message-waiting light follows within a minute or so.
+greetings, and each message has its own trash can; a phone's message-waiting light follows within a minute or so.
 
 **Delete All**, in the action bar, removes the user or client and everything
 listed for it in one go, after saying how much that is. For a user that is the

@@ -793,12 +793,14 @@ up after the row is the point and a freed number is handed out again. Where
 another device keeps the extension in service, the extension is not going and
 the bans naming it are kept with it.
 
-**Every command is posted the scope and nothing else** -- `listOverviewUsers`,
+**Every command is posted the scope** -- `listOverviewUsers`,
 `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
-`countOverviewHistory`, `clearOverviewHistory`, `listOverviewVoicemail`,
+`listOverviewVoicemail`, `countOverviewHistory`, `clearOverviewHistory`,
 `clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
-`purgeOverview` -- and resolves it with `inventory()`, so nothing is deleted
-by an id a page sent. `clearOverviewLogs` is a command of its own because
+`purgeOverview` -- and works out what is related from it, so nothing is
+deleted by an id a page sent. The one exception takes an id as well:
+`deleteOverviewVoicemail`, whose message id is accepted only when it is one
+the walk of that user's own mailbox produced. `clearOverviewLogs` is a command of its own because
 `clearLogs` with nothing narrowing it is the whole log;
 `ProvisioningLog::clearFor()` with no MACs deletes nothing.
 
@@ -816,7 +818,8 @@ with the user kept. **Clear Voicemail** (`clearOverviewVoicemail`) unlinks
 the messages `messagesIn()` lists, audio included -- one walk
 (`messageFiles()`) behind both -- and keeps the mailbox, its greetings and
 its voicemail.conf entry; Asterisk's own mailbox poll is what brings message
-waiting back in step. The account and the mailbox itself still go only with
+waiting back in step. One message goes with `deleteIn()`, which renames the
+folder's later messages down a place: Asterisk numbers them without holes. The account and the mailbox itself still go only with
 the user.
 
 The tables on the pane are the lists' own -- same ids and formatters -- so

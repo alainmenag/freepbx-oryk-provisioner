@@ -201,6 +201,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 				<th data-field="callerid" data-formatter="formatText"><?php echo _('From'); ?></th>
 				<th data-field="folder" data-formatter="formatText"><?php echo _('Folder'); ?></th>
 				<th data-field="duration" data-formatter="formatOverviewDuration" data-align="right"><?php echo _('Duration'); ?></th>
+				<th data-field="actions" data-formatter="formatOverviewVoicemailActions" data-align="right"><?php echo _('Actions'); ?></th>
 			</tr>
 		</thead>
 	</table>
@@ -351,6 +352,35 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		}).fail(function () {
 			button.prop('disabled', false);
 			notie.alert(3, 'Could not clear the call history.', 4);
+		});
+	});
+
+	function formatOverviewVoicemailActions(value, row) {
+		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+			`<button type="button" class="btn btn-danger btn-sm" name="overview_voicemail_delete" value="${orykEscape(row.id)}" title="Delete this message">${orykIcon('trash')}</button>` +
+			`</div>`;
+	}
+
+	// The table is asked again afterwards: the messages after a deleted one
+	// are renumbered, so the ids on the page are stale.
+	$(document).on('click', '[name="overview_voicemail_delete"]', function () {
+		if (!window.confirm('Delete this voicemail message? This cannot be undone.')) {
+			return;
+		}
+
+		const button = $(this).prop('disabled', true);
+
+		orykPost('deleteOverviewVoicemail', { scope: orykOverviewScope, id: button.val() }).done(function (response) {
+			if (!response || !response.status) {
+				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+			} else {
+				notie.alert(1, 'Deleted.', 2);
+			}
+
+			$('#voicemail_table').bootstrapTable('refresh');
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not delete.', 4);
 		});
 	});
 

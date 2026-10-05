@@ -271,6 +271,65 @@ class VoicemailManager extends Service
 	}
 
 	/**
+	 * Delete one message from a mailbox directory, and close the gap it leaves.
+	 *
+	 * Asterisk numbers a folder's messages from msg0000 without holes, so the
+	 * ones after it are renamed down a place. The ids messagesIn() gave out
+	 * for that folder are stale afterwards.
+	 *
+	 * @param string $path mailboxPath().
+	 * @param string $id   `<folder>/msgNNNN`, as messagesIn() lists it.
+	 *
+	 * @return bool True when the message was there and is gone.
+	 */
+	public function deleteIn($path, $id)
+	{
+		$id = (string) $id;
+		$messages = $this->messageFiles($path);
+
+		// Only an id the walk itself produced: it becomes a path.
+		if (!isset($messages[$id])) {
+			return false;
+		}
+
+		foreach ($messages[$id]['all'] as $file) {
+			@unlink($file);
+		}
+
+		if (file_exists($messages[$id]['txt'])) {
+			return false;
+		}
+
+		$folder = dirname($id);
+		$next = 0;
+
+		// Sorted by id, so each is moved into a place already vacated.
+		ksort($messages);
+
+		foreach ($messages as $other => $files) {
+			if ($other === $id || dirname($other) !== $folder) {
+				continue;
+			}
+
+			$name = sprintf('msg%04d', $next++);
+
+			if (basename($other) === $name) {
+				continue;
+			}
+
+			foreach ($files['all'] as $file) {
+				$target = dirname($file) . '/' . $name . substr(basename($file), 7);
+
+				if (!file_exists($target)) {
+					@rename($file, $target);
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Every message under a mailbox directory, with the files it is made of.
 	 *
 	 * One level of folders (INBOX, Old, ...), and in them only `msgNNNN.*`:

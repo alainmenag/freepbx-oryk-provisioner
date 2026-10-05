@@ -585,6 +585,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'clearOverviewHistory':
 			case 'listOverviewVoicemail':
 			case 'clearOverviewVoicemail':
+			case 'deleteOverviewVoicemail':
 			case 'countOverviewHistory':
 			case 'clearOverviewLogs':
 			case 'clearOverviewStored':
@@ -754,6 +755,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'clearOverviewVoicemail':
 				return $this->overview->clearVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'deleteOverviewVoicemail':
+				return $this->overview->deleteVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')), $_REQUEST['id'] ?? '');
 
 			case 'countOverviewHistory':
 				return $this->overview->history(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));

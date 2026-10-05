@@ -1989,7 +1989,18 @@ file_put_contents($box . '/Old/notes.txt', 'not a message');
 $messages = $c['voicemail']->messagesIn($box);
 is_eq('a mailbox\'s messages are listed newest first', array_column($messages, 'id'), ['Old/msg0000', 'INBOX/msg0000']);
 is_eq('with who left each and how long it is', [$messages[1]['callerid'], $messages[1]['duration'], $messages[1]['folder']], ['"Front Desk" <1002>', 12, 'INBOX']);
-is_eq('clearing removes the messages', $c['voicemail']->clearIn($box), 2);
+foreach (['msg0001', 'msg0002'] as $more) {
+	file_put_contents($box . '/INBOX/' . $more . '.txt', "origtime=17000001" . substr($more, -2) . "\ncallerid=" . $more . "\n");
+	file_put_contents($box . '/INBOX/' . $more . '.wav', 'audio');
+}
+is_eq('an id that is a path somewhere else deletes nothing', $c['voicemail']->deleteIn($box, '../INBOX/msg0000'), false);
+is_eq('nor one that is not listed', $c['voicemail']->deleteIn($box, 'INBOX/msg0009'), false);
+is_eq('one message is deleted', $c['voicemail']->deleteIn($box, 'INBOX/msg0001'), true);
+is_eq('and the ones after it close the gap, audio with them', array_map('basename', glob($box . '/INBOX/msg*')), ['msg0000.txt', 'msg0000.wav', 'msg0001.txt', 'msg0001.wav']);
+is_eq('keeping what they were', strpos((string) file_get_contents($box . '/INBOX/msg0001.txt'), 'callerid=msg0002') !== false, true);
+is_eq('the other folder is left alone', is_file($box . '/Old/msg0000.txt'), true);
+is_eq('a client has no message to delete', $c['overview']->deleteVoicemail(['client' => '5'], 'INBOX/msg0000')['status'], false);
+is_eq('clearing removes the messages', $c['voicemail']->clearIn($box), 3);
 is_eq('audio included', glob($box . '/*/msg*'), []);
 is_eq('and leaves the greeting and what is not a message', [is_file($box . '/unavail.wav'), is_file($box . '/Old/notes.txt')], [true, true]);
 is_eq('no mailbox lists nothing', $c['voicemail']->messagesIn(''), []);
