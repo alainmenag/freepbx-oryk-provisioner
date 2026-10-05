@@ -270,8 +270,6 @@ class Pages extends Service
 			'pbxDomain' => $this->endpoints->fromDomain(null),
 			'available' => $available,
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
-			// Whether Promote is offered.
-			'lobbyContext' => $this->users->lobbyContext(),
 		]);
 	}
 

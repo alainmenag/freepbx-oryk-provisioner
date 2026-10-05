@@ -310,7 +310,7 @@ class Users extends Service
 	 * Save from the editor.
 	 *
 	 * Only the editor's fields are passed on: store() also takes what open
-	 * provisioning and Promote set, and a request may not.
+	 * provisioning sets, and a request may not.
 	 *
 	 * @param array<string, mixed> $request id (current number, '' for new),
 	 *                                      extension, name, email,
@@ -468,61 +468,12 @@ class Users extends Service
 	}
 
 	/**
-	 * Move a lobby user to from-internal: Promote, on its page.
-	 *
-	 * The context is written, UCP follows the account's groups again, and the
-	 * user's bridge rows, if it has any, are rewritten; the call limit and the
-	 * forward and transfer guards go with the context on the next Apply Config.
-	 *
-	 * @param mixed $extension Extension number.
-	 *
-	 * @return array<string, mixed> Status, id and `reload`; or a message.
-	 */
-	public function promote($extension)
-	{
-		try {
-			return $this->withLock(function () use ($extension) {
-				$row = $this->userRow($extension);
-
-				if (!$row) {
-					return ['status' => false, 'message' => _('That user no longer exists.')];
-				}
-
-				if ((string) $row['context'] !== $this->lobbyContext()) {
-					return ['status' => false, 'message' => _('That user is not in the lobby.')];
-				}
-
-				// The name is passed back, or a blank one would rename it to its number
-				$id = $this->store([
-					'id' => (string) $row['extension'],
-					'name' => (string) $row['name'],
-					'context' => 'from-internal',
-					'promote' => true,
-				]);
-
-				if (!$this->userman->restoreUcp($id)) {
-					$this->logWarning('could not restore UCP for promoted user ' . $id);
-				}
-
-				SecurityLog::write(sprintf(
-					'Open provisioning user %s promoted to from-internal by %s',
-					$id,
-					SecurityLog::admin()
-				));
-
-				return ['status' => true, 'id' => $id, 'reload' => true];
-			});
-		} catch (\Exception $e) {
-			return ['status' => false, 'message' => $e->getMessage()];
-		}
-	}
-
-	/**
 	 * Delete the expired lobby users an admin was shown: Delete listed.
 	 *
 	 * Each extension posted is asked again, here, whether it is still expired
-	 * -- its phone may have been seen since the list was drawn, it may have
-	 * been promoted, or the setting changed -- and is skipped when it is not.
+	 * -- its phone may have been seen since the list was drawn, its context
+	 * may have been changed, or the setting changed -- and is skipped when it
+	 * is not.
 	 *
 	 * @param mixed $extensions Extensions, as posted.
 	 *
@@ -938,10 +889,10 @@ class Users extends Service
 			$generated[$keyword] = ['value' => $value, 'flag' => $generated[$keyword]['flag'] ?? 0];
 		}
 
-		// Open provisioning's and Promote's, never the editor's: saveUser() posts
-		// only FIELDS. A new user takes them; an existing one keeps its own, so
-		// editing a lobby user keeps it in the lobby, until promote() moves it.
-		if ((!$stored || !empty($input['promote'])) && isset($input['context'])
+		// Open provisioning's, never the editor's: saveUser() posts only FIELDS.
+		// A new user takes them; an existing one keeps its own, so a context
+		// is only ever changed in Extensions.
+		if (!$stored && isset($input['context'])
 			&& preg_match(Settings::CONTEXT_PATTERN, (string) $input['context'])) {
 			$generated['context'] = ['value' => (string) $input['context'], 'flag' => $generated['context']['flag'] ?? 0];
 		}
@@ -1032,7 +983,7 @@ class Users extends Service
 	 *
 	 * A lobby endpoint may not transfer: a blind transfer is dialled in a
 	 * context the transferring phone does not choose. Blank takes the setting
-	 * off, which is what Promote relies on.
+	 * off: the next save of a user moved out of the lobby lifts it.
 	 *
 	 * @param string $context The user's context.
 	 *

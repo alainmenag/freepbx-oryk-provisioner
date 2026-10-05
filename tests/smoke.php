@@ -1737,31 +1737,21 @@ is_eq('a held name under another password is a 401', $result['code'] ?? null, 40
 is_eq('the one line FreePBX\'s jail bans for, scrubbed', SecurityLog::$written, ['Authentication failure for dave from 203.0.113.9?']);
 
 $lines = ['Open provisioning sign-up: user x extension 1 context lobby from 1.2.3.4',
-	'Open provisioning sign-up refused (per-day) for x from 1.2.3.4',
-	'Open provisioning user 1 promoted to from-internal by admin'];
+	'Open provisioning sign-up refused (per-day) for x from 1.2.3.4'];
 is_eq('no other line looks like a login failure', array_filter($lines, function ($line) {
 	return stripos($line, 'authentication failure') !== false;
 }), []);
 
-echo "\n  promote:\n";
+echo "\n  a context is not this module's to change:\n";
 
 $s = signup_build();
 $s['users']->signUp('frank', 'pw');
 FreePBX::$core->devices['9990000013'] = FreePBX::$core->added['settings'] ? array_map(function ($setting) {
 	return $setting['value'];
 }, FreePBX::$core->added['settings']) + ['id' => '9990000013', 'tech' => 'pjsip'] : [];
-$s['app']->Database->fetches = ['WHERE d.id = :id' => [['extension' => '9990000013', 'name' => 'Frank', 'context' => 'lobby']]];
-$result = $s['users']->promote('9990000013');
-$account = FreePBX::Userman()->getUserByDefaultExtension('9990000013');
-is_eq('a lobby user is promoted', [$result['status'] ?? null, $result['reload'] ?? null], [true, true]);
-is_eq('to from-internal', FreePBX::$core->added['settings']['context']['value'] ?? null, 'from-internal');
-is_eq('keeping its name', FreePBX::$core->added['settings']['description']['value'] ?? null, 'Frank');
-is_eq('and UCP follows its groups again', FreePBX::Userman()->getModuleSettingByID($account['id'], 'ucp|Global', 'allowLogin'), null);
-is_eq('transfer is back on', strpos((string) file_get_contents($s['conf']), 'allow_transfer') === false, true);
-
-$s = build();
-$s['app']->Database->fetches = ['WHERE d.id = :id' => [['extension' => '1001', 'name' => 'Desk', 'context' => 'from-internal']]];
-is_eq('one not in the lobby is refused', $s['users']->promote('1001')['status'] ?? null, false);
+$s['users']->store(['id' => '9990000013', 'name' => 'Frank', 'context' => 'from-internal', 'promote' => true]);
+is_eq('a save of an existing user does not take a context it is handed', (FreePBX::$core->added['settings']['context']['value'] ?? null) === 'from-internal', false);
+is_eq('and there is no promote', method_exists($s['users'], 'promote'), false);
 
 echo "\n  the lobby's dialplan:\n";
 
@@ -1804,8 +1794,8 @@ is_eq('one contact', $rows['aor']['max_contacts'], '1');
 is_eq('no transfer from the lobby', $rows['endpoint']['allow_transfer'], 'no');
 is_eq('a caller id that cannot break out of its quotes', $rows['endpoint']['callerid'], '"Bob B x" <9990000013>');
 is_eq('every column is one the table has', array_diff(array_keys($rows['endpoint']), array_merge(['id'], RealtimeBridge::COLUMNS['endpoint'])), []);
-$promoted = RealtimeBridge::rows(['id' => '1001', 'context' => 'from-internal'], 'lobby');
-is_eq('transfer stays on outside it', $promoted['endpoint']['allow_transfer'], 'yes');
+$outside = RealtimeBridge::rows(['id' => '1001', 'context' => 'from-internal'], 'lobby');
+is_eq('transfer stays on outside it', $outside['endpoint']['allow_transfer'], 'yes');
 
 $text = "[settings]\nfoo => bar\n";
 $block = RealtimeBridge::block('settings', ['ps_endpoints => odbc,x,y'], true);

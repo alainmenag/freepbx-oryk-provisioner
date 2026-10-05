@@ -38,7 +38,7 @@ Know what this is before you expose it:
   [reserved](endpoint.md#reserved-usernames). The limits key on the address
   the request arrived from, so a stranger with many addresses gets more. What
   stops the lobby reaching your outbound routes is dialplan the module writes
-  and you can change — keep it that way, and Promote only users you know. A
+  and you can change — keep it that way, and move only users you know out of the lobby. A
   wrong password for an existing username is written to FreePBX's security log,
   which is what FreePBX's own GUI jail watches; sign-ups and refused sign-ups
   are logged there too, worded so that jail does not ban for them.

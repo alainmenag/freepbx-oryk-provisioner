@@ -145,19 +145,6 @@ class UsermanManager extends Service
 	}
 
 	/**
-	 * Undo denyUcp(): the per-user setting is cleared, so the account follows
-	 * its groups again rather than being switched on for its own sake.
-	 *
-	 * @param int|string $extension Extension/user number.
-	 *
-	 * @return bool True when it was written.
-	 */
-	public function restoreUcp($extension)
-	{
-		return $this->setUcpLogin($extension, null);
-	}
-
-	/**
 	 * Write the per-user UCP login setting of an account this module owns.
 	 *
 	 * @param int|string $extension Extension/user number.

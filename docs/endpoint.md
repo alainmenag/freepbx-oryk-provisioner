@@ -101,7 +101,7 @@ credentials — a second replaces the first. Its emergency caller id is
 **Settings → Lobby Emergency Caller ID** (`ORYK_OPEN_EMERGENCY_CID`) — set it
 to a number an emergency operator can call back, and check what your
 jurisdiction requires of emergency calls from a multi-line system. A user
-leaves the lobby when you **Promote** it — see [The lobby](users.md#the-lobby).
+leaves the lobby when you change its context in Extensions — see [The lobby](users.md#the-lobby).
 
 An Allow ban on the phone's address does **not** take it out of the lobby.
 

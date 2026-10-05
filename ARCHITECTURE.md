@@ -157,12 +157,14 @@ it can its caller id. Two ways out are closed besides the dial plan:
   `Users::endpointExtras()` to `pjsip.endpoint_custom_post.conf` and by the
   bridge.
 
-A context leaves with **Promote** (`Users::promote()`): `from-internal`,
-`restoreUcp()` (the per-user setting cleared, so UCP follows the groups), the
-bridge rows rewritten; the call limit, forward guard and transfer guard follow
-the context on the next apply. `store()` takes `context` on a new user or a
-promote only, and `saveUser()` passes only the editor's fields, so a request
-can set neither. **Expired** (`ORYK_OPEN_EXPIRE_DAYS`): a lobby user whose
+**The module never changes a context.** `store()` takes `context` on a new
+user only, and `saveUser()` passes only the editor's fields, so a request
+cannot set one. A user leaves the lobby when its context is changed in
+Extensions: the call limit and forward guard follow the context on the next
+apply. Two things the sign-up wrote do not follow by themselves -- the
+transfer guard, which the user's next save here takes off
+(`endpointExtras()`), and the per-user UCP login `denyUcp()` refused, which is
+User Manager's to switch back. **Expired** (`ORYK_OPEN_EXPIRE_DAYS`): a lobby user whose
 newest client was last seen, or whose sign-up client was made, more than N days
 ago -- `Users::expired()` in PHP and `expiredExpr()` in SQL, which must agree:
 the list shows what the SQL matches, and `deleteExpired()` deletes only what
@@ -728,7 +730,7 @@ apply, and nothing fails.
 The rows (`RealtimeBridge::rows()`, pure) are built from the device as Core
 holds it after `store()`, named as FreePBX names its own (endpoint and AOR the
 extension, auth `<ext>-auth`), with the device's own context, secret and media
-encryption, and `allow_transfer=no` in the lobby. An edit, promote, renumber or
+encryption, and `allow_transfer=no` in the lobby. An edit, renumber or
 delete of a user in the bridge rewrites or removes its rows, or its phone would
 keep the old password or context until the apply.
 

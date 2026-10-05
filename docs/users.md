@@ -32,11 +32,13 @@ Users made by [open provisioning](endpoint.md#the-lobby) are in the lobby:
 internal calls and emergency routes only. The **Lobby** choice above the
 Users table lists them.
 
-**Promote**, on a lobby user's page beside its **Context**, moves it to
-`from-internal`: after Apply Config it can use your outbound routes, it can
-transfer and place calls without the lobby's limit, and its UCP login follows
-its User Manager groups again. Promote asks first. To put a user back in the
-lobby, set its context in Extensions.
+A user's **Context** is shown on its page and changed in Extensions, not
+here. To let a lobby user out, set its context there (`from-internal` for an
+ordinary extension) and Apply Config: it can then use your outbound routes
+and place calls without the lobby's limit. Two things the sign-up set are not
+undone by that: transfers stay off until you **Save** the user once on its
+page here, and its UCP login stays refused until you allow it in User
+Manager.
 
 With **Settings → Lobby Expiry** (`ORYK_OPEN_EXPIRE_DAYS`) above 0, a lobby
 user whose phone has not been answered for that many days — or never, and it
