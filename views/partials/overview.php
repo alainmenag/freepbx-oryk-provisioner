@@ -275,11 +275,12 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
 
-	// The device and nothing else. On the user's own, the question says what
-	// that leaves behind.
+	// Delete is the device and nothing else; on the user's own, the question
+	// says what that leaves behind. Edit is the device's page in FreePBX.
 	function formatOverviewDeviceActions(value, row) {
 		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
 			`<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" data-own="${Number(row.own) ? 1 : 0}" title="Delete this device">${orykIcon('trash')}</button>` +
+			`<a class="btn btn-primary btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}">Edit</a>` +
 			`</div>`;
 	}
 
