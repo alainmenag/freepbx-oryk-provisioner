@@ -7,8 +7,10 @@
  * and what Delete All takes, is Overview's business (src/Overview.php, and
  * ARCHITECTURE.md, "Overview"); this draws what inventory() found.
  *
- * The tables are the lists' own -- the same ids, columns and formatters, asked
- * with `&scope=` -- so views/admin.php's handlers answer their buttons. Every
+ * It is tables all the way down -- User, Clients, Provisioning log, Bans --
+ * and they are the lists' own: the same ids and formatters, so
+ * views/admin.php's handlers answer their buttons, with a column or two only
+ * Overview has. Every
  * command of this pane's own is posted the scope and nothing else.
  *
  * Included by views/admin.php, which defines orykPost() and the formatters.
@@ -22,16 +24,6 @@ $overview = isset($overview) && is_array($overview) ? $overview : null;
 $oe = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
-
-$oBytes = function ($bytes) {
-	$bytes = (int) $bytes;
-
-	if ($bytes >= 1048576) {
-		return sprintf(_('%s MB'), number_format($bytes / 1048576, 1));
-	}
-
-	return $bytes >= 1024 ? sprintf(_('%s KB'), number_format($bytes / 1024, 1)) : sprintf(_('%d bytes'), $bytes);
-};
 ?>
 
 <?php if (!$overview): ?>
@@ -43,8 +35,6 @@ $oBytes = function ($bytes) {
 
 <?php
 $oIsUser = $overview['kind'] === 'user';
-$oUser = is_array($overview['user']) ? $overview['user'] : null;
-$oClient = is_array($overview['client']) ? $overview['client'] : null;
 $oFreepbx = is_array($overview['freepbx']) ? $overview['freepbx'] : [];
 $oShared = !empty($oFreepbx['shared']);
 $oClients = count($overview['clients']);
@@ -96,110 +86,41 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 <div class="oryk-overview">
 
-	<h3 class="oryk-overview-title">
-		<?php if ($oIsUser): ?>
-			<?php echo _('User'); ?>
-			<a class="oryk-name" href="?display=oryk_provisioner&amp;user=<?php echo $oe(rawurlencode($overview['id'])); ?>"><?php echo $oe($overview['id']); ?></a>
-			<?php if ((string) ($oUser['name'] ?? '') !== ''): ?>
-				<small><?php echo $oe($oUser['name']); ?></small>
-			<?php endif; ?>
-		<?php else: ?>
-			<?php echo _('Client'); ?>
-			<a class="oryk-name" href="?display=oryk_provisioner&amp;client=<?php echo (int) $overview['id']; ?>"><?php echo $oe((string) ($oClient['mac'] ?? '') !== '' ? $oClient['mac'] : '#' . (int) $overview['id']); ?></a>
-		<?php endif; ?>
-	</h3>
-
 	<?php if ($oShared): ?>
 	<div class="alert alert-warning">
 		<?php echo $oe(sprintf(_('Another device is on extension %s. Deleting this user removes its own device and clients; the extension, its User Manager account, voicemail, call history and the bans naming it stay until that device is gone too.'), $overview['id'])); ?>
 	</div>
 	<?php endif; ?>
 
-	<table class="table oryk-overview-facts">
-		<tbody>
-			<?php if ($oIsUser): ?>
+	<h4 class="oryk-overview-heading"><?php echo _('User'); ?></h4>
+	<table
+		id="user_table"
+		data-toggle="table"
+		data-url="ajax.php?module=oryk_provisioner&command=listOverviewUsers<?php echo $oe($oScopeQuery); ?>"
+		class="table table-striped"
+		data-side-pagination="server"
+		data-icons-prefix="oryk-icon"
+		data-icons='{"refresh":"oryk-icon-refresh"}'
+		data-unique-id="extension">
+		<thead>
 			<tr>
-				<th><?php echo _('Extension'); ?></th>
-				<td><a href="?display=extensions&amp;extdisplay=<?php echo $oe(rawurlencode($overview['id'])); ?>"><?php echo $oe($overview['id']); ?></a></td>
+				<th data-field="extension" data-formatter="formatUserExtension"><?php echo _('Extension'); ?></th>
+				<th data-field="name" data-formatter="formatText"><?php echo _('Name'); ?></th>
+				<th data-field="context" data-formatter="formatUserContext"><?php echo _('Context'); ?></th>
+				<th data-field="account" data-formatter="formatOverviewAccount"><?php echo _('User Manager'); ?></th>
+				<th data-field="mailbox" data-formatter="formatOverviewMailbox"><?php echo _('Voicemail'); ?></th>
+				<th data-field="history" data-formatter="formatOverviewHistory"><?php echo _('Call History'); ?></th>
+				<th data-field="last_seen" data-formatter="formatClientSeen"><?php echo _('Last Seen'); ?></th>
+				<th data-field="actions" data-formatter="formatUserActions" data-align="right"><?php echo _('Actions'); ?></th>
 			</tr>
-			<tr>
-				<th><?php echo _('Context'); ?></th>
-				<td><?php echo $oe((string) ($oUser['context'] ?? '') !== '' ? $oUser['context'] : '-'); ?></td>
-			</tr>
-			<tr>
-				<th><?php echo _('Last Seen'); ?></th>
-				<td><?php echo $oe((string) ($oUser['last_seen'] ?? '') !== '' ? $oUser['last_seen'] : _('Never')); ?></td>
-			</tr>
-			<tr>
-				<th><?php echo _('User Manager account'); ?></th>
-				<td><?php echo (string) ($oFreepbx['account'] ?? '') !== '' ? $oe($oFreepbx['account']) : '<span class="text-muted">' . _('None this module owns') . '</span>'; ?></td>
-			</tr>
-			<tr>
-				<th><?php echo _('Voicemail'); ?></th>
-				<td><?php echo !empty($oFreepbx['mailbox']) ? _('A mailbox') : '<span class="text-muted">' . _('None') . '</span>'; ?></td>
-			</tr>
-			<tr>
-				<th><?php echo _('Call history'); ?></th>
-				<td id="oryk_overview_history"><span class="text-muted"><?php echo _('Counting...'); ?></span></td>
-			</tr>
-			<tr>
-				<th><?php echo _('Clients'); ?></th>
-				<td><?php echo $oClients; ?></td>
-			</tr>
-			<?php else: ?>
-			<tr>
-				<th><?php echo _('User'); ?></th>
-				<td>
-					<?php if ($oUser): ?>
-						<a class="oryk-name" href="<?php echo $oe('?display=oryk_provisioner&tab=overview&scope=user:' . rawurlencode((string) $oUser['extension'])); ?>"><?php echo $oe($oUser['extension']); ?></a>
-						<?php echo $oe((string) ($oUser['name'] ?? '')); ?>
-						<span class="text-muted"><?php echo _('-- kept; deleting this client does not delete its user'); ?></span>
-					<?php elseif ((string) ($oClient['device_id'] ?? '') !== ''): ?>
-						<?php echo $oe(sprintf(_('Device %s, which is not a user'), $oClient['device_id'])); ?>
-					<?php else: ?>
-						<span class="text-muted"><?php echo _('None'); ?></span>
-					<?php endif; ?>
-				</td>
-			</tr>
-			<tr>
-				<th><?php echo _('Last Seen'); ?></th>
-				<td><?php echo $oe((string) ($oClient['last_seen'] ?? '') !== '' ? $oClient['last_seen'] : _('Never')); ?></td>
-			</tr>
-			<?php endif; ?>
-			<tr>
-				<th><?php echo _('Provisioning log'); ?></th>
-				<td><?php echo $oe(sprintf($oLogs === 1 ? _('%d entry') : _('%d entries'), $oLogs)); ?></td>
-			</tr>
-			<tr>
-				<th><?php echo _('Stored phone logs'); ?></th>
-				<td>
-					<?php if ($oStored): ?>
-						<?php echo $oe(sprintf($oStored === 1 ? _('%d file, %s') : _('%d files, %s'), $oStored, $oBytes($overview['stored']['bytes']))); ?>
-						<button type="button" class="btn btn-danger btn-sm" id="oryk_overview_stored" title="<?php echo $oe(_('Delete the stored phone logs')); ?>">
-							<?php echo $icon('trash'); ?>
-						</button>
-					<?php else: ?>
-						<span class="text-muted"><?php echo _('None'); ?></span>
-					<?php endif; ?>
-				</td>
-			</tr>
-			<tr>
-				<th><?php echo _('Bans'); ?></th>
-				<td>
-					<?php echo $oe(sprintf(_('%d naming it'), $oNamed)); ?><?php if ($oApplying): ?>,
-						<?php echo $oe(sprintf(_('%d more that apply to it and are kept by Delete All'), $oApplying)); ?>
-					<?php endif; ?>
-				</td>
-			</tr>
-		</tbody>
+		</thead>
 	</table>
 
-	<?php if ($oIsUser): ?>
-	<h4 class="oryk-overview-heading"><?php echo _('Clients'); ?></h4>
+	<h4 class="oryk-overview-heading"><?php echo $oIsUser ? _('Clients') : _('Client'); ?></h4>
 	<table
 		id="client_table"
 		data-toggle="table"
-		data-url="ajax.php?module=oryk_provisioner&command=listClients<?php echo $oe($oScopeQuery); ?>"
+		data-url="ajax.php?module=oryk_provisioner&command=listOverviewClients<?php echo $oe($oScopeQuery); ?>"
 		class="table table-striped"
 		data-side-pagination="server"
 		data-pagination="true"
@@ -215,12 +136,12 @@ $oAsk .= ' ' . _('This cannot be undone.');
 				<th data-field="description" data-formatter="formatText" data-sortable="true"><?php echo _('Description'); ?></th>
 				<th data-field="profile" data-formatter="formatClientProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
 				<th data-field="secure" data-formatter="formatClientSecure" data-sortable="true"><?php echo _('Secure'); ?></th>
+				<th data-field="stored_files" data-formatter="formatOverviewStored"><?php echo _('Stored Logs'); ?></th>
 				<th data-field="last_seen" data-formatter="formatClientSeen" data-sortable="true"><?php echo _('Last Seen'); ?></th>
 				<th data-field="actions" data-formatter="formatClientActions" data-align="right"><?php echo _('Actions'); ?></th>
 			</tr>
 		</thead>
 	</table>
-	<?php endif; ?>
 
 	<h4 class="oryk-overview-heading"><?php echo _('Provisioning log'); ?></h4>
 	<?php
@@ -277,54 +198,83 @@ $oAsk .= ' ' . _('This cannot be undone.');
 			: `<span class="label label-default" title="Only applies to it, through an address or a profile">${orykEscape(orykOverviewKeeps)}</span>`;
 	}
 
-	// The counts above are printed by the server, so a row deleted from one of
-	// the tables is answered with the page again rather than with numbers that
-	// no longer add up.
+	// What Delete All asks is counted by the server when the page is drawn, so
+	// anything deleted from one of the tables is answered with the page again.
 	$(document).ajaxSuccess(function (event, xhr, settings) {
 		const answer = xhr && xhr.responseJSON;
 
-		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs)(&|$)/.test(settings.url || '')) {
+		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored)(&|$)/.test(settings.url || '')) {
 			window.location.reload();
 		}
 	});
+
+	function formatOverviewAccount(value) {
+		return value ? orykEscape(value) : '<span class="text-muted">None this module owns</span>';
+	}
+
+	function formatOverviewMailbox(value) {
+		return Number(value) ? 'Yes' : '<span class="text-muted">None</span>';
+	}
+
+	// What the count below answered, for a row drawn before or after it did.
+	let orykOverviewHistory = <?php echo json_encode($oIsUser ? _('Counting...') : '-'); ?>;
+
+	function formatOverviewHistory() {
+		return `<span class="oryk-overview-history">${orykEscape(orykOverviewHistory)}</span>`;
+	}
 
 	<?php if ($oIsUser): ?>
 	// Counted after the page is up: it is a scan of the call history. On
 	// ready, because orykPost() is defined by views/admin.php, below this.
 	$(function () {
 		orykPost('countOverviewHistory', { scope: orykOverviewScope }).done(function (response) {
-			const cell = $('#oryk_overview_history');
-
 			if (!response || !response.status || !response.available) {
-				cell.html('<span class="text-muted">No call history to read</span>');
-				return;
+				orykOverviewHistory = 'None to read';
+			} else {
+				const calls = Number(response.calls) || 0;
+				const recordings = Number(response.recordings) || 0;
+
+				orykOverviewHistory = `${calls} call${calls === 1 ? '' : 's'}, ${recordings} recording${recordings === 1 ? '' : 's'}`;
 			}
 
-			const calls = Number(response.calls) || 0;
-			const recordings = Number(response.recordings) || 0;
-
-			cell.text(`${calls} call${calls === 1 ? '' : 's'}, ${recordings} recording${recordings === 1 ? '' : 's'}`);
+			$('.oryk-overview-history').text(orykOverviewHistory);
 		}).fail(function () {
-			$('#oryk_overview_history').html('<span class="text-muted">Could not be counted</span>');
+			orykOverviewHistory = 'Could not be counted';
+			$('.oryk-overview-history').text(orykOverviewHistory);
 		});
 	});
 	<?php endif; ?>
 
-	$(document).on('click', '#oryk_overview_stored', function () {
-		if (!window.confirm('Delete the stored phone logs? The files these clients have sent are removed from the PBX.')) {
+	// The files a client has sent, with their own delete.
+	function formatOverviewStored(value, row) {
+		const files = Number(value) || 0;
+
+		if (!files) {
+			return '<span class="text-muted">None</span>';
+		}
+
+		const bytes = Number(row.stored_bytes) || 0;
+		const size = bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : (bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} bytes`);
+
+		return `${files} file${files === 1 ? '' : 's'}, ${size} ` +
+			`<button type="button" class="btn btn-danger btn-sm" name="overview_stored" value="${orykEscape(row.id)}" title="Delete this client's stored logs">${orykIcon('trash')}</button>`;
+	}
+
+	// Posted as a scope of that one client, like every command here.
+	$(document).on('click', '[name="overview_stored"]', function () {
+		if (!window.confirm('Delete the stored phone logs? The files this client has sent are removed from the PBX.')) {
 			return;
 		}
 
 		const button = $(this).prop('disabled', true);
 
-		orykPost('clearOverviewStored', { scope: orykOverviewScope }).done(function (response) {
+		orykPost('clearOverviewStored', { scope: 'client:' + button.val() }).done(function (response) {
 			if (!response || !response.status) {
 				button.prop('disabled', false);
 				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 				return;
 			}
 
-			window.location.reload();
 		}).fail(function () {
 			button.prop('disabled', false);
 			notie.alert(3, 'Could not delete.', 4);

@@ -1962,6 +1962,13 @@ $byId = array_values(array_filter(array_map(function ($call) {
 }, overview_deletes($s['app']->Database, 'oryk_provisioner_bans'))));
 is_eq('and the two bans naming it, not the address one', $byId, [11, 13]);
 
+$s['app']->Database->fetchAlls['LIMIT :limit OFFSET :offset'] = [['id' => '5', 'mac' => '0004f282e824', 'extension' => '1001']];
+$listed = $s['overview']->listClients(['client' => '5']);
+is_eq('its Clients table says what each has stored', [$listed['rows'][0]['stored_files'], $listed['rows'][0]['stored_bytes']], [0, 0]);
+$listed = $s['overview']->listUsers(['client' => '5']);
+is_eq('its Users table says what its user has in FreePBX', [$listed['rows'][0]['account'], $listed['rows'][0]['mailbox']], ['', 0]);
+is_eq('neither lists anything for a profile', [$s['overview']->listClients(['profile' => '2']), $s['overview']->listUsers(['profile' => '2'])], [['total' => 0, 'rows' => []], ['total' => 0, 'rows' => []]]);
+
 $levels = [];
 foreach ($s['navigator']->levels(['client' => '5'], 'overview') as $level) {
 	$levels[$level['key']] = $level;

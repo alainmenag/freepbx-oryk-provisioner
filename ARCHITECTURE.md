@@ -772,6 +772,8 @@ pane, by every command and by Delete All:
 | bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
 | FreePBX side | `Users::related()`: owned account, mailbox, whether another device shares the extension | -- |
 
+The pane is four tables -- User, Clients, Provisioning log, Bans -- on either
+kind of row: a client's Overview lists its user, which is kept, and itself.
 A user's call history is counted by `countOverviewHistory` after the page is
 up (`CdrHistory::count()`, the scan `purge()` makes), never on the way in.
 
@@ -784,7 +786,8 @@ up after the row is the point and a freed number is handed out again. Where
 another device keeps the extension in service, the extension is not going and
 the bans naming it are kept with it.
 
-**Every command is posted the scope and nothing else** -- `listOverviewBans`,
+**Every command is posted the scope and nothing else** -- `listOverviewUsers`,
+`listOverviewClients`, `listOverviewBans`,
 `countOverviewHistory`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and resolves it with `inventory()`, so nothing is deleted
 by an id a page sent. `clearOverviewLogs` is a command of its own because
@@ -799,10 +802,14 @@ Config raised -- or `Clients::deleteClient()`. A client's user is shown and
 never deleted. The FreePBX side is all or nothing with the user: nothing here
 purges history or a mailbox and keeps the extension.
 
-The tables on the pane are the lists' own -- same ids, columns and formatters
--- so `views/admin.php`'s handlers answer their buttons, and a client's trash
-can deletes in place there. The counts are printed by the server, so a delete
-made from one of those tables is answered by loading the page again.
+The tables on the pane are the lists' own -- same ids and formatters -- so
+`views/admin.php`'s handlers answer their buttons, and a client's trash can
+deletes in place there. Users and Clients are asked through Overview's own
+list commands, not `listUsers`/`listClients&scope=`: a row's own level is
+never narrowed by `Navigator::scope()`, and the rows carry what only Overview
+shows (the owned account and mailbox; a client's stored logs, with their own
+delete). What Delete All asks is counted when the page is drawn, so a delete
+made from one of the tables is answered by loading the page again.
 
 ## Conventions that hold everywhere
 

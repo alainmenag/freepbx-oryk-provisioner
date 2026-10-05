@@ -92,17 +92,18 @@ the page reloads on it. The trash can on the Users and Clients lists leads
 here, and from a user's or client's own page the section bar's **Overview**
 opens on that row.
 
+It is four tables, the same ones the lists show:
+
 | | For a user | For a client |
 | --- | --- | --- |
-| **Clients** | every client on it, each with its own delete | — |
+| **User** | the user, with its User Manager account, mailbox and call history | its user, which is kept |
+| **Clients** | every client on it, with the logs each has stored | the client itself |
 | **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
-| **Stored phone logs** | the files its clients have sent | the files it has sent |
 | **Bans** | every ban naming it or applying to it | the same |
-| **FreePBX** | its User Manager account, mailbox and call history | its user, which is kept |
 
 Each part can be removed where it is listed: a client or a ban by its trash
-can, the log entries with **Clear These Entries**, the stored logs with the
-trash can beside their count.
+can, the log entries with **Clear These Entries**, a client's stored logs with
+the trash can beside their count.
 
 **Delete All**, in the action bar, removes the user or client and everything
 listed for it in one go, after saying how much that is. For a user that is the

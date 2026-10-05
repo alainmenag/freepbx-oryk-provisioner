@@ -229,6 +229,62 @@ class Overview extends Service
 	}
 
 	/**
+	 * The Users table on Overview: the user, or a client's user, as the Users
+	 * list draws it, with what it has in FreePBX on the row.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> total, rows; each row with account and mailbox.
+	 */
+	public function listUsers(array $at)
+	{
+		$found = $this->inventory($at);
+
+		if (!$found || !$found['user']) {
+			return ['total' => 0, 'rows' => []];
+		}
+
+		$result = $this->users->listUsers([(string) $found['user']['extension']]);
+
+		foreach ($result['rows'] as &$row) {
+			$related = $this->users->related($row['extension']);
+			$row['account'] = $related['account'];
+			$row['mailbox'] = $related['mailbox'] ? 1 : 0;
+		}
+		unset($row);
+
+		return $result;
+	}
+
+	/**
+	 * The Clients table on Overview: the user's clients, or the client, as
+	 * the Clients list draws them, with what each has stored on the row.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> total, rows; each row with stored_files and stored_bytes.
+	 */
+	public function listClients(array $at)
+	{
+		$found = $this->inventory($at);
+
+		if (!$found) {
+			return ['total' => 0, 'rows' => []];
+		}
+
+		$result = $this->clients->listClients($found['clients']);
+
+		foreach ($result['rows'] as &$row) {
+			$stats = $this->logs->clientLogStats($row['id']);
+			$row['stored_files'] = $stats['files'];
+			$row['stored_bytes'] = $stats['bytes'];
+		}
+		unset($row);
+
+		return $result;
+	}
+
+	/**
 	 * The Bans table on Overview: the bans naming the row and the ones that
 	 * apply to it, each row saying which with `names`.
 	 *

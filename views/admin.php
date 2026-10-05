@@ -674,7 +674,10 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">${orykIcon('external')}</a>`,
-			`<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Review what goes with this user, then delete">${orykIcon('trash')}</a>`,
+			// Not on that user's own Overview: Delete All is its delete there.
+			(orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`)
+				? ''
+				: `<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Review what goes with this user, then delete">${orykIcon('trash')}</a>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');
