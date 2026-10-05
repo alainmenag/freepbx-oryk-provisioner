@@ -399,6 +399,39 @@ class Users extends Service
 	}
 
 	/**
+	 * One page of a user's call history, for Overview.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> CdrHistory::listCalls(); empty for no such user.
+	 */
+	public function listCalls($extension)
+	{
+		return $this->userRow($extension)
+			? $this->cdr->listCalls($extension)
+			: ['total' => 0, 'rows' => [], 'available' => false];
+	}
+
+	/**
+	 * Remove a user's call history and recordings and keep the user.
+	 *
+	 * What a delete does to the history, on its own: CdrHistory::purge(), so
+	 * a call with another extension leaves that one's history too.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> Status, with rows and recordings removed; or a message.
+	 */
+	public function clearHistory($extension)
+	{
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		return ['status' => true] + $this->cdr->purge($extension);
+	}
+
+	/**
 	 * Move a lobby user to from-internal: Promote, on its page.
 	 *
 	 * The context is written, UCP follows the account's groups again, and the

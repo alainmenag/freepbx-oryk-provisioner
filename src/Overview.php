@@ -373,6 +373,47 @@ class Overview extends Service
 	}
 
 	/**
+	 * The Call history table on a user's Overview.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> Users::listCalls(); empty on a client.
+	 */
+	public function listCalls(array $at)
+	{
+		$at = self::target($at);
+
+		return isset($at['user'])
+			? $this->users->listCalls($at['user'])
+			: ['total' => 0, 'rows' => [], 'available' => false];
+	}
+
+	/**
+	 * Clear a user's call history and recordings, keeping the user.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> Users::clearHistory(); refused on a client,
+	 *                              whose calls are its user's.
+	 */
+	public function clearHistory(array $at)
+	{
+		$at = self::target($at);
+
+		if (!isset($at['user'])) {
+			return ['status' => false, 'message' => _('Call history belongs to a user. Open its Overview to clear it.')];
+		}
+
+		$cleared = $this->users->clearHistory($at['user']);
+
+		if (!empty($cleared['status'])) {
+			$this->logInfo('overview: cleared the call history of user ' . $at['user'] . ': ' . (int) $cleared['rows'] . ' rows, ' . (int) $cleared['recordings'] . ' recordings');
+		}
+
+		return $cleared;
+	}
+
+	/**
 	 * Delete all: the row, and everything inventory() lists for it.
 	 *
 	 * The bans naming it go first, through Bans::deleteBan() so a copy in

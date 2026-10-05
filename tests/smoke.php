@@ -1969,6 +1969,24 @@ $listed = $s['overview']->listUsers(['client' => '5']);
 is_eq('its Users table says what its user has in FreePBX', [$listed['rows'][0]['account'], $listed['rows'][0]['mailbox']], ['', 0]);
 is_eq('neither lists anything for a profile', [$s['overview']->listClients(['profile' => '2']), $s['overview']->listUsers(['profile' => '2'])], [['total' => 0, 'rows' => []], ['total' => 0, 'rows' => []]]);
 
+is_eq('a client has no call history to list', $s['overview']->listCalls(['client' => '5']), ['total' => 0, 'rows' => [], 'available' => false]);
+is_eq('nor to clear', $s['overview']->clearHistory(['client' => '5'])['status'], false);
+$c = overview_build([]);
+$c['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+is_eq('with no CDR module there is none to read', $c['overview']->listCalls(['user' => '1001'])['available'], false);
+$c['app']->Modules->active = ['cdr'];
+$_REQUEST['sort'] = 'calldate; DROP TABLE cdr';
+$calls = $c['overview']->listCalls(['user' => '1001']);
+unset($_REQUEST['sort']);
+is_eq('a user\'s is read from cdr', [$calls['available'], $calls['total']], [true, 0]);
+$listing = array_values(array_filter(FreePBX::$cdr->handle->statements, function ($q) {
+	return strpos($q, 'SELECT `calldate`') === 0;
+}));
+is_eq('by src or dst, bound, sorted by a column it has', strpos($listing[0] ?? '', 'FROM `cdr` WHERE (`src` = :m0 OR `dst` = :m1) ORDER BY `calldate` DESC LIMIT 10 OFFSET 0') !== false, true);
+$cleared = $c['overview']->clearHistory(['user' => '1001']);
+is_eq('clearing it purges and keeps the user', [$cleared['status'], $cleared['rows'] > 0, FreePBX::$core->deleted], [true, true, []]);
+is_eq('what is not a number lists nothing', $c['cdr']->listCalls('1001 OR 1=1')['available'], false);
+
 $levels = [];
 foreach ($s['navigator']->levels(['client' => '5'], 'overview') as $level) {
 	$levels[$level['key']] = $level;

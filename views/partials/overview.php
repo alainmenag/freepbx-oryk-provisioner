@@ -143,6 +143,40 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
+	<?php if ($oIsUser): ?>
+	<h4 class="oryk-overview-heading"><?php echo _('Call history'); ?></h4>
+	<div id="call_toolbar" class="oryk-toolbar">
+		<button type="button" class="btn btn-danger" id="oryk_overview_calls_clear">
+			<?php echo $icon('trash'); ?>
+			<?php echo _('Clear Call History'); ?>
+		</button>
+	</div>
+	<table
+		id="call_table"
+		data-toggle="table"
+		data-url="ajax.php?module=oryk_provisioner&command=listOverviewCalls<?php echo $oe($oScopeQuery); ?>"
+		data-toolbar="#call_toolbar"
+		class="table table-striped"
+		data-side-pagination="server"
+		data-pagination="true"
+		data-show-refresh="true"
+		data-icons-prefix="oryk-icon"
+		data-icons='{"refresh":"oryk-icon-refresh"}'
+		data-sort-name="calldate"
+		data-sort-order="desc">
+		<thead>
+			<tr>
+				<th data-field="calldate" data-formatter="formatText" data-sortable="true"><?php echo _('Time'); ?></th>
+				<th data-field="src" data-formatter="formatOverviewCaller" data-sortable="true"><?php echo _('From'); ?></th>
+				<th data-field="dst" data-formatter="formatText" data-sortable="true"><?php echo _('To'); ?></th>
+				<th data-field="disposition" data-formatter="formatOverviewDisposition" data-sortable="true"><?php echo _('Result'); ?></th>
+				<th data-field="duration" data-formatter="formatOverviewDuration" data-sortable="true" data-align="right"><?php echo _('Duration'); ?></th>
+				<th data-field="recordingfile" data-formatter="formatOverviewRecording"><?php echo _('Recording'); ?></th>
+			</tr>
+		</thead>
+	</table>
+	<?php endif; ?>
+
 	<h4 class="oryk-overview-heading"><?php echo _('Provisioning log'); ?></h4>
 	<?php
 	$logMac = '';
@@ -203,7 +237,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	$(document).ajaxSuccess(function (event, xhr, settings) {
 		const answer = xhr && xhr.responseJSON;
 
-		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored)(&|$)/.test(settings.url || '')) {
+		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory)(&|$)/.test(settings.url || '')) {
 			window.location.reload();
 		}
 	});
@@ -244,6 +278,52 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		});
 	});
 	<?php endif; ?>
+
+	// The number, with the caller id it announced under it when that says more.
+	function formatOverviewCaller(value, row) {
+		const number = value ? orykEscape(value) : '-';
+
+		return row.clid && row.clid !== value
+			? `${number}<span class="oryk-log-detail">${orykEscape(row.clid)}</span>`
+			: number;
+	}
+
+	function formatOverviewDisposition(value) {
+		if (!value) {
+			return '-';
+		}
+
+		return `<span class="label ${value === 'ANSWERED' ? 'label-success' : 'label-default'}">${orykEscape(String(value).toLowerCase())}</span>`;
+	}
+
+	function formatOverviewDuration(value) {
+		const seconds = Math.max(0, Number(value) || 0);
+
+		return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+	}
+
+	function formatOverviewRecording(value) {
+		return value ? `<span title="${orykEscape(value)}">Yes</span>` : '<span class="text-muted">No</span>';
+	}
+
+	// The history alone, with the user kept: what a delete does to it.
+	$(document).on('click', '#oryk_overview_calls_clear', function () {
+		if (!window.confirm('Clear this user\'s call history? Every call it was part of is removed, with its recordings -- from the other extension\'s history too. The user is kept. This cannot be undone.')) {
+			return;
+		}
+
+		const button = $(this).prop('disabled', true);
+
+		orykPost('clearOverviewHistory', { scope: orykOverviewScope }).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				notie.alert(3, (response && response.message) || 'Could not clear the call history.', 4);
+			}
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not clear the call history.', 4);
+		});
+	});
 
 	// The files a client has sent, with their own delete.
 	function formatOverviewStored(value, row) {

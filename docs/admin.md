@@ -92,18 +92,24 @@ the page reloads on it. The trash can on the Users and Clients lists leads
 here, and from a user's or client's own page the section bar's **Overview**
 opens on that row.
 
-It is four tables, the same ones the lists show:
+It is tables, the same ones the lists show:
 
 | | For a user | For a client |
 | --- | --- | --- |
 | **User** | the user, with its User Manager account, mailbox and call history | its user, which is kept |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
+| **Call history** | the calls it made or received | — |
 | **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
 | **Bans** | every ban naming it or applying to it | the same |
 
 Each part can be removed where it is listed: a client or a ban by its trash
 can, the log entries with **Clear These Entries**, a client's stored logs with
 the trash can beside their count.
+
+**Clear Call History** removes a user's calls and their recordings and keeps
+the user. It is what deleting the user does to its history, so a call between
+two extensions is removed from the other's history too, and there is no undo —
+back up `asteriskcdrdb` first if the history matters.
 
 **Delete All**, in the action bar, removes the user or client and everything
 listed for it in one go, after saying how much that is. For a user that is the

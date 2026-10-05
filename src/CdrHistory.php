@@ -332,6 +332,79 @@ class CdrHistory extends Service
 	}
 
 	/**
+	 * One page of an extension's call history, the way bootstrap-table asks for it.
+	 *
+	 * The records naming it in `src` or `dst` -- what purge() starts from, not
+	 * every row purge() removes: a call's other legs are reached by its chain
+	 * and are not listed. Read from `cdr` where there is one.
+	 *
+	 * @param int|string $extension Number to list for.
+	 *
+	 * @return array<string, mixed> total, rows (calldate, clid, src, dst,
+	 *                              disposition, duration, billsec,
+	 *                              recordingfile, uniqueid -- those the table
+	 *                              has), and `available`, false when there is
+	 *                              no history to read.
+	 */
+	public function listCalls($extension)
+	{
+		$none = ['total' => 0, 'rows' => [], 'available' => false];
+		$extension = trim((string) $extension);
+
+		// purge()'s guard, for purge()'s reason.
+		if (!preg_match('/^[0-9]{1,20}$/', $extension)) {
+			return $none;
+		}
+
+		$cdrdb = $this->handle('list ' . $extension . ' in');
+		$tables = $cdrdb === null ? [] : $this->tables($cdrdb);
+
+		if (!$tables) {
+			return $none;
+		}
+
+		$table = in_array('cdr', $tables, true) ? 'cdr' : $tables[0];
+		$columns = $this->tableColumns($cdrdb, $table);
+		$match = $this->matchClause($extension, $columns);
+		$shown = array_values(array_intersect(
+			['calldate', 'clid', 'src', 'dst', 'disposition', 'duration', 'billsec', 'recordingfile', 'uniqueid'],
+			$columns
+		));
+
+		if ($match === null || !$shown) {
+			return $none;
+		}
+
+		// Interpolated, so only a column listed here and present in the table.
+		$sortable = array_values(array_intersect(['calldate', 'src', 'dst', 'disposition', 'duration'], $columns));
+		$sort = in_array((string) ($_REQUEST['sort'] ?? ''), $sortable, true) ? (string) $_REQUEST['sort'] : ($sortable[0] ?? $shown[0]);
+		$order = strtolower((string) ($_REQUEST['order'] ?? '')) === 'asc' ? 'ASC' : 'DESC';
+
+		try {
+			$count = $cdrdb->prepare('SELECT COUNT(*) FROM `' . $table . '` WHERE ' . $match['sql']);
+			$count->execute($match['params']);
+			$total = (int) $count->fetchColumn();
+
+			$sth = $cdrdb->prepare(
+				'SELECT ' . implode(', ', array_map(function ($column) {
+					return '`' . $column . '`';
+				}, $shown)) . ' FROM `' . $table . '` WHERE ' . $match['sql']
+					. ' ORDER BY `' . $sort . '` ' . $order
+					. ' LIMIT ' . max(1, min(500, (int) ($_REQUEST['limit'] ?? 10)))
+					. ' OFFSET ' . max(0, (int) ($_REQUEST['offset'] ?? 0))
+			);
+			$sth->execute($match['params']);
+			$rows = $sth->fetchAll(\PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			$this->logWarning('unable to list ' . $table . ' for ' . $extension . ': ' . $e->getMessage());
+
+			return $none;
+		}
+
+		return ['total' => $total, 'rows' => $rows, 'available' => true];
+	}
+
+	/**
 	 * Find the calls an extension was part of.
 	 *
 	 * Both the record's own identifier and its chain identifier are

@@ -582,6 +582,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listOverviewUsers':
 			case 'listOverviewClients':
 			case 'listOverviewBans':
+			case 'listOverviewCalls':
+			case 'clearOverviewHistory':
 			case 'countOverviewHistory':
 			case 'clearOverviewLogs':
 			case 'clearOverviewStored':
@@ -742,6 +744,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'listOverviewBans':
 				return $this->overview->listBans(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'listOverviewCalls':
+				return $this->overview->listCalls(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'clearOverviewHistory':
+				return $this->overview->clearHistory(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
 
 			case 'countOverviewHistory':
 				return $this->overview->history(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
