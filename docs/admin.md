@@ -115,6 +115,11 @@ back up `asteriskcdrdb` first if the history matters. **Clear Voicemail**
 deletes every message in the user's mailbox and keeps the mailbox and its
 greetings, and each message has its own trash can; a phone's message-waiting light follows within a minute or so.
 
+The trash can on the **User** row deletes the extension and its User Manager
+account, and FreePBX removes the extension's mailbox with it. Its devices,
+clients, call history, provisioning log and bans are left for you to remove
+on their own, or all at once:
+
 **Delete All**, in the action bar, removes the user or client and everything
 listed for it in one go, after saying how much that is. For a user that is the
 whole of [deleting a user](users.md#deleting) — extension, account, voicemail,

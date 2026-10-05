@@ -359,7 +359,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	$(document).ajaxSuccess(function (event, xhr, settings) {
 		const answer = xhr && xhr.responseJSON;
 
-		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory|clearOverviewVoicemail|deleteOverviewDevice)(&|$)/.test(settings.url || '')) {
+		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory|clearOverviewVoicemail|deleteOverviewDevice|deleteOverviewUser)(&|$)/.test(settings.url || '')) {
 			window.location.reload();
 		}
 	});
@@ -505,9 +505,27 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		});
 	});
 
-	// Delete All: the action bar's button, drawn by Pages::getActionBar(), and
-	// the trash can on the user's own row, which is the same delete.
-	$(document).on('click', '#orykpurge, [name="overview_purge"]', function (event) {
+	// The User row's trash can: the extension and its account, nothing else.
+	$(document).on('click', '[name="overview_user_delete"]', function () {
+		if (!window.confirm('Delete this extension and its User Manager account? Its voicemail box goes with the extension. Its devices, clients, call history, provisioning log and bans are kept -- Delete All removes those. This cannot be undone.')) {
+			return;
+		}
+
+		const button = $(this).prop('disabled', true);
+
+		orykPost('deleteOverviewUser', { scope: orykOverviewScope }).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+			}
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not delete.', 4);
+		});
+	});
+
+	// Delete All, drawn by Pages::getActionBar().
+	$(document).on('click', '#orykpurge', function (event) {
 		event.preventDefault();
 
 		if (!window.confirm(orykOverviewAsk)) {

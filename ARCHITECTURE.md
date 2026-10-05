@@ -795,7 +795,11 @@ Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
 mailbox, the greetings beside the folders left out.
 The User table names the account this module owns for it, as a link to it in
-User Manager.
+User Manager. Its trash can is `Users::deleteExtension()`: Core's `delUser()`
+and the owned account with its UCP assignments, and nothing else -- the
+device, clients, history and bans stay, though Voicemail deletes the mailbox
+behind `delUser()`. A user whose extension has gone that way is a device with
+no row in the User table.
 
 **Naming is not applying** (`Overview::names()`). A ban reaching the row only
 through its profile or an address is about something else: it is listed,
@@ -811,7 +815,7 @@ the bans naming it are kept with it.
 `listOverviewVoicemail`, `clearOverviewHistory`,
 `clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and works out what is related from it, so nothing is
-deleted by an id a page sent. Two take an id as well, and accept it only among that user's own:
+deleted by an id a page sent. `deleteOverviewUser` is the User row's delete. Two take an id as well, and accept it only among that user's own:
 `deleteOverviewVoicemail`, a message the walk of its mailbox produced, and
 `deleteOverviewDevice`, a device on its extension. `clearOverviewLogs` is a command of its own because
 `clearLogs` with nothing narrowing it is the whole log;
