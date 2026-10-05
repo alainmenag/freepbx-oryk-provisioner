@@ -257,6 +257,20 @@ class Overview extends Service
 	}
 
 	/**
+	 * The Devices table on a user's Overview.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> Users::listDevices(); empty on a client.
+	 */
+	public function listDevices(array $at)
+	{
+		$at = self::target($at);
+
+		return isset($at['user']) ? $this->users->listDevices($at['user']) : ['total' => 0, 'rows' => []];
+	}
+
+	/**
 	 * The Clients table on Overview: the user's clients, or the client, as
 	 * the Clients list draws them, with what each has stored on the row.
 	 *

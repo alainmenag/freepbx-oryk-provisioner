@@ -116,6 +116,28 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
+	<?php if ($oIsUser): ?>
+	<h4 class="oryk-overview-heading"><?php echo _('Devices'); ?></h4>
+	<table
+		id="device_table"
+		data-toggle="table"
+		data-url="ajax.php?module=oryk_provisioner&command=listOverviewDevices<?php echo $oe($oScopeQuery); ?>"
+		class="table table-striped"
+		data-side-pagination="server"
+		data-icons-prefix="oryk-icon"
+		data-icons='{"refresh":"oryk-icon-refresh"}'
+		data-unique-id="id">
+		<thead>
+			<tr>
+				<th data-field="own" data-formatter="formatOverviewDevice"><?php echo _('Delete All'); ?></th>
+				<th data-field="id" data-formatter="formatDevice"><?php echo _('Device'); ?></th>
+				<th data-field="description" data-formatter="formatText"><?php echo _('Description'); ?></th>
+				<th data-field="tech" data-formatter="formatText"><?php echo _('Technology'); ?></th>
+			</tr>
+		</thead>
+	</table>
+	<?php endif; ?>
+
 	<h4 class="oryk-overview-heading"><?php echo $oIsUser ? _('Clients') : _('Client'); ?></h4>
 	<table
 		id="client_table"
@@ -254,6 +276,14 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	const orykOverviewAsk = <?php echo json_encode($oAsk); ?>;
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
+
+	// Whether Delete All takes the device: only the user's own. Another one
+	// on the extension is kept, and keeps the extension.
+	function formatOverviewDevice(value) {
+		return Number(value)
+			? `<span class="label label-danger" title="This user's own device">${orykEscape(orykOverviewRemoves)}</span>`
+			: `<span class="label label-default" title="Another device on this extension: it stays, and so does the extension">${orykEscape(orykOverviewKeeps)}</span>`;
+	}
 
 	// Whether Delete All takes the ban: only one naming this row.
 	function formatOverviewBan(value) {

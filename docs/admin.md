@@ -97,6 +97,7 @@ It is tables, the same ones the lists show:
 | | For a user | For a client |
 | --- | --- | --- |
 | **User** | the user, with its User Manager account, mailbox and call history | its user, which is kept |
+| **Devices** | the FreePBX devices on its extension | — |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
 | **Call history** | the calls it made or received | — |
 | **Voicemail** | the messages in its mailbox, every folder | — |
@@ -125,7 +126,8 @@ names this client, its MAC or this user's extension. **Keeps**: the ban only
 applies to it, through an address or a profile, and is about more than this
 row — delete it from its own trash can if you mean to.
 
-When another device is on a user's extension, the page says so: deleting the
+The Devices table marks them the same way: the user's own device is removed,
+any other device on the extension is kept. When another device is on a user's extension, the page says so: deleting the
 user then removes its own device and clients, and the extension, account,
 voicemail and history stay.
 

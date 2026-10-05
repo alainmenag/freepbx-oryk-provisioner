@@ -1961,6 +1961,13 @@ is_eq('neither lists anything for a profile', [$s['overview']->listClients(['pro
 
 is_eq('a client has no call history to list', $s['overview']->listCalls(['client' => '5']), ['total' => 0, 'rows' => [], 'available' => false]);
 is_eq('nor to clear', $s['overview']->clearHistory(['client' => '5'])['status'], false);
+$d = overview_build([]);
+$d['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+$d['app']->Database->fetchAlls['FROM devices WHERE user = ?'] = [['id' => '1001', 'tech' => 'pjsip', 'description' => 'Desk'], ['id' => '1001-cell', 'tech' => 'pjsip', 'description' => 'Cell']];
+$devices = $d['overview']->listDevices(['user' => '1001']);
+is_eq('a user\'s devices say which is its own', array_column($devices['rows'], 'own', 'id'), ['1001' => 1, '1001-cell' => 0]);
+is_eq('a client has no devices to list', $d['overview']->listDevices(['client' => '5']), ['total' => 0, 'rows' => []]);
+
 $c = overview_build([]);
 $c['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
 is_eq('with no CDR module there is none to read', $c['overview']->listCalls(['user' => '1001'])['available'], false);

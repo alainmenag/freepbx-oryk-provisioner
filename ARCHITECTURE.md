@@ -775,10 +775,13 @@ pane, by every command and by Delete All:
 | FreePBX side | `Users::related()`: owned account, mailbox, whether another device shares the extension | -- |
 
 The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
-Call history and Voicemail -- on either kind of row: a client's Overview lists its user,
+Devices, Call history and Voicemail -- on either kind of row: a client's Overview lists its user,
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
-starts, not every leg it removes. Voicemail is read off the spool
+starts, not every leg it removes. Devices are the FreePBX devices on the
+extension (`Users::listDevices()`), marked the way bans are: the user's own
+is the one a delete removes, any other is kept and keeps the extension.
+Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
 mailbox, the greetings beside the folders left out.
 A user's call history is counted by `countOverviewHistory` after the page is
@@ -794,7 +797,7 @@ another device keeps the extension in service, the extension is not going and
 the bans naming it are kept with it.
 
 **Every command is posted the scope** -- `listOverviewUsers`,
-`listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
+`listOverviewDevices`, `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
 `listOverviewVoicemail`, `countOverviewHistory`, `clearOverviewHistory`,
 `clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and works out what is related from it, so nothing is

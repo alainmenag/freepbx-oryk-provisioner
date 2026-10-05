@@ -385,6 +385,41 @@ class Users extends Service
 	}
 
 	/**
+	 * The FreePBX devices on a user's extension, for Overview.
+	 *
+	 * The user's own device -- the one whose id is the extension -- is the
+	 * only one remove() deletes; `own` says which. Any other is what
+	 * related() calls shared, and keeps the extension in service.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> total, rows: id, tech, description, own.
+	 */
+	public function listDevices($extension)
+	{
+		$extension = (string) $extension;
+
+		if (!$this->userRow($extension)) {
+			return ['total' => 0, 'rows' => []];
+		}
+
+		try {
+			$stmt = $this->db->prepare('SELECT id, tech, description FROM devices WHERE user = ? ORDER BY id = ? DESC, id + 0, id');
+			$stmt->execute([$extension, $extension]);
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return ['total' => 0, 'rows' => []];
+		}
+
+		foreach ($rows as &$row) {
+			$row['own'] = (string) $row['id'] === $extension ? 1 : 0;
+		}
+		unset($row);
+
+		return ['total' => count($rows), 'rows' => $rows];
+	}
+
+	/**
 	 * How much call history a user's delete would remove.
 	 *
 	 * @param mixed $extension Extension number.
