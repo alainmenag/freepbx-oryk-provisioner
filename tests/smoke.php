@@ -1996,6 +1996,16 @@ is_eq('clearing a MAC binds it', $cleared[1][1], [':mac_0' => '0004f282e824']);
 $logs = new LogRepo($s['app']);
 is_eq('a client that sent nothing has nothing stored', $logs->clientLogStats(987654321), ['files' => 0, 'bytes' => 0]);
 
+echo "\n  the module class imports every class it builds:\n";
+
+// Nothing above loads Oryk_provisioner.class.php, so a `new Overview(...)`
+// without its `use` fatals only on a PBX.
+$module = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php');
+preg_match_all('/^use\s+(?:[A-Za-z0-9_\\\\]+\\\\)?([A-Za-z0-9_]+);/m', $module, $imports);
+preg_match_all('/\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(|\b([A-Z][A-Za-z0-9_]*)::/', $module, $named);
+$missing = array_values(array_diff(array_unique(array_filter(array_merge($named[1], $named[2]))), $imports[1], ['Oryk_provisioner']));
+is_eq('none is missing its use', $missing, []);
+
 
 foreach ($TEMPORARY as $path) {
 	@unlink($path);
