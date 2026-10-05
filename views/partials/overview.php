@@ -231,7 +231,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	</table>
 	<?php endif; ?>
 
-	<h4 class="oryk-overview-heading"><?php echo _('Provisioning log'); ?></h4>
+	<h4 class="oryk-overview-heading"><?php echo _('Provisioning Logs'); ?></h4>
 	<?php
 	$logMac = '';
 	$logScope = $overview['key'];
