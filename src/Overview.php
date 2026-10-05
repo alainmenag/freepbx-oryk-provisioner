@@ -414,6 +414,45 @@ class Overview extends Service
 	}
 
 	/**
+	 * The Voicemail table on a user's Overview.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> Users::listVoicemail(); empty on a client.
+	 */
+	public function listVoicemail(array $at)
+	{
+		$at = self::target($at);
+
+		return isset($at['user']) ? $this->users->listVoicemail($at['user']) : ['total' => 0, 'rows' => []];
+	}
+
+	/**
+	 * Delete a user's voicemail messages, keeping the mailbox and the user.
+	 *
+	 * @param array<string, string> $at target().
+	 *
+	 * @return array<string, mixed> Users::clearVoicemail(); refused on a
+	 *                              client, whose mailbox is its user's.
+	 */
+	public function clearVoicemail(array $at)
+	{
+		$at = self::target($at);
+
+		if (!isset($at['user'])) {
+			return ['status' => false, 'message' => _('Voicemail belongs to a user. Open its Overview to clear it.')];
+		}
+
+		$cleared = $this->users->clearVoicemail($at['user']);
+
+		if (!empty($cleared['status'])) {
+			$this->logInfo('overview: cleared ' . (int) $cleared['removed'] . ' voicemail messages of user ' . $at['user']);
+		}
+
+		return $cleared;
+	}
+
+	/**
 	 * Delete all: the row, and everything inventory() lists for it.
 	 *
 	 * The bans naming it go first, through Bans::deleteBan() so a copy in

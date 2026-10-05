@@ -164,6 +164,157 @@ class VoicemailManager extends Service
 	}
 
 	/**
+	 * Where an extension's mailbox keeps its messages.
+	 *
+	 * @param int|string $extension Extension to look at.
+	 *
+	 * @return string The mailbox's spool directory, or '' when the extension
+	 *                has no mailbox or either half is not a name a path can
+	 *                be built from.
+	 */
+	public function mailboxPath($extension)
+	{
+		$extension = trim((string) $extension);
+
+		if (!preg_match('/^[0-9]{1,20}$/', $extension) || !$this->moduleActive('voicemail')) {
+			return '';
+		}
+
+		try {
+			$mailbox = \FreePBX::Voicemail()->getVoicemailBoxByExtension($extension);
+			$context = (string) ($mailbox['vmcontext'] ?? '');
+			$spool = (string) \FreePBX::Config()->get('ASTSPOOLDIR');
+		} catch (\Exception $e) {
+			return '';
+		}
+
+		return ($spool !== '' && preg_match('/^[A-Za-z0-9_-]+$/', $context))
+			? $spool . '/voicemail/' . $context . '/' . $extension
+			: '';
+	}
+
+	/**
+	 * The messages in a mailbox directory, newest first.
+	 *
+	 * A message is `<folder>/msgNNNN.txt` and the audio beside it; the
+	 * greetings sit in the mailbox itself and are not messages. messageFiles()
+	 * is the one walk both this and clearIn() make, so what is listed is what
+	 * is cleared.
+	 *
+	 * @param string $path mailboxPath().
+	 *
+	 * @return array<int, array<string, mixed>> Each: id (`<folder>/msgNNNN`),
+	 *                                          folder, callerid, time
+	 *                                          (Y-m-d H:i:s, or ''), duration
+	 *                                          (seconds).
+	 */
+	public function messagesIn($path)
+	{
+		$messages = [];
+
+		foreach ($this->messageFiles($path) as $id => $files) {
+			$about = [];
+
+			foreach ((array) @file($files['txt'], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+				$parts = explode('=', (string) $line, 2);
+
+				if (count($parts) === 2) {
+					$about[trim($parts[0])] = trim($parts[1]);
+				}
+			}
+
+			$time = (int) ($about['origtime'] ?? 0);
+
+			$messages[] = [
+				'id' => $id,
+				'folder' => dirname($id),
+				'callerid' => (string) ($about['callerid'] ?? ''),
+				'time' => $time > 0 ? date('Y-m-d H:i:s', $time) : '',
+				'sort' => $time,
+				'duration' => (int) ($about['duration'] ?? 0),
+			];
+		}
+
+		usort($messages, function ($a, $b) {
+			return $b['sort'] <=> $a['sort'];
+		});
+
+		return array_map(function ($message) {
+			unset($message['sort']);
+
+			return $message;
+		}, $messages);
+	}
+
+	/**
+	 * Delete every message in a mailbox directory, and leave the greetings.
+	 *
+	 * @param string $path mailboxPath().
+	 *
+	 * @return int Messages removed.
+	 */
+	public function clearIn($path)
+	{
+		$removed = 0;
+
+		foreach ($this->messageFiles($path) as $files) {
+			foreach ($files['all'] as $file) {
+				@unlink($file);
+			}
+
+			if (!file_exists($files['txt'])) {
+				$removed++;
+			}
+		}
+
+		return $removed;
+	}
+
+	/**
+	 * Every message under a mailbox directory, with the files it is made of.
+	 *
+	 * One level of folders (INBOX, Old, ...), and in them only `msgNNNN.*`:
+	 * nothing else in a mailbox is a message.
+	 *
+	 * @param string $path mailboxPath().
+	 *
+	 * @return array<string, array{txt: string, all: array<int, string>}> By
+	 *         `<folder>/msgNNNN`, for the messages that have a `.txt`.
+	 */
+	private function messageFiles($path)
+	{
+		$found = [];
+
+		if ($path === '' || !is_dir($path)) {
+			return $found;
+		}
+
+		foreach ((array) @scandir($path) as $folder) {
+			if ($folder === '.' || $folder === '..' || !is_dir($path . '/' . $folder) || is_link($path . '/' . $folder)) {
+				continue;
+			}
+
+			foreach ((array) @scandir($path . '/' . $folder) as $entry) {
+				if (preg_match('/^(msg[0-9]{4})\.[A-Za-z0-9]+$/', (string) $entry, $m) && is_file($path . '/' . $folder . '/' . $entry)) {
+					$found[$folder . '/' . $m[1]]['all'][] = $path . '/' . $folder . '/' . $entry;
+				}
+			}
+		}
+
+		foreach ($found as $id => $files) {
+			$txt = $path . '/' . $id . '.txt';
+
+			if (in_array($txt, $files['all'], true)) {
+				$found[$id]['txt'] = $txt;
+			} else {
+				unset($found[$id]);
+			}
+		}
+
+		return $found;
+	}
+
+	/**
 	 * Keep the extension's voicemail email in step with the device email.
 	 *
 	 * Edits the mailbox in place, leaving password, name, pager and options

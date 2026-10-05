@@ -99,6 +99,7 @@ It is tables, the same ones the lists show:
 | **User** | the user, with its User Manager account, mailbox and call history | its user, which is kept |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
 | **Call history** | the calls it made or received | — |
+| **Voicemail** | the messages in its mailbox, every folder | — |
 | **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
 | **Bans** | every ban naming it or applying to it | the same |
 
@@ -109,7 +110,9 @@ the trash can beside their count.
 **Clear Call History** removes a user's calls and their recordings and keeps
 the user. It is what deleting the user does to its history, so a call between
 two extensions is removed from the other's history too, and there is no undo —
-back up `asteriskcdrdb` first if the history matters.
+back up `asteriskcdrdb` first if the history matters. **Clear Voicemail**
+deletes every message in the user's mailbox and keeps the mailbox and its
+greetings; a phone's message-waiting light follows within a minute or so.
 
 **Delete All**, in the action bar, removes the user or client and everything
 listed for it in one go, after saying how much that is. For a user that is the

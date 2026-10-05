@@ -1987,6 +1987,30 @@ $cleared = $c['overview']->clearHistory(['user' => '1001']);
 is_eq('clearing it purges and keeps the user', [$cleared['status'], $cleared['rows'] > 0, FreePBX::$core->deleted], [true, true, []]);
 is_eq('what is not a number lists nothing', $c['cdr']->listCalls('1001 OR 1=1')['available'], false);
 
+$box = sys_get_temp_dir() . '/oryk-vm-' . getmypid();
+@mkdir($box . '/INBOX', 0700, true);
+@mkdir($box . '/Old', 0700, true);
+file_put_contents($box . '/unavail.wav', 'greeting');
+file_put_contents($box . '/INBOX/msg0000.txt', "[message]\ncallerid=\"Front Desk\" <1002>\norigtime=1700000000\nduration=12\n");
+file_put_contents($box . '/INBOX/msg0000.wav', 'audio');
+file_put_contents($box . '/Old/msg0000.txt', "[message]\ncallerid=5551234\norigtime=1700000500\nduration=3\n");
+file_put_contents($box . '/Old/msg0000.WAV', 'audio');
+file_put_contents($box . '/Old/notes.txt', 'not a message');
+$messages = $c['voicemail']->messagesIn($box);
+is_eq('a mailbox\'s messages are listed newest first', array_column($messages, 'id'), ['Old/msg0000', 'INBOX/msg0000']);
+is_eq('with who left each and how long it is', [$messages[1]['callerid'], $messages[1]['duration'], $messages[1]['folder']], ['"Front Desk" <1002>', 12, 'INBOX']);
+is_eq('clearing removes the messages', $c['voicemail']->clearIn($box), 2);
+is_eq('audio included', glob($box . '/*/msg*'), []);
+is_eq('and leaves the greeting and what is not a message', [is_file($box . '/unavail.wav'), is_file($box . '/Old/notes.txt')], [true, true]);
+is_eq('no mailbox lists nothing', $c['voicemail']->messagesIn(''), []);
+is_eq('and a client has no voicemail to clear', $c['overview']->clearVoicemail(['client' => '5'])['status'], false);
+is_eq('a user with no mailbox clears nothing', $c['overview']->clearVoicemail(['user' => '1001']), ['status' => true, 'removed' => 0]);
+@unlink($box . '/unavail.wav');
+@unlink($box . '/Old/notes.txt');
+@rmdir($box . '/INBOX');
+@rmdir($box . '/Old');
+@rmdir($box);
+
 $levels = [];
 foreach ($s['navigator']->levels(['client' => '5'], 'overview') as $level) {
 	$levels[$level['key']] = $level;

@@ -175,6 +175,35 @@ $oAsk .= ' ' . _('This cannot be undone.');
 			</tr>
 		</thead>
 	</table>
+
+	<h4 class="oryk-overview-heading"><?php echo _('Voicemail'); ?></h4>
+	<div id="voicemail_toolbar" class="oryk-toolbar">
+		<button type="button" class="btn btn-danger" id="oryk_overview_voicemail_clear">
+			<?php echo $icon('trash'); ?>
+			<?php echo _('Clear Voicemail'); ?>
+		</button>
+	</div>
+	<table
+		id="voicemail_table"
+		data-toggle="table"
+		data-url="ajax.php?module=oryk_provisioner&command=listOverviewVoicemail<?php echo $oe($oScopeQuery); ?>"
+		data-toolbar="#voicemail_toolbar"
+		class="table table-striped"
+		data-side-pagination="server"
+		data-pagination="true"
+		data-show-refresh="true"
+		data-icons-prefix="oryk-icon"
+		data-icons='{"refresh":"oryk-icon-refresh"}'
+		data-unique-id="id">
+		<thead>
+			<tr>
+				<th data-field="time" data-formatter="formatText"><?php echo _('Time'); ?></th>
+				<th data-field="callerid" data-formatter="formatText"><?php echo _('From'); ?></th>
+				<th data-field="folder" data-formatter="formatText"><?php echo _('Folder'); ?></th>
+				<th data-field="duration" data-formatter="formatOverviewDuration" data-align="right"><?php echo _('Duration'); ?></th>
+			</tr>
+		</thead>
+	</table>
 	<?php endif; ?>
 
 	<h4 class="oryk-overview-heading"><?php echo _('Provisioning log'); ?></h4>
@@ -237,7 +266,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	$(document).ajaxSuccess(function (event, xhr, settings) {
 		const answer = xhr && xhr.responseJSON;
 
-		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory)(&|$)/.test(settings.url || '')) {
+		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory|clearOverviewVoicemail)(&|$)/.test(settings.url || '')) {
 			window.location.reload();
 		}
 	});
@@ -322,6 +351,25 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		}).fail(function () {
 			button.prop('disabled', false);
 			notie.alert(3, 'Could not clear the call history.', 4);
+		});
+	});
+
+	// The messages alone: the mailbox, its greetings and the user are kept.
+	$(document).on('click', '#oryk_overview_voicemail_clear', function () {
+		if (!window.confirm('Clear this user\'s voicemail? Every message in every folder is deleted. The mailbox and its greetings are kept. This cannot be undone.')) {
+			return;
+		}
+
+		const button = $(this).prop('disabled', true);
+
+		orykPost('clearOverviewVoicemail', { scope: orykOverviewScope }).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				notie.alert(3, (response && response.message) || 'Could not clear the voicemail.', 4);
+			}
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not clear the voicemail.', 4);
 		});
 	});
 

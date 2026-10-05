@@ -773,10 +773,12 @@ pane, by every command and by Delete All:
 | FreePBX side | `Users::related()`: owned account, mailbox, whether another device shares the extension | -- |
 
 The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
-Call history -- on either kind of row: a client's Overview lists its user,
+Call history and Voicemail -- on either kind of row: a client's Overview lists its user,
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
-starts, not every leg it removes.
+starts, not every leg it removes. Voicemail is read off the spool
+(`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
+mailbox, the greetings beside the folders left out.
 A user's call history is counted by `countOverviewHistory` after the page is
 up (`CdrHistory::count()`, the scan `purge()` makes), never on the way in.
 
@@ -791,7 +793,8 @@ the bans naming it are kept with it.
 
 **Every command is posted the scope and nothing else** -- `listOverviewUsers`,
 `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
-`countOverviewHistory`, `clearOverviewHistory`, `clearOverviewLogs`, `clearOverviewStored`,
+`countOverviewHistory`, `clearOverviewHistory`, `listOverviewVoicemail`,
+`clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and resolves it with `inventory()`, so nothing is deleted
 by an id a page sent. `clearOverviewLogs` is a command of its own because
 `clearLogs` with nothing narrowing it is the whole log;
@@ -807,7 +810,12 @@ never deleted.
 **Clear Call History** (`clearOverviewHistory`) is the one part of the FreePBX
 side that can go on its own: `CdrHistory::purge()` exactly as a user's delete
 runs it -- so a call with another extension leaves that one's history too --
-with the user kept. The account and the mailbox still go only with the user.
+with the user kept. **Clear Voicemail** (`clearOverviewVoicemail`) unlinks
+the messages `messagesIn()` lists, audio included -- one walk
+(`messageFiles()`) behind both -- and keeps the mailbox, its greetings and
+its voicemail.conf entry; Asterisk's own mailbox poll is what brings message
+waiting back in step. The account and the mailbox itself still go only with
+the user.
 
 The tables on the pane are the lists' own -- same ids and formatters -- so
 `views/admin.php`'s handlers answer their buttons, and a client's trash can

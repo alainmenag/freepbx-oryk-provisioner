@@ -432,6 +432,42 @@ class Users extends Service
 	}
 
 	/**
+	 * One page of a user's voicemail messages, for Overview.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> total, and rows as
+	 *                              VoicemailManager::messagesIn() lists them.
+	 */
+	public function listVoicemail($extension)
+	{
+		$messages = $this->userRow($extension)
+			? $this->voicemail->messagesIn($this->voicemail->mailboxPath($extension))
+			: [];
+
+		return [
+			'total' => count($messages),
+			'rows' => array_slice($messages, max(0, (int) ($_REQUEST['offset'] ?? 0)), max(1, (int) ($_REQUEST['limit'] ?? 10))),
+		];
+	}
+
+	/**
+	 * Delete a user's voicemail messages and keep the mailbox and the user.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> Status and `removed`; or a message.
+	 */
+	public function clearVoicemail($extension)
+	{
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		return ['status' => true, 'removed' => $this->voicemail->clearIn($this->voicemail->mailboxPath($extension))];
+	}
+
+	/**
 	 * Move a lobby user to from-internal: Promote, on its page.
 	 *
 	 * The context is written, UCP follows the account's groups again, and the
