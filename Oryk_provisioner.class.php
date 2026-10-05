@@ -580,7 +580,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'setBanState':
 			case 'deleteBan':
 			case 'listOverviewUsers':
-			case 'deleteOverviewUser':
 			case 'listOverviewDevices':
 			case 'deleteOverviewDevice':
 			case 'listOverviewClients':
@@ -743,9 +742,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'listOverviewDevices':
 				return $this->overview->listDevices(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
-
-			case 'deleteOverviewUser':
-				return $this->overview->deleteExtension(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
 
 			case 'deleteOverviewDevice':
 				return $this->overview->deleteDevice(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')), $_REQUEST['id'] ?? '');

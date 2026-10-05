@@ -422,65 +422,6 @@ class Users extends Service
 	}
 
 	/**
-	 * Whether a user still has its extension: deleteExtension() takes it
-	 * and leaves the device.
-	 *
-	 * @param mixed $extension Extension number.
-	 *
-	 * @return bool True when Core has the extension.
-	 */
-	public function hasExtension($extension)
-	{
-		try {
-			return $this->extensions->exists((string) $extension);
-		} catch (\Exception $e) {
-			return false;
-		}
-	}
-
-	/**
-	 * Delete a user's extension and the User Manager account this module
-	 * owns for it, and nothing else.
-	 *
-	 * The other half of deleteDevice(): the device, its clients, the call
-	 * history and the bans stay, which is what tells this from deleteUser().
-	 * The mailbox does not -- Voicemail deletes it behind Core::delUser().
-	 * UCP assignments go with the account they hang off.
-	 *
-	 * @param mixed $extension Extension number.
-	 *
-	 * @return array<string, mixed> Status and `reload`; or a message.
-	 */
-	public function deleteExtension($extension)
-	{
-		$extension = (string) $extension;
-
-		if (!$this->userRow($extension)) {
-			return ['status' => false, 'message' => _('That user no longer exists.')];
-		}
-
-		if (!$this->hasExtension($extension)) {
-			return ['status' => false, 'message' => _('That extension has already been deleted.')];
-		}
-
-		$this->userman->removeOwnedAccount($extension);
-
-		try {
-			\FreePBX::Core()->delUser($extension);
-		} catch (\Exception $e) {
-			$this->logError('unable to delete user ' . $extension . ': ' . $e->getMessage());
-
-			return ['status' => false, 'message' => _('The extension could not be deleted; see the FreePBX log.')];
-		}
-
-		$this->ucp->forget($extension);
-
-		self::pending();
-
-		return ['status' => true, 'reload' => true];
-	}
-
-	/**
 	 * Delete one device on a user's extension, and the clients pointing at it.
 	 *
 	 * The device and nothing else of the user's: the extension, its account,

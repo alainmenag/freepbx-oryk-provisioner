@@ -1956,8 +1956,6 @@ is_eq('and the two bans naming it, not the address one', $byId, [11, 13]);
 $s['app']->Database->fetchAlls['LIMIT :limit OFFSET :offset'] = [['id' => '5', 'mac' => '0004f282e824', 'extension' => '1001']];
 $listed = $s['overview']->listClients(['client' => '5']);
 is_eq('its Clients table says what each has stored', [$listed['rows'][0]['stored_files'], $listed['rows'][0]['stored_bytes']], [0, 0]);
-is_eq('its Users table is empty once the extension has gone', $s['overview']->listUsers(['client' => '5']), ['total' => 0, 'rows' => []]);
-$s['app']->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1001'];
 $listed = $s['overview']->listUsers(['client' => '5']);
 is_eq('its Users table says which account its user has', [$listed['rows'][0]['account'], $listed['rows'][0]['account_id']], ['', 0]);
 is_eq('neither lists anything for a profile', [$s['overview']->listClients(['profile' => '2']), $s['overview']->listUsers(['profile' => '2'])], [['total' => 0, 'rows' => []], ['total' => 0, 'rows' => []]]);
@@ -1993,15 +1991,6 @@ is_eq('nor is no such AOR', DeviceStatus::parse('Unable to find object 1001.')['
 $asked = new DeviceStatus($d['app']);
 is_eq('a device that does not register has none', $asked->of('1001', 'dahdi')['state'], 'none');
 is_eq('an id that is not one is never put in a command', $asked->of('1001; core stop now', 'pjsip')['state'], 'unknown');
-$d['app']->Database->answers = [];
-is_eq('an extension already gone is not deleted again', $d['overview']->deleteExtension(['user' => '1001'])['status'], false);
-$d['app']->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1001'];
-FreePBX::$core->users['1001'] = ['extension' => '1001'];
-FreePBX::$core->deleted = [];
-is_eq('the User row deletes the extension', $d['overview']->deleteExtension(['user' => '1001']), ['status' => true, 'reload' => true]);
-is_eq('and not the device', [isset(FreePBX::$core->users['1001']), FreePBX::$core->deleted], [false, []]);
-is_eq('nor the clients', count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), 0);
-is_eq('a client\'s Overview cannot delete its user', $d['overview']->deleteExtension(['client' => '5'])['status'], false);
 is_eq('a client has no devices to list', $d['overview']->listDevices(['client' => '5']), ['total' => 0, 'rows' => []]);
 
 $c = overview_build([]);

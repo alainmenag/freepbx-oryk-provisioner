@@ -244,9 +244,7 @@ class Overview extends Service
 	{
 		$found = $this->inventory($at);
 
-		// A user whose extension has been deleted on its own is a device with
-		// nothing to list here; the Devices table still has it.
-		if (!$found || !$found['user'] || !$this->users->hasExtension($found['user']['extension'])) {
+		if (!$found || !$found['user']) {
 			return ['total' => 0, 'rows' => []];
 		}
 
@@ -286,32 +284,6 @@ class Overview extends Service
 		unset($row);
 
 		return $result;
-	}
-
-	/**
-	 * Delete a user's extension and its owned User Manager account: the
-	 * User table's trash can. Delete All is purge().
-	 *
-	 * @param array<string, string> $at target().
-	 *
-	 * @return array<string, mixed> Users::deleteExtension(); refused on a
-	 *                              client, whose user is not its to delete.
-	 */
-	public function deleteExtension(array $at)
-	{
-		$at = self::target($at);
-
-		if (!isset($at['user'])) {
-			return ['status' => false, 'message' => _('Open the user\'s own Overview to delete its extension.')];
-		}
-
-		$deleted = $this->users->deleteExtension($at['user']);
-
-		if (!empty($deleted['status'])) {
-			$this->logInfo('overview: deleted the extension and account of user ' . $at['user']);
-		}
-
-		return $deleted;
 	}
 
 	/**

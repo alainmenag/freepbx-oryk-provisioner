@@ -674,10 +674,9 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">Ext.</a>`,
-			// On that user's own Overview the same button deletes the extension
-			// and its account, and Delete All is the action bar's.
+			// On that user's own Overview the same button is Delete All.
 			(orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`)
-				? `<button type="button" class="btn btn-danger btn-sm" name="overview_user_delete" title="Delete this extension and its User Manager account">${orykIcon('trash')}</button>`
+				? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="Delete this user and everything listed here">${orykIcon('trash')}</button>`
 				: `<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Review what goes with this user, then delete">${orykIcon('trash')}</a>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
