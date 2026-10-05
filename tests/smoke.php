@@ -1966,11 +1966,13 @@ $d['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'nam
 $d['app']->Database->fetchAlls['FROM devices WHERE user = ?'] = [['id' => '1001', 'tech' => 'pjsip', 'description' => 'Desk'], ['id' => '1001-cell', 'tech' => 'pjsip', 'description' => 'Cell']];
 $devices = $d['overview']->listDevices(['user' => '1001']);
 is_eq('a user\'s devices say which is its own', array_column($devices['rows'], 'own', 'id'), ['1001' => 1, '1001-cell' => 0]);
-is_eq('its own device is not deleted as a device', $d['overview']->deleteDevice(['user' => '1001'], '1001')['status'], false);
-is_eq('nor one that is not on its extension', $d['overview']->deleteDevice(['user' => '1001'], '2002')['status'], false);
+is_eq('a device that is not on its extension is not deleted', $d['overview']->deleteDevice(['user' => '1001'], '2002')['status'], false);
 $d['app']->Database->answers = ['FROM devices WHERE id = ? AND user = ?' => 1];
 is_eq('another device on it is', $d['overview']->deleteDevice(['user' => '1001'], '1001-cell'), ['status' => true, 'reload' => true]);
 is_eq('through Core, and only that one', FreePBX::$core->deleted, [['1001-cell', false]]);
+FreePBX::$core->users['1001'] = ['extension' => '1001'];
+is_eq('its own device is deleted as a device too', $d['overview']->deleteDevice(['user' => '1001'], '1001'), ['status' => true, 'reload' => true]);
+is_eq('and the extension is left standing', [FreePBX::$core->deleted[1] ?? null, isset(FreePBX::$core->users['1001'])], [['1001', false], true]);
 is_eq('a client has no device to delete', $d['overview']->deleteDevice(['client' => '5'], '1001-cell')['status'], false);
 is_eq('a client has no devices to list', $d['overview']->listDevices(['client' => '5']), ['total' => 0, 'rows' => []]);
 

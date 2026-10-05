@@ -779,10 +779,13 @@ Devices, Call history and Voicemail -- on either kind of row: a client's Overvie
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
 starts, not every leg it removes. Devices are the FreePBX devices on the
-extension (`Users::listDevices()`). The user's own is the user, so its trash
-can is Delete All; any other is deleted alone (`Users::deleteDevice()`: Core's
-`delDevice()`, its endpoint section, the clients pointing at it), and until it
-is, it keeps the extension.
+extension (`Users::listDevices()`). A device's trash can deletes the
+device and nothing else of the user's (`Users::deleteDevice()`: Core's
+`delDevice()`, its endpoint section, the clients pointing at it). On the
+user's own device that leaves the extension, account, mailbox and history
+standing with no user here to list them -- a user is that device -- which is
+what the question says before it asks. Another device, while it exists, keeps
+the extension through a user's delete.
 Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
 mailbox, the greetings beside the folders left out.

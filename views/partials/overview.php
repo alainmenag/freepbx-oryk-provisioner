@@ -277,18 +277,20 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
 
-	// The user's own device is the user, so its trash can is Delete All; any
-	// other device on the extension is deleted on its own.
+	// The device and nothing else. On the user's own, the question says what
+	// that leaves behind.
 	function formatOverviewDeviceActions(value, row) {
-		const button = Number(row.own)
-			? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="This device is the user: delete it and everything listed here">${orykIcon('trash')}</button>`
-			: `<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" title="Delete this device">${orykIcon('trash')}</button>`;
-
-		return `<div class="flex gap-3" style="justify-content: flex-end;">${button}</div>`;
+		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+			`<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" data-own="${Number(row.own) ? 1 : 0}" title="Delete this device">${orykIcon('trash')}</button>` +
+			`</div>`;
 	}
 
 	$(document).on('click', '[name="overview_device_delete"]', function () {
-		if (!window.confirm('Delete this device? Any client pointing at it is deleted with it. The user and its extension are kept. This cannot be undone.')) {
+		const ask = Number($(this).data('own'))
+			? 'Delete this device? It is this user\'s own device, so the user leaves the Users list and this page. Its clients are deleted with it. The extension, its User Manager account, voicemail and call history are kept, and are managed in FreePBX from then on. This cannot be undone.'
+			: 'Delete this device? Any client pointing at it is deleted with it. The user and its extension are kept. This cannot be undone.';
+
+		if (!window.confirm(ask)) {
 			return;
 		}
 

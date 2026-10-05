@@ -271,7 +271,7 @@ class Overview extends Service
 	}
 
 	/**
-	 * Delete one device on a user's extension other than the user's own.
+	 * Delete one device on a user's extension: the device, not the user.
 	 *
 	 * @param array<string, string> $at     target().
 	 * @param mixed                 $device Device id, as listDevices() lists it.

@@ -420,11 +420,13 @@ class Users extends Service
 	}
 
 	/**
-	 * Delete another device on a user's extension, and the clients pointing at it.
+	 * Delete one device on a user's extension, and the clients pointing at it.
 	 *
-	 * Not the user's own device: that one is the user, and goes with
-	 * deleteUser(). Looked up on this extension, so an id posted for a device
-	 * elsewhere deletes nothing.
+	 * The device and nothing else of the user's: the extension, its account,
+	 * mailbox and history stay, which is what tells this from deleteUser().
+	 * Deleting the user's own device leaves an extension this module no
+	 * longer lists, since a user here is that device. Looked up on this
+	 * extension, so an id posted for a device elsewhere deletes nothing.
 	 *
 	 * @param mixed $extension Extension number.
 	 * @param mixed $device    Device id, as listDevices() lists it.
@@ -438,10 +440,6 @@ class Users extends Service
 
 		if (!$this->userRow($extension)) {
 			return ['status' => false, 'message' => _('That user no longer exists.')];
-		}
-
-		if ($device === $extension) {
-			return ['status' => false, 'message' => _('That device is the user itself. Delete the user instead.')];
 		}
 
 		try {
@@ -466,6 +464,11 @@ class Users extends Service
 
 		$this->endpoints->forget($device);
 		$this->clients->deleteForDevice($device);
+
+		// The user's own: a sign-up's bridge rows would outlive it.
+		if ($device === $extension && $this->bridge) {
+			$this->bridge->remove($device);
+		}
 
 		self::pending();
 
