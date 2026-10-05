@@ -129,10 +129,10 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		data-unique-id="id">
 		<thead>
 			<tr>
-				<th data-field="own" data-formatter="formatOverviewDevice"><?php echo _('Delete All'); ?></th>
 				<th data-field="id" data-formatter="formatDevice"><?php echo _('Device'); ?></th>
 				<th data-field="description" data-formatter="formatText"><?php echo _('Description'); ?></th>
 				<th data-field="tech" data-formatter="formatText"><?php echo _('Technology'); ?></th>
+				<th data-field="actions" data-formatter="formatOverviewDeviceActions" data-align="right"><?php echo _('Actions'); ?></th>
 			</tr>
 		</thead>
 	</table>
@@ -277,13 +277,33 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
 
-	// Whether Delete All takes the device: only the user's own. Another one
-	// on the extension is kept, and keeps the extension.
-	function formatOverviewDevice(value) {
-		return Number(value)
-			? `<span class="label label-danger" title="This user's own device">${orykEscape(orykOverviewRemoves)}</span>`
-			: `<span class="label label-default" title="Another device on this extension: it stays, and so does the extension">${orykEscape(orykOverviewKeeps)}</span>`;
+	// The user's own device is the user, so its trash can is Delete All; any
+	// other device on the extension is deleted on its own.
+	function formatOverviewDeviceActions(value, row) {
+		const button = Number(row.own)
+			? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="This device is the user: delete it and everything listed here">${orykIcon('trash')}</button>`
+			: `<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" title="Delete this device">${orykIcon('trash')}</button>`;
+
+		return `<div class="flex gap-3" style="justify-content: flex-end;">${button}</div>`;
 	}
+
+	$(document).on('click', '[name="overview_device_delete"]', function () {
+		if (!window.confirm('Delete this device? Any client pointing at it is deleted with it. The user and its extension are kept. This cannot be undone.')) {
+			return;
+		}
+
+		const button = $(this).prop('disabled', true);
+
+		orykPost('deleteOverviewDevice', { scope: orykOverviewScope, id: button.val() }).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+			}
+		}).fail(function () {
+			button.prop('disabled', false);
+			notie.alert(3, 'Could not delete.', 4);
+		});
+	});
 
 	// Whether Delete All takes the ban: only one naming this row.
 	function formatOverviewBan(value) {
@@ -297,7 +317,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	$(document).ajaxSuccess(function (event, xhr, settings) {
 		const answer = xhr && xhr.responseJSON;
 
-		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory|clearOverviewVoicemail)(&|$)/.test(settings.url || '')) {
+		if (answer && answer.status && /[?&]command=(deleteClient|deleteBan|clearOverviewLogs|clearOverviewStored|clearOverviewHistory|clearOverviewVoicemail|deleteOverviewDevice)(&|$)/.test(settings.url || '')) {
 			window.location.reload();
 		}
 	});

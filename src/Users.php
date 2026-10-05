@@ -420,6 +420,59 @@ class Users extends Service
 	}
 
 	/**
+	 * Delete another device on a user's extension, and the clients pointing at it.
+	 *
+	 * Not the user's own device: that one is the user, and goes with
+	 * deleteUser(). Looked up on this extension, so an id posted for a device
+	 * elsewhere deletes nothing.
+	 *
+	 * @param mixed $extension Extension number.
+	 * @param mixed $device    Device id, as listDevices() lists it.
+	 *
+	 * @return array<string, mixed> Status and `reload`; or a message.
+	 */
+	public function deleteDevice($extension, $device)
+	{
+		$extension = (string) $extension;
+		$device = (string) $device;
+
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		if ($device === $extension) {
+			return ['status' => false, 'message' => _('That device is the user itself. Delete the user instead.')];
+		}
+
+		try {
+			$stmt = $this->db->prepare('SELECT COUNT(*) FROM devices WHERE id = ? AND user = ?');
+			$stmt->execute([$device, $extension]);
+			$found = (int) $stmt->fetchColumn() > 0;
+		} catch (\Exception $e) {
+			$found = false;
+		}
+
+		if ($device === '' || !$found) {
+			return ['status' => false, 'message' => _('That device is no longer on this extension.')];
+		}
+
+		try {
+			\FreePBX::Core()->delDevice($device);
+		} catch (\Exception $e) {
+			$this->logError('unable to delete device ' . $device . ': ' . $e->getMessage());
+
+			return ['status' => false, 'message' => _('The device could not be deleted; see the FreePBX log.')];
+		}
+
+		$this->endpoints->forget($device);
+		$this->clients->deleteForDevice($device);
+
+		self::pending();
+
+		return ['status' => true, 'reload' => true];
+	}
+
+	/**
 	 * How much call history a user's delete would remove.
 	 *
 	 * @param mixed $extension Extension number.

@@ -271,6 +271,23 @@ class Overview extends Service
 	}
 
 	/**
+	 * Delete one device on a user's extension other than the user's own.
+	 *
+	 * @param array<string, string> $at     target().
+	 * @param mixed                 $device Device id, as listDevices() lists it.
+	 *
+	 * @return array<string, mixed> Users::deleteDevice(); refused on a client.
+	 */
+	public function deleteDevice(array $at, $device)
+	{
+		$at = self::target($at);
+
+		return isset($at['user'])
+			? $this->users->deleteDevice($at['user'], $device)
+			: ['status' => false, 'message' => _('Devices belong to a user. Open its Overview to delete one.')];
+	}
+
+	/**
 	 * The Clients table on Overview: the user's clients, or the client, as
 	 * the Clients list draws them, with what each has stored on the row.
 	 *
@@ -444,8 +461,8 @@ class Overview extends Service
 	/**
 	 * Delete one voicemail message of a user.
 	 *
-	 * The one Overview command given an id as well as the scope: it is looked
-	 * up among that user's own messages and nowhere else.
+	 * Given an id as well as the scope, like deleteDevice(): it is looked up
+	 * among that user's own messages and nowhere else.
 	 *
 	 * @param array<string, string> $at target().
 	 * @param mixed                 $id The message, as listVoicemail() lists it.

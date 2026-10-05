@@ -779,8 +779,10 @@ Devices, Call history and Voicemail -- on either kind of row: a client's Overvie
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
 starts, not every leg it removes. Devices are the FreePBX devices on the
-extension (`Users::listDevices()`), marked the way bans are: the user's own
-is the one a delete removes, any other is kept and keeps the extension.
+extension (`Users::listDevices()`). The user's own is the user, so its trash
+can is Delete All; any other is deleted alone (`Users::deleteDevice()`: Core's
+`delDevice()`, its endpoint section, the clients pointing at it), and until it
+is, it keeps the extension.
 Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
 mailbox, the greetings beside the folders left out.
@@ -801,9 +803,9 @@ the bans naming it are kept with it.
 `listOverviewVoicemail`, `countOverviewHistory`, `clearOverviewHistory`,
 `clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and works out what is related from it, so nothing is
-deleted by an id a page sent. The one exception takes an id as well:
-`deleteOverviewVoicemail`, whose message id is accepted only when it is one
-the walk of that user's own mailbox produced. `clearOverviewLogs` is a command of its own because
+deleted by an id a page sent. Two take an id as well, and accept it only among that user's own:
+`deleteOverviewVoicemail`, a message the walk of its mailbox produced, and
+`deleteOverviewDevice`, a device on its extension. `clearOverviewLogs` is a command of its own because
 `clearLogs` with nothing narrowing it is the whole log;
 `ProvisioningLog::clearFor()` with no MACs deletes nothing.
 

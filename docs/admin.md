@@ -126,8 +126,9 @@ names this client, its MAC or this user's extension. **Keeps**: the ban only
 applies to it, through an address or a profile, and is about more than this
 row — delete it from its own trash can if you mean to.
 
-The Devices table marks them the same way: the user's own device is removed,
-any other device on the extension is kept. When another device is on a user's extension, the page says so: deleting the
+In the Devices table, the trash can on the user's own device is Delete All —
+that device is the user — and on any other device it deletes just that
+device, with the clients pointing at it. When another device is on a user's extension, the page says so: deleting the
 user then removes its own device and clients, and the extension, account,
 voicemail and history stay.
 
