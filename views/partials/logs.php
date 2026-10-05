@@ -38,9 +38,9 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 <div id="log_toolbar" class="oryk-toolbar">
 	<?php // Clear empties one MAC or the lot; a scope is neither, so only Overview gives it a Clear. ?>
 	<?php if ($logScope === '' || $logOverview): ?>
-	<button type="button" class="btn btn-danger" name="log_clear">
+	<button type="button" class="btn btn-danger" name="log_clear" title="<?php echo $logOverview ? _('Clear These Entries') : ($logNarrowed ? _('Clear This Client\'s Log') : _('Clear Log')); ?>">
 		<?php echo $icon('trash'); ?>
-		<?php echo $logOverview ? _('Clear These Entries') : ($logNarrowed ? _('Clear This Client\'s Log') : _('Clear Log')); ?>
+		<?php echo _('Clear'); ?>
 	</button>
 	<?php endif; ?>
 </div>

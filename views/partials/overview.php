@@ -164,11 +164,11 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	</table>
 
 	<?php if ($oIsUser): ?>
-	<h4 class="oryk-overview-heading"><?php echo _('Call history'); ?></h4>
+	<h4 class="oryk-overview-heading"><?php echo _('Call Detail Record'); ?></h4>
 	<div id="call_toolbar" class="oryk-toolbar">
-		<button type="button" class="btn btn-danger" id="oryk_overview_calls_clear">
+		<button type="button" class="btn btn-danger" id="oryk_overview_calls_clear" title="<?php echo _('Clear Call History'); ?>">
 			<?php echo $icon('trash'); ?>
-			<?php echo _('Clear Call History'); ?>
+			<?php echo _('Clear'); ?>
 		</button>
 	</div>
 	<table
@@ -198,9 +198,9 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 	<h4 class="oryk-overview-heading"><?php echo _('Voicemail'); ?></h4>
 	<div id="voicemail_toolbar" class="oryk-toolbar">
-		<button type="button" class="btn btn-danger" id="oryk_overview_voicemail_clear">
+		<button type="button" class="btn btn-danger" id="oryk_overview_voicemail_clear" title="<?php echo _('Clear Voicemail'); ?>">
 			<?php echo $icon('trash'); ?>
-			<?php echo _('Clear Voicemail'); ?>
+			<?php echo _('Clear'); ?>
 		</button>
 	</div>
 	<table
