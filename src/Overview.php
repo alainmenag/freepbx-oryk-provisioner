@@ -234,7 +234,7 @@ class Overview extends Service
 	 *
 	 * @param array<string, string> $at target().
 	 *
-	 * @return array<string, mixed> total, rows; each row with account and mailbox.
+	 * @return array<string, mixed> total, rows; each row with account and account_id.
 	 */
 	public function listUsers(array $at)
 	{
@@ -249,7 +249,7 @@ class Overview extends Service
 		foreach ($result['rows'] as &$row) {
 			$related = $this->users->related($row['extension']);
 			$row['account'] = $related['account'];
-			$row['mailbox'] = $related['mailbox'] ? 1 : 0;
+			$row['account_id'] = $related['account_id'];
 		}
 		unset($row);
 
@@ -383,24 +383,6 @@ class Overview extends Service
 		return $cleared
 			? ['status' => true]
 			: ['status' => false, 'message' => _('Not every stored log could be removed. The Asterisk log says which.')];
-	}
-
-	/**
-	 * A user's call history, counted: asked for after the page has loaded.
-	 *
-	 * @param array<string, string> $at target().
-	 *
-	 * @return array<string, mixed> Status, and calls and recordings, or
-	 *                              `available` false when there is none to read.
-	 */
-	public function history(array $at)
-	{
-		$at = self::target($at);
-		$count = isset($at['user']) ? $this->users->history($at['user']) : null;
-
-		return $count === null
-			? ['status' => true, 'available' => false]
-			: ['status' => true, 'available' => true] + $count;
 	}
 
 	/**

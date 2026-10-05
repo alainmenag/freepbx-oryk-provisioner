@@ -1956,7 +1956,7 @@ $s['app']->Database->fetchAlls['LIMIT :limit OFFSET :offset'] = [['id' => '5', '
 $listed = $s['overview']->listClients(['client' => '5']);
 is_eq('its Clients table says what each has stored', [$listed['rows'][0]['stored_files'], $listed['rows'][0]['stored_bytes']], [0, 0]);
 $listed = $s['overview']->listUsers(['client' => '5']);
-is_eq('its Users table says what its user has in FreePBX', [$listed['rows'][0]['account'], $listed['rows'][0]['mailbox']], ['', 0]);
+is_eq('its Users table says which account its user has', [$listed['rows'][0]['account'], $listed['rows'][0]['account_id']], ['', 0]);
 is_eq('neither lists anything for a profile', [$s['overview']->listClients(['profile' => '2']), $s['overview']->listUsers(['profile' => '2'])], [['total' => 0, 'rows' => []], ['total' => 0, 'rows' => []]]);
 
 is_eq('a client has no call history to list', $s['overview']->listCalls(['client' => '5']), ['total' => 0, 'rows' => [], 'available' => false]);

@@ -789,8 +789,8 @@ the extension through a user's delete.
 Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
 mailbox, the greetings beside the folders left out.
-A user's call history is counted by `countOverviewHistory` after the page is
-up (`CdrHistory::count()`, the scan `purge()` makes), never on the way in.
+The User table names the account this module owns for it, as a link to it in
+User Manager.
 
 **Naming is not applying** (`Overview::names()`). A ban reaching the row only
 through its profile or an address is about something else: it is listed,
@@ -803,7 +803,7 @@ the bans naming it are kept with it.
 
 **Every command is posted the scope** -- `listOverviewUsers`,
 `listOverviewDevices`, `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
-`listOverviewVoicemail`, `countOverviewHistory`, `clearOverviewHistory`,
+`listOverviewVoicemail`, `clearOverviewHistory`,
 `clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and works out what is related from it, so nothing is
 deleted by an id a page sent. Two take an id as well, and accept it only among that user's own:
@@ -835,7 +835,7 @@ The tables on the pane are the lists' own -- same ids and formatters -- so
 deletes in place there. Users and Clients are asked through Overview's own
 list commands, not `listUsers`/`listClients&scope=`: a row's own level is
 never narrowed by `Navigator::scope()`, and the rows carry what only Overview
-shows (the owned account and mailbox; a client's stored logs, with their own
+shows (the owned account; a client's stored logs, with their own
 delete). What Delete All asks is counted when the page is drawn, so a delete
 made from one of the tables is answered by loading the page again.
 

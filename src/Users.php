@@ -360,7 +360,8 @@ class Users extends Service
 	 * @param mixed $extension Extension number.
 	 *
 	 * @return array<string, mixed> account (the owned User Manager username,
-	 *                              or ''), mailbox (bool), shared (bool:
+	 *                              or ''), account_id (its id there, or 0),
+	 *                              mailbox (bool), shared (bool:
 	 *                              another device is on the extension, so the
 	 *                              extension, account, mailbox and history stay).
 	 */
@@ -379,6 +380,7 @@ class Users extends Service
 
 		return [
 			'account' => $account ? (string) $account['username'] : '',
+			'account_id' => $account ? (int) $account['id'] : 0,
 			'mailbox' => $this->voicemail->hasMailbox($extension),
 			'shared' => $shared,
 		];
@@ -473,20 +475,6 @@ class Users extends Service
 		self::pending();
 
 		return ['status' => true, 'reload' => true];
-	}
-
-	/**
-	 * How much call history a user's delete would remove.
-	 *
-	 * @param mixed $extension Extension number.
-	 *
-	 * @return array{calls: int, recordings: int}|null CdrHistory::count(); null
-	 *                                                 for no such user, or no
-	 *                                                 history to read.
-	 */
-	public function history($extension)
-	{
-		return $this->userRow($extension) ? $this->cdr->count($extension) : null;
 	}
 
 	/**

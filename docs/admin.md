@@ -96,7 +96,7 @@ It is tables, the same ones the lists show:
 
 | | For a user | For a client |
 | --- | --- | --- |
-| **User** | the user, with its User Manager account, mailbox and call history | its user, which is kept |
+| **User** | the user, with a link to its User Manager account | its user, which is kept |
 | **Devices** | the FreePBX devices on its extension | — |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
 | **Call history** | the calls it made or received | — |

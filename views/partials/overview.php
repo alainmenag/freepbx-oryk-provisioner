@@ -108,8 +108,6 @@ $oAsk .= ' ' . _('This cannot be undone.');
 				<th data-field="name" data-formatter="formatText"><?php echo _('Name'); ?></th>
 				<th data-field="context" data-formatter="formatUserContext"><?php echo _('Context'); ?></th>
 				<th data-field="account" data-formatter="formatOverviewAccount"><?php echo _('User Manager'); ?></th>
-				<th data-field="mailbox" data-formatter="formatOverviewMailbox"><?php echo _('Voicemail'); ?></th>
-				<th data-field="history" data-formatter="formatOverviewHistory"><?php echo _('Call History'); ?></th>
 				<th data-field="last_seen" data-formatter="formatClientSeen"><?php echo _('Last Seen'); ?></th>
 				<th data-field="actions" data-formatter="formatUserActions" data-align="right"><?php echo _('Actions'); ?></th>
 			</tr>
@@ -324,42 +322,16 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		}
 	});
 
-	function formatOverviewAccount(value) {
-		return value ? orykEscape(value) : '<span class="text-muted">None this module owns</span>';
+	// The owned account, as a link to it in User Manager.
+	function formatOverviewAccount(value, row) {
+		if (!value) {
+			return '<span class="text-muted">None this module owns</span>';
+		}
+
+		return Number(row.account_id)
+			? `<a href="?display=userman&action=showuser&user=${encodeURIComponent(row.account_id)}" title="Open in User Manager">${orykEscape(value)}</a>`
+			: orykEscape(value);
 	}
-
-	function formatOverviewMailbox(value) {
-		return Number(value) ? 'Yes' : '<span class="text-muted">None</span>';
-	}
-
-	// What the count below answered, for a row drawn before or after it did.
-	let orykOverviewHistory = <?php echo json_encode($oIsUser ? _('Counting...') : '-'); ?>;
-
-	function formatOverviewHistory() {
-		return `<span class="oryk-overview-history">${orykEscape(orykOverviewHistory)}</span>`;
-	}
-
-	<?php if ($oIsUser): ?>
-	// Counted after the page is up: it is a scan of the call history. On
-	// ready, because orykPost() is defined by views/admin.php, below this.
-	$(function () {
-		orykPost('countOverviewHistory', { scope: orykOverviewScope }).done(function (response) {
-			if (!response || !response.status || !response.available) {
-				orykOverviewHistory = 'None to read';
-			} else {
-				const calls = Number(response.calls) || 0;
-				const recordings = Number(response.recordings) || 0;
-
-				orykOverviewHistory = `${calls} call${calls === 1 ? '' : 's'}, ${recordings} recording${recordings === 1 ? '' : 's'}`;
-			}
-
-			$('.oryk-overview-history').text(orykOverviewHistory);
-		}).fail(function () {
-			orykOverviewHistory = 'Could not be counted';
-			$('.oryk-overview-history').text(orykOverviewHistory);
-		});
-	});
-	<?php endif; ?>
 
 	// The number, with the caller id it announced under it when that says more.
 	function formatOverviewCaller(value, row) {
