@@ -281,8 +281,9 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		});
 	});
 
-	// Delete All, drawn by Pages::getActionBar().
-	$(document).on('click', '#orykpurge', function (event) {
+	// Delete All: the action bar's button, drawn by Pages::getActionBar(), and
+	// the trash can on the user's own row, which is the same delete.
+	$(document).on('click', '#orykpurge, [name="overview_purge"]', function (event) {
 		event.preventDefault();
 
 		if (!window.confirm(orykOverviewAsk)) {
