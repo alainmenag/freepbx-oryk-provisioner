@@ -32,10 +32,13 @@ class Overview extends Service
 	/** @var LogRepo */
 	private $logs;
 
+	/** @var DeviceStatus|null Null where nothing asks Asterisk: the tests. */
+	private $status;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Navigator $navigator, Users $users, Clients $clients, Bans $bans, ProvisioningLog $requestLog, LogRepo $logs)
+	public function __construct($freepbx, Navigator $navigator, Users $users, Clients $clients, Bans $bans, ProvisioningLog $requestLog, LogRepo $logs, ?DeviceStatus $status = null)
 	{
 		parent::__construct($freepbx);
 
@@ -45,6 +48,7 @@ class Overview extends Service
 		$this->bans = $bans;
 		$this->requestLog = $requestLog;
 		$this->logs = $logs;
+		$this->status = $status;
 	}
 
 	/**
@@ -257,17 +261,29 @@ class Overview extends Service
 	}
 
 	/**
-	 * The Devices table on a user's Overview.
+	 * The Devices table on a user's Overview, each row with its registration.
+	 *
+	 * One question of Asterisk per device listed, and these are one
+	 * extension's devices -- see DeviceStatus.
 	 *
 	 * @param array<string, string> $at target().
 	 *
-	 * @return array<string, mixed> Users::listDevices(); empty on a client.
+	 * @return array<string, mixed> Users::listDevices(), each row with
+	 *                              `status` (DeviceStatus::of()); empty on a client.
 	 */
 	public function listDevices(array $at)
 	{
 		$at = self::target($at);
+		$result = isset($at['user']) ? $this->users->listDevices($at['user']) : ['total' => 0, 'rows' => []];
 
-		return isset($at['user']) ? $this->users->listDevices($at['user']) : ['total' => 0, 'rows' => []];
+		foreach ($result['rows'] as &$row) {
+			$row['status'] = $this->status
+				? $this->status->of($row['id'], $row['tech'] ?? '')
+				: ['state' => 'unknown', 'contacts' => 0, 'address' => '', 'rtt' => null];
+		}
+		unset($row);
+
+		return $result;
 	}
 
 	/**

@@ -779,7 +779,12 @@ Devices, Call history and Voicemail -- on either kind of row: a client's Overvie
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
 starts, not every leg it removes. Devices are the FreePBX devices on the
-extension (`Users::listDevices()`). A device's trash can deletes the
+extension (`Users::listDevices()`). Each row says whether the device is registered
+(`DeviceStatus`): registrations are Asterisk's and in no FreePBX table, so it
+is one manager command per device listed, `pjsip show aor <id>`, the id
+checked against `DeviceStatus::ID_PATTERN` before it is written into it --
+asked by the list command for the rows on the page, never for every device.
+A device's trash can deletes the
 device and nothing else of the user's (`Users::deleteDevice()`: Core's
 `delDevice()`, its endpoint section, the clients pointing at it). On the
 user's own device that leaves the extension, account, mailbox and history

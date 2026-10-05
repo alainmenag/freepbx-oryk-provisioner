@@ -11,6 +11,7 @@ use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
+use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -267,7 +268,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans);
-		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs);
+		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge);
 

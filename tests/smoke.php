@@ -22,6 +22,7 @@ use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
+use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -1974,6 +1975,22 @@ FreePBX::$core->users['1001'] = ['extension' => '1001'];
 is_eq('its own device is deleted as a device too', $d['overview']->deleteDevice(['user' => '1001'], '1001'), ['status' => true, 'reload' => true]);
 is_eq('and the extension is left standing', [FreePBX::$core->deleted[1] ?? null, isset(FreePBX::$core->users['1001'])], [['1001', false], true]);
 is_eq('a client has no device to delete', $d['overview']->deleteDevice(['client' => '5'], '1001-cell')['status'], false);
+is_eq('with nothing to ask Asterisk, a device\'s status is unknown', $devices['rows'][0]['status']['state'], 'unknown');
+
+$aor = "      Aor:  <Aor..............................................>  <MaxContact>\n"
+	. "    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>\n"
+	. "==========================================================================================\n\n"
+	. "      Aor:  1001                                                 1\n"
+	. "    Contact:  1001/sip:1001@203.0.113.7:5062;transport=tls 4ea6b7c2d1 Avail        23.512\n";
+is_eq('a reachable contact is registered, with where and how fast', DeviceStatus::parse($aor), ['state' => 'registered', 'contacts' => 1, 'address' => '203.0.113.7:5062', 'rtt' => 23.5]);
+is_eq('an unqualified one is registered too', DeviceStatus::parse("    Contact:  1001/sip:1001@10.0.0.9:5060 abc123 NonQual         nan\n")['state'], 'registered');
+is_eq('only unreachable contacts is unreachable', DeviceStatus::parse("    Contact:  1001/sip:1001@10.0.0.9:5060 abc123 Unavail         nan\n")['state'], 'unreachable');
+is_eq('one reachable among them is enough', DeviceStatus::parse("    Contact:  1001/sip:a@10.0.0.9 h1 Unavail nan\n    Contact:  1001/sip:b@10.0.0.8 h2 Avail 4.0\n"), ['state' => 'registered', 'contacts' => 2, 'address' => '10.0.0.8', 'rtt' => 4.0]);
+is_eq('an AOR with no contact is not registered', DeviceStatus::parse("      Aor:  1001                                                 1\n")['state'], 'unregistered');
+is_eq('nor is no such AOR', DeviceStatus::parse('Unable to find object 1001.')['state'], 'unregistered');
+$asked = new DeviceStatus($d['app']);
+is_eq('a device that does not register has none', $asked->of('1001', 'dahdi')['state'], 'none');
+is_eq('an id that is not one is never put in a command', $asked->of('1001; core stop now', 'pjsip')['state'], 'unknown');
 is_eq('a client has no devices to list', $d['overview']->listDevices(['client' => '5']), ['total' => 0, 'rows' => []]);
 
 $c = overview_build([]);

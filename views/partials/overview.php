@@ -130,6 +130,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 				<th data-field="id" data-formatter="formatDevice"><?php echo _('Device'); ?></th>
 				<th data-field="description" data-formatter="formatText"><?php echo _('Description'); ?></th>
 				<th data-field="tech" data-formatter="formatText"><?php echo _('Technology'); ?></th>
+				<th data-field="status" data-formatter="formatOverviewDeviceStatus"><?php echo _('Status'); ?></th>
 				<th data-field="actions" data-formatter="formatOverviewDeviceActions" data-align="right"><?php echo _('Actions'); ?></th>
 			</tr>
 		</thead>
@@ -274,6 +275,42 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	const orykOverviewAsk = <?php echo json_encode($oAsk); ?>;
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
+
+	// Whether the device is registered with Asterisk right now, as the list
+	// command asked it: where from and how fast are on the hover.
+	function formatOverviewDeviceStatus(value) {
+		const status = value || {};
+		const labels = {
+			registered: ['label-success', 'Registered'],
+			unreachable: ['label-warning', 'Unreachable'],
+			unregistered: ['label-default', 'Not registered'],
+			unknown: ['label-default', 'Unknown']
+		};
+
+		if (!labels[status.state]) {
+			return '-';
+		}
+
+		const detail = [];
+
+		if (status.address) {
+			detail.push(`at ${status.address}`);
+		}
+
+		if (status.rtt !== null && status.rtt !== undefined) {
+			detail.push(`${status.rtt} ms`);
+		}
+
+		if (Number(status.contacts) > 1) {
+			detail.push(`${status.contacts} contacts`);
+		}
+
+		if (status.state === 'unknown') {
+			detail.push('Asterisk could not be asked');
+		}
+
+		return `<span class="label ${labels[status.state][0]}" title="${orykEscape(detail.join(', '))}">${labels[status.state][1]}</span>`;
+	}
 
 	// Delete is the device and nothing else; on the user's own, the question
 	// says what that leaves behind. Edit is the device's page in FreePBX.

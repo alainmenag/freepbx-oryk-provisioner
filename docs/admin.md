@@ -126,7 +126,9 @@ names this client, its MAC or this user's extension. **Keeps**: the ban only
 applies to it, through an address or a profile, and is about more than this
 row — delete it from its own trash can if you mean to.
 
-In the Devices table, a trash can deletes that device and the clients
+The Devices table's **Status** is whether Asterisk has the device registered
+right now — Registered, Unreachable (registered, but not answering),
+or Not registered — with the address it registered from on hover. In it, a trash can deletes that device and the clients
 pointing at it, and nothing else. Deleting the user's own device — the one
 numbered like the extension — takes the user off the Users list and off this
 page, and leaves its extension, account, voicemail and call history in
