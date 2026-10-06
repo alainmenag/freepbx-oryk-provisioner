@@ -34,7 +34,7 @@
  *
  * Overview is everything tied to one user or client, drawn by
  * partials/overview.php from the lists' own tables. It is where the Users
- * list's magnifying glass leads: deleting a user is decided there, with what
+ * list's pair of binoculars leads: deleting a user is decided there, with what
  * goes with it in view. A client is deleted from its own list.
  *
  * Opened from a navigator title, a table is narrowed to what that title's badge
@@ -678,14 +678,15 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 	function formatUserActions(value, row) {
 		const extension = encodeURIComponent(row.extension);
+		const here = orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`;
 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			// The way to the user's Overview, first; not drawn on that Overview itself.
+			here ? '' : `<a class="btn btn-default btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Overview: everything tied to this user, and deleting it">${orykIcon('binoculars')}</a>`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">Ext.</a>`,
-			// The way to the user's Overview; on that Overview itself, Delete All.
-			(orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`)
-				? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="Delete this user and everything listed here">${orykIcon('trash')}</button>`
-				: `<a class="btn btn-default btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Overview: everything tied to this user, and deleting it">${orykIcon('search')}</a>`,
+			// On its own Overview the row's trash can is Delete All.
+			here ? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="Delete this user and everything listed here">${orykIcon('trash')}</button>` : '',
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');

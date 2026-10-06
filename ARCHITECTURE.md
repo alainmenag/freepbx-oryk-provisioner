@@ -767,7 +767,7 @@ Choosing is the dropdowns: on Overview the Users and Clients options re-open
 Overview on the row chosen (`Navigator::levels($at, 'overview')`), while the
 crumb's name still links to the row's own page. From a user's or client's
 page, the section bar's Overview opens on that row. A row on the Users
-list has no delete, only a magnifying glass that leads here; a client is deleted in place on the
+list has no delete, only a pair of binoculars that leads here; a client is deleted in place on the
 Clients list, as a profile is on its own.
 
 `Overview::inventory()` is the one answer to "what is tied to it", read by the
