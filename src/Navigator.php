@@ -278,7 +278,7 @@ class Navigator extends Service
 		if ($this->written($client)) {
 			foreach ($clientRows as $row) {
 				if ((string) $row['id'] === $client) {
-					$scope['users'] = (string) $row['device_id'] !== '' ? [(string) $row['device_id']] : [];
+					$scope['users'] = $this->owner($row) !== '' ? [$this->owner($row)] : [];
 					$scope['profiles'] = (int) $row['profile_id'] ? [(int) $row['profile_id']] : [];
 					$scope['files'] = $scope['profiles'];
 					$scope['logs'] = $this->macs([$row]);
@@ -292,7 +292,7 @@ class Navigator extends Service
 			$requests = [['user' => $user]];
 
 			foreach ($clientRows as $row) {
-				if ((string) $row['device_id'] === $user) {
+				if ($this->owner($row) === $user) {
 					$scope['clients'][] = (int) $row['id'];
 					$linked[] = $row;
 					$requests[] = $this->subjects($row);
@@ -318,8 +318,8 @@ class Navigator extends Service
 					$linked[] = $row;
 					$requests[] = $this->subjects($row);
 
-					if ((string) $row['device_id'] !== '') {
-						$scope['users'][] = (string) $row['device_id'];
+					if ($this->owner($row) !== '') {
+						$scope['users'][] = $this->owner($row);
 					}
 				}
 			}
@@ -339,7 +339,7 @@ class Navigator extends Service
 			}
 
 			$scope['clients'] = $owner ? [(int) $owner['id']] : [];
-			$scope['users'] = ($owner && (string) $owner['device_id'] !== '') ? [(string) $owner['device_id']] : [];
+			$scope['users'] = ($owner && $this->owner($owner) !== '') ? [$this->owner($owner)] : [];
 			$scope['profiles'] = ($owner && (int) $owner['profile_id']) ? [(int) $owner['profile_id']] : [];
 			$scope['files'] = $scope['profiles'];
 
@@ -666,8 +666,8 @@ class Navigator extends Service
 		foreach ($applied as $row) {
 			$clients[] = (int) $row['id'];
 
-			if ((string) $row['device_id'] !== '') {
-				$users[] = (string) $row['device_id'];
+			if ($this->owner($row) !== '') {
+				$users[] = $this->owner($row);
 			}
 
 			if ((int) $row['profile_id']) {
@@ -694,6 +694,21 @@ class Navigator extends Service
 	}
 
 	/**
+	 * The user a client is: the extension its device is on, whichever of that
+	 * extension's devices it is; else the device it names.
+	 *
+	 * @param array<string, mixed> $row clientChoices() row.
+	 *
+	 * @return string Extension, or '' for a client with no device.
+	 */
+	private function owner(array $row)
+	{
+		$extension = (string) ($row['extension'] ?? '');
+
+		return ($extension !== '' && $extension !== 'none') ? $extension : (string) ($row['device_id'] ?? '');
+	}
+
+	/**
 	 * A client's requests as Bans::applies() reads them: the address is the
 	 * public one it was last seen at.
 	 *
@@ -705,7 +720,8 @@ class Navigator extends Service
 	{
 		return [
 			'client' => $row['id'],
-			'user' => $row['device_id'],
+			// The device and the extension it is on, as Endpoint asks with both.
+			'user' => array_values(array_unique(array_filter([(string) $row['device_id'], $this->owner($row)], 'strlen'))),
 			'mac' => $row['mac'],
 			'profile' => $row['profile_id'],
 			'ip' => $row['public_ip'] ?? '',

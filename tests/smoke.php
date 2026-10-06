@@ -1968,12 +1968,11 @@ FreePBX::$core->devices['1001'] = ['id' => '1001', 'user' => '1001', 'tech' => '
 $found = $s['overview']->inventory(['user' => '1001']);
 is_eq('a user\'s inventory has its clients', [$found['kind'], $found['clients'], $found['macs']], ['user', [5], ['0004f282e824']]);
 is_eq('the bans on its extension and its client\'s MAC name it', $found['named'], [11, 13]);
-$s['app']->Database->answers = ['WHERE user = ? AND id <> ?' => 1];
-is_eq('with another device on the extension, the ban on it is not named', $s['overview']->inventory(['user' => '1001'])['named'], [11]);
-$s['app']->Database->answers = [];
+$s['app']->Database->fetchAlls['FROM devices WHERE user = ? AND id <> ?'] = ['1001-cell'];
 $purged = $s['overview']->purge(['user' => '1001']);
 is_eq('Delete all on a user', $purged, ['status' => true, 'reload' => true, 'bans' => 2, 'clients' => 1]);
-is_eq('deletes its device', FreePBX::$core->deleted[0][0] ?? null, '1001');
+is_eq('deletes its device, and the other one on its extension', array_column(FreePBX::$core->deleted, 0), ['1001', '1001-cell']);
+is_eq('and the extension all the same', isset(FreePBX::$core->users['1001']), false);
 $byId = array_values(array_filter(array_map(function ($call) {
 	return $call[1][':id'] ?? null;
 }, overview_deletes($s['app']->Database, 'oryk_provisioner_bans'))));

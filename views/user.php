@@ -257,7 +257,7 @@ if ($clientCount > 0) {
 						<table
 							id="user_client_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listClients&device_id=<?php echo rawurlencode($extension); ?>"
+							data-url="ajax.php?module=oryk_provisioner&command=listClients&extension=<?php echo rawurlencode($extension); ?>"
 							data-toolbar="#user_client_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"

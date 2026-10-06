@@ -36,7 +36,6 @@ $oe = function ($value) {
 <?php
 $oIsUser = $overview['kind'] === 'user';
 $oFreepbx = is_array($overview['freepbx']) ? $overview['freepbx'] : [];
-$oShared = !empty($oFreepbx['shared']);
 $oClients = count($overview['clients']);
 $oLogs = (int) $overview['logs'];
 $oStored = (int) $overview['stored']['files'];
@@ -72,9 +71,7 @@ if ($oParts) {
 }
 
 if ($oIsUser) {
-	$oAsk .= ' ' . ($oShared
-		? _('Another device is on this extension, so the extension, its User Manager account, voicemail, call history and the bans naming it stay.')
-		: _('The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently.'));
+	$oAsk .= ' ' . _('Every device on the extension, the extension, its User Manager account, its voicemail and its call history and recordings are removed permanently.');
 }
 
 if ($oApplying) {
@@ -85,12 +82,6 @@ $oAsk .= ' ' . _('This cannot be undone.');
 ?>
 
 <div class="oryk-overview">
-
-	<?php if ($oShared): ?>
-	<div class="alert alert-warning">
-		<?php echo $oe(sprintf(_('Another device is on extension %s. Deleting this user removes its own device and clients; the extension, its User Manager account, voicemail, call history and the bans naming it stay until that device is gone too.'), $overview['id'])); ?>
-	</div>
-	<?php endif; ?>
 
 	<h4 class="oryk-overview-heading"><?php echo _('User'); ?></h4>
 	<table

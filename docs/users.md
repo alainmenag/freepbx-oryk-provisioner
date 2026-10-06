@@ -68,14 +68,14 @@ other destinations naming the old number are **not** updated.
 ## Deleting
 
 > [!CAUTION]
-> Deleting a user is permanent. The device goes, and — once no other device
-> points at the extension — the extension, its User Manager account (when this
+> Deleting a user is permanent. Every device on its extension goes, and the
+> extension, its User Manager account (when this
 > module made it), its UCP assignments, and **its call history and recordings**
 > in `cdr`, `transient_cdr`, `replicate_cdr` and `cel`. A call between two
 > extensions belongs to both, and is removed from the other's history too. Back
 > up `asteriskcdrdb` first if the history matters.
 
-Every client pointed at a deleted user is deleted with it, whatever its MAC,
+Every client on any of a deleted user's devices is deleted with it, whatever its MAC,
 along with the logs it sent and its entries on the Logs tab. Delete on a user's page asks first.
 
 The Overview button on the Users list opens [Overview](admin.md#overview) on that

@@ -36,6 +36,13 @@ class Users extends Service
 	 */
 	const SHAPE = "NOT EXISTS (SELECT 1 FROM devices o WHERE o.id = u.extension AND NOT (o.tech = 'pjsip' AND o.user = u.extension))";
 
+	/**
+	 * Which clients are a user's, over FROM and `clients pc`: the ones on any
+	 * device of its extension, and any still naming the extension itself.
+	 * Clients::listClients() says the same for `&extension=`.
+	 */
+	const CLIENT_OF = "(pc.device_id = u.extension OR pc.device_id IN (SELECT ud.id FROM devices ud WHERE ud.user = u.extension))";
+
 	/** A user's context, over FROM: NULL without a device. Interpolated, so a literal. */
 	const CONTEXT_EXPR = "(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'context' LIMIT 1)";
 
@@ -364,46 +371,53 @@ class Users extends Service
 	}
 
 	/**
-	 * What a user has in FreePBX that goes with it, for Overview.
+	 * What a user has in FreePBX beside its extension, for Overview.
 	 *
 	 * Says what remove() will do, not what exists: an account this module does
-	 * not own is not listed, and `shared` is the case remove() stops short in.
+	 * not own is not listed.
 	 *
 	 * @param mixed $extension Extension number.
 	 *
 	 * @return array<string, mixed> account (the owned User Manager username,
 	 *                              or ''), account_id (its id there, or 0),
-	 *                              mailbox (bool), shared (bool:
-	 *                              another device is on the extension, so the
-	 *                              extension, account, mailbox and history stay).
+	 *                              mailbox (bool).
 	 */
 	public function related($extension)
 	{
 		$extension = (string) $extension;
 		$account = $this->userman->ownedAccount($extension);
 
-		try {
-			$stmt = $this->db->prepare('SELECT COUNT(*) FROM devices WHERE user = ? AND id <> ?');
-			$stmt->execute([$extension, $extension]);
-			$shared = (int) $stmt->fetchColumn() > 0;
-		} catch (\Exception $e) {
-			$shared = false;
-		}
-
 		return [
 			'account' => $account ? (string) $account['username'] : '',
 			'account_id' => $account ? (int) $account['id'] : 0,
 			'mailbox' => $this->voicemail->hasMailbox($extension),
-			'shared' => $shared,
 		];
+	}
+
+	/**
+	 * The devices on an extension other than its own.
+	 *
+	 * @param string $extension Extension number.
+	 *
+	 * @return array<int, string> Device ids.
+	 */
+	private function otherDevices($extension)
+	{
+		try {
+			$stmt = $this->db->prepare('SELECT id FROM devices WHERE user = ? AND id <> ?');
+			$stmt->execute([$extension, $extension]);
+
+			return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+		} catch (\Exception $e) {
+			return [];
+		}
 	}
 
 	/**
 	 * The FreePBX devices on a user's extension, for Overview.
 	 *
 	 * The user's own device -- the one whose id is the extension -- is the
-	 * only one remove() deletes; `own` says which. Any other is what
-	 * related() calls shared, and keeps the extension in service.
+	 * one this module saves; `own` says which. remove() deletes them all.
 	 *
 	 * @param mixed $extension Extension number.
 	 *
@@ -1170,15 +1184,15 @@ class Users extends Service
 	}
 
 	/**
-	 * Delete a user: the device, and -- once no other device points at the
-	 * extension -- the extension, its owned User Manager account, its UCP
-	 * assignments and its call history and recordings.
+	 * Delete a user: every device on its extension, the extension, its owned
+	 * User Manager account, its UCP assignments and its call history and
+	 * recordings.
 	 *
 	 * An extension whose device has already gone is a user still, and the
 	 * rest of it goes the same way.
 	 *
-	 * Provisioner clients pointing at it are deleted with it, their stored
-	 * logs included -- see Clients::deleteForDevice().
+	 * Provisioner clients pointing at any of those devices are deleted with
+	 * it, their stored logs included -- see Clients::deleteForDevice().
 	 *
 	 * @param int|string $extension Extension number.
 	 *
@@ -1207,26 +1221,38 @@ class Users extends Service
 		$this->endpoints->forget($user);
 		$this->clients->deleteForDevice($user);
 
-		// A handset or softphone still on the extension keeps it alive
-		if (!$this->extensions->hasDevices($user)) {
-			$this->userman->removeOwnedAccount($user);
-
-			$deleted = true;
-
+		// Every other device on the extension goes with it, and its clients:
+		// a user is its extension, and nothing of it is left to own them.
+		foreach ($this->otherDevices($user) as $other) {
 			try {
-				\FreePBX::Core()->delUser($user);
+				\FreePBX::Core()->delDevice($other);
 			} catch (\Exception $e) {
-				$deleted = false;
+				$this->logError('unable to delete device ' . $other . ' of user ' . $user . ': ' . $e->getMessage());
 
-				$this->logError('unable to delete user ' . $user . ': ' . $e->getMessage());
+				continue;
 			}
 
-			// Only once the extension has gone: one left behind by a failed
-			// delete is still in service and still making history
-			if ($deleted) {
-				$this->ucp->forget($user);
-				$this->cdr->purge($user);
-			}
+			$this->endpoints->forget($other);
+			$this->clients->deleteForDevice($other);
+		}
+
+		$this->userman->removeOwnedAccount($user);
+
+		$deleted = true;
+
+		try {
+			\FreePBX::Core()->delUser($user);
+		} catch (\Exception $e) {
+			$deleted = false;
+
+			$this->logError('unable to delete user ' . $user . ': ' . $e->getMessage());
+		}
+
+		// Only once the extension has gone: one left behind by a failed
+		// delete is still in service and still making history
+		if ($deleted) {
+			$this->ucp->forget($user);
+			$this->cdr->purge($user);
 		}
 
 		if ($this->bridge) {
@@ -1268,7 +1294,7 @@ class Users extends Service
 			(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'email' LIMIT 1) AS email,
 			(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
 			COALESCE((SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
-			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = u.extension) AS clients,
+			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE " . self::CLIENT_OF . ") AS clients,
 			" . self::CONTEXT_EXPR . " AS context,
 			" . $this->lastSeenExpr() . " AS last_seen,
 			TIMESTAMPDIFF(SECOND, " . $this->lastSeenExpr() . ", NOW()) AS last_seen_age,
@@ -1283,7 +1309,7 @@ class Users extends Service
 	 */
 	private function lastSeenExpr()
 	{
-		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE pc.device_id = u.extension)";
+		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE " . self::CLIENT_OF . ")";
 	}
 
 	/**
@@ -1293,7 +1319,7 @@ class Users extends Service
 	 */
 	private function signedUpExpr()
 	{
-		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE pc.device_id = u.extension AND pc.signup_ip IS NOT NULL)";
+		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE " . self::CLIENT_OF . " AND pc.signup_ip IS NOT NULL)";
 	}
 
 	/**

@@ -97,7 +97,7 @@ class Overview extends Service
 	 *
 	 * Naming is by client, extension or MAC. A ban reaching it through its
 	 * profile or an address does not: that ban is about something else, and
-	 * Delete all leaves it. `user` is null where the extension is not going.
+	 * Delete all leaves it. `user` is null on a client's Overview.
 	 *
 	 * @param array<string, mixed> $ban     Subject columns, "any" as null or as Bans::ANY.
 	 * @param array<string, mixed> $subject user (extension or null), clients (ids), macs.
@@ -179,8 +179,7 @@ class Overview extends Service
 
 		$freepbx = $kind === 'user' ? $this->users->related($id) : null;
 
-		// An extension another device keeps in service keeps its bans too.
-		$subject = ['user' => ($kind === 'user' && empty($freepbx['shared'])) ? $id : null, 'clients' => $clients, 'macs' => $macs];
+		$subject = ['user' => $kind === 'user' ? $id : null, 'clients' => $clients, 'macs' => $macs];
 
 		return [
 			'kind' => $kind,

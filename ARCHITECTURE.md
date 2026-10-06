@@ -492,10 +492,11 @@ repointed** (`Clients::repointDevice()`); UCP access moves before the history
 it opens; the history is rewritten in place (`src`, `dst`, `cnum`, `clid`, both
 channel names; recording file names are left, since they must match the file).
 
-**A delete** removes the device, its endpoint section and its bridge rows, and **deletes** every
-client pointing at it, whatever its MAC (`Clients::deleteForDevice()`, each with
-its stored logs and its provisioning-log rows, as for any deleted client). Once no
-other device points at the extension, the extension, the account this module
+**A delete** removes every device on the extension -- its own, with its
+endpoint section and bridge rows, and any other -- and **deletes** every client
+pointing at any of them, whatever its MAC (`Clients::deleteForDevice()`, each
+with its stored logs and its provisioning-log rows, as for any deleted client).
+Then the extension, the account this module
 owns, its UCP assignments and its **call history and recordings** go too, only
 after the extension itself is gone. History is found by `src` or `dst` matched
 exactly, then every row sharing a `uniqueid` or `linkedid` with those is
@@ -503,6 +504,11 @@ deleted from `cdr`, `transient_cdr`, `replicate_cdr` and `cel`; a recording is
 unlinked only when no surviving record names it. A queue- or ring-group-
 answered call carries the group in `dst` and is not matched. There is no undo,
 which is why Delete says so before it asks.
+
+**A user's clients are the ones on any device of its extension**
+(`Users::CLIENT_OF`; `Navigator::owner()` for the dropdowns), not only those
+on the device numbered like it: the Clients count, Last Seen, the Clients tab
+(`listClients&extension=`) and every scope agree.
 
 **The From Domain** is three questions, first answer wins: the device's own
 `from_domain`; `ORYK_FROM_DOMAIN`, the [setting](#settings) in *Advanced Settings → Oryk
@@ -775,12 +781,12 @@ pane, by every command and by Delete All:
 
 | | user | client |
 | --- | --- | --- |
-| clients | every client on the device | itself |
+| clients | every client on any device of the extension | itself |
 | provisioning log | rows with those clients' MACs | rows with its MAC |
 | stored phone logs | `LogRepo::clientLogStats()` of each | its own |
 | bans **naming** it | by `client_id`, by the extension, by one of the MACs | by `client_id` or its MAC |
 | bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
-| FreePBX side | `Users::related()`: owned account, mailbox, whether another device shares the extension | -- |
+| FreePBX side | `Users::related()`: owned account, mailbox | -- |
 
 The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
 Devices, Call history and Voicemail -- on either kind of row: a client's Overview lists its user,
@@ -802,8 +808,7 @@ side, a client's delete offers Client + Device
 the same path. On the
 user's own device that leaves the extension, account, mailbox and history
 standing: still a user, listed with no device, until a save gives it one back
-or Delete All takes the rest. Another device, while it exists, keeps
-the extension through a user's delete.
+or Delete All takes the rest. 
 Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
 mailbox, the greetings beside the folders left out.
@@ -815,9 +820,7 @@ through its profile or an address is about something else: it is listed,
 marked Keeps, and Delete All leaves it. One naming the client, its MAC or the
 user's extension is marked Removes -- including the extension and MAC bans
 that survive an ordinary delete (see [Schema](#schema)), since here cleaning
-up after the row is the point and a freed number is handed out again. Where
-another device keeps the extension in service, the extension is not going and
-the bans naming it are kept with it.
+up after the row is the point and a freed number is handed out again.
 
 **Every command is posted the scope** -- `listOverviewUsers`,
 `listOverviewDevices`, `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,

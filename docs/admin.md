@@ -135,9 +135,8 @@ keeps the client with no device assigned, or **Device + Client**. Deleting the u
 numbered like the extension — leaves the user on the Users list marked **no
 device**, with its extension, account, voicemail and call history in place:
 save the user to give it a device back, or Delete All to remove the rest.
-When another device is on a user's extension, the page says so: deleting the
-user then removes its own device and clients, and the extension, account,
-voicemail and history stay.
+Delete All on a user takes every device on its extension, with the clients
+on each.
 
 ## Settings
 
