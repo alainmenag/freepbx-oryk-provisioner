@@ -7,12 +7,15 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 use PDO;
 
 /**
- * Extension/User devices: saving, deleting and listing them.
+ * Extension/Users: saving, deleting and listing them.
  *
- * A user is not a table of this module's. It is a pjsip device that is its
- * own extension -- device id, extension and User Manager username are one
- * number -- and everything about it lives in Core, User Manager, Voicemail,
- * the CDR database and the custom endpoint file. See ARCHITECTURE.md, "Users".
+ * A user is not a table of this module's. It is a FreePBX extension, and
+ * the pjsip device that is that extension's own -- device id, extension and
+ * User Manager username are one number. The extension is what makes it a
+ * user: one whose device has been deleted is listed still, without what the
+ * device held, and a save gives it a device back. Everything about it lives
+ * in Core, User Manager, Voicemail, the CDR database and the custom endpoint
+ * file. See ARCHITECTURE.md, "Users".
  *
  * store() and remove() are sequences over the collaborators below, ported from
  * oryk_connect's DeviceManager with the other kinds taken out.
@@ -20,13 +23,21 @@ use PDO;
 class Users extends Service
 {
 	/**
-	 * Which devices are users. Interpolated into SQL, so it is a literal and
-	 * nothing in it may come from a request.
+	 * Where users are read from: every extension, with its own device beside
+	 * it when it has one -- the pjsip device numbered like it. `d.id` is NULL
+	 * on an extension whose device has been deleted. Interpolated into SQL,
+	 * so a literal: nothing in it may come from a request.
 	 */
-	const SHAPE = "d.tech = 'pjsip' AND d.id = d.user";
+	const FROM = "FROM users u LEFT JOIN devices d ON d.id = u.extension AND d.tech = 'pjsip' AND d.user = u.extension";
 
-	/** A user's context, over `devices d`. Interpolated, so a literal. */
-	const CONTEXT_EXPR = "(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'context' LIMIT 1)";
+	/**
+	 * Which extensions are users, over FROM: all but one whose number is held
+	 * by a device of another kind, which this module could not give a device.
+	 */
+	const SHAPE = "NOT EXISTS (SELECT 1 FROM devices o WHERE o.id = u.extension AND NOT (o.tech = 'pjsip' AND o.user = u.extension))";
+
+	/** A user's context, over FROM: NULL without a device. Interpolated, so a literal. */
+	const CONTEXT_EXPR = "(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'context' LIMIT 1)";
 
 	/** Driver settings written on every save, over the defaults and the form alike. */
 	const FORCED = [
@@ -183,8 +194,8 @@ class Users extends Service
 	{
 		// Written into the statement, so only these; anything else sorts by number.
 		$sortable = [
-			'extension' => 'd.id + 0',
-			'name' => 'd.description',
+			'extension' => 'u.extension + 0',
+			'name' => 'name',
 			'email' => 'email',
 			'clients' => 'clients',
 			'secure' => 'secure',
@@ -203,7 +214,7 @@ class Users extends Service
 		$where = 'WHERE ' . self::SHAPE;
 
 		if ($extensions !== null) {
-			$where .= ' AND ' . $this->inClause('d.id', $extensions, 'extension', $params);
+			$where .= ' AND ' . $this->inClause('u.extension', $extensions, 'extension', $params);
 		}
 
 		// Whitelisted: anything else is the whole list. Both values are bound.
@@ -224,19 +235,20 @@ class Users extends Service
 		}
 
 		if ($search !== '') {
-			$where .= " AND (d.id LIKE :search
+			$where .= " AND (u.extension LIKE :search
+				OR u.name LIKE :search
 				OR d.description LIKE :search
-				OR EXISTS (SELECT 1 FROM sip e WHERE e.id = d.id AND e.keyword = 'email' AND e.data LIKE :search))";
+				OR EXISTS (SELECT 1 FROM sip e WHERE e.id = u.extension AND e.keyword = 'email' AND e.data LIKE :search))";
 			$params[':search'] = '%' . $search . '%';
 		}
 
-		$countStmt = $this->db->prepare("SELECT COUNT(*) FROM devices d $where");
+		$countStmt = $this->db->prepare('SELECT COUNT(*) ' . self::FROM . " $where");
 		$countStmt->execute($params);
 		$total = (int) $countStmt->fetchColumn();
 
 		$stmt = $this->db->prepare(
 			"SELECT " . $this->columns() . "
-			FROM devices d
+			" . self::FROM . "
 			$where
 			ORDER BY $sort $order
 			LIMIT :limit OFFSET :offset"
@@ -272,8 +284,8 @@ class Users extends Service
 		try {
 			$stmt = $this->db->prepare(
 				"SELECT " . $this->columns() . "
-				FROM devices d
-				WHERE d.id = :id AND " . self::SHAPE
+				" . self::FROM . "
+				WHERE u.extension = :id AND " . self::SHAPE
 			);
 			$stmt->execute([':id' => $extension]);
 			$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -293,10 +305,10 @@ class Users extends Service
 	{
 		try {
 			$stmt = $this->db->prepare(
-				"SELECT d.id AS extension, d.description AS name
-				FROM devices d
+				"SELECT u.extension AS extension, COALESCE(d.description, u.name) AS name
+				" . self::FROM . "
 				WHERE " . self::SHAPE . "
-				ORDER BY d.id + 0, d.id"
+				ORDER BY u.extension + 0, u.extension"
 			);
 			$stmt->execute();
 
@@ -427,9 +439,8 @@ class Users extends Service
 	 *
 	 * The device and nothing else of the user's: the extension, its account,
 	 * mailbox and history stay, which is what tells this from deleteUser().
-	 * Deleting the user's own device leaves an extension this module no
-	 * longer lists, since a user here is that device. Looked up on this
-	 * extension, so an id posted for a device elsewhere deletes nothing.
+	 * Deleting the user's own device leaves a user with no device. Looked up
+	 * on this extension, so an id posted for a device elsewhere deletes nothing.
 	 *
 	 * @param mixed $extension Extension number.
 	 * @param mixed $device    Device id, as listDevices() lists it.
@@ -688,7 +699,10 @@ class Users extends Service
 
 		$extension = (string) ($account['default_extension'] ?? '');
 
-		if (!$this->userRow($extension)) {
+		// A phone needs the device: an extension whose device has gone is not a login.
+		$row = $this->userRow($extension);
+
+		if (!$row || empty($row['device'])) {
 			throw new \RuntimeException(_('That login has no Extension/User.'));
 		}
 
@@ -920,13 +934,23 @@ class Users extends Service
 		$email = array_key_exists('email', $input) ? trim((string) $input['email']) : null;
 		$stored = $id === '' ? null : $this->device($id);
 
+		// An extension whose device has been deleted: this save gives it one
+		// back on its own number, as a new user's would.
+		$bare = $id !== '' && !$stored && $this->extensions->exists($id);
+
 		// Only a user is saved as one: a handset posted here would be deleted
 		// and added back as an extension of its own
-		if ($id !== '' && (!$stored || ($stored['tech'] ?? '') !== 'pjsip' || (string) ($stored['user'] ?? '') !== (string) $stored['id'])) {
+		if ($id !== '' && !$bare && (!$stored || ($stored['tech'] ?? '') !== 'pjsip' || (string) ($stored['user'] ?? '') !== (string) $stored['id'])) {
 			throw new \Exception(_('That user no longer exists.'));
 		}
 
-		if ($requested === '') {
+		if ($bare && $requested !== '' && $requested !== $id) {
+			throw new \Exception(_('This extension has no device. Save it once to give it one, then change its number.'));
+		}
+
+		if ($bare) {
+			$uid = $id;
+		} elseif ($requested === '') {
 			$uid = $stored ? (string) $stored['id'] : $this->numbers->generate();
 		} else {
 			$uid = $this->numbers->assertAvailable($requested, $id);
@@ -1110,6 +1134,9 @@ class Users extends Service
 	 * extension -- the extension, its owned User Manager account, its UCP
 	 * assignments and its call history and recordings.
 	 *
+	 * An extension whose device has already gone is a user still, and the
+	 * rest of it goes the same way.
+	 *
 	 * Provisioner clients pointing at it are deleted with it, their stored
 	 * logs included -- see Clients::deleteForDevice().
 	 *
@@ -1121,13 +1148,20 @@ class Users extends Service
 	{
 		$device = $this->device($extension);
 
-		if (!$device || (string) ($device['user'] ?? '') !== (string) $device['id']) {
+		// A device with this id that is somebody else's: not a user to delete.
+		if ($device && (string) ($device['user'] ?? '') !== (string) $device['id']) {
 			return false;
 		}
 
-		$user = (string) $device['id'];
+		if (!$device && !$this->extensions->exists($extension)) {
+			return false;
+		}
 
-		\FreePBX::Core()->delDevice($user);
+		$user = (string) $extension;
+
+		if ($device) {
+			\FreePBX::Core()->delDevice($user);
+		}
 
 		// Nothing in FreePBX knows the custom endpoint file
 		$this->endpoints->forget($user);
@@ -1184,16 +1218,17 @@ class Users extends Service
 	 * `secure` is 1 when media encryption is on; `clients` is how many
 	 * provisioner clients point at this user.
 	 *
-	 * @return string A SELECT list over `devices d`.
+	 * @return string A SELECT list over FROM.
 	 */
 	private function columns()
 	{
-		return "d.id AS extension,
-			d.description AS name,
-			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'email' LIMIT 1) AS email,
-			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
-			COALESCE((SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
-			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id) AS clients,
+		return "u.extension AS extension,
+			COALESCE(d.description, u.name) AS name,
+			d.id IS NOT NULL AS device,
+			(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'email' LIMIT 1) AS email,
+			(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
+			COALESCE((SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
+			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = u.extension) AS clients,
 			" . self::CONTEXT_EXPR . " AS context,
 			" . $this->lastSeenExpr() . " AS last_seen,
 			TIMESTAMPDIFF(SECOND, " . $this->lastSeenExpr() . ", NOW()) AS last_seen_age,
@@ -1202,27 +1237,27 @@ class Users extends Service
 	}
 
 	/**
-	 * When a user's clients were last answered, the newest of them, over `devices d`.
+	 * When a user's clients were last answered, the newest of them, over FROM.
 	 *
 	 * @return string SQL; the table name is the module's own.
 	 */
 	private function lastSeenExpr()
 	{
-		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id)";
+		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE pc.device_id = u.extension)";
 	}
 
 	/**
-	 * When open provisioning signed a user up: its sign-up client's creation, over `devices d`.
+	 * When open provisioning signed a user up: its sign-up client's creation, over FROM.
 	 *
 	 * @return string SQL; the table name is the module's own.
 	 */
 	private function signedUpExpr()
 	{
-		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id AND pc.signup_ip IS NOT NULL)";
+		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE pc.device_id = u.extension AND pc.signup_ip IS NOT NULL)";
 	}
 
 	/**
-	 * expired() in SQL, for the Expired filter, over `devices d` with `:days`
+	 * expired() in SQL, for the Expired filter, over FROM with `:days`
 	 * bound. **The two must agree**: the list shows what this matches, and
 	 * deleteExpired() deletes only what expired() still says yes to.
 	 *

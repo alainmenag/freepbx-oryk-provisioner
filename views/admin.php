@@ -658,8 +658,18 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		});
 	});
 
-	function formatUserExtension(value) {
-		return value ? `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>` : '-';
+	// An extension whose device has been deleted is a user still, and says so:
+	// the columns a device fills are empty on it.
+	function formatUserExtension(value, row) {
+		if (!value) {
+			return '-';
+		}
+
+		const link = `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>`;
+
+		return row && row.device !== undefined && !Number(row.device)
+			? `${link} <span class="label label-default" title="This extension has no device, so no phone can register as it. Saving it on its page gives it one.">no device</span>`
+			: link;
 	}
 
 	function formatUserClients(value, row) {

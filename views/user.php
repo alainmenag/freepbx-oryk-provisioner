@@ -72,6 +72,12 @@ if ($clientCount > 0) {
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
+				<?php if (!$isNew && array_key_exists('device', $user) && !(int) $user['device']): ?>
+				<div class="alert alert-warning">
+					<?php echo _('This extension has no device, so no phone can register as it. Save gives it one back on this number, in from-internal, with a new secret unless you type one.'); ?>
+				</div>
+				<?php endif; ?>
+
 				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
 				<div class="tab-content">

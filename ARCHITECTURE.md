@@ -436,10 +436,17 @@ registers it.
 
 ## Users
 
-A user is a row in none of this module's tables. It is a `pjsip` device whose
-id equals its `user` -- `Users::SHAPE` -- so the device id, the extension and
-the User Manager username are one number. Extensions made in FreePBX have the
-same shape and are listed too. Everything about one lives elsewhere:
+A user is a row in none of this module's tables. It is a FreePBX extension,
+with the `pjsip` device that is its own -- the one whose id is the extension
+-- beside it (`Users::FROM`), so the device id, the extension and the User
+Manager username are one number. Extensions made in FreePBX are listed too.
+**The extension is what makes it a user, not the device**: an extension whose
+device has been deleted is listed still (`device` 0 on its row, and no
+context, email or From Domain, which the device held), is not a login for a
+phone, has its Overview and its delete like any other, and is given a device
+back by a save, on its own number. Only an extension whose number is held by
+a device of another kind is left out (`Users::SHAPE`). Everything about one
+lives elsewhere:
 
 | | where | written by |
 | --- | --- | --- |
@@ -790,8 +797,8 @@ device and nothing else of the user's (`Users::deleteDevice()`: Core's
 unassigned, `Clients::unassignDevice()`, where a user's delete would delete
 it). On the
 user's own device that leaves the extension, account, mailbox and history
-standing with no user here to list them -- a user is that device -- which is
-what the question says before it asks. Another device, while it exists, keeps
+standing: still a user, listed with no device, until a save gives it one back
+or Delete All takes the rest. Another device, while it exists, keeps
 the extension through a user's delete.
 Voicemail is read off the spool
 (`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the

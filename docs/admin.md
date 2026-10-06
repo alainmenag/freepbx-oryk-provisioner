@@ -130,9 +130,10 @@ The Devices table's **Status** is whether Asterisk has the device registered
 right now — Registered, Unreachable (registered, but not answering),
 or Not registered — with the address it registered from on hover. In it, a trash can deletes that device and nothing
 else: a client using it is kept, with no device assigned. Deleting the user's own device — the one
-numbered like the extension — takes the user off the Users list and off this
-page, and leaves its extension, account, voicemail and call history in
-FreePBX. When another device is on a user's extension, the page says so: deleting the
+numbered like the extension — leaves the user on the Users list marked **no
+device**, with its extension, account, voicemail and call history in place:
+save the user to give it a device back, or Delete All to remove the rest.
+When another device is on a user's extension, the page says so: deleting the
 user then removes its own device and clients, and the extension, account,
 voicemail and history stay.
 

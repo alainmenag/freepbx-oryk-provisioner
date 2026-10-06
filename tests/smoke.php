@@ -141,7 +141,8 @@ foreach (['voicemail' => 'VoicemailManager',
 
 echo "\nwhat a user is:\n";
 
-is_eq('a pjsip device that is its own extension', Users::SHAPE, "d.tech = 'pjsip' AND d.id = d.user");
+is_eq('an extension, with its own pjsip device beside it when it has one', Users::FROM, "FROM users u LEFT JOIN devices d ON d.id = u.extension AND d.tech = 'pjsip' AND d.user = u.extension");
+is_eq('unless its number is held by a device of another kind', Users::SHAPE, "NOT EXISTS (SELECT 1 FROM devices o WHERE o.id = u.extension AND NOT (o.tech = 'pjsip' AND o.user = u.extension))");
 is_eq('media encryption is forced on', Users::FORCED['media_encryption'] ?? null, 'sdes');
 
 echo "\nwhat reaches a mailbox, which the call history lines up by position:\n";
@@ -303,6 +304,31 @@ try {
 }
 is_eq('so is saving a user that has gone', $threw, true);
 is_eq('which writes nothing either', FreePBX::$core->added, null);
+
+echo "\n  an extension whose device has gone is a user still:\n";
+
+$s = build();
+$s['app']->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1001'];
+$uid = $s['users']->store(['id' => '1001', 'extension' => '', 'name' => 'Back']);
+is_eq('a save gives it a device back, on its own number', [$uid, FreePBX::$core->added['id'] ?? null], ['1001', '1001']);
+is_eq('with no old device to delete first', FreePBX::$core->deleted, []);
+$threw = false;
+try {
+	$s['users']->store(['id' => '1001', 'extension' => '1002', 'name' => 'Back']);
+} catch (\Exception $e) {
+	$threw = true;
+}
+is_eq('but not on another number in the same save', $threw, true);
+
+$s = build();
+$s['app']->Modules->active = ['cdr'];
+$s['app']->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1001'];
+FreePBX::$core->users['1001'] = ['extension' => '1001'];
+is_eq('deleting it deletes what is left', $s['users']->remove('1001'), true);
+is_eq('the extension', isset(FreePBX::$core->users['1001']), false);
+is_eq('and no device, there being none', FreePBX::$core->deleted, []);
+$s = build();
+is_eq('what is neither device nor extension is not deleted', $s['users']->remove('1001'), false);
 
 echo "\n  saving an existing user starts from what it had:\n";
 
@@ -1937,7 +1963,7 @@ is_eq('and the client', count(overview_deletes($s['app']->Database, 'oryk_provis
 is_eq('and never its user', FreePBX::$core->deleted, []);
 
 $s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824']), ban_row(13, 'deny', ['extension' => '1001']), ban_row(12, 'banned', ['ip' => '203.0.113.7'])]);
-$s['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+$s['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
 FreePBX::$core->devices['1001'] = ['id' => '1001', 'user' => '1001', 'tech' => 'pjsip'];
 $found = $s['overview']->inventory(['user' => '1001']);
 is_eq('a user\'s inventory has its clients', [$found['kind'], $found['clients'], $found['macs']], ['user', [5], ['0004f282e824']]);
@@ -1963,7 +1989,7 @@ is_eq('neither lists anything for a profile', [$s['overview']->listClients(['pro
 is_eq('a client has no call history to list', $s['overview']->listCalls(['client' => '5']), ['total' => 0, 'rows' => [], 'available' => false]);
 is_eq('nor to clear', $s['overview']->clearHistory(['client' => '5'])['status'], false);
 $d = overview_build([]);
-$d['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+$d['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
 $d['app']->Database->fetchAlls['FROM devices WHERE user = ?'] = [['id' => '1001', 'tech' => 'pjsip', 'description' => 'Desk'], ['id' => '1001-cell', 'tech' => 'pjsip', 'description' => 'Cell']];
 $devices = $d['overview']->listDevices(['user' => '1001']);
 is_eq('a user\'s devices say which is its own', array_column($devices['rows'], 'own', 'id'), ['1001' => 1, '1001-cell' => 0]);
@@ -1999,7 +2025,7 @@ is_eq('an id that is not one is never put in a command', $asked->of('1001; core 
 is_eq('a client has no devices to list', $d['overview']->listDevices(['client' => '5']), ['total' => 0, 'rows' => []]);
 
 $c = overview_build([]);
-$c['app']->Database->fetches['WHERE d.id = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+$c['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
 is_eq('with no CDR module there is none to read', $c['overview']->listCalls(['user' => '1001'])['available'], false);
 $c['app']->Modules->active = ['cdr'];
 $_REQUEST['sort'] = 'calldate; DROP TABLE cdr';

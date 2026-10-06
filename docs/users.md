@@ -1,9 +1,17 @@
 # Users
 
-The **Users** tab lists every PJSIP extension that is its own device — the ones
-this module makes, and the ones made in FreePBX's Extensions page, which have
-the same shape. A user is not stored by this module at all: it is the Core
-device, extension, User Manager account and mailbox, kept in step.
+The **Users** tab lists every extension — the ones this module makes, and the
+ones made in FreePBX's Extensions page. A user is not stored by this module at
+all: it is the Core extension, its PJSIP device, User Manager account and
+mailbox, kept in step.
+
+An extension whose device has been deleted stays on the list, marked **no
+device**: no phone can register as it, and its Context, Email and Secure are
+blank, since the device held them. **Save** on its page gives it a device back
+on the same number (in `from-internal`, with a new secret unless you type
+one); **Delete**, or Overview's Delete All, removes what is left. An extension
+whose number belongs to a device of another kind — a DAHDI line, say — is not
+listed.
 
 | Field | What it is |
 | --- | --- |
