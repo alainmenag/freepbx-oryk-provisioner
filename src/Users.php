@@ -422,7 +422,8 @@ class Users extends Service
 	}
 
 	/**
-	 * Delete one device on a user's extension, and the clients pointing at it.
+	 * Delete one device on a user's extension. A client pointing at it is
+	 * kept and left with no device (Clients::unassignDevice()).
 	 *
 	 * The device and nothing else of the user's: the extension, its account,
 	 * mailbox and history stay, which is what tells this from deleteUser().
@@ -465,7 +466,7 @@ class Users extends Service
 		}
 
 		$this->endpoints->forget($device);
-		$this->clients->deleteForDevice($device);
+		$this->clients->unassignDevice($device);
 
 		// The user's own: a sign-up's bridge rows would outlive it.
 		if ($device === $extension && $this->bridge) {

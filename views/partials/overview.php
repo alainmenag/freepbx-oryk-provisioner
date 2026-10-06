@@ -327,8 +327,8 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 	$(document).on('click', '[name="overview_device_delete"]', function () {
 		const ask = Number($(this).data('own'))
-			? 'Delete this device? It is this user\'s own device, so the user leaves the Users list and this page. Its clients are deleted with it. The extension, its User Manager account, voicemail and call history are kept, and are managed in FreePBX from then on. This cannot be undone.'
-			: 'Delete this device? Any client pointing at it is deleted with it. The user and its extension are kept. This cannot be undone.';
+			? 'Delete this device? Only the device is deleted. A client using it is kept, with no device assigned. It is this user\'s own device, so the user leaves the Users list and this page; its extension, User Manager account, voicemail and call history stay in FreePBX. This cannot be undone.'
+			: 'Delete this device? Only the device is deleted. A client using it is kept, with no device assigned. This cannot be undone.';
 
 		if (!window.confirm(ask)) {
 			return;

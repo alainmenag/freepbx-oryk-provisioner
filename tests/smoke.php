@@ -1971,6 +1971,11 @@ is_eq('a device that is not on its extension is not deleted', $d['overview']->de
 $d['app']->Database->answers = ['FROM devices WHERE id = ? AND user = ?' => 1];
 is_eq('another device on it is', $d['overview']->deleteDevice(['user' => '1001'], '1001-cell'), ['status' => true, 'reload' => true]);
 is_eq('through Core, and only that one', FreePBX::$core->deleted, [['1001-cell', false]]);
+$unassigned = array_values(array_filter($d['app']->Database->params, function ($call) {
+	return strpos($call[0], "SET device_id = '' WHERE device_id = :id") !== false;
+}));
+is_eq('a client on it is unassigned', $unassigned[0][1] ?? null, [':id' => '1001-cell']);
+is_eq('and not deleted', count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), 0);
 FreePBX::$core->users['1001'] = ['extension' => '1001'];
 is_eq('its own device is deleted as a device too', $d['overview']->deleteDevice(['user' => '1001'], '1001'), ['status' => true, 'reload' => true]);
 is_eq('and the extension is left standing', [FreePBX::$core->deleted[1] ?? null, isset(FreePBX::$core->users['1001'])], [['1001', false], true]);

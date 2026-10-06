@@ -784,6 +784,27 @@ class Clients extends Service
 	}
 
 	/**
+	 * Take a deleted device off every client that pointed at it.
+	 *
+	 * The clients stay, with no device: a device deleted on its own is not a
+	 * reason to lose the phone's row, its logs or its bans. Written as the
+	 * editor writes "none".
+	 *
+	 * @param int|string $deviceId FreePBX device id that is gone.
+	 *
+	 * @return int Clients unassigned.
+	 */
+	public function unassignDevice($deviceId)
+	{
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->clientsTable}` SET device_id = '' WHERE device_id = :id"
+		);
+		$stmt->execute([':id' => (string) $deviceId]);
+
+		return (int) $stmt->rowCount();
+	}
+
+	/**
 	 * Delete every client that pointed at a deleted device.
 	 *
 	 * Whatever its MAC: a phone of a user that is gone is pointed at nothing.

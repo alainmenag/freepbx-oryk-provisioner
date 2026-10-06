@@ -786,7 +786,9 @@ checked against `DeviceStatus::ID_PATTERN` before it is written into it --
 asked by the list command for the rows on the page, never for every device.
 A device's trash can deletes the
 device and nothing else of the user's (`Users::deleteDevice()`: Core's
-`delDevice()`, its endpoint section, the clients pointing at it). On the
+`delDevice()` and its endpoint section; a client pointing at it is kept and
+unassigned, `Clients::unassignDevice()`, where a user's delete would delete
+it). On the
 user's own device that leaves the extension, account, mailbox and history
 standing with no user here to list them -- a user is that device -- which is
 what the question says before it asks. Another device, while it exists, keeps
