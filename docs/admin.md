@@ -87,7 +87,7 @@ from the profile that serves it.
 
 Everything tied to one user or one client, on one page, so it can be cleaned
 up: pick the user or the client from the dropdowns under the section bar and
-the page reloads on it. The pair of binoculars on the Users list leads
+the page reloads on it. The Overview button on the Users list leads
 here, and from a user's or client's own page the section bar's **Overview**
 opens on that row.
 
