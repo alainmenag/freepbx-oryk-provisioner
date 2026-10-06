@@ -52,9 +52,8 @@ does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
 
 **Deleting a client** deletes the logs it sent and every Logs tab entry for its
-MAC, including those from before it was added. The trash can on the Clients
-list does not delete: it opens [Overview](#overview) on that client, where what
-goes with it is listed first.
+MAC, including those from before it was added, and the bans naming it. The
+trash can on the Clients list asks first, then deletes it there.
 
 **The phone's web interface** is one button on the Clients list, on the rows
 that have a private address on them: it opens `http://<address>` in a new tab.
@@ -88,7 +87,7 @@ from the profile that serves it.
 
 Everything tied to one user or one client, on one page, so it can be cleaned
 up: pick the user or the client from the dropdowns under the section bar and
-the page reloads on it. The trash can on the Users and Clients lists leads
+the page reloads on it. The trash can on the Users list leads
 here, and from a user's or client's own page the section bar's **Overview**
 opens on that row.
 

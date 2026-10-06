@@ -33,9 +33,9 @@
  * ban -- see ARCHITECTURE.md, "Bans".
  *
  * Overview is everything tied to one user or client, drawn by
- * partials/overview.php from the lists' own tables. It is where a list's
- * trash can on a user or a client leads: deleting either is decided there,
- * with what goes with it in view.
+ * partials/overview.php from the lists' own tables. It is where the Users
+ * list's trash can leads: deleting a user is decided there, with what goes
+ * with it in view. A client is deleted from its own list.
  *
  * Opened from a navigator title, a table is narrowed to what that title's badge
  * counted: `$scope` names the row, and every list command is asked with it.
@@ -554,7 +554,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 	// Editing a client is a page, not a dialog, so Edit is a link: the
 	// row's id is the whole of what the editor needs, and it reads the
 	// client back itself rather than being handed one. Beside it are the
-	// switch, which needs no page, the way to Overview to delete it, and, on a
+	// switch and deletion, which need no page, and, on a
 	// client somebody has written an address for, the way to the phone
 	// itself. That one is drawn only when there is an address to draw it
 	// from: a button that led nowhere on most rows would be worse than no
@@ -573,9 +573,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		}
 
 		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
-		actions.push(orykOnOverview
-			? `<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}" title="Delete">${orykIcon('trash')}</button>`
-			: `<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('client', row.id)}" title="Review what goes with this client, then delete">${orykIcon('trash')}</a>`);
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}" title="Delete">${orykIcon('trash')}</button>`);
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 
 		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
@@ -596,8 +594,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		].join('');
 	}
 
-	// A client is deleted in place only on Overview, where what goes with it
-	// is on the page; a profile on its own list.
+	// A client and a profile are deleted in place, on the list and on Overview
+	// alike; only a user's trash can leads to Overview.
 
 	$(document).on('click', '[name="client_delete"]', function () {
 		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
