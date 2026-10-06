@@ -34,8 +34,8 @@
  *
  * Overview is everything tied to one user or client, drawn by
  * partials/overview.php from the lists' own tables. It is where the Users
- * list's trash can leads: deleting a user is decided there, with what goes
- * with it in view. A client is deleted from its own list.
+ * list's magnifying glass leads: deleting a user is decided there, with what
+ * goes with it in view. A client is deleted from its own list.
  *
  * Opened from a navigator title, a table is narrowed to what that title's badge
  * counted: `$scope` names the row, and every list command is asked with it.
@@ -682,10 +682,10 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">Ext.</a>`,
-			// On that user's own Overview the same button is Delete All.
+			// The way to the user's Overview; on that Overview itself, Delete All.
 			(orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`)
 				? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="Delete this user and everything listed here">${orykIcon('trash')}</button>`
-				: `<a class="btn btn-danger btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Review what goes with this user, then delete">${orykIcon('trash')}</a>`,
+				: `<a class="btn btn-default btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Overview: everything tied to this user, and deleting it">${orykIcon('search')}</a>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');

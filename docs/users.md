@@ -78,8 +78,8 @@ other destinations naming the old number are **not** updated.
 Every client pointed at a deleted user is deleted with it, whatever its MAC,
 along with the logs it sent and its entries on the Logs tab. Delete on a user's page asks first.
 
-The trash can on the Users list opens [Overview](admin.md#overview) on that
-user instead: its clients, log entries, stored phone logs and bans are listed,
+The magnifying glass on the Users list opens [Overview](admin.md#overview) on that
+user: its clients, log entries, stored phone logs and bans are listed,
 any of them can be removed on its own, and **Delete All** removes the user
 with all of it — including the bans naming its extension or its clients'
 MACs, which a plain delete leaves.
