@@ -597,19 +597,33 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 	// A client and a profile are deleted in place, on the list and on Overview
 	// alike; only a user's trash can leads to Overview.
 
+	// A client on a device is asked which: the client alone, or its device too.
 	$(document).on('click', '[name="client_delete"]', function () {
-		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
-			return;
+		const id = $(this).val();
+		const row = $('#client_table').bootstrapTable('getRowByUniqueId', id) || {};
+		const device = row.device_id ? String(row.device_id) : '';
+		let ask = 'Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.';
+
+		if (device) {
+			ask += ` It uses device ${device}. Client Only leaves that device as it is; Client + Device deletes the device too, and keeps its extension.`;
 		}
 
-		orykPost('deleteClient', { id: $(this).val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
+		orykAsk(ask, {
+			title: 'Delete client',
+			choices: device
+				? [{ label: 'Client Only', value: 0 }, { label: 'Client + Device', value: 1 }]
+				: [{ label: 'Delete', value: 0 }]
+		}).done((withDevice) => {
+			orykPost('deleteClient', { id: id, device: withDevice ? 1 : '' }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-			$('#client_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
+				orykPending(response);
+				$('#client_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			});
 		});
 	});
 
@@ -631,28 +645,26 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		// Asked the way Delete asks, and before anything is disabled or
 		// sent: the question is the button's, composed where the row was
 		// drawn and knows which way it is going.
-		if (!window.confirm(button.data('confirm'))) {
-			return;
-		}
+		orykAsk(button.data('confirm')).done(() => {
+			button.prop('disabled', true);
 
-		button.prop('disabled', true);
+			orykPost(button.data('command'), { id: id, enabled: enabled }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not change this.', 4);
+					return;
+				}
 
-		orykPost(button.data('command'), { id: id, enabled: enabled }).done(function (response) {
-			if (!response || !response.status) {
+				$(table).bootstrapTable('updateByUniqueId', {
+					id: id,
+					row: { enabled: Number(response.enabled) }
+				});
+
+				notie.alert(1, Number(response.enabled) ? 'Enabled.' : 'Disabled.', 2);
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not change this.', 4);
-				return;
-			}
-
-			$(table).bootstrapTable('updateByUniqueId', {
-				id: id,
-				row: { enabled: Number(response.enabled) }
+				notie.alert(3, 'Could not change this.', 4);
 			});
-
-			notie.alert(1, Number(response.enabled) ? 'Enabled.' : 'Disabled.', 2);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not change this.', 4);
 		});
 	});
 
@@ -730,26 +742,24 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			return;
 		}
 
-		if (!window.confirm(`Delete the ${ids.length} expired lobby user${ids.length === 1 ? '' : 's'} listed? Each extension, its account, voicemail, call history and clients are removed permanently. A user whose phone has been seen since is skipped.`)) {
-			return;
-		}
+		orykAsk(`Delete the ${ids.length} expired lobby user${ids.length === 1 ? '' : 's'} listed? Each extension, its account, voicemail, call history and clients are removed permanently. A user whose phone has been seen since is skipped.`).done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
+			orykPost('deleteExpiredUsers', { ids: ids }).done(function (response) {
+				button.prop('disabled', false);
 
-		orykPost('deleteExpiredUsers', { ids: ids }).done(function (response) {
-			button.prop('disabled', false);
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			orykPending(response);
-			$('#user_table').bootstrapTable('refresh');
-			notie.alert(1, `Deleted ${response.deleted}${response.skipped ? `, skipped ${response.skipped}` : ''}.`, 3);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				orykPending(response);
+				$('#user_table').bootstrapTable('refresh');
+				notie.alert(1, `Deleted ${response.deleted}${response.skipped ? `, skipped ${response.skipped}` : ''}.`, 3);
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
@@ -986,62 +996,57 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			ask = `${row.ip} is the public address of ${row.ip_client}. Every phone at that site will be refused. Change it anyway?`;
 		}
 
-		if (ask && !window.confirm(ask)) {
-			return;
-		}
+		// Nothing to warn about asks nothing: orykAsk('') goes straight on.
+		orykAsk(ask).done(() => {
+			orykPost('setBanState', { id: row.id, state: state, minutes: choice.data('minutes') || '' }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not change the state.', 4);
+					return;
+				}
 
-		orykPost('setBanState', { id: row.id, state: state, minutes: choice.data('minutes') || '' }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not change the state.', 4);
-				return;
-			}
-
-			$('#ban_table').bootstrapTable('refresh', { silent: true });
-			notie.alert(1, response.escalated
-				? `Ban #${row.id} has been in force as often as Deny After allows, so it is now deny.`
-				: `Ban #${row.id} is now ${choice.text().toLowerCase()}.`, response.escalated ? 4 : 2);
-		}).fail(function () {
-			notie.alert(3, 'Could not change the state.', 4);
+				$('#ban_table').bootstrapTable('refresh', { silent: true });
+				notie.alert(1, response.escalated
+					? `Ban #${row.id} has been in force as often as Deny After allows, so it is now deny.`
+					: `Ban #${row.id} is now ${choice.text().toLowerCase()}.`, response.escalated ? 4 : 2);
+			}).fail(function () {
+				notie.alert(3, 'Could not change the state.', 4);
+			});
 		});
 	});
 
 	$(document).on('click', '[name="ban_delete"]', function () {
 		const button = $(this);
 
-		if (!window.confirm('Delete this ban? What it matched is answered again from the next request.')) {
-			return;
-		}
+		orykAsk('Delete this ban? What it matched is answered again from the next request.').done(() => {
+			button.prop('disabled', true);
 
-		button.prop('disabled', true);
+			orykPost('deleteBan', { id: button.val() }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('deleteBan', { id: button.val() }).done(function (response) {
-			if (!response || !response.status) {
+				$('#ban_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			$('#ban_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
 	$(document).on('click', '[name="profile_delete"]', function () {
-		if (!window.confirm('Delete this profile? Its resources go with it.')) {
-			return;
-		}
+		orykAsk('Delete this profile? Its resources go with it.').done(() => {
+			orykPost('deleteProfile', { id: $(this).val() }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('deleteProfile', { id: $(this).val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			$('#profile_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
+				$('#profile_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			});
 		});
 	});
 

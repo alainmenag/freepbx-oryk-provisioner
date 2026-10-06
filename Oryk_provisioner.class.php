@@ -644,8 +644,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveProfile':
 				return $this->profiles->saveProfile($_REQUEST);
 
+			// `device` is the answer "Client + Device": the device it used goes too.
 			case 'deleteClient':
-				return $this->clients->deleteClient($_REQUEST['id'] ?? null);
+				return empty($_REQUEST['device'])
+					? $this->clients->deleteClient($_REQUEST['id'] ?? null)
+					: $this->overview->deleteClientWithDevice($_REQUEST['id'] ?? null);
 
 			// One column, changed from the row it is shown on. Not folded into
 			// saveClient: that writes every field the editor holds, and a list row does
@@ -744,7 +747,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->overview->listDevices(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
 
 			case 'deleteOverviewDevice':
-				return $this->overview->deleteDevice(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')), $_REQUEST['id'] ?? '');
+				return $this->overview->deleteDevice(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')), $_REQUEST['id'] ?? '', !empty($_REQUEST['clients']));
 
 			case 'listOverviewClients':
 				return $this->overview->listClients(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));

@@ -289,18 +289,50 @@ class Overview extends Service
 	/**
 	 * Delete one device on a user's extension: the device, not the user.
 	 *
-	 * @param array<string, string> $at     target().
-	 * @param mixed                 $device Device id, as listDevices() lists it.
+	 * @param array<string, string> $at          target().
+	 * @param mixed                 $device      Device id, as listDevices() lists it.
+	 * @param bool                  $withClients True to delete its clients too.
 	 *
 	 * @return array<string, mixed> Users::deleteDevice(); refused on a client.
 	 */
-	public function deleteDevice(array $at, $device)
+	public function deleteDevice(array $at, $device, $withClients = false)
 	{
 		$at = self::target($at);
 
 		return isset($at['user'])
-			? $this->users->deleteDevice($at['user'], $device)
+			? $this->users->deleteDevice($at['user'], $device, $withClients)
 			: ['status' => false, 'message' => _('Devices belong to a user. Open its Overview to delete one.')];
+	}
+
+	/**
+	 * Delete a client and the device it was using: "Client + Device".
+	 *
+	 * The client first, so the device's delete has nothing of it left to
+	 * unassign. Any other client on that device is kept, with no device.
+	 *
+	 * @param mixed $id Client id.
+	 *
+	 * @return array<string, mixed> Status, and `reload` when a device went; or a message.
+	 */
+	public function deleteClientWithDevice($id)
+	{
+		$client = ctype_digit((string) $id) ? $this->clients->clientRow($id) : null;
+		$device = $client ? (string) $client['device_id'] : '';
+		$deleted = $this->clients->deleteClient($id);
+
+		if (empty($deleted['status']) || $device === '') {
+			return $deleted;
+		}
+
+		$gone = $this->users->deleteDeviceById($device);
+
+		if (empty($gone['status'])) {
+			return ['status' => false, 'message' => sprintf(_('The client was deleted, but its device was not: %s'), (string) ($gone['message'] ?? ''))];
+		}
+
+		$this->logInfo('deleted client ' . (int) $id . ' with its device ' . $device);
+
+		return $gone;
 	}
 
 	/**

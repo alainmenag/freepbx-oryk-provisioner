@@ -490,3 +490,16 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-overview td > .btn-sm {
 	margin-left: 8px;
 }
+
+/* ----------------------------------------------------------------------
+ * orykAsk() -- assets/oryk_dialog.js
+ * ---------------------------------------------------------------------- */
+
+.oryk-ask .oryk-ask-message {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.oryk-ask .modal-footer .btn + .btn {
+	margin-left: 8px;
+}

@@ -77,6 +77,9 @@ diffing. Never rewrite a file wholesale to reword its comments.
   `ajaxHandler()`.
 - No view contains a `<form>`; fields are read by id and posted over AJAX.
 - CSS goes in `assets/oryk_provisioner.css`, not in a `<style>` in a view.
+- A question before an action is `orykAsk(message, {title, choices})` from
+  `assets/oryk_dialog.js`, with the action in `.done(() => { ... })`. No
+  `window.confirm()`.
 - A field's help is a `fpbx-help-icon` with `data-for="<id>"` after the label
   and one `fpbx-help-block` with `id="<id>-help"`; without the pair FreePBX
   never shows it.

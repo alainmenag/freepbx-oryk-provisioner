@@ -168,18 +168,16 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	}
 
 	$(document).on('click', '[name="log_clear"]', function () {
-		if (!window.confirm(orykLogClearConfirm)) {
-			return;
-		}
+		orykAsk(orykLogClearConfirm).done(() => {
+			orykPost(orykLogClearCommand, orykLogClear).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not clear the log.', 4);
+					return;
+				}
 
-		orykPost(orykLogClearCommand, orykLogClear).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not clear the log.', 4);
-				return;
-			}
-
-			$('#log_table').bootstrapTable('refresh');
-			notie.alert(1, 'Cleared.', 2);
+				$('#log_table').bootstrapTable('refresh');
+				notie.alert(1, 'Cleared.', 2);
+			});
 		});
 	});
 

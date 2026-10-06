@@ -53,7 +53,9 @@ Logs tab is for.
 
 **Deleting a client** deletes the logs it sent and every Logs tab entry for its
 MAC, including those from before it was added, and the bans naming it. The
-trash can on the Clients list asks first, then deletes it there.
+trash can on the Clients list asks first, then deletes it there. A client on
+a device is asked **Client Only** or **Client + Device**; the second deletes
+the device too and keeps its extension.
 
 **The phone's web interface** is one button on the Clients list, on the rows
 that have a private address on them: it opens `http://<address>` in a new tab.
@@ -127,8 +129,9 @@ row — delete it from its own trash can if you mean to.
 
 The Devices table's **Status** is whether Asterisk has the device registered
 right now — Registered, Unreachable (registered, but not answering),
-or Not registered — with the address it registered from on hover. In it, a trash can deletes that device and nothing
-else: a client using it is kept, with no device assigned. Deleting the user's own device — the one
+or Not registered — with the address it registered from on hover. In it, a trash can deletes that device; when a
+client uses it you are asked whether to delete the **Device Only**, which
+keeps the client with no device assigned, or **Device + Client**. Deleting the user's own device — the one
 numbered like the extension — leaves the user on the Users list marked **no
 device**, with its extension, account, voicemail and call history in place:
 save the user to give it a device back, or Delete All to remove the rest.

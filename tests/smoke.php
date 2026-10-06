@@ -2002,9 +2002,21 @@ $unassigned = array_values(array_filter($d['app']->Database->params, function ($
 }));
 is_eq('a client on it is unassigned', $unassigned[0][1] ?? null, [':id' => '1001-cell']);
 is_eq('and not deleted', count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), 0);
+$d['app']->Database->fetchAlls["WHERE device_id = :id"] = [['id' => '5']];
+is_eq('asked for its clients too, it goes the same way', $d['overview']->deleteDevice(['user' => '1001'], '1001-cell', true)['status'], true);
+is_eq('and they are deleted, not unassigned', [count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), count(array_filter($d['app']->Database->params, function ($call) {
+	return strpos($call[0], "SET device_id = ''") !== false;
+}))], [1, 1]);
+unset($d['app']->Database->fetchAlls["WHERE device_id = :id"]);
+FreePBX::$core->deleted = [];
+$d['app']->Database->answers['SELECT user FROM devices WHERE id = ?'] = '1001';
+is_eq('a client deleted with its device', $d['overview']->deleteClientWithDevice('5'), ['status' => true, 'reload' => true]);
+is_eq('takes the device it was using', FreePBX::$core->deleted, [['1001', false]]);
+unset($d['app']->Database->answers['SELECT user FROM devices WHERE id = ?']);
+FreePBX::$core->deleted = [];
 FreePBX::$core->users['1001'] = ['extension' => '1001'];
 is_eq('its own device is deleted as a device too', $d['overview']->deleteDevice(['user' => '1001'], '1001'), ['status' => true, 'reload' => true]);
-is_eq('and the extension is left standing', [FreePBX::$core->deleted[1] ?? null, isset(FreePBX::$core->users['1001'])], [['1001', false], true]);
+is_eq('and the extension is left standing', [FreePBX::$core->deleted[0] ?? null, isset(FreePBX::$core->users['1001'])], [['1001', false], true]);
 is_eq('a client has no device to delete', $d['overview']->deleteDevice(['client' => '5'], '1001-cell')['status'], false);
 is_eq('with nothing to ask Asterisk, a device\'s status is unknown', $devices['rows'][0]['status']['state'], 'unknown');
 

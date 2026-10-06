@@ -619,7 +619,7 @@ class Pages extends Service
 	 * Render one view, with what every page's section bar needs added.
 	 *
 	 * Every view is also handed `$icon($name, $class = '')`, an icon from
-	 * assets/icons/ as markup -- see Icons.
+	 * assets/icons/ as markup -- see Icons -- and has orykAsk() on the page.
 	 *
 	 * @param string               $name View under views/, without `.php`.
 	 * @param array<string, mixed> $vars What that view is handed.
@@ -632,8 +632,23 @@ class Pages extends Service
 			return Icons::svg($name, $class);
 		};
 
-		return $this->stylesheet() . Icons::script()
+		return $this->stylesheet() . Icons::script() . $this->dialogScript()
 			. load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version(), 'icon' => $icon]);
+	}
+
+	/**
+	 * orykAsk(), the module's modal question, for the top of a page.
+	 *
+	 * assets/oryk_dialog.js, inlined: every view asks before it deletes, and
+	 * none of them loads a script of its own.
+	 *
+	 * @return string A <script>, or '' when the file is missing.
+	 */
+	private function dialogScript()
+	{
+		$file = dirname(__DIR__) . '/assets/oryk_dialog.js';
+
+		return is_file($file) ? '<script>' . file_get_contents($file) . '</script>' : '';
 	}
 
 	/**

@@ -794,9 +794,12 @@ checked against `DeviceStatus::ID_PATTERN` before it is written into it --
 asked by the list command for the rows on the page, never for every device.
 A device's trash can deletes the
 device and nothing else of the user's (`Users::deleteDevice()`: Core's
-`delDevice()` and its endpoint section; a client pointing at it is kept and
-unassigned, `Clients::unassignDevice()`, where a user's delete would delete
-it). On the
+`delDevice()` and its endpoint section). The question it asks decides the
+clients pointing at it: Device Only keeps and unassigns them
+(`Clients::unassignDevice()`), Device + Client deletes them. From the other
+side, a client's delete offers Client + Device
+(`Overview::deleteClientWithDevice()`), which deletes the device it used by
+the same path. On the
 user's own device that leaves the extension, account, mailbox and history
 standing: still a user, listed with no device, until a save gives it one back
 or Delete All takes the rest. Another device, while it exists, keeps
@@ -916,6 +919,14 @@ made from one of the tables is answered by loading the page again.
 - **No view contains a `<form>`.** The module page renders inside the FreePBX
   page form and a nested form is dropped by the browser. Fields are read by id
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.
+- **A question is `orykAsk()`, never `window.confirm()`.** `assets/oryk_dialog.js`,
+  put on every page by `Pages::view()`, draws a FreePBX modal and returns a
+  promise: resolved with the value of the choice pressed, rejected by Cancel,
+  so `.done()` is the yes and nothing handles the no. It takes `choices` where
+  a question has more than one yes -- a device's delete asks Device Only or
+  Device + Client, a client's Client Only or Client + Device -- and an empty
+  message asks nothing and resolves. The handler that asks uses an arrow
+  function for the answer, so `this` is still the button.
 - **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, and
   Overview's `orykpurge`, not the
   `submit`/`delete` core wires to a `form.fpbx-submit` none of these pages has.

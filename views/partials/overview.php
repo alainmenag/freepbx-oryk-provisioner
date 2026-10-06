@@ -316,34 +316,48 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		return `<span class="label ${labels[status.state][0]}" title="${orykEscape(detail.join(', '))}">${labels[status.state][1]}</span>`;
 	}
 
-	// Delete is the device and nothing else; on the user's own, the question
-	// says what that leaves behind. Edit is the device's page in FreePBX.
+	// Delete asks whether the clients using the device go with it; on the
+	// user's own, it says what that leaves behind. Edit is its page in FreePBX.
 	function formatOverviewDeviceActions(value, row) {
 		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
-			`<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" data-own="${Number(row.own) ? 1 : 0}" title="Delete this device">${orykIcon('trash')}</button>` +
+			`<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" data-own="${Number(row.own) ? 1 : 0}" data-clients="${Number(row.clients) || 0}" title="Delete this device">${orykIcon('trash')}</button>` +
 			`<a class="btn btn-primary btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}">Edit</a>` +
 			`</div>`;
 	}
 
 	$(document).on('click', '[name="overview_device_delete"]', function () {
-		const ask = Number($(this).data('own'))
-			? 'Delete this device? Only the device is deleted. A client using it is kept, with no device assigned. It is this user\'s own device: the user stays, with no device, until you save it to give it one back. This cannot be undone.'
-			: 'Delete this device? Only the device is deleted. A client using it is kept, with no device assigned. This cannot be undone.';
+		const button = $(this);
+		const clients = Number(button.data('clients')) || 0;
+		const both = clients === 1 ? 'Device + Client' : 'Device + Clients';
+		let ask = `Delete device ${button.val()}?`;
 
-		if (!window.confirm(ask)) {
-			return;
+		if (Number(button.data('own'))) {
+			ask += ' It is this user\'s own device: the user stays, with no device, until you save it to give it one back.';
 		}
 
-		const button = $(this).prop('disabled', true);
+		if (clients) {
+			ask += ` ${clients} client${clients === 1 ? ' uses' : 's use'} it. Device Only keeps ${clients === 1 ? 'it' : 'them'}, with no device assigned; ${both} deletes ${clients === 1 ? 'it' : 'them'} too, with ${clients === 1 ? 'its' : 'their'} logs.`;
+		}
 
-		orykPost('deleteOverviewDevice', { scope: orykOverviewScope, id: button.val() }).done(function (response) {
-			if (!response || !response.status) {
+		ask += ' This cannot be undone.';
+
+		orykAsk(ask, {
+			title: 'Delete device',
+			choices: clients
+				? [{ label: 'Device Only', value: 0 }, { label: both, value: 1 }]
+				: [{ label: 'Delete', value: 0 }]
+		}).done((withClients) => {
+			button.prop('disabled', true);
+
+			orykPost('deleteOverviewDevice', { scope: orykOverviewScope, id: button.val(), clients: withClients ? 1 : '' }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+				}
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-			}
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
@@ -404,20 +418,18 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 	// The history alone, with the user kept: what a delete does to it.
 	$(document).on('click', '#oryk_overview_calls_clear', function () {
-		if (!window.confirm('Clear this user\'s call history? Every call it was part of is removed, with its recordings -- from the other extension\'s history too. The user is kept. This cannot be undone.')) {
-			return;
-		}
+		orykAsk('Clear this user\'s call history? Every call it was part of is removed, with its recordings -- from the other extension\'s history too. The user is kept. This cannot be undone.').done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
-
-		orykPost('clearOverviewHistory', { scope: orykOverviewScope }).done(function (response) {
-			if (!response || !response.status) {
+			orykPost('clearOverviewHistory', { scope: orykOverviewScope }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not clear the call history.', 4);
+				}
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not clear the call history.', 4);
-			}
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not clear the call history.', 4);
+				notie.alert(3, 'Could not clear the call history.', 4);
+			});
 		});
 	});
 
@@ -430,42 +442,38 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	// The table is asked again afterwards: the messages after a deleted one
 	// are renumbered, so the ids on the page are stale.
 	$(document).on('click', '[name="overview_voicemail_delete"]', function () {
-		if (!window.confirm('Delete this voicemail message? This cannot be undone.')) {
-			return;
-		}
+		orykAsk('Delete this voicemail message? This cannot be undone.').done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
+			orykPost('deleteOverviewVoicemail', { scope: orykOverviewScope, id: button.val() }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+				} else {
+					notie.alert(1, 'Deleted.', 2);
+				}
 
-		orykPost('deleteOverviewVoicemail', { scope: orykOverviewScope, id: button.val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-			} else {
-				notie.alert(1, 'Deleted.', 2);
-			}
-
-			$('#voicemail_table').bootstrapTable('refresh');
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				$('#voicemail_table').bootstrapTable('refresh');
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
 	// The messages alone: the mailbox, its greetings and the user are kept.
 	$(document).on('click', '#oryk_overview_voicemail_clear', function () {
-		if (!window.confirm('Clear this user\'s voicemail? Every message in every folder is deleted. The mailbox and its greetings are kept. This cannot be undone.')) {
-			return;
-		}
+		orykAsk('Clear this user\'s voicemail? Every message in every folder is deleted. The mailbox and its greetings are kept. This cannot be undone.').done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
-
-		orykPost('clearOverviewVoicemail', { scope: orykOverviewScope }).done(function (response) {
-			if (!response || !response.status) {
+			orykPost('clearOverviewVoicemail', { scope: orykOverviewScope }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not clear the voicemail.', 4);
+				}
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not clear the voicemail.', 4);
-			}
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not clear the voicemail.', 4);
+				notie.alert(3, 'Could not clear the voicemail.', 4);
+			});
 		});
 	});
 
@@ -486,22 +494,20 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 	// Posted as a scope of that one client, like every command here.
 	$(document).on('click', '[name="overview_stored"]', function () {
-		if (!window.confirm('Delete the stored phone logs? The files this client has sent are removed from the PBX.')) {
-			return;
-		}
+		orykAsk('Delete the stored phone logs? The files this client has sent are removed from the PBX.').done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
+			orykPost('clearOverviewStored', { scope: 'client:' + button.val() }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('clearOverviewStored', { scope: 'client:' + button.val() }).done(function (response) {
-			if (!response || !response.status) {
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
@@ -510,23 +516,21 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	$(document).on('click', '#orykpurge, [name="overview_purge"]', function (event) {
 		event.preventDefault();
 
-		if (!window.confirm(orykOverviewAsk)) {
-			return;
-		}
+		orykAsk(orykOverviewAsk).done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
+			orykPost('purgeOverview', { scope: orykOverviewScope }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('purgeOverview', { scope: orykOverviewScope }).done(function (response) {
-			if (!response || !response.status) {
+				window.location = '?display=oryk_provisioner&tab=overview';
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			window.location = '?display=oryk_provisioner&tab=overview';
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 

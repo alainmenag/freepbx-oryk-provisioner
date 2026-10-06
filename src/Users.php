@@ -407,7 +407,8 @@ class Users extends Service
 	 *
 	 * @param mixed $extension Extension number.
 	 *
-	 * @return array<string, mixed> total, rows: id, tech, description, own.
+	 * @return array<string, mixed> total, rows: id, tech, description, own,
+	 *                              and clients, how many point at it.
 	 */
 	public function listDevices($extension)
 	{
@@ -418,7 +419,11 @@ class Users extends Service
 		}
 
 		try {
-			$stmt = $this->db->prepare('SELECT id, tech, description FROM devices WHERE user = ? ORDER BY id = ? DESC, id + 0, id');
+			$stmt = $this->db->prepare(
+				"SELECT id, tech, description,
+					(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = devices.id) AS clients
+				FROM devices WHERE user = ? ORDER BY id = ? DESC, id + 0, id"
+			);
 			$stmt->execute([$extension, $extension]);
 			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		} catch (\Exception $e) {
@@ -435,19 +440,21 @@ class Users extends Service
 
 	/**
 	 * Delete one device on a user's extension. A client pointing at it is
-	 * kept and left with no device (Clients::unassignDevice()).
+	 * kept and left with no device (Clients::unassignDevice()), or deleted
+	 * with it when asked: the answer to the question the page puts.
 	 *
 	 * The device and nothing else of the user's: the extension, its account,
 	 * mailbox and history stay, which is what tells this from deleteUser().
 	 * Deleting the user's own device leaves a user with no device. Looked up
 	 * on this extension, so an id posted for a device elsewhere deletes nothing.
 	 *
-	 * @param mixed $extension Extension number.
-	 * @param mixed $device    Device id, as listDevices() lists it.
+	 * @param mixed $extension   Extension number.
+	 * @param mixed $device      Device id, as listDevices() lists it.
+	 * @param bool  $withClients True to delete its clients rather than unassign them.
 	 *
 	 * @return array<string, mixed> Status and `reload`; or a message.
 	 */
-	public function deleteDevice($extension, $device)
+	public function deleteDevice($extension, $device, $withClients = false)
 	{
 		$extension = (string) $extension;
 		$device = (string) $device;
@@ -477,7 +484,12 @@ class Users extends Service
 		}
 
 		$this->endpoints->forget($device);
-		$this->clients->unassignDevice($device);
+
+		if ($withClients) {
+			$this->clients->deleteForDevice($device);
+		} else {
+			$this->clients->unassignDevice($device);
+		}
 
 		// The user's own: a sign-up's bridge rows would outlive it.
 		if ($device === $extension && $this->bridge) {
@@ -487,6 +499,34 @@ class Users extends Service
 		self::pending();
 
 		return ['status' => true, 'reload' => true];
+	}
+
+	/**
+	 * Delete a device by its id alone: the device a client being deleted
+	 * was using. Its extension is looked up, and deleteDevice() does the rest.
+	 *
+	 * @param mixed $device Device id.
+	 *
+	 * @return array<string, mixed> Status and `reload`; or a message. A
+	 *                              device that has already gone is a success.
+	 */
+	public function deleteDeviceById($device)
+	{
+		$device = (string) $device;
+
+		try {
+			$stmt = $this->db->prepare('SELECT user FROM devices WHERE id = ?');
+			$stmt->execute([$device]);
+			$extension = $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			$extension = false;
+		}
+
+		if ($extension === false) {
+			return ['status' => true];
+		}
+
+		return $this->deleteDevice((string) $extension, $device);
 	}
 
 	/**
