@@ -1770,6 +1770,27 @@ is_eq('no other line looks like a login failure', array_filter($lines, function 
 	return stripos($line, 'authentication failure') !== false;
 }), []);
 
+echo "\n  Repair:\n";
+
+$s = signup_build();
+$s['app']->Database->answers['SELECT extension FROM users WHERE extension = ?'] = '1001';
+$s['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'device' => '0', 'clients' => '0', 'context' => null]];
+$s['app']->Database->insertId = 9;
+$s['app']->Database->answers['SELECT id FROM devices WHERE id = :id'] = '1001';
+$repaired = $s['users']->repair('1001', 'lobby');
+is_eq('a user with neither is given a device and a client', $repaired, ['status' => true, 'reload' => true, 'device' => true, 'client' => true]);
+is_eq('the device on its own number, in the context asked for', [FreePBX::$core->added['id'] ?? null, FreePBX::$core->added['settings']['context']['value'] ?? null], ['1001', 'lobby']);
+FreePBX::$core->added = null;
+$s['users']->repair('1001', 'anything else');
+is_eq('any other answer is not the lobby', (FreePBX::$core->added['settings']['context']['value'] ?? null) === 'lobby', false);
+
+$s = signup_build();
+$s['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'device' => '1', 'clients' => '2', 'context' => 'from-internal']];
+is_eq('a user with both is left alone', $s['users']->repair('1001'), ['status' => true, 'reload' => false, 'device' => false, 'client' => false]);
+is_eq('nothing is written to Core', FreePBX::$core->added, null);
+$s = signup_build();
+is_eq('what is not a user is not repaired', $s['users']->repair('1001')['status'], false);
+
 echo "\n  a login that outlived its extension gets it back:\n";
 
 $s = signup_build();

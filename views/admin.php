@@ -50,6 +50,7 @@
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
  * @var int                               $expireDays ORYK_OPEN_EXPIRE_DAYS, on the Users tab: Expired is offered above 0
  * @var array<string, mixed>|null         $overview  Overview::inventory(), on Overview -- see partials/overview.php
+ * @var string                            $lobbyContext ORYK_OPEN_CONTEXT, where the Users table is drawn: Repair offers it
  */
 
 $tab = (string) ($tab ?? 'users');
@@ -314,6 +315,9 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 	// On Overview a row's trash can deletes; on a list it leads to Overview.
 	const orykOnOverview = <?php echo json_encode($tab === 'overview'); ?>;
+
+	// The sign-up context, as it is named: one of the two Repair can make a device in.
+	const orykLobbyContext = <?php echo json_encode((string) ($lobbyContext ?? '')); ?>;
 
 	function orykOverviewUrl(kind, id) {
 		return `?display=oryk_provisioner&tab=overview&scope=${kind}:${encodeURIComponent(id)}`;
@@ -697,12 +701,79 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			// The way to the user's Overview, first; not drawn on that Overview itself.
 			here ? '' : `<a class="btn btn-default btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Overview: everything tied to this user, and deleting it">${orykIcon('overview')}</a>`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">Ext.</a>`,
+			`<button type="button" class="btn btn-default btn-sm" name="user_repair" value="${orykEscape(row.extension)}" data-device="${Number(row.device) ? 1 : 0}" data-clients="${Number(row.clients) || 0}" title="Repair: make sure this user has a device and a client">${orykIcon('wrench')}</button>`,
 			// On its own Overview the row's trash can is Delete All.
 			here ? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="Delete this user and everything listed here">${orykIcon('trash')}</button>` : '',
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');
 	}
+
+	// Repair: a device and a client for a user that lacks either. A missing
+	// device is made in the context chosen; nothing that exists is changed.
+	$(document).on('click', '[name="user_repair"]', function () {
+		const button = $(this);
+		const extension = String(button.val());
+		const missing = [];
+
+		if (!Number(button.data('device'))) {
+			missing.push('a device');
+		}
+
+		if (!Number(button.data('clients'))) {
+			missing.push('a client');
+		}
+
+		if (!missing.length) {
+			notie.alert(1, `User ${extension} has a device and a client. Nothing to repair.`, 3);
+			return;
+		}
+
+		let ask = `Repair user ${extension}? It has no ${missing.join(' and no ').replace(/\ba /g, '')}, and is given ${missing.join(' and ')}.`;
+		let choices = [{ label: 'Repair', value: '', style: 'btn-primary' }];
+
+		if (!Number(button.data('device'))) {
+			ask += ' Choose the context its new device is put in; it gets a new secret.';
+			choices = [{ label: 'from-internal', value: 'from-internal', style: 'btn-primary' }];
+
+			if (orykLobbyContext) {
+				choices.unshift({ label: orykLobbyContext, value: 'lobby', style: 'btn-primary' });
+			}
+		}
+
+		orykAsk(ask, { title: 'Repair user', choices: choices }).done((context) => {
+			button.prop('disabled', true);
+
+			orykPost('repairUser', { id: extension, context: context }).done(function (response) {
+				button.prop('disabled', false);
+
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not repair.', 4);
+					return;
+				}
+
+				const made = [];
+
+				if (response.device) {
+					made.push('a device');
+				}
+
+				if (response.client) {
+					made.push('a client');
+				}
+
+				orykPending(response);
+				$('#user_table').bootstrapTable('refresh');
+				$('#device_table, #client_table').each(function () {
+					$(this).bootstrapTable('refresh');
+				});
+				notie.alert(1, made.length ? `Repaired: made ${made.join(' and ')}.` : 'Nothing needed repairing.', 3);
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not repair.', 4);
+			});
+		});
+	});
 
 	// The Lobby and Expired filters ride in the list's query, so a refresh,
 	// a sort or a page keeps them. The server whitelists the value.

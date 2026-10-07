@@ -5,6 +5,11 @@ ones made in FreePBX's Extensions page. A user is not stored by this module at
 all: it is the Core extension, its PJSIP device, User Manager account and
 mailbox, kept in step.
 
+**Repair**, the wrench on a user's row, makes sure the user has a device and a
+client, and makes whichever is missing: a device on its own number, in the
+context you pick when asked (the lobby or `from-internal`), and a client for
+it to be provisioned as. A user that has both is left alone.
+
 An extension whose device has been deleted stays on the list, marked **no
 device**: no phone can register as it, and its Context, Email and Secure are
 blank, since the device held them. **Save** on its page gives it a device back

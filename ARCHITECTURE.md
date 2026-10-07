@@ -509,6 +509,12 @@ unlinked only when no surviving record names it. A queue- or ring-group-
 answered call carries the group in `dst` and is not matched. There is no undo,
 which is why Delete says so before it asks.
 
+**Repair** (`Users::repair()`, the wrench on a user's row) makes what a phone
+needs and a user lacks: a device on its own number -- in the sign-up context or
+`from-internal`, as the question's answer says -- and, for a user with no
+client at all, one on an internal MAC with a generated token, which its next
+open-provisioning login replaces. Nothing that exists is changed.
+
 **A user's clients are the ones on any device of its extension**
 (`Users::CLIENT_OF`; `Navigator::owner()` for the dropdowns), not only those
 on the device numbered like it: the Clients count, Last Seen, the Clients tab
