@@ -297,7 +297,7 @@ friendly URL, and the endpoint stays reachable at its real path.
 
 ## Schema
 
-Eight tables, and the bridge's three (below). Every `Schema` step is additive and asks `information_schema`
+Eight tables, and the bridge's three (below). Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -406,8 +406,9 @@ file (1.0.7).
   -- and the minute job purges it once its copy is out. Adding the same ban
   again reopens it like any other row.
 
-**`oryk_provisioner_services`** -- `name` (unique), `slug` (unique). Where a
-service sits is the table below.
+**`oryk_provisioner_services`** -- `slug` (the primary key), `name` (unique).
+There is no numeric id: a page, a save, a delete, a link and an assignment all
+name a service by its slug. Where a service sits is the table below.
 
 - **The slug is the identity anything but a person uses**: lowercase letters
   and digits joined by hyphens (`Services::SLUG_PATTERN`). **It is never
@@ -418,9 +419,12 @@ service sits is the table below.
   transaction** (`Services::renameLinks()`): today that is both columns of the
   links table and a user's assignments. Anything else that comes to store a service's slug must be
   added to that method, or a rename leaves it naming nothing. A default's
-  slug never changes -- renaming one in `DEFAULTS` renames the row only. The column is
-  nullable only for rows older than it (`Schema::addServiceSlugColumn()`),
-  which `seed()` fills on the same install; every save writes one.
+  slug never changes -- renaming one in `DEFAULTS` renames the row only.
+- A table written before this had an `id` key, and before that no slug. An
+  install adds the slug nullable (`Schema::addServiceSlugColumn()`), `seed()`
+  fills it from each name, and `Schema::dropServiceIdColumn()` then drops the
+  id and makes the slug the key -- in that order, which `Installer` keeps. The
+  one `Schema` step that takes something away.
 - **The module's own services are `Services::DEFAULTS`**, by slug: a name, and
   the slugs under it. **Adding, renaming or regrouping one is an edit to that
   array and nothing else** -- `install()` runs `Services::seed()`, which makes
@@ -439,7 +443,7 @@ service sits is the table below.
   under it or over it from that service's page. A default link the
   operator's links would turn into a loop is not added, and install says so.
 - A service already named like a default when the slug column arrives is given
-  that slug by the backfill and so becomes the default, links and id kept. A
+  that slug by the backfill and so becomes the default, links kept. A
   default whose name another slug already holds is not written, and install
   says so.
 

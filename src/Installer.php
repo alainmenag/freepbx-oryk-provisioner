@@ -235,14 +235,12 @@ class Installer extends Service
 
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->servicesTable}` (
-				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`slug` VARCHAR(64) NOT NULL,
 				`name` VARCHAR(191) NOT NULL,
-				`slug` VARCHAR(64) NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				PRIMARY KEY (`id`),
-				UNIQUE KEY `name` (`name`),
-				UNIQUE KEY `slug` (`slug`)
+				PRIMARY KEY (`slug`),
+				UNIQUE KEY `name` (`name`)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
@@ -295,6 +293,11 @@ class Installer extends Service
 			foreach ($this->services->seed() as $line) {
 				$this->installMessage('Provisioner: ' . $line);
 			}
+		}
+
+		// After seed(), which is what gives every older row the slug this keys on.
+		if (!$this->schema->dropServiceIdColumn()) {
+			$this->installMessage('Provisioner: the services table could not be re-keyed by slug; see the FreePBX log.');
 		}
 
 		// Advanced Settings -> Oryk Provisioner. Registering again on an upgrade

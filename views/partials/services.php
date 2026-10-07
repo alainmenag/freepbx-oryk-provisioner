@@ -64,7 +64,7 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 	data-show-refresh="true"
 	data-icons-prefix="oryk-icon"
 	data-icons='{"refresh":"oryk-icon-refresh"}'
-	data-unique-id="id"
+	data-unique-id="slug"
 	data-sort-name="name"
 	data-sort-order="asc">
 	<thead>
@@ -148,7 +148,7 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
-			row.managed ? '' : `<button type="button" class="btn btn-danger btn-sm" name="service_delete" value="${orykEscape(row.id)}" title="Delete" aria-label="Delete">${orykIcon('trash')}</button>`,
+			row.managed ? '' : `<button type="button" class="btn btn-danger btn-sm" name="service_delete" value="${orykEscape(row.slug)}" title="Delete" aria-label="Delete">${orykIcon('trash')}</button>`,
 			row.managed
 				? `<a class="btn btn-primary btn-sm" href="${href}" title="View" aria-label="View">${orykIcon('eye')}</a>`
 				: `<a class="btn btn-primary btn-sm" href="${href}" title="Edit" aria-label="Edit">${orykIcon('edit')}</a>`,
@@ -158,7 +158,7 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 
 	$(document).on('click', '[name="service_delete"]', function () {
 		orykAsk('Delete this service? The services over and under it are kept.').done(() => {
-			orykPost('deleteService', { id: $(this).val() }).done(function (response) {
+			orykPost('deleteService', { slug: $(this).val() }).done(function (response) {
 				if (!response || !response.status) {
 					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 					return;

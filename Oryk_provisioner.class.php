@@ -742,7 +742,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->services->saveService($_REQUEST);
 
 			case 'deleteService':
-				return $this->services->deleteService($_REQUEST['id'] ?? null);
+				return $this->services->deleteService($_REQUEST['slug'] ?? null);
 
 			// One service, on or off one user, from that user's Services tab.
 			case 'setUserService':

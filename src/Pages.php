@@ -341,7 +341,7 @@ class Pages extends Service
 	 */
 	private function showService($wanted)
 	{
-		$service = ['id' => 0, 'name' => '', 'slug' => '', 'managed' => false];
+		$service = ['name' => '', 'slug' => '', 'managed' => false];
 
 		if ($wanted !== '') {
 			// doConfigPageInit() has already bounced one that has gone.

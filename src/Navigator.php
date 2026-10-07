@@ -760,11 +760,6 @@ class Navigator extends Service
 		foreach ($this->services->serviceChoices() as $row) {
 			$slug = (string) $row['slug'];
 
-			// A page is addressed by slug, so a row with none yet has no page.
-			if ($slug === '') {
-				continue;
-			}
-
 			$rows[] = [
 				'id' => $slug,
 				'text' => (string) $row['name'],

@@ -11,7 +11,7 @@
  * One of the module's own (Services::DEFAULTS) is drawn with every field
  * disabled, and Pages::getActionBar() gives it Close and nothing else.
  *
- * @var array<string, mixed>             $service   id (0 when new), name, slug, managed
+ * @var array<string, mixed>             $service   name, slug ('' when new), managed
  * @var array<int, array<string, mixed>> $choices   Services::serviceChoices(): every service, each marked managed
  * @var array<string, array<int, string>> $related  Services::related(): the slugs ticked, and those that cannot be
  * @var array<int, array<string, mixed>> $navigator Levels the navigator draws -- see partials/navigator.php
@@ -19,7 +19,7 @@
  * @var string                           $version   Module version -- see partials/sections.php
  */
 
-$service = $service ?? ['id' => 0, 'name' => ''];
+$service = ($service ?? []) + ['name' => '', 'slug' => ''];
 $choices = isset($choices) && is_array($choices) ? $choices : [];
 $related = (isset($related) && is_array($related) ? $related : [])
 	+ ['parents' => [], 'children' => [], 'barredParents' => [], 'barredChildren' => []];
@@ -28,7 +28,7 @@ $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 
-$id = (int) $service['id'];
+$slug = (string) $service['slug'];
 $managed = !empty($service['managed']);
 $locked = $managed ? ' disabled' : '';
 
@@ -36,20 +36,19 @@ $tab = 'service';
 $tabs = [
 	'service' => [
 		'label' => _('Service'),
-		'href' => '?display=oryk_provisioner&service=' . rawurlencode((string) ($service['slug'] ?? '')),
+		'href' => '?display=oryk_provisioner&service=' . rawurlencode($slug),
 	],
 ];
 
 // One side of the links: every other service as a checkbox named $name,
 // its value the service's slug.
-$checks = function ($name, array $ticked, array $barred, $why) use ($choices, $id, $h, $managed) {
+$checks = function ($name, array $ticked, array $barred, $why) use ($choices, $slug, $h, $managed) {
 	$html = '';
 
 	foreach ($choices as $choice) {
 		$other = (string) ($choice['slug'] ?? '');
 
-		// A link names a slug, so a row with none yet cannot be linked.
-		if ((int) $choice['id'] === $id || $other === '') {
+		if ($other === $slug) {
 			continue;
 		}
 
@@ -172,8 +171,8 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $i
 
 <script>
 
-	const orykServiceId = <?php echo $id; ?>;
-	let orykServiceSlug = <?php echo json_encode((string) ($service['slug'] ?? '')); ?>;
+	// The service as stored, '' for a new one: what a save and a delete name it by.
+	let orykServiceSlug = <?php echo json_encode($slug); ?>;
 
 	// One side's ticked slugs, as one string: jQuery posts nothing at all for
 	// an empty array, and nothing is "leave the links alone" to saveService.
@@ -187,9 +186,10 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $i
 		save: 'saveService',
 		remove: 'deleteService',
 		confirm: 'Delete this service? The services over and under it are kept.',
+		key: 'slug',
 		values: function () {
 			return {
-				id: orykServiceId,
+				slug: orykServiceSlug,
 				name: $('#service_name').val(),
 				parents: orykServiceTicked('service_parent'),
 				children: orykServiceTicked('service_child')

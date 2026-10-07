@@ -119,7 +119,6 @@ class Services extends Service
 
 		$sql = "
 			SELECT
-				s.id,
 				s.name,
 				s.slug,
 				(
@@ -201,29 +200,11 @@ class Services extends Service
 	}
 
 	/**
-	 * One service, by id: what a save or a delete is posted.
+	 * The service with a slug: how a page's address, a save and a delete name one.
 	 *
-	 * @param mixed $id Service id.
+	 * @param mixed $slug Slug, as the request carries it.
 	 *
-	 * @return array<string, mixed>|null id, name, slug, managed; null when there is none.
-	 */
-	public function serviceRow($id)
-	{
-		$stmt = $this->db->prepare(
-			"SELECT id, name, slug FROM `{$this->servicesTable}` WHERE id = :id"
-		);
-		$stmt->execute([':id' => (int) $id]);
-		$row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-		return $row ? $this->marked($row) : null;
-	}
-
-	/**
-	 * The service with a slug: how a page's address names one.
-	 *
-	 * @param mixed $slug Slug, as the URL carries it.
-	 *
-	 * @return array<string, mixed>|null id, name, slug, managed; null when there is none.
+	 * @return array<string, mixed>|null name, slug, managed; null when there is none.
 	 */
 	public function serviceBySlug($slug)
 	{
@@ -234,7 +215,7 @@ class Services extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"SELECT id, name, slug FROM `{$this->servicesTable}` WHERE slug = :slug"
+			"SELECT name, slug FROM `{$this->servicesTable}` WHERE slug = :slug"
 		);
 		$stmt->execute([':slug' => $slug]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -245,12 +226,12 @@ class Services extends Service
 	/**
 	 * Every service, for the editor's two lists.
 	 *
-	 * @return array<int, array<string, mixed>> id, name, slug, managed, ordered by name.
+	 * @return array<int, array<string, mixed>> name, slug, managed, ordered by name.
 	 */
 	public function serviceChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name, slug FROM `{$this->servicesTable}` ORDER BY name"
+			"SELECT name, slug FROM `{$this->servicesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 
@@ -304,18 +285,19 @@ class Services extends Service
 	 * One of the module's is refused outright. A service of the operator's
 	 * own can still be put under one, or over one, from its own page.
 	 *
-	 * The slug is never taken from the request: it is made from the name, on
+	 * The request's `slug` says which service is being saved, '' for a new
+	 * one, and is never what it is saved with: that is made from the name, on
 	 * a new service and again whenever the name changes. A slug that changes
 	 * is changed on every link naming it, in the same transaction, so nothing
 	 * that names the service by it is left pointing at nothing.
 	 *
-	 * @param array<string, mixed> $request id, name, parents, children.
+	 * @param array<string, mixed> $request slug, name, parents, children.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
 	 */
 	public function saveService($request)
 	{
-		$id = (int) ($request['id'] ?? 0);
+		$was = trim((string) ($request['slug'] ?? ''));
 		$name = trim((string) ($request['name'] ?? ''));
 
 		if ($name === '') {
@@ -326,9 +308,9 @@ class Services extends Service
 			return ['status' => false, 'message' => sprintf(_('A service name is at most %s characters.'), self::NAME_MAX)];
 		}
 
-		$row = $id ? $this->serviceRow($id) : null;
+		$row = $was !== '' ? $this->serviceBySlug($was) : null;
 
-		if ($id && !$row) {
+		if ($was !== '' && !$row) {
 			return ['status' => false, 'message' => _('That service no longer exists.')];
 		}
 
@@ -337,20 +319,20 @@ class Services extends Service
 		}
 
 		$taken = $this->db->prepare(
-			"SELECT id FROM `{$this->servicesTable}` WHERE name = :name AND id != :id"
+			"SELECT 1 FROM `{$this->servicesTable}` WHERE name = :name AND slug != :was"
 		);
-		$taken->execute([':name' => $name, ':id' => $id]);
+		$taken->execute([':name' => $name, ':was' => $was]);
 
 		if ($taken->fetchColumn()) {
 			return ['status' => false, 'message' => _('A service with that name already exists.')];
 		}
 
-		$slug = $row ? (string) $row['slug'] : '';
+		$slug = $was;
 
 		// Only a changed name moves it: a save of anything else leaves the
 		// address and the links where they are.
-		if ($slug === '' || (string) $row['name'] !== $name) {
-			$slug = $this->freeSlug(self::slugify($name), $id);
+		if (!$row || (string) $row['name'] !== $name) {
+			$slug = $this->freeSlug(self::slugify($name), $was);
 		}
 
 		$sides = [];
@@ -362,7 +344,7 @@ class Services extends Service
 		}
 
 		if ($sides) {
-			$refused = $this->refusedLinks($row ? (string) $row['slug'] : '', $slug, $sides);
+			$refused = $this->refusedLinks($was, $slug, $sides);
 
 			if ($refused !== null) {
 				return ['status' => false, 'message' => $refused];
@@ -372,21 +354,20 @@ class Services extends Service
 		$this->db->beginTransaction();
 
 		try {
-			if ($id) {
+			if ($row) {
 				$stmt = $this->db->prepare(
-					"UPDATE `{$this->servicesTable}` SET name = :name, slug = :slug WHERE id = :id"
+					"UPDATE `{$this->servicesTable}` SET name = :name, slug = :slug WHERE slug = :was"
 				);
-				$stmt->execute([':name' => $name, ':slug' => $slug, ':id' => $id]);
+				$stmt->execute([':name' => $name, ':slug' => $slug, ':was' => $was]);
 
-				if ((string) $row['slug'] !== '' && (string) $row['slug'] !== $slug) {
-					$this->renameLinks((string) $row['slug'], $slug);
+				if ($was !== $slug) {
+					$this->renameLinks($was, $slug);
 				}
 			} else {
 				$stmt = $this->db->prepare(
 					"INSERT INTO `{$this->servicesTable}` (name, slug) VALUES (:name, :slug)"
 				);
 				$stmt->execute([':name' => $name, ':slug' => $slug]);
-				$id = (int) $this->db->lastInsertId();
 			}
 
 			foreach ($sides as $side => $others) {
@@ -401,7 +382,7 @@ class Services extends Service
 			return ['status' => false, 'message' => _('The service could not be saved.')];
 		}
 
-		return ['status' => true, 'id' => $id, 'name' => $name, 'slug' => $slug];
+		return ['status' => true, 'name' => $name, 'slug' => $slug];
 	}
 
 	/**
@@ -411,33 +392,34 @@ class Services extends Service
 	 * is taken off every user it was assigned to. One of the module's is
 	 * refused.
 	 *
-	 * @param mixed $id Service id.
+	 * @param mixed $slug The service's slug.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
 	 */
-	public function deleteService($id)
+	public function deleteService($slug)
 	{
-		$id = (int) $id;
-		$row = $this->serviceRow($id);
+		$slug = trim((string) $slug);
 
-		if ($row && $row['managed']) {
+		if (self::managed($slug)) {
 			return ['status' => false, 'message' => _('This service is managed by the module and cannot be deleted.')];
 		}
 
-		if ($row && (string) $row['slug'] !== '') {
-			$links = $this->db->prepare(
-				"DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent OR child = :child"
-			);
-			$links->execute([':parent' => $row['slug'], ':child' => $row['slug']]);
-
-			$assigned = $this->db->prepare(
-				"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE service = :slug"
-			);
-			$assigned->execute([':slug' => $row['slug']]);
+		if ($slug === '') {
+			return ['status' => true];
 		}
 
-		$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE id = :id");
-		$stmt->execute([':id' => $id]);
+		$links = $this->db->prepare(
+			"DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent OR child = :child"
+		);
+		$links->execute([':parent' => $slug, ':child' => $slug]);
+
+		$assigned = $this->db->prepare(
+			"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE service = :slug"
+		);
+		$assigned->execute([':slug' => $slug]);
+
+		$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE slug = :slug");
+		$stmt->execute([':slug' => $slug]);
 
 		return ['status' => true];
 	}
@@ -475,11 +457,6 @@ class Services extends Service
 
 		foreach ($choices as $choice) {
 			$slug = (string) $choice['slug'];
-
-			// An assignment names a slug, so a row with none yet cannot be assigned.
-			if ($slug === '') {
-				continue;
-			}
 
 			$rows[] = [
 				'slug' => $slug,
@@ -643,9 +620,10 @@ class Services extends Service
 	/**
 	 * Write DEFAULTS to the tables. Run by install(), and safe to run again.
 	 *
-	 * A row older than the slug column is given a slug from its name first,
-	 * so a service already called what a default is called becomes that
-	 * default rather than colliding with it. Then each default is made or
+	 * A row older than the slug column is given a slug from its name first
+	 * -- found by its name, the one thing such a row is sure to have -- so a
+	 * service already called what a default is called becomes that default
+	 * rather than colliding with it. Then each default is made or
 	 * renamed, and the links between two defaults are made to match DEFAULTS:
 	 * one it no longer has is removed, one it has is added. A link with a
 	 * service of the operator's own at either end is theirs and is left.
@@ -656,15 +634,15 @@ class Services extends Service
 	{
 		$notes = [];
 
-		$bare = $this->db->prepare("SELECT id, name FROM `{$this->servicesTable}` WHERE slug IS NULL OR slug = '' ORDER BY id");
+		$bare = $this->db->prepare("SELECT name FROM `{$this->servicesTable}` WHERE slug IS NULL OR slug = '' ORDER BY name");
 		$bare->execute();
-		$fill = $this->db->prepare("UPDATE `{$this->servicesTable}` SET slug = :slug WHERE id = :id");
+		$fill = $this->db->prepare("UPDATE `{$this->servicesTable}` SET slug = :slug WHERE name = :name");
 
-		foreach ($bare->fetchAll(PDO::FETCH_ASSOC) as $row) {
-			$fill->execute([':slug' => $this->freeSlug(self::slugify($row['name']), (int) $row['id'], false), ':id' => (int) $row['id']]);
+		foreach ($bare->fetchAll(PDO::FETCH_COLUMN) as $name) {
+			$fill->execute([':slug' => $this->freeSlug(self::slugify($name), '', false), ':name' => $name]);
 		}
 
-		$find = $this->db->prepare("SELECT id, name FROM `{$this->servicesTable}` WHERE slug = :slug");
+		$find = $this->db->prepare("SELECT name FROM `{$this->servicesTable}` WHERE slug = :slug");
 		$written = [];
 
 		foreach (self::DEFAULTS as $slug => $default) {
@@ -681,8 +659,8 @@ class Services extends Service
 				}
 
 				if ((string) $row['name'] !== $default['name']) {
-					$rename = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name WHERE id = :id");
-					$rename->execute([':name' => $default['name'], ':id' => (int) $row['id']]);
+					$rename = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name WHERE slug = :slug");
+					$rename->execute([':name' => $default['name'], ':slug' => $slug]);
 				}
 
 				$written[] = $slug;
@@ -945,16 +923,20 @@ class Services extends Service
 	 * Whether another service already has a slug.
 	 *
 	 * @param string $slug Slug asked about.
-	 * @param int    $id   The service it is for, which may keep its own.
+	 * @param string $own  The slug of the service it is for, which may keep it; '' for a new one.
 	 *
 	 * @return bool True when it is taken.
 	 */
-	private function slugTaken($slug, $id)
+	private function slugTaken($slug, $own)
 	{
+		if ($slug === (string) $own) {
+			return false;
+		}
+
 		$stmt = $this->db->prepare(
-			"SELECT id FROM `{$this->servicesTable}` WHERE slug = :slug AND id != :id"
+			"SELECT 1 FROM `{$this->servicesTable}` WHERE slug = :slug"
 		);
-		$stmt->execute([':slug' => $slug, ':id' => (int) $id]);
+		$stmt->execute([':slug' => $slug]);
 
 		return (bool) $stmt->fetchColumn();
 	}
@@ -964,18 +946,18 @@ class Services extends Service
 	 * Never `new`, which is how a page and the navigator name one not yet written.
 	 *
 	 * @param string $base     Slug wanted, from slugify().
-	 * @param int    $id       The service it is for, or 0 for a new one.
+	 * @param string $own      The slug of the service it is for, or '' for a new one.
 	 * @param bool   $reserved Whether the module's slugs are off limits; only seed() says no.
 	 *
 	 * @return string A free slug.
 	 */
-	private function freeSlug($base, $id, $reserved = true)
+	private function freeSlug($base, $own, $reserved = true)
 	{
 		for ($n = 1; ; $n++) {
 			$tail = $n === 1 ? '' : '-' . $n;
 			$slug = substr($base, 0, self::SLUG_MAX - strlen($tail)) . $tail;
 
-			if ($slug !== 'new' && !($reserved && self::managed($slug)) && !$this->slugTaken($slug, $id)) {
+			if ($slug !== 'new' && !($reserved && self::managed($slug)) && !$this->slugTaken($slug, $own)) {
 				return $slug;
 			}
 		}
