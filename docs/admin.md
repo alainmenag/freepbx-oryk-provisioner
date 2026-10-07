@@ -5,7 +5,7 @@ carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 Every page is topped by the same bar of sections — Users, Clients, Profiles,
-Logs, Bans, Settings — with the one you are in underlined, so any section is
+Logs, Bans, Overview, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
 Users, Clients, Profiles, Resources, Logs, Bans — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
@@ -25,6 +25,7 @@ which are views of that one row.
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
 | `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log` or `ban` row scopes | — |
+| `&tab=overview&scope=user:<extension>` or `client:<id>` | [Overview](#overview): everything tied to that user or client | — |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
@@ -51,7 +52,10 @@ does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
 
 **Deleting a client** deletes the logs it sent and every Logs tab entry for its
-MAC, including those from before it was added.
+MAC, including those from before it was added, and the bans naming it. The
+trash can on the Clients list asks first, then deletes it there. A client on
+a device is asked **Client Only** or **Client + Device**; the second deletes
+the device too and keeps its extension.
 
 **The phone's web interface** is one button on the Clients list, on the rows
 that have a private address on them: it opens `http://<address>` in a new tab.
@@ -80,6 +84,59 @@ same body, any size, under the filename this client asks for it by.
 **Deleting a profile** that clients are still assigned to is refused rather than
 cascading; its resources do cascade, since a resource has no existence apart
 from the profile that serves it.
+
+## Overview
+
+Everything tied to one user or one client, on one page, so it can be cleaned
+up: pick the user or the client from the dropdowns under the section bar and
+the page reloads on it. The Overview button on the Users list leads
+here, and from a user's or client's own page the section bar's **Overview**
+opens on that row.
+
+It is tables, the same ones the lists show:
+
+| | For a user | For a client |
+| --- | --- | --- |
+| **User** | the user, with a link to its User Manager account | its user, which is kept |
+| **Devices** | the FreePBX devices on its extension | — |
+| **Clients** | every client on it, with the logs each has stored | the client itself |
+| **Call history** | the calls it made or received | — |
+| **Voicemail** | the messages in its mailbox, every folder | — |
+| **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
+| **Bans** | every ban naming it or applying to it | the same |
+
+Each part can be removed where it is listed: a client or a ban by its trash
+can, the log entries with **Clear These Entries**, a client's stored logs with
+the trash can beside their count.
+
+**Clear Call History** removes a user's calls and their recordings and keeps
+the user. It is what deleting the user does to its history, so a call between
+two extensions is removed from the other's history too, and there is no undo —
+back up `asteriskcdrdb` first if the history matters. **Clear Voicemail**
+deletes every message in the user's mailbox and keeps the mailbox and its
+greetings, and each message has its own trash can; a phone's message-waiting light follows within a minute or so.
+
+**Delete All**, in the action bar, removes the user or client and everything
+listed for it in one go, after saying how much that is. For a user that is the
+whole of [deleting a user](users.md#deleting) — extension, account, voicemail,
+call history and recordings — plus its clients, their logs and the bans naming
+it. There is no undo.
+
+The Bans table says what Delete All does with each ban. **Removes**: the ban
+names this client, its MAC or this user's extension. **Keeps**: the ban only
+applies to it, through an address or a profile, and is about more than this
+row — delete it from its own trash can if you mean to.
+
+The Devices table's **Status** is whether Asterisk has the device registered
+right now — Registered, Unreachable (registered, but not answering),
+or Not registered — with the address it registered from on hover. In it, a trash can deletes that device; when a
+client uses it you are asked whether to delete the **Device Only**, which
+keeps the client with no device assigned, or **Device + Client**. Deleting the user's own device — the one
+numbered like the extension — leaves the user on the Users list marked **no
+device**, with its extension, account, voicemail and call history in place:
+save the user to give it a device back, or Delete All to remove the rest.
+Delete All on a user takes every device on its extension, with the clients
+on each.
 
 ## Settings
 

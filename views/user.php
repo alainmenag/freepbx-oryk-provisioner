@@ -11,7 +11,6 @@
  * one already pointed at it.
  *
  * @var array<string, mixed>             $user       extension ('' when new), name, email, from_domain, secure, clients, context
- * @var string                           $lobbyContext ORYK_OPEN_CONTEXT: a user in it is offered Promote
  * @var string                           $pbxDomain  What a blank From Domain resolves to
  * @var array<string, bool>              $available  Which of the other tabs have anything on them
  * @var string                           $tab        Tab to open on: user|clients
@@ -23,9 +22,7 @@
 $user = $user ?? ['extension' => '', 'name' => '', 'email' => '', 'from_domain' => '', 'secure' => 1, 'clients' => 0];
 $available = $available ?? [];
 $pbxDomain = (string) ($pbxDomain ?? '');
-$lobbyContext = (string) ($lobbyContext ?? '');
 $context = (string) ($user['context'] ?? '');
-$inLobby = $context !== '' && $context === $lobbyContext;
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -74,6 +71,12 @@ if ($clientCount > 0) {
 			<div class="section no-border" style="padding: 0;">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
+
+				<?php if (!$isNew && array_key_exists('device', $user) && !(int) $user['device']): ?>
+				<div class="alert alert-warning">
+					<?php echo _('This extension has no device, so no phone can register as it. Save gives it one back on this number, in from-internal, with a new secret unless you type one.'); ?>
+				</div>
+				<?php endif; ?>
 
 				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
@@ -205,9 +208,6 @@ if ($clientCount > 0) {
 									<div class="col-md-8">
 										<p class="form-control-static oryk-name" id="user_context">
 											<?php echo $h($context !== '' ? $context : '-'); ?>
-											<?php if ($inLobby): ?>
-											&nbsp;<button type="button" class="btn btn-default btn-sm" id="user_promote"><?php echo _('Promote'); ?></button>
-											<?php endif; ?>
 										</p>
 									</div>
 								</div>
@@ -215,7 +215,7 @@ if ($clientCount > 0) {
 							<div class="row">
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block" id="user_context-help">
-										<?php echo _('Where this user\'s calls are placed. Open provisioning puts every user it creates in the lobby (Settings -> Sign-up Context): internal extensions, conferences, voicemail and emergency routes only, one call at a time, no UCP login, and no forward or transfer out. Promote moves it to from-internal, lets UCP follow its groups again, and lifts the rest on Apply Config. Any other change is made in Extensions.'); ?>
+										<?php echo _('Where this user\'s calls are placed. Open provisioning puts every user it creates in the lobby (Settings -> Sign-up Context): internal extensions, conferences, voicemail and emergency routes only, one call at a time, no UCP login, and no forward or transfer out. It is changed in Extensions, not here.'); ?>
 									</span>
 								</div>
 							</div>
@@ -257,7 +257,7 @@ if ($clientCount > 0) {
 						<table
 							id="user_client_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listClients&device_id=<?php echo rawurlencode($extension); ?>"
+							data-url="ajax.php?module=oryk_provisioner&command=listClients&extension=<?php echo rawurlencode($extension); ?>"
 							data-toolbar="#user_client_toolbar"
 							class="table table-striped"
 							data-side-pagination="server"
@@ -313,28 +313,6 @@ if ($clientCount > 0) {
 	function formatUserClientActions(value, row) {
 		return `<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`;
 	}
-
-	// Asks first, like every one-press change: it opens outbound calling.
-	$(document).on('click', '#user_promote', function () {
-		if (!window.confirm(<?php echo json_encode(_('Promote this user to from-internal? It will be able to use your outbound routes once Apply Config has run, and its UCP login will follow its groups again.')); ?>)) {
-			return;
-		}
-
-		const button = $(this).prop('disabled', true);
-
-		orykPost('promoteUser', { id: orykUserId }).done(function (response) {
-			if (!response || !response.status) {
-				button.prop('disabled', false);
-				orykShowError(response && response.message);
-				return;
-			}
-
-			window.location = '?display=oryk_provisioner&user=' + encodeURIComponent(response.id);
-		}).fail(function () {
-			button.prop('disabled', false);
-			orykShowError('The server could not be reached.');
-		});
-	});
 
 	orykEditor({
 		save: 'saveUser',

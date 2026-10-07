@@ -1,7 +1,7 @@
 <?php
 /**
  * The module page: one pane per section -- Users, Clients, Profiles, Logs,
- * Bans and Settings.
+ * Bans, Overview and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -11,8 +11,8 @@
  *
  * Neither a client nor a profile is edited here. Both are pages of their own
  * -- views/client.php and views/profile.php -- which the Add and Edit buttons
- * link to. What is left on the list is deletion and the switch, which is the
- * other thing that needs no page: one column, changed on the row it is shown
+ * link to. What is left on the list is a profile's deletion and the switch,
+ * which needs no page: one column, changed on the row it is shown
  * on. The clients table and the profiles table both have one, they mean the
  * same thing -- the endpoint answers this row, or it answers nothing for it
  * -- so both are drawn and handled by the same three functions below. The
@@ -32,6 +32,11 @@
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
  *
+ * Overview is everything tied to one user or client, drawn by
+ * partials/overview.php from the lists' own tables. It is where the Users
+ * list's Overview button leads: deleting a user is decided there, with what
+ * goes with it in view. A client is deleted from its own list.
+ *
  * Opened from a navigator title, a table is narrowed to what that title's badge
  * counted: `$scope` names the row, and every list command is asked with it.
  *
@@ -44,6 +49,7 @@
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
  * @var int                               $expireDays ORYK_OPEN_EXPIRE_DAYS, on the Users tab: Expired is offered above 0
+ * @var array<string, mixed>|null         $overview  Overview::inventory(), on Overview -- see partials/overview.php
  */
 
 $tab = (string) ($tab ?? 'users');
@@ -282,6 +288,12 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					</div>
 					<?php endif; ?>
 
+					<?php if ($tab === 'overview'): ?>
+					<div class="tab-pane active" id="oryk_overview">
+						<?php include __DIR__ . '/partials/overview.php'; ?>
+					</div>
+					<?php endif; ?>
+
 					<?php if ($tab === 'settings'): ?>
 					<div class="tab-pane oryk-tab-section active" id="oryk_settings">
 						<?php include __DIR__ . '/partials/settings.php'; ?>
@@ -299,6 +311,13 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 <script>
 
 	const orykAjax = 'ajax.php?module=oryk_provisioner&command=';
+
+	// On Overview a row's trash can deletes; on a list it leads to Overview.
+	const orykOnOverview = <?php echo json_encode($tab === 'overview'); ?>;
+
+	function orykOverviewUrl(kind, id) {
+		return `?display=oryk_provisioner&tab=overview&scope=${kind}:${encodeURIComponent(id)}`;
+	}
 
 	// Said in one place because the client editor says the same thing about
 	// the same client, and the two reading differently would be two answers
@@ -534,8 +553,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 	// Editing a client is a page, not a dialog, so Edit is a link: the
 	// row's id is the whole of what the editor needs, and it reads the
-	// client back itself rather than being handed one. Beside it are the two
-	// things that need no page -- the switch, and deletion -- and, on a
+	// client back itself rather than being handed one. Beside it are the
+	// switch and deletion, which need no page, and, on a
 	// client somebody has written an address for, the way to the phone
 	// itself. That one is drawn only when there is an address to draw it
 	// from: a button that led nowhere on most rows would be worse than no
@@ -554,7 +573,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		}
 
 		actions.push(orykSwitch(row, 'setClientEnabled', '#client_table', 'client', 'everything it asks for is refused'));
-		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}">${orykIcon('trash')}</button>`);
+		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}" title="Delete">${orykIcon('trash')}</button>`);
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 
 		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
@@ -575,24 +594,36 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		].join('');
 	}
 
-	// Deleting is the one action on either tab that needs no page of its own.
-	//
-	// Only one table is on the page -- the tab that was asked for is the only
-	// pane rendered -- so only that one is refreshed.
+	// A client and a profile are deleted in place, on the list and on Overview
+	// alike; only a user's trash can leads to Overview.
 
+	// A client on a device is asked which: the client alone, or its device too.
 	$(document).on('click', '[name="client_delete"]', function () {
-		if (!window.confirm('Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.')) {
-			return;
+		const id = $(this).val();
+		const row = $('#client_table').bootstrapTable('getRowByUniqueId', id) || {};
+		const device = row.device_id ? String(row.device_id) : '';
+		let ask = 'Delete this client? Any logs it has sent, and its entries on the Logs tab, go with it.';
+
+		if (device) {
+			ask += ` It uses device ${device}. Client Only leaves that device as it is; Client + Device deletes the device too, and keeps its extension.`;
 		}
 
-		orykPost('deleteClient', { id: $(this).val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
+		orykAsk(ask, {
+			title: 'Delete client',
+			choices: device
+				? [{ label: 'Client Only', value: 0 }, { label: 'Client + Device', value: 1 }]
+				: [{ label: 'Delete', value: 0 }]
+		}).done((withDevice) => {
+			orykPost('deleteClient', { id: id, device: withDevice ? 1 : '' }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-			$('#client_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
+				orykPending(response);
+				$('#client_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			});
 		});
 	});
 
@@ -614,33 +645,41 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		// Asked the way Delete asks, and before anything is disabled or
 		// sent: the question is the button's, composed where the row was
 		// drawn and knows which way it is going.
-		if (!window.confirm(button.data('confirm'))) {
-			return;
-		}
+		orykAsk(button.data('confirm')).done(() => {
+			button.prop('disabled', true);
 
-		button.prop('disabled', true);
+			orykPost(button.data('command'), { id: id, enabled: enabled }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not change this.', 4);
+					return;
+				}
 
-		orykPost(button.data('command'), { id: id, enabled: enabled }).done(function (response) {
-			if (!response || !response.status) {
+				$(table).bootstrapTable('updateByUniqueId', {
+					id: id,
+					row: { enabled: Number(response.enabled) }
+				});
+
+				notie.alert(1, Number(response.enabled) ? 'Enabled.' : 'Disabled.', 2);
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not change this.', 4);
-				return;
-			}
-
-			$(table).bootstrapTable('updateByUniqueId', {
-				id: id,
-				row: { enabled: Number(response.enabled) }
+				notie.alert(3, 'Could not change this.', 4);
 			});
-
-			notie.alert(1, Number(response.enabled) ? 'Enabled.' : 'Disabled.', 2);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not change this.', 4);
 		});
 	});
 
-	function formatUserExtension(value) {
-		return value ? `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>` : '-';
+	// An extension whose device has been deleted is a user still, and says so:
+	// the columns a device fills are empty on it.
+	function formatUserExtension(value, row) {
+		if (!value) {
+			return '-';
+		}
+
+		const link = `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>`;
+
+		return row && row.device !== undefined && !Number(row.device)
+			? `${link} <span class="label label-default" title="This extension has no device, so no phone can register as it. Saving it on its page gives it one.">no device</span>`
+			: link;
 	}
 
 	function formatUserClients(value, row) {
@@ -651,11 +690,15 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 	function formatUserActions(value, row) {
 		const extension = encodeURIComponent(row.extension);
+		const here = orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`;
 
 		return [
 			`<div class="flex gap-3" style="justify-content: flex-end;">`,
-			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">${orykIcon('external')}</a>`,
-			`<button type="button" class="btn btn-danger btn-sm" name="user_delete" value="${orykEscape(row.extension)}" data-clients="${Number(row.clients) || 0}">${orykIcon('trash')}</button>`,
+			// The way to the user's Overview, first; not drawn on that Overview itself.
+			here ? '' : `<a class="btn btn-default btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Overview: everything tied to this user, and deleting it">${orykIcon('overview')}</a>`,
+			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">Ext.</a>`,
+			// On its own Overview the row's trash can is Delete All.
+			here ? `<button type="button" class="btn btn-danger btn-sm" name="overview_purge" title="Delete this user and everything listed here">${orykIcon('trash')}</button>` : '',
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&user=${extension}">Edit</a>`,
 			`</div>`
 		].join('');
@@ -699,58 +742,24 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			return;
 		}
 
-		if (!window.confirm(`Delete the ${ids.length} expired lobby user${ids.length === 1 ? '' : 's'} listed? Each extension, its account, voicemail, call history and clients are removed permanently. A user whose phone has been seen since is skipped.`)) {
-			return;
-		}
+		orykAsk(`Delete the ${ids.length} expired lobby user${ids.length === 1 ? '' : 's'} listed? Each extension, its account, voicemail, call history and clients are removed permanently. A user whose phone has been seen since is skipped.`).done(() => {
+			const button = $(this).prop('disabled', true);
 
-		const button = $(this).prop('disabled', true);
-
-		orykPost('deleteExpiredUsers', { ids: ids }).done(function (response) {
-			button.prop('disabled', false);
-
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			orykPending(response);
-			$('#user_table').bootstrapTable('refresh');
-			notie.alert(1, `Deleted ${response.deleted}${response.skipped ? `, skipped ${response.skipped}` : ''}.`, 3);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
-		});
-	});
-
-	// Permanent, and it takes the call history and recordings with it, so it
-	// says so -- and what happens to the clients pointing at it.
-	$(document).on('click', '[name="user_delete"]', function () {
-		const clients = Number($(this).data('clients')) || 0;
-		let ask = 'Delete this user? The extension, its User Manager account, its voicemail and its call history and recordings are removed permanently. This cannot be undone.';
-
-		if (clients) {
-			ask += ` ${clients} client${clients === 1 ? ' points' : 's point'} at this user and will be deleted too, with the logs ${clients === 1 ? 'it' : 'they'} sent.`;
-		}
-
-		if (!window.confirm(ask)) {
-			return;
-		}
-
-		const button = $(this).prop('disabled', true);
-
-		orykPost('deleteUser', { id: button.val() }).done(function (response) {
-			if (!response || !response.status) {
+			orykPost('deleteExpiredUsers', { ids: ids }).done(function (response) {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
 
-			orykPending(response);
-			$('#user_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
+
+				orykPending(response);
+				$('#user_table').bootstrapTable('refresh');
+				notie.alert(1, `Deleted ${response.deleted}${response.skipped ? `, skipped ${response.skipped}` : ''}.`, 3);
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
@@ -987,62 +996,57 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			ask = `${row.ip} is the public address of ${row.ip_client}. Every phone at that site will be refused. Change it anyway?`;
 		}
 
-		if (ask && !window.confirm(ask)) {
-			return;
-		}
+		// Nothing to warn about asks nothing: orykAsk('') goes straight on.
+		orykAsk(ask).done(() => {
+			orykPost('setBanState', { id: row.id, state: state, minutes: choice.data('minutes') || '' }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not change the state.', 4);
+					return;
+				}
 
-		orykPost('setBanState', { id: row.id, state: state, minutes: choice.data('minutes') || '' }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not change the state.', 4);
-				return;
-			}
-
-			$('#ban_table').bootstrapTable('refresh', { silent: true });
-			notie.alert(1, response.escalated
-				? `Ban #${row.id} has been in force as often as Deny After allows, so it is now deny.`
-				: `Ban #${row.id} is now ${choice.text().toLowerCase()}.`, response.escalated ? 4 : 2);
-		}).fail(function () {
-			notie.alert(3, 'Could not change the state.', 4);
+				$('#ban_table').bootstrapTable('refresh', { silent: true });
+				notie.alert(1, response.escalated
+					? `Ban #${row.id} has been in force as often as Deny After allows, so it is now deny.`
+					: `Ban #${row.id} is now ${choice.text().toLowerCase()}.`, response.escalated ? 4 : 2);
+			}).fail(function () {
+				notie.alert(3, 'Could not change the state.', 4);
+			});
 		});
 	});
 
 	$(document).on('click', '[name="ban_delete"]', function () {
 		const button = $(this);
 
-		if (!window.confirm('Delete this ban? What it matched is answered again from the next request.')) {
-			return;
-		}
+		orykAsk('Delete this ban? What it matched is answered again from the next request.').done(() => {
+			button.prop('disabled', true);
 
-		button.prop('disabled', true);
+			orykPost('deleteBan', { id: button.val() }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('deleteBan', { id: button.val() }).done(function (response) {
-			if (!response || !response.status) {
+				$('#ban_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			}).fail(function () {
 				button.prop('disabled', false);
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			$('#ban_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
-		}).fail(function () {
-			button.prop('disabled', false);
-			notie.alert(3, 'Could not delete.', 4);
+				notie.alert(3, 'Could not delete.', 4);
+			});
 		});
 	});
 
 	$(document).on('click', '[name="profile_delete"]', function () {
-		if (!window.confirm('Delete this profile? Its resources go with it.')) {
-			return;
-		}
+		orykAsk('Delete this profile? Its resources go with it.').done(() => {
+			orykPost('deleteProfile', { id: $(this).val() }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('deleteProfile', { id: $(this).val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			$('#profile_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
+				$('#profile_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			});
 		});
 	});
 

@@ -14,18 +14,21 @@
  * on that client's tab the moment it exists. A run of 404s from before the
  * client was added is usually the most informative thing on the page.
  *
- * Included by views/admin.php and views/client.php, both of which already
- * define orykPost() and orykEscape(); this adds only what the log's own
- * columns need.
+ * Included by views/admin.php, views/client.php and
+ * views/partials/overview.php, all of which already define orykPost() and
+ * orykEscape(); this adds only what the log's own columns need.
  *
- * @var string $logMac   MAC to narrow to, or '' for every client's requests
- * @var string $logScope Navigator scope key to narrow to, or '': the module
- *                       page opened from a navigator title
+ * @var string $logMac      MAC to narrow to, or '' for every client's requests
+ * @var string $logScope    Navigator scope key to narrow to, or '': the module
+ *                          page opened from a navigator title, or Overview
+ * @var bool   $logOverview On Overview: Clear is offered
+ *                          for the scope, which the server resolves to MACs
  */
 
 $logMac = (string) ($logMac ?? '');
 $logScope = (string) ($logScope ?? '');
 $logNarrowed = $logMac !== '';
+$logOverview = !empty($logOverview) && $logScope !== '';
 
 $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	. ($logNarrowed ? '&mac=' . rawurlencode($logMac) : '')
@@ -33,11 +36,11 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 ?>
 
 <div id="log_toolbar" class="oryk-toolbar">
-	<?php // Clear empties one MAC or the lot; a scope is neither, so it has no Clear. ?>
-	<?php if ($logScope === ''): ?>
-	<button type="button" class="btn btn-danger" name="log_clear">
+	<?php // Clear empties one MAC or the lot; a scope is neither, so only Overview gives it a Clear. ?>
+	<?php if ($logScope === '' || $logOverview): ?>
+	<button type="button" class="btn btn-danger" name="log_clear" title="<?php echo $logOverview ? _('Clear These Entries') : ($logNarrowed ? _('Clear This Client\'s Log') : _('Clear Log')); ?>">
 		<?php echo $icon('trash'); ?>
-		<?php echo $logNarrowed ? _('Clear This Client\'s Log') : _('Clear Log'); ?>
+		<?php echo _('Clear'); ?>
 	</button>
 	<?php endif; ?>
 </div>
@@ -77,10 +80,16 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	// the module page. Nothing prunes this table on its own -- a row per file
 	// per boot per phone -- so the button is what stands between a busy site
 	// and a log larger than everything else the module has.
-	var orykLogClear = <?php echo json_encode($logNarrowed ? ['mac' => $logMac] : []); ?>;
-	var orykLogClearConfirm = <?php echo json_encode($logNarrowed
-		? _('Clear this client\'s provisioning log?')
-		: _('Clear the provisioning log? Every client\'s requests go with it.')); ?>;
+	//
+	// On Overview it is another command altogether, posted the scope: an
+	// empty clearLogs is the whole log, so the two are never one request.
+	var orykLogClearCommand = <?php echo json_encode($logOverview ? 'clearOverviewLogs' : 'clearLogs'); ?>;
+	var orykLogClear = <?php echo json_encode($logOverview ? ['scope' => $logScope] : ($logNarrowed ? ['mac' => $logMac] : (object) [])); ?>;
+	var orykLogClearConfirm = <?php echo json_encode($logOverview
+		? _('Clear the provisioning log entries listed here?')
+		: ($logNarrowed
+			? _('Clear this client\'s provisioning log?')
+			: _('Clear the provisioning log? Every client\'s requests go with it.'))); ?>;
 	var orykLogUnknown = <?php echo json_encode(_('Not associated')); ?>;
 	var orykLogMainConfig = <?php echo json_encode(_('(main config)')); ?>;
 
@@ -159,18 +168,16 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	}
 
 	$(document).on('click', '[name="log_clear"]', function () {
-		if (!window.confirm(orykLogClearConfirm)) {
-			return;
-		}
+		orykAsk(orykLogClearConfirm).done(() => {
+			orykPost(orykLogClearCommand, orykLogClear).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not clear the log.', 4);
+					return;
+				}
 
-		orykPost('clearLogs', orykLogClear).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not clear the log.', 4);
-				return;
-			}
-
-			$('#log_table').bootstrapTable('refresh');
-			notie.alert(1, 'Cleared.', 2);
+				$('#log_table').bootstrapTable('refresh');
+				notie.alert(1, 'Cleared.', 2);
+			});
 		});
 	});
 

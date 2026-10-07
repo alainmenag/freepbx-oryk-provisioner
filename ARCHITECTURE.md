@@ -91,7 +91,11 @@ answered by its Basic credentials instead of a client row
 1. no credentials -> 401, which is the challenge that makes a phone send them
 2. `Users::findLogin()`: a User Manager login answers with the account's
    default extension, and its client (step 4) -- no lock, no limits, nothing
-   made; no User Manager, or a login with no Extension/User -> 409
+   made; no User Manager, or a login whose account names no number -> 409
+   A login whose extension or device has been deleted is **rebuilt** first
+   (`Users::rebuild()`): the extension and a device on the number the account
+   still names, made as a sign-up makes them -- in the lobby, whatever the user
+   was -- bridged, and written to the security log.
 3. otherwise a **sign-up**, all of it under `Users::LOCK` (one `withLock()`
    in `openClient()` around `Users::signUp()`, the client and the bridge; the
    lock is re-entrant, so `store()` inside it takes nothing more):
@@ -157,12 +161,14 @@ it can its caller id. Two ways out are closed besides the dial plan:
   `Users::endpointExtras()` to `pjsip.endpoint_custom_post.conf` and by the
   bridge.
 
-A context leaves with **Promote** (`Users::promote()`): `from-internal`,
-`restoreUcp()` (the per-user setting cleared, so UCP follows the groups), the
-bridge rows rewritten; the call limit, forward guard and transfer guard follow
-the context on the next apply. `store()` takes `context` on a new user or a
-promote only, and `saveUser()` passes only the editor's fields, so a request
-can set neither. **Expired** (`ORYK_OPEN_EXPIRE_DAYS`): a lobby user whose
+**The module never changes a context.** `store()` takes `context` on a new
+user only, and `saveUser()` passes only the editor's fields, so a request
+cannot set one. A user leaves the lobby when its context is changed in
+Extensions: the call limit and forward guard follow the context on the next
+apply. Two things the sign-up wrote do not follow by themselves -- the
+transfer guard, which the user's next save here takes off
+(`endpointExtras()`), and the per-user UCP login `denyUcp()` refused, which is
+User Manager's to switch back. **Expired** (`ORYK_OPEN_EXPIRE_DAYS`): a lobby user whose
 newest client was last seen, or whose sign-up client was made, more than N days
 ago -- `Users::expired()` in PHP and `expiredExpr()` in SQL, which must agree:
 the list shows what the SQL matches, and `deleteExpired()` deletes only what
@@ -358,7 +364,8 @@ file (1.0.7).
   with the database's `NOW()`, never PHP's clock, for the reason Last Seen is.
 - A row naming a client or a profile goes with it, since the next one written
   can be given the same id. A user is a number and its rows outlive it; a MAC
-  names a handset and its rows outlive any client.
+  names a handset and its rows outlive any client. [Overview](#overview)'s
+  Delete All is the exception: it takes the bans naming the extension or MAC.
 - `source` and `jail` are what created the row -- `manual` by default, or
   whatever adds bans on its own naming itself, with the fail2ban jail or rule
   that fired. Fields on a ban's page (not list columns), written on create and
@@ -433,10 +440,17 @@ registers it.
 
 ## Users
 
-A user is a row in none of this module's tables. It is a `pjsip` device whose
-id equals its `user` -- `Users::SHAPE` -- so the device id, the extension and
-the User Manager username are one number. Extensions made in FreePBX have the
-same shape and are listed too. Everything about one lives elsewhere:
+A user is a row in none of this module's tables. It is a FreePBX extension,
+with the `pjsip` device that is its own -- the one whose id is the extension
+-- beside it (`Users::FROM`), so the device id, the extension and the User
+Manager username are one number. Extensions made in FreePBX are listed too.
+**The extension is what makes it a user, not the device**: an extension whose
+device has been deleted is listed still (`device` 0 on its row, and no
+context, email or From Domain, which the device held), is not a login for a
+phone, has its Overview and its delete like any other, and is given a device
+back by a save, on its own number. Only an extension whose number is held by
+a device of another kind is left out (`Users::SHAPE`). Everything about one
+lives elsewhere:
 
 | | where | written by |
 | --- | --- | --- |
@@ -482,10 +496,11 @@ repointed** (`Clients::repointDevice()`); UCP access moves before the history
 it opens; the history is rewritten in place (`src`, `dst`, `cnum`, `clid`, both
 channel names; recording file names are left, since they must match the file).
 
-**A delete** removes the device, its endpoint section and its bridge rows, and **deletes** every
-client pointing at it, whatever its MAC (`Clients::deleteForDevice()`, each with
-its stored logs and its provisioning-log rows, as for any deleted client). Once no
-other device points at the extension, the extension, the account this module
+**A delete** removes every device on the extension -- its own, with its
+endpoint section and bridge rows, and any other -- and **deletes** every client
+pointing at any of them, whatever its MAC (`Clients::deleteForDevice()`, each
+with its stored logs and its provisioning-log rows, as for any deleted client).
+Then the extension, the account this module
 owns, its UCP assignments and its **call history and recordings** go too, only
 after the extension itself is gone. History is found by `src` or `dst` matched
 exactly, then every row sharing a `uniqueid` or `linkedid` with those is
@@ -493,6 +508,11 @@ deleted from `cdr`, `transient_cdr`, `replicate_cdr` and `cel`; a recording is
 unlinked only when no surviving record names it. A queue- or ring-group-
 answered call carries the group in `dst` and is not matched. There is no undo,
 which is why Delete says so before it asks.
+
+**A user's clients are the ones on any device of its extension**
+(`Users::CLIENT_OF`; `Navigator::owner()` for the dropdowns), not only those
+on the device numbered like it: the Clients count, Last Seen, the Clients tab
+(`listClients&extension=`) and every scope agree.
 
 **The From Domain** is three questions, first answer wins: the device's own
 `from_domain`; `ORYK_FROM_DOMAIN`, the [setting](#settings) in *Advanced Settings → Oryk
@@ -727,7 +747,7 @@ apply, and nothing fails.
 The rows (`RealtimeBridge::rows()`, pure) are built from the device as Core
 holds it after `store()`, named as FreePBX names its own (endpoint and AOR the
 extension, auth `<ext>-auth`), with the device's own context, secret and media
-encryption, and `allow_transfer=no` in the lobby. An edit, promote, renumber or
+encryption, and `allow_transfer=no` in the lobby. An edit, renumber or
 delete of a user in the bridge rewrites or removes its rows, or its phone would
 keep the old password or context until the apply.
 
@@ -745,6 +765,104 @@ count is back under it.
 **Unverified**: ODBC, the qualified table names, the sorcery mapping and that
 a registered contact survives the move from row to file are on the
 open-signup plan's checklist for a test PBX.
+
+## Overview
+
+`?tab=overview&scope=user:<ext>` or `&scope=client:<id>`: everything tied to
+one user or one client on one page, each part removable there, and all of it
+by **Delete All**. It is a section like the lists, and the `&scope=` is the
+lists' own (`Navigator::scopeAt()`); `Overview::target()` keeps a user or a
+client and reads anything else as no row, which is the prompt to choose one.
+Choosing is the dropdowns: on Overview the Users and Clients options re-open
+Overview on the row chosen (`Navigator::levels($at, 'overview')`), while the
+crumb's name still links to the row's own page. From a user's or client's
+page, the section bar's Overview opens on that row. A row on the Users
+list has no delete, only an Overview button that leads here; a client is deleted in place on the
+Clients list, as a profile is on its own.
+
+`Overview::inventory()` is the one answer to "what is tied to it", read by the
+pane, by every command and by Delete All:
+
+| | user | client |
+| --- | --- | --- |
+| clients | every client on any device of the extension | itself |
+| provisioning log | rows with those clients' MACs | rows with its MAC |
+| stored phone logs | `LogRepo::clientLogStats()` of each | its own |
+| bans **naming** it | by `client_id`, by the extension, by one of the MACs | by `client_id` or its MAC |
+| bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
+| FreePBX side | `Users::related()`: owned account, mailbox | -- |
+
+The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
+Devices, Call history and Voicemail -- on either kind of row: a client's Overview lists its user,
+which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
+records naming the extension in `src` or `dst`, which is where `purge()`
+starts, not every leg it removes. Devices are the FreePBX devices on the
+extension (`Users::listDevices()`). Each row says whether the device is registered
+(`DeviceStatus`): registrations are Asterisk's and in no FreePBX table, so it
+is one manager command per device listed, `pjsip show aor <id>`, the id
+checked against `DeviceStatus::ID_PATTERN` before it is written into it --
+asked by the list command for the rows on the page, never for every device.
+A device's trash can deletes the
+device and nothing else of the user's (`Users::deleteDevice()`: Core's
+`delDevice()` and its endpoint section). The question it asks decides the
+clients pointing at it: Device Only keeps and unassigns them
+(`Clients::unassignDevice()`), Device + Client deletes them. From the other
+side, a client's delete offers Client + Device
+(`Overview::deleteClientWithDevice()`), which deletes the device it used by
+the same path. On the
+user's own device that leaves the extension, account, mailbox and history
+standing: still a user, listed with no device, until a save gives it one back
+or Delete All takes the rest. 
+Voicemail is read off the spool
+(`VoicemailManager::messagesIn()`): every `<folder>/msgNNNN.txt` under the
+mailbox, the greetings beside the folders left out.
+The User table names the account this module owns for it, as a link to it in
+User Manager.
+
+**Naming is not applying** (`Overview::names()`). A ban reaching the row only
+through its profile or an address is about something else: it is listed,
+marked Keeps, and Delete All leaves it. One naming the client, its MAC or the
+user's extension is marked Removes -- including the extension and MAC bans
+that survive an ordinary delete (see [Schema](#schema)), since here cleaning
+up after the row is the point and a freed number is handed out again.
+
+**Every command is posted the scope** -- `listOverviewUsers`,
+`listOverviewDevices`, `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
+`listOverviewVoicemail`, `clearOverviewHistory`,
+`clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
+`purgeOverview` -- and works out what is related from it, so nothing is
+deleted by an id a page sent. Two take an id as well, and accept it only among that user's own:
+`deleteOverviewVoicemail`, a message the walk of its mailbox produced, and
+`deleteOverviewDevice`, a device on its extension. `clearOverviewLogs` is a command of its own because
+`clearLogs` with nothing narrowing it is the whole log;
+`ProvisioningLog::clearFor()` with no MACs deletes nothing.
+
+**Delete All** (`Overview::purge()`): the bans naming it first, each through
+`Bans::deleteBan()` so a copy in fail2ban is lifted, and a ban that cannot be
+deleted stops it there, before the row goes; then `Users::deleteUser()` -- the
+whole of a user's [delete](#users), clients and FreePBX side included, Apply
+Config raised -- or `Clients::deleteClient()`. A client's user is shown and
+never deleted.
+
+**Clear Call History** (`clearOverviewHistory`) is the one part of the FreePBX
+side that can go on its own: `CdrHistory::purge()` exactly as a user's delete
+runs it -- so a call with another extension leaves that one's history too --
+with the user kept. **Clear Voicemail** (`clearOverviewVoicemail`) unlinks
+the messages `messagesIn()` lists, audio included -- one walk
+(`messageFiles()`) behind both -- and keeps the mailbox, its greetings and
+its voicemail.conf entry; Asterisk's own mailbox poll is what brings message
+waiting back in step. One message goes with `deleteIn()`, which renames the
+folder's later messages down a place: Asterisk numbers them without holes. The account and the mailbox itself still go only with
+the user.
+
+The tables on the pane are the lists' own -- same ids and formatters -- so
+`views/admin.php`'s handlers answer their buttons, and a client's trash can
+deletes in place there. Users and Clients are asked through Overview's own
+list commands, not `listUsers`/`listClients&scope=`: a row's own level is
+never narrowed by `Navigator::scope()`, and the rows carry what only Overview
+shows (the owned account; a client's stored logs, with their own
+delete). What Delete All asks is counted when the page is drawn, so a delete
+made from one of the tables is answered by loading the page again.
 
 ## Conventions that hold everywhere
 
@@ -784,7 +902,8 @@ open-signup plan's checklist for a test PBX.
   whose badges stop at `LOG_LIMIT` and `BAN_LIMIT`. A scoped Bans level reads only
   the rows naming one of the viewed row's subjects (`Bans::banChoices($requests)`)
   and asks `applies()` of those, never the whole table. A scoped list draws the dropdowns as that row's page does,
-  says what it is narrowed to, and has no Clear on Logs. A tab strip is
+  says what it is narrowed to, and has no Clear on Logs ([Overview](#overview)
+  has its own). A tab strip is
   only ever the views of the one row that is open; the list page has none.
 - **A tab is a link.** `?tab=` is read server-side, only the pane asked for is
   rendered, and `views/partials/tabs.php` draws the rest as links. A tab with
@@ -807,7 +926,16 @@ open-signup plan's checklist for a test PBX.
 - **No view contains a `<form>`.** The module page renders inside the FreePBX
   page form and a nested form is dropped by the browser. Fields are read by id
   and posted with an explicit `$.ajax({type: 'POST'})` to `ajax.php`.
-- **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, not the
+- **A question is `orykAsk()`, never `window.confirm()`.** `assets/oryk_dialog.js`,
+  put on every page by `Pages::view()`, draws a FreePBX modal and returns a
+  promise: resolved with the value of the choice pressed, rejected by Cancel,
+  so `.done()` is the yes and nothing handles the no. It takes `choices` where
+  a question has more than one yes -- a device's delete asks Device Only or
+  Device + Client, a client's Client Only or Client + Device -- and an empty
+  message asks nothing and resolves. The handler that asks uses an arrow
+  function for the answer, so `this` is still the button.
+- **Action bar buttons are `oryksave` / `orykdelete` / `orykclose`**, and
+  Overview's `orykpurge`, not the
   `submit`/`delete` core wires to a `form.fpbx-submit` none of these pages has.
 - **Icons are SVGs in `assets/icons/`, never Font Awesome.** `Icons` reads
   them; a view prints one with `$icon('<name>')` (handed to every view by

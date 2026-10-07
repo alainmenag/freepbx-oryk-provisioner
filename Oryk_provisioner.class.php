@@ -11,6 +11,7 @@ use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
+use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -26,6 +27,7 @@ use FreePBX\Modules\Oryk_Provisioner\Matcher;
 use FreePBX\Modules\Oryk_Provisioner\Navigator;
 use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
+use FreePBX\Modules\Oryk_Provisioner\Overview;
 use FreePBX\Modules\Oryk_Provisioner\Pages;
 use FreePBX\Modules\Oryk_Provisioner\Previews;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
@@ -166,6 +168,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Navigator */
 	private $navigator;
 
+	/** @var Overview */
+	private $overview;
+
 	/** @var Pages */
 	private $pages;
 
@@ -263,6 +268,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans);
+		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge);
 
@@ -295,7 +301,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->endpointSettings,
 			$this->settings,
 			$this->bans,
-			$this->fail2ban
+			$this->fail2ban,
+			$this->overview
 		);
 	}
 
@@ -566,13 +573,25 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listUsers':
 			case 'saveUser':
 			case 'deleteUser':
-			case 'promoteUser':
 			case 'deleteExpiredUsers':
 			case 'saveSettings':
 			case 'listBans':
 			case 'saveBan':
 			case 'setBanState':
 			case 'deleteBan':
+			case 'listOverviewUsers':
+			case 'listOverviewDevices':
+			case 'deleteOverviewDevice':
+			case 'listOverviewClients':
+			case 'listOverviewBans':
+			case 'listOverviewCalls':
+			case 'clearOverviewHistory':
+			case 'listOverviewVoicemail':
+			case 'clearOverviewVoicemail':
+			case 'deleteOverviewVoicemail':
+			case 'clearOverviewLogs':
+			case 'clearOverviewStored':
+			case 'purgeOverview':
 				return true;
 			default:
 				return false;
@@ -625,8 +644,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveProfile':
 				return $this->profiles->saveProfile($_REQUEST);
 
+			// `device` is the answer "Client + Device": the device it used goes too.
 			case 'deleteClient':
-				return $this->clients->deleteClient($_REQUEST['id'] ?? null);
+				return empty($_REQUEST['device'])
+					? $this->clients->deleteClient($_REQUEST['id'] ?? null)
+					: $this->overview->deleteClientWithDevice($_REQUEST['id'] ?? null);
 
 			// One column, changed from the row it is shown on. Not folded into
 			// saveClient: that writes every field the editor holds, and a list row does
@@ -698,9 +720,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteUser':
 				return $this->users->deleteUser($_REQUEST['id'] ?? null);
 
-			case 'promoteUser':
-				return $this->users->promote($_REQUEST['id'] ?? null);
-
 			case 'deleteExpiredUsers':
 				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
 
@@ -718,6 +737,47 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteBan':
 				return $this->bans->deleteBan($_REQUEST['id'] ?? null);
+
+			// Overview's own: each is given the `&scope=` and nothing else, and
+			// works out what is related itself.
+			case 'listOverviewUsers':
+				return $this->overview->listUsers(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'listOverviewDevices':
+				return $this->overview->listDevices(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'deleteOverviewDevice':
+				return $this->overview->deleteDevice(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')), $_REQUEST['id'] ?? '', !empty($_REQUEST['clients']));
+
+			case 'listOverviewClients':
+				return $this->overview->listClients(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'listOverviewBans':
+				return $this->overview->listBans(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'listOverviewCalls':
+				return $this->overview->listCalls(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'clearOverviewHistory':
+				return $this->overview->clearHistory(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'listOverviewVoicemail':
+				return $this->overview->listVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'clearOverviewVoicemail':
+				return $this->overview->clearVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'deleteOverviewVoicemail':
+				return $this->overview->deleteVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')), $_REQUEST['id'] ?? '');
+
+			case 'clearOverviewLogs':
+				return $this->overview->clearLogs(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'clearOverviewStored':
+				return $this->overview->clearStored(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			case 'purgeOverview':
+				return $this->overview->purge(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
 
 			default:
 				return null;

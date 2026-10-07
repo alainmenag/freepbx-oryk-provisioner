@@ -273,6 +273,9 @@ foreach ($profiles as $profile) {
 		$('#ban_minutes-container').toggle($(this).val() === 'banned');
 	});
 
+	// Whether the warning below has just been answered with a yes.
+	let orykBanWarned = false;
+
 	// Registered before orykEditor(), so a declined warning stops its Save. Only
 	// an address on its own refuses a whole site.
 	$(document).on('click', '#oryksave', function (event) {
@@ -292,9 +295,17 @@ foreach ($profiles as $profile) {
 			ask = `${ip} is the public address of ${client.label}${client.count > 1 ? ` and ${client.count - 1} more` : ''}. Every phone at that site will be refused. Ban it anyway?`;
 		}
 
-		if (ask && !window.confirm(ask)) {
+		// The question is not answered before this handler returns, so this
+		// Save is stopped and, on a yes, pressed again with the warning waived.
+		if (ask && !orykBanWarned) {
 			event.preventDefault();
 			event.stopImmediatePropagation();
+
+			orykAsk(ask, { choices: [{ label: 'Ban it anyway', value: true }] }).done(() => {
+				orykBanWarned = true;
+				$('#oryksave').trigger('click');
+				orykBanWarned = false;
+			});
 		}
 	});
 

@@ -7,12 +7,15 @@ namespace FreePBX\Modules\Oryk_Provisioner;
 use PDO;
 
 /**
- * Extension/User devices: saving, deleting and listing them.
+ * Extension/Users: saving, deleting and listing them.
  *
- * A user is not a table of this module's. It is a pjsip device that is its
- * own extension -- device id, extension and User Manager username are one
- * number -- and everything about it lives in Core, User Manager, Voicemail,
- * the CDR database and the custom endpoint file. See ARCHITECTURE.md, "Users".
+ * A user is not a table of this module's. It is a FreePBX extension, and
+ * the pjsip device that is that extension's own -- device id, extension and
+ * User Manager username are one number. The extension is what makes it a
+ * user: one whose device has been deleted is listed still, without what the
+ * device held, and a save gives it a device back. Everything about it lives
+ * in Core, User Manager, Voicemail, the CDR database and the custom endpoint
+ * file. See ARCHITECTURE.md, "Users".
  *
  * store() and remove() are sequences over the collaborators below, ported from
  * oryk_connect's DeviceManager with the other kinds taken out.
@@ -20,13 +23,28 @@ use PDO;
 class Users extends Service
 {
 	/**
-	 * Which devices are users. Interpolated into SQL, so it is a literal and
-	 * nothing in it may come from a request.
+	 * Where users are read from: every extension, with its own device beside
+	 * it when it has one -- the pjsip device numbered like it. `d.id` is NULL
+	 * on an extension whose device has been deleted. Interpolated into SQL,
+	 * so a literal: nothing in it may come from a request.
 	 */
-	const SHAPE = "d.tech = 'pjsip' AND d.id = d.user";
+	const FROM = "FROM users u LEFT JOIN devices d ON d.id = u.extension AND d.tech = 'pjsip' AND d.user = u.extension";
 
-	/** A user's context, over `devices d`. Interpolated, so a literal. */
-	const CONTEXT_EXPR = "(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'context' LIMIT 1)";
+	/**
+	 * Which extensions are users, over FROM: all but one whose number is held
+	 * by a device of another kind, which this module could not give a device.
+	 */
+	const SHAPE = "NOT EXISTS (SELECT 1 FROM devices o WHERE o.id = u.extension AND NOT (o.tech = 'pjsip' AND o.user = u.extension))";
+
+	/**
+	 * Which clients are a user's, over FROM and `clients pc`: the ones on any
+	 * device of its extension, and any still naming the extension itself.
+	 * Clients::listClients() says the same for `&extension=`.
+	 */
+	const CLIENT_OF = "(pc.device_id = u.extension OR pc.device_id IN (SELECT ud.id FROM devices ud WHERE ud.user = u.extension))";
+
+	/** A user's context, over FROM: NULL without a device. Interpolated, so a literal. */
+	const CONTEXT_EXPR = "(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'context' LIMIT 1)";
 
 	/** Driver settings written on every save, over the defaults and the form alike. */
 	const FORCED = [
@@ -183,8 +201,8 @@ class Users extends Service
 	{
 		// Written into the statement, so only these; anything else sorts by number.
 		$sortable = [
-			'extension' => 'd.id + 0',
-			'name' => 'd.description',
+			'extension' => 'u.extension + 0',
+			'name' => 'name',
 			'email' => 'email',
 			'clients' => 'clients',
 			'secure' => 'secure',
@@ -203,7 +221,7 @@ class Users extends Service
 		$where = 'WHERE ' . self::SHAPE;
 
 		if ($extensions !== null) {
-			$where .= ' AND ' . $this->inClause('d.id', $extensions, 'extension', $params);
+			$where .= ' AND ' . $this->inClause('u.extension', $extensions, 'extension', $params);
 		}
 
 		// Whitelisted: anything else is the whole list. Both values are bound.
@@ -224,19 +242,20 @@ class Users extends Service
 		}
 
 		if ($search !== '') {
-			$where .= " AND (d.id LIKE :search
+			$where .= " AND (u.extension LIKE :search
+				OR u.name LIKE :search
 				OR d.description LIKE :search
-				OR EXISTS (SELECT 1 FROM sip e WHERE e.id = d.id AND e.keyword = 'email' AND e.data LIKE :search))";
+				OR EXISTS (SELECT 1 FROM sip e WHERE e.id = u.extension AND e.keyword = 'email' AND e.data LIKE :search))";
 			$params[':search'] = '%' . $search . '%';
 		}
 
-		$countStmt = $this->db->prepare("SELECT COUNT(*) FROM devices d $where");
+		$countStmt = $this->db->prepare('SELECT COUNT(*) ' . self::FROM . " $where");
 		$countStmt->execute($params);
 		$total = (int) $countStmt->fetchColumn();
 
 		$stmt = $this->db->prepare(
 			"SELECT " . $this->columns() . "
-			FROM devices d
+			" . self::FROM . "
 			$where
 			ORDER BY $sort $order
 			LIMIT :limit OFFSET :offset"
@@ -272,8 +291,8 @@ class Users extends Service
 		try {
 			$stmt = $this->db->prepare(
 				"SELECT " . $this->columns() . "
-				FROM devices d
-				WHERE d.id = :id AND " . self::SHAPE
+				" . self::FROM . "
+				WHERE u.extension = :id AND " . self::SHAPE
 			);
 			$stmt->execute([':id' => $extension]);
 			$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -293,10 +312,10 @@ class Users extends Service
 	{
 		try {
 			$stmt = $this->db->prepare(
-				"SELECT d.id AS extension, d.description AS name
-				FROM devices d
+				"SELECT u.extension AS extension, COALESCE(d.description, u.name) AS name
+				" . self::FROM . "
 				WHERE " . self::SHAPE . "
-				ORDER BY d.id + 0, d.id"
+				ORDER BY u.extension + 0, u.extension"
 			);
 			$stmt->execute();
 
@@ -310,7 +329,7 @@ class Users extends Service
 	 * Save from the editor.
 	 *
 	 * Only the editor's fields are passed on: store() also takes what open
-	 * provisioning and Promote set, and a request may not.
+	 * provisioning sets, and a request may not.
 	 *
 	 * @param array<string, mixed> $request id (current number, '' for new),
 	 *                                      extension, name, email,
@@ -334,7 +353,7 @@ class Users extends Service
 	}
 
 	/**
-	 * Delete from the editor or the list.
+	 * Delete from the editor, or Overview's Delete All.
 	 *
 	 * @param mixed $extension Extension number.
 	 *
@@ -352,61 +371,273 @@ class Users extends Service
 	}
 
 	/**
-	 * Move a lobby user to from-internal: Promote, on its page.
+	 * What a user has in FreePBX beside its extension, for Overview.
 	 *
-	 * The context is written, UCP follows the account's groups again, and the
-	 * user's bridge rows, if it has any, are rewritten; the call limit and the
-	 * forward and transfer guards go with the context on the next Apply Config.
+	 * Says what remove() will do, not what exists: an account this module does
+	 * not own is not listed.
 	 *
 	 * @param mixed $extension Extension number.
 	 *
-	 * @return array<string, mixed> Status, id and `reload`; or a message.
+	 * @return array<string, mixed> account (the owned User Manager username,
+	 *                              or ''), account_id (its id there, or 0),
+	 *                              mailbox (bool).
 	 */
-	public function promote($extension)
+	public function related($extension)
+	{
+		$extension = (string) $extension;
+		$account = $this->userman->ownedAccount($extension);
+
+		return [
+			'account' => $account ? (string) $account['username'] : '',
+			'account_id' => $account ? (int) $account['id'] : 0,
+			'mailbox' => $this->voicemail->hasMailbox($extension),
+		];
+	}
+
+	/**
+	 * The devices on an extension other than its own.
+	 *
+	 * @param string $extension Extension number.
+	 *
+	 * @return array<int, string> Device ids.
+	 */
+	private function otherDevices($extension)
 	{
 		try {
-			return $this->withLock(function () use ($extension) {
-				$row = $this->userRow($extension);
+			$stmt = $this->db->prepare('SELECT id FROM devices WHERE user = ? AND id <> ?');
+			$stmt->execute([$extension, $extension]);
 
-				if (!$row) {
-					return ['status' => false, 'message' => _('That user no longer exists.')];
-				}
-
-				if ((string) $row['context'] !== $this->lobbyContext()) {
-					return ['status' => false, 'message' => _('That user is not in the lobby.')];
-				}
-
-				// The name is passed back, or a blank one would rename it to its number
-				$id = $this->store([
-					'id' => (string) $row['extension'],
-					'name' => (string) $row['name'],
-					'context' => 'from-internal',
-					'promote' => true,
-				]);
-
-				if (!$this->userman->restoreUcp($id)) {
-					$this->logWarning('could not restore UCP for promoted user ' . $id);
-				}
-
-				SecurityLog::write(sprintf(
-					'Open provisioning user %s promoted to from-internal by %s',
-					$id,
-					SecurityLog::admin()
-				));
-
-				return ['status' => true, 'id' => $id, 'reload' => true];
-			});
+			return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
 		} catch (\Exception $e) {
-			return ['status' => false, 'message' => $e->getMessage()];
+			return [];
 		}
+	}
+
+	/**
+	 * The FreePBX devices on a user's extension, for Overview.
+	 *
+	 * The user's own device -- the one whose id is the extension -- is the
+	 * one this module saves; `own` says which. remove() deletes them all.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> total, rows: id, tech, description, own,
+	 *                              and clients, how many point at it.
+	 */
+	public function listDevices($extension)
+	{
+		$extension = (string) $extension;
+
+		if (!$this->userRow($extension)) {
+			return ['total' => 0, 'rows' => []];
+		}
+
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT id, tech, description,
+					(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = devices.id) AS clients
+				FROM devices WHERE user = ? ORDER BY id = ? DESC, id + 0, id"
+			);
+			$stmt->execute([$extension, $extension]);
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return ['total' => 0, 'rows' => []];
+		}
+
+		foreach ($rows as &$row) {
+			$row['own'] = (string) $row['id'] === $extension ? 1 : 0;
+		}
+		unset($row);
+
+		return ['total' => count($rows), 'rows' => $rows];
+	}
+
+	/**
+	 * Delete one device on a user's extension. A client pointing at it is
+	 * kept and left with no device (Clients::unassignDevice()), or deleted
+	 * with it when asked: the answer to the question the page puts.
+	 *
+	 * The device and nothing else of the user's: the extension, its account,
+	 * mailbox and history stay, which is what tells this from deleteUser().
+	 * Deleting the user's own device leaves a user with no device. Looked up
+	 * on this extension, so an id posted for a device elsewhere deletes nothing.
+	 *
+	 * @param mixed $extension   Extension number.
+	 * @param mixed $device      Device id, as listDevices() lists it.
+	 * @param bool  $withClients True to delete its clients rather than unassign them.
+	 *
+	 * @return array<string, mixed> Status and `reload`; or a message.
+	 */
+	public function deleteDevice($extension, $device, $withClients = false)
+	{
+		$extension = (string) $extension;
+		$device = (string) $device;
+
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		try {
+			$stmt = $this->db->prepare('SELECT COUNT(*) FROM devices WHERE id = ? AND user = ?');
+			$stmt->execute([$device, $extension]);
+			$found = (int) $stmt->fetchColumn() > 0;
+		} catch (\Exception $e) {
+			$found = false;
+		}
+
+		if ($device === '' || !$found) {
+			return ['status' => false, 'message' => _('That device is no longer on this extension.')];
+		}
+
+		try {
+			\FreePBX::Core()->delDevice($device);
+		} catch (\Exception $e) {
+			$this->logError('unable to delete device ' . $device . ': ' . $e->getMessage());
+
+			return ['status' => false, 'message' => _('The device could not be deleted; see the FreePBX log.')];
+		}
+
+		$this->endpoints->forget($device);
+
+		if ($withClients) {
+			$this->clients->deleteForDevice($device);
+		} else {
+			$this->clients->unassignDevice($device);
+		}
+
+		// The user's own: a sign-up's bridge rows would outlive it.
+		if ($device === $extension && $this->bridge) {
+			$this->bridge->remove($device);
+		}
+
+		self::pending();
+
+		return ['status' => true, 'reload' => true];
+	}
+
+	/**
+	 * Delete a device by its id alone: the device a client being deleted
+	 * was using. Its extension is looked up, and deleteDevice() does the rest.
+	 *
+	 * @param mixed $device Device id.
+	 *
+	 * @return array<string, mixed> Status and `reload`; or a message. A
+	 *                              device that has already gone is a success.
+	 */
+	public function deleteDeviceById($device)
+	{
+		$device = (string) $device;
+
+		try {
+			$stmt = $this->db->prepare('SELECT user FROM devices WHERE id = ?');
+			$stmt->execute([$device]);
+			$extension = $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			$extension = false;
+		}
+
+		if ($extension === false) {
+			return ['status' => true];
+		}
+
+		return $this->deleteDevice((string) $extension, $device);
+	}
+
+	/**
+	 * One page of a user's call history, for Overview.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> CdrHistory::listCalls(); empty for no such user.
+	 */
+	public function listCalls($extension)
+	{
+		return $this->userRow($extension)
+			? $this->cdr->listCalls($extension)
+			: ['total' => 0, 'rows' => [], 'available' => false];
+	}
+
+	/**
+	 * Remove a user's call history and recordings and keep the user.
+	 *
+	 * What a delete does to the history, on its own: CdrHistory::purge(), so
+	 * a call with another extension leaves that one's history too.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> Status, with rows and recordings removed; or a message.
+	 */
+	public function clearHistory($extension)
+	{
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		return ['status' => true] + $this->cdr->purge($extension);
+	}
+
+	/**
+	 * One page of a user's voicemail messages, for Overview.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> total, and rows as
+	 *                              VoicemailManager::messagesIn() lists them.
+	 */
+	public function listVoicemail($extension)
+	{
+		$messages = $this->userRow($extension)
+			? $this->voicemail->messagesIn($this->voicemail->mailboxPath($extension))
+			: [];
+
+		return [
+			'total' => count($messages),
+			'rows' => array_slice($messages, max(0, (int) ($_REQUEST['offset'] ?? 0)), max(1, (int) ($_REQUEST['limit'] ?? 10))),
+		];
+	}
+
+	/**
+	 * Delete one of a user's voicemail messages.
+	 *
+	 * @param mixed $extension Extension number.
+	 * @param mixed $id        The message, as listVoicemail() lists it.
+	 *
+	 * @return array<string, mixed> Status; or a message.
+	 */
+	public function deleteVoicemail($extension, $id)
+	{
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		return $this->voicemail->deleteIn($this->voicemail->mailboxPath($extension), (string) $id)
+			? ['status' => true]
+			: ['status' => false, 'message' => _('That message is no longer there. Refresh the table.')];
+	}
+
+	/**
+	 * Delete a user's voicemail messages and keep the mailbox and the user.
+	 *
+	 * @param mixed $extension Extension number.
+	 *
+	 * @return array<string, mixed> Status and `removed`; or a message.
+	 */
+	public function clearVoicemail($extension)
+	{
+		if (!$this->userRow($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		return ['status' => true, 'removed' => $this->voicemail->clearIn($this->voicemail->mailboxPath($extension))];
 	}
 
 	/**
 	 * Delete the expired lobby users an admin was shown: Delete listed.
 	 *
 	 * Each extension posted is asked again, here, whether it is still expired
-	 * -- its phone may have been seen since the list was drawn, it may have
-	 * been promoted, or the setting changed -- and is skipped when it is not.
+	 * -- its phone may have been seen since the list was drawn, its context
+	 * may have been changed, or the setting changed -- and is skipped when it
+	 * is not.
 	 *
 	 * @param mixed $extensions Extensions, as posted.
 	 *
@@ -483,18 +714,21 @@ class Users extends Service
 
 	/**
 	 * The user an existing User Manager login names: its account's default
-	 * extension. Takes no lock and makes nothing -- see signUp() for a username
-	 * no account holds.
+	 * extension. See signUp() for a username no account holds.
+	 *
+	 * A login whose extension or device has been deleted is given them back
+	 * (rebuild()), and `rebuilt` says so; otherwise this makes nothing.
 	 *
 	 * @param mixed $username Username offered.
 	 * @param mixed $password Password offered.
 	 *
-	 * @return array{extension: string, created: bool}|null Null when they are
-	 *                                                       not a login.
+	 * @return array<string, mixed>|null extension, created (false), and
+	 *                                   rebuilt when it was; null when they
+	 *                                   are not a login.
 	 *
 	 * @throws \InvalidArgumentException When the username or password is unusable.
 	 * @throws \RuntimeException         When User Manager is not available, or
-	 *                                   the account has no Extension/User.
+	 *                                   the account names no number to rebuild.
 	 */
 	public function findLogin($username, $password)
 	{
@@ -521,12 +755,63 @@ class Users extends Service
 		}
 
 		$extension = (string) ($account['default_extension'] ?? '');
+		$row = $this->userRow($extension);
 
-		if (!$this->userRow($extension)) {
-			throw new \RuntimeException(_('That login has no Extension/User.'));
+		if ($row && !empty($row['device'])) {
+			return ['extension' => $extension, 'created' => false];
 		}
 
-		return ['extension' => $extension, 'created' => false];
+		// A good login whose extension or device has been deleted gets them
+		// back, on the number the account still names.
+		$this->rebuild($extension, (string) ($row['name'] ?? ($account['displayname'] ?? '')));
+
+		return ['extension' => $extension, 'created' => false, 'rebuilt' => true];
+	}
+
+	/**
+	 * Give an account's number its extension and device back: findLogin(),
+	 * for a login that outlived them.
+	 *
+	 * As a sign-up makes them -- in the lobby, one phone per login, live
+	 * through the bridge before Apply Config -- whatever the user was before:
+	 * open provisioning never makes anything outside the lobby. The account
+	 * is the one that just logged in, and is left as it is.
+	 *
+	 * @param string $extension The account's default extension.
+	 * @param string $name      What to call it; blank is the number.
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the account names no number, or one a
+	 *                           device of another kind holds.
+	 */
+	private function rebuild($extension, $name)
+	{
+		$this->withLock(function () use ($extension, $name) {
+			// Asked again under the lock: two requests from one phone arrive together.
+			$row = $this->userRow($extension);
+
+			if ($row && !empty($row['device'])) {
+				return;
+			}
+
+			if (!preg_match('/^[0-9]{1,20}$/', $extension) || $this->device($extension)) {
+				throw new \RuntimeException(_('That login has no Extension/User.'));
+			}
+
+			$this->store([
+				'id' => $extension,
+				'name' => $name,
+				'context' => $this->lobbyContext(),
+				'emergency_cid' => (string) $this->settings()->get(Settings::OPEN_EMERGENCY_CID),
+				'lobby' => true,
+				'rebuild' => true,
+			]);
+
+			if ($this->bridge) {
+				$this->bridge->add($extension);
+			}
+		});
 	}
 
 	/**
@@ -754,13 +1039,25 @@ class Users extends Service
 		$email = array_key_exists('email', $input) ? trim((string) $input['email']) : null;
 		$stored = $id === '' ? null : $this->device($id);
 
+		// An extension whose device has been deleted: this save gives it one
+		// back on its own number, as a new user's would. `rebuild` is
+		// findLogin()'s, for a number whose extension has gone as well; never
+		// the editor's, since saveUser() posts only FIELDS.
+		$bare = $id !== '' && !$stored && ($this->extensions->exists($id) || !empty($input['rebuild']));
+
 		// Only a user is saved as one: a handset posted here would be deleted
 		// and added back as an extension of its own
-		if ($id !== '' && (!$stored || ($stored['tech'] ?? '') !== 'pjsip' || (string) ($stored['user'] ?? '') !== (string) $stored['id'])) {
+		if ($id !== '' && !$bare && (!$stored || ($stored['tech'] ?? '') !== 'pjsip' || (string) ($stored['user'] ?? '') !== (string) $stored['id'])) {
 			throw new \Exception(_('That user no longer exists.'));
 		}
 
-		if ($requested === '') {
+		if ($bare && $requested !== '' && $requested !== $id) {
+			throw new \Exception(_('This extension has no device. Save it once to give it one, then change its number.'));
+		}
+
+		if ($bare) {
+			$uid = $id;
+		} elseif ($requested === '') {
 			$uid = $stored ? (string) $stored['id'] : $this->numbers->generate();
 		} else {
 			$uid = $this->numbers->assertAvailable($requested, $id);
@@ -822,10 +1119,10 @@ class Users extends Service
 			$generated[$keyword] = ['value' => $value, 'flag' => $generated[$keyword]['flag'] ?? 0];
 		}
 
-		// Open provisioning's and Promote's, never the editor's: saveUser() posts
-		// only FIELDS. A new user takes them; an existing one keeps its own, so
-		// editing a lobby user keeps it in the lobby, until promote() moves it.
-		if ((!$stored || !empty($input['promote'])) && isset($input['context'])
+		// Open provisioning's, never the editor's: saveUser() posts only FIELDS.
+		// A new user takes them; an existing one keeps its own, so a context
+		// is only ever changed in Extensions.
+		if (!$stored && isset($input['context'])
 			&& preg_match(Settings::CONTEXT_PATTERN, (string) $input['context'])) {
 			$generated['context'] = ['value' => (string) $input['context'], 'flag' => $generated['context']['flag'] ?? 0];
 		}
@@ -916,7 +1213,7 @@ class Users extends Service
 	 *
 	 * A lobby endpoint may not transfer: a blind transfer is dialled in a
 	 * context the transferring phone does not choose. Blank takes the setting
-	 * off, which is what Promote relies on.
+	 * off: the next save of a user moved out of the lobby lifts it.
 	 *
 	 * @param string $context The user's context.
 	 *
@@ -940,12 +1237,15 @@ class Users extends Service
 	}
 
 	/**
-	 * Delete a user: the device, and -- once no other device points at the
-	 * extension -- the extension, its owned User Manager account, its UCP
-	 * assignments and its call history and recordings.
+	 * Delete a user: every device on its extension, the extension, its owned
+	 * User Manager account, its UCP assignments and its call history and
+	 * recordings.
 	 *
-	 * Provisioner clients pointing at it are deleted with it, their stored
-	 * logs included -- see Clients::deleteForDevice().
+	 * An extension whose device has already gone is a user still, and the
+	 * rest of it goes the same way.
+	 *
+	 * Provisioner clients pointing at any of those devices are deleted with
+	 * it, their stored logs included -- see Clients::deleteForDevice().
 	 *
 	 * @param int|string $extension Extension number.
 	 *
@@ -955,38 +1255,57 @@ class Users extends Service
 	{
 		$device = $this->device($extension);
 
-		if (!$device || (string) ($device['user'] ?? '') !== (string) $device['id']) {
+		// A device with this id that is somebody else's: not a user to delete.
+		if ($device && (string) ($device['user'] ?? '') !== (string) $device['id']) {
 			return false;
 		}
 
-		$user = (string) $device['id'];
+		if (!$device && !$this->extensions->exists($extension)) {
+			return false;
+		}
 
-		\FreePBX::Core()->delDevice($user);
+		$user = (string) $extension;
+
+		if ($device) {
+			\FreePBX::Core()->delDevice($user);
+		}
 
 		// Nothing in FreePBX knows the custom endpoint file
 		$this->endpoints->forget($user);
 		$this->clients->deleteForDevice($user);
 
-		// A handset or softphone still on the extension keeps it alive
-		if (!$this->extensions->hasDevices($user)) {
-			$this->userman->removeOwnedAccount($user);
-
-			$deleted = true;
-
+		// Every other device on the extension goes with it, and its clients:
+		// a user is its extension, and nothing of it is left to own them.
+		foreach ($this->otherDevices($user) as $other) {
 			try {
-				\FreePBX::Core()->delUser($user);
+				\FreePBX::Core()->delDevice($other);
 			} catch (\Exception $e) {
-				$deleted = false;
+				$this->logError('unable to delete device ' . $other . ' of user ' . $user . ': ' . $e->getMessage());
 
-				$this->logError('unable to delete user ' . $user . ': ' . $e->getMessage());
+				continue;
 			}
 
-			// Only once the extension has gone: one left behind by a failed
-			// delete is still in service and still making history
-			if ($deleted) {
-				$this->ucp->forget($user);
-				$this->cdr->purge($user);
-			}
+			$this->endpoints->forget($other);
+			$this->clients->deleteForDevice($other);
+		}
+
+		$this->userman->removeOwnedAccount($user);
+
+		$deleted = true;
+
+		try {
+			\FreePBX::Core()->delUser($user);
+		} catch (\Exception $e) {
+			$deleted = false;
+
+			$this->logError('unable to delete user ' . $user . ': ' . $e->getMessage());
+		}
+
+		// Only once the extension has gone: one left behind by a failed
+		// delete is still in service and still making history
+		if ($deleted) {
+			$this->ucp->forget($user);
+			$this->cdr->purge($user);
 		}
 
 		if ($this->bridge) {
@@ -1018,16 +1337,17 @@ class Users extends Service
 	 * `secure` is 1 when media encryption is on; `clients` is how many
 	 * provisioner clients point at this user.
 	 *
-	 * @return string A SELECT list over `devices d`.
+	 * @return string A SELECT list over FROM.
 	 */
 	private function columns()
 	{
-		return "d.id AS extension,
-			d.description AS name,
-			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'email' LIMIT 1) AS email,
-			(SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
-			COALESCE((SELECT s.data FROM sip s WHERE s.id = d.id AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
-			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id) AS clients,
+		return "u.extension AS extension,
+			COALESCE(d.description, u.name) AS name,
+			d.id IS NOT NULL AS device,
+			(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'email' LIMIT 1) AS email,
+			(SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'from_domain' LIMIT 1) AS from_domain,
+			COALESCE((SELECT s.data FROM sip s WHERE s.id = u.extension AND s.keyword = 'media_encryption' LIMIT 1), 'no') <> 'no' AS secure,
+			(SELECT COUNT(*) FROM `{$this->clientsTable}` pc WHERE " . self::CLIENT_OF . ") AS clients,
 			" . self::CONTEXT_EXPR . " AS context,
 			" . $this->lastSeenExpr() . " AS last_seen,
 			TIMESTAMPDIFF(SECOND, " . $this->lastSeenExpr() . ", NOW()) AS last_seen_age,
@@ -1036,27 +1356,27 @@ class Users extends Service
 	}
 
 	/**
-	 * When a user's clients were last answered, the newest of them, over `devices d`.
+	 * When a user's clients were last answered, the newest of them, over FROM.
 	 *
 	 * @return string SQL; the table name is the module's own.
 	 */
 	private function lastSeenExpr()
 	{
-		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id)";
+		return "(SELECT MAX(pc.last_seen) FROM `{$this->clientsTable}` pc WHERE " . self::CLIENT_OF . ")";
 	}
 
 	/**
-	 * When open provisioning signed a user up: its sign-up client's creation, over `devices d`.
+	 * When open provisioning signed a user up: its sign-up client's creation, over FROM.
 	 *
 	 * @return string SQL; the table name is the module's own.
 	 */
 	private function signedUpExpr()
 	{
-		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE pc.device_id = d.id AND pc.signup_ip IS NOT NULL)";
+		return "(SELECT MIN(pc.created_at) FROM `{$this->clientsTable}` pc WHERE " . self::CLIENT_OF . " AND pc.signup_ip IS NOT NULL)";
 	}
 
 	/**
-	 * expired() in SQL, for the Expired filter, over `devices d` with `:days`
+	 * expired() in SQL, for the Expired filter, over FROM with `:days`
 	 * bound. **The two must agree**: the list shows what this matches, and
 	 * deleteExpired() deletes only what expired() still says yes to.
 	 *

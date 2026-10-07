@@ -273,6 +273,36 @@ class LogRepo extends Repo
 	}
 
 	/**
+	 * How much a client has sent us that is still kept.
+	 *
+	 * Counts what removeClientLogs() would unlink, so the two agree.
+	 *
+	 * @param mixed $client Id of the client whose logs these are.
+	 *
+	 * @return array{files: int, bytes: int} Files kept, and their size.
+	 */
+	public function clientLogStats($client)
+	{
+		$stats = ['files' => 0, 'bytes' => 0];
+		$path = $this->clientPath($client);
+
+		if ($path === '' || !is_dir($path)) {
+			return $stats;
+		}
+
+		foreach ((array) @scandir($path) as $entry) {
+			$file = $path . '/' . $entry;
+
+			if ($entry !== '.' && $entry !== '..' && (is_file($file) || is_link($file))) {
+				$stats['files']++;
+				$stats['bytes'] += (int) @filesize($file);
+			}
+		}
+
+		return $stats;
+	}
+
+	/**
 	 * A filename off the wire, as something safe to write to disk.
 	 *
 	 * The name is a resource name an administrator typed and saveResource()

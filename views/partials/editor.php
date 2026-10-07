@@ -260,19 +260,17 @@
 		$(document).on('click', '#orykdelete', function (event) {
 			event.preventDefault();
 
-			if (!window.confirm(editor.confirm)) {
-				return;
-			}
+			orykAsk(editor.confirm).done(() => {
+				orykPost(editor.remove, { id: editor.values().id }).done(function (response) {
+					if (!response || !response.status) {
+						orykShowError(response && response.message);
+						return;
+					}
 
-			orykPost(editor.remove, { id: editor.values().id }).done(function (response) {
-				if (!response || !response.status) {
-					orykShowError(response && response.message);
-					return;
-				}
-
-				window.location = editor.closed;
-			}).fail(function () {
-				orykShowError('The server could not be reached.');
+					window.location = editor.closed;
+				}).fail(function () {
+					orykShowError('The server could not be reached.');
+				});
 			});
 		});
 

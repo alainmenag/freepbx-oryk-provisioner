@@ -535,27 +535,25 @@ $tabs = [
 	$('#resource_file_remove').on('click', function (event) {
 		event.preventDefault();
 
-		if (!window.confirm('Remove the uploaded file? Nothing is served under this filename until another is uploaded, or the type is changed.')) {
-			return;
-		}
+		orykAsk('Remove the uploaded file? Nothing is served under this filename until another is uploaded, or the type is changed.').done(() => {
+			orykPost('deleteResourceFile', {
+				id: orykResourceId,
+				profile_id: orykProfileId,
+				name: $('#resource_name').val(),
+				type: $('#resource_type').val()
+			}).done(function (response) {
+				if (!response || !response.status) {
+					orykShowError(response && response.message);
+					return;
+				}
 
-		orykPost('deleteResourceFile', {
-			id: orykResourceId,
-			profile_id: orykProfileId,
-			name: $('#resource_name').val(),
-			type: $('#resource_type').val()
-		}).done(function (response) {
-			if (!response || !response.status) {
-				orykShowError(response && response.message);
-				return;
-			}
-
-			orykHasFile = false;
-			orykFileMeta(0, '');
-			orykShowKind();
-			orykSaved(response);
-		}).fail(function () {
-			orykShowError('The server could not be reached.');
+				orykHasFile = false;
+				orykFileMeta(0, '');
+				orykShowKind();
+				orykSaved(response);
+			}).fail(function () {
+				orykShowError('The server could not be reached.');
+			});
 		});
 	});
 

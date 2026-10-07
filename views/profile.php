@@ -317,18 +317,16 @@ $tabs = [
 
 	// Deleting a resource is the one action that needs no page of its own.
 	$(document).on('click', '[name="resource_delete"]', function () {
-		if (!window.confirm('Delete this resource?')) {
-			return;
-		}
+		orykAsk('Delete this resource?').done(() => {
+			orykPost('deleteResource', { id: $(this).val() }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
 
-		orykPost('deleteResource', { id: $(this).val() }).done(function (response) {
-			if (!response || !response.status) {
-				notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-				return;
-			}
-
-			$('#resource_table').bootstrapTable('refresh');
-			notie.alert(1, 'Deleted.', 2);
+				$('#resource_table').bootstrapTable('refresh');
+				notie.alert(1, 'Deleted.', 2);
+			});
 		});
 	});
 

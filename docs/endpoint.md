@@ -74,7 +74,11 @@ login:
 | a username no account holds that is **reserved** (below) | 400 — nothing is made, even from an address with an Allow ban |
 | a sign-up over a limit (below) | 429 with `Retry-After` — nothing is made |
 | a username held under another password | 401, and a line in FreePBX's security log that the GUI's fail2ban jail bans on |
-| no User Manager, or a login with no Extension/User | 409 |
+| no User Manager, or a login whose account is linked to no extension number | 409 |
+
+A login that still works but whose extension or device has been deleted gets
+them back on the same number, in the lobby like a new sign-up, and is served
+as usual.
 
 The user's client on an internal MAC (`02…`) is then found, or made — enabled,
 with no profile and the credentials as its token, so it is served its
@@ -101,7 +105,7 @@ credentials — a second replaces the first. Its emergency caller id is
 **Settings → Lobby Emergency Caller ID** (`ORYK_OPEN_EMERGENCY_CID`) — set it
 to a number an emergency operator can call back, and check what your
 jurisdiction requires of emergency calls from a multi-line system. A user
-leaves the lobby when you **Promote** it — see [The lobby](users.md#the-lobby).
+leaves the lobby when you change its context in Extensions — see [The lobby](users.md#the-lobby).
 
 An Allow ban on the phone's address does **not** take it out of the lobby.
 

@@ -124,10 +124,17 @@ class Clients extends Service
 			$params[':profile_id'] = (int) $_REQUEST['profile_id'];
 		}
 
-		// The user editor's Clients tab: the phones provisioned for one extension.
 		if (isset($_REQUEST['device_id'])) {
 			$clauses[] = 'pc.device_id = :device_id';
 			$params[':device_id'] = (string) $_REQUEST['device_id'];
+		}
+
+		// The user editor's Clients tab: the phones provisioned for one
+		// extension, on whichever of its devices -- Users::CLIENT_OF, over `d`.
+		if (isset($_REQUEST['extension'])) {
+			$clauses[] = '(d.user = :extension OR pc.device_id = :extension_id)';
+			$params[':extension'] = (string) $_REQUEST['extension'];
+			$params[':extension_id'] = (string) $_REQUEST['extension'];
 		}
 
 		if ($ids !== null) {
@@ -670,12 +677,14 @@ class Clients extends Service
 	 * there is.
 	 *
 	 * @return array<int, array<string, mixed>> Client rows: id, mac, description,
-	 *                                          profile_id, device_id, public_ip.
+	 *                                          profile_id, device_id, public_ip,
+	 *                                          and extension, the user its
+	 *                                          device is on.
 	 */
 	public function clientChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description
+			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description, d.user AS extension
 				FROM `{$this->clientsTable}` pc
 				LEFT JOIN devices d ON d.id = pc.device_id
 				ORDER BY pc.mac"
@@ -784,6 +793,44 @@ class Clients extends Service
 	}
 
 	/**
+	 * The clients pointing at one device.
+	 *
+	 * @param int|string $deviceId FreePBX device id.
+	 *
+	 * @return array<int, int> Client ids.
+	 */
+	public function idsForDevice($deviceId)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT id FROM `{$this->clientsTable}` WHERE device_id = :id"
+		);
+		$stmt->execute([':id' => (string) $deviceId]);
+
+		return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+	}
+
+	/**
+	 * Take a deleted device off every client that pointed at it.
+	 *
+	 * The clients stay, with no device: a device deleted on its own is not a
+	 * reason to lose the phone's row, its logs or its bans. Written as the
+	 * editor writes "none".
+	 *
+	 * @param int|string $deviceId FreePBX device id that is gone.
+	 *
+	 * @return int Clients unassigned.
+	 */
+	public function unassignDevice($deviceId)
+	{
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->clientsTable}` SET device_id = '' WHERE device_id = :id"
+		);
+		$stmt->execute([':id' => (string) $deviceId]);
+
+		return (int) $stmt->rowCount();
+	}
+
+	/**
 	 * Delete every client that pointed at a deleted device.
 	 *
 	 * Whatever its MAC: a phone of a user that is gone is pointed at nothing.
@@ -795,11 +842,7 @@ class Clients extends Service
 	 */
 	public function deleteForDevice($deviceId)
 	{
-		$stmt = $this->db->prepare(
-			"SELECT id FROM `{$this->clientsTable}` WHERE device_id = :id"
-		);
-		$stmt->execute([':id' => (string) $deviceId]);
-		$ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+		$ids = $this->idsForDevice($deviceId);
 
 		foreach ($ids as $id) {
 			$this->deleteClient($id);

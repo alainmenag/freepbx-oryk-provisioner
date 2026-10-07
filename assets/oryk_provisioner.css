@@ -25,6 +25,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+		gap: 8px;
 }
 
 /* ----------------------------------------------------------------------
@@ -469,4 +470,36 @@ tr.oryk-disabled > td a:not(.btn) {
 	width: auto;
 	margin-left: 6px;
 	vertical-align: middle;
+}
+
+/* ----------------------------------------------------------------------
+ * Overview -- views/partials/overview.php
+ * ---------------------------------------------------------------------- */
+
+.oryk-overview-empty {
+	padding: 30px 10px;
+	text-align: center;
+}
+
+.oryk-overview-heading {
+	margin: 30px 0 10px;
+}
+.oryk-overview > .oryk-overview-heading:first-child {
+	margin-top: 0;
+}
+.oryk-overview td > .btn-sm {
+	margin-left: 8px;
+}
+
+/* ----------------------------------------------------------------------
+ * orykAsk() -- assets/oryk_dialog.js
+ * ---------------------------------------------------------------------- */
+
+.oryk-ask .oryk-ask-message {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.oryk-ask .modal-footer .btn + .btn {
+	margin-left: 8px;
 }

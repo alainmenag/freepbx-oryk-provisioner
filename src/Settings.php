@@ -165,7 +165,7 @@ class Settings extends Service
 				'description' => 'The context every user open provisioning creates is put in. The module generates '
 					. 'lobby: internal extensions, conferences, voicemail and emergency routes only, no other '
 					. 'outbound route, and no forward or transfer out of it. Any other name is a context you '
-					. 'provide yourself. Promote moves a user out of it. Takes effect on Apply Config.',
+					. 'provide yourself. A user leaves it when its context is changed in Extensions. Takes effect on Apply Config.',
 				'type' => 'text',
 				'default' => 'lobby',
 				'pattern' => self::CONTEXT_PATTERN,

@@ -22,6 +22,7 @@ use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
+use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -31,7 +32,9 @@ use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx as PbxDevices;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Mac;
+use FreePBX\Modules\Oryk_Provisioner\Navigator;
 use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
+use FreePBX\Modules\Oryk_Provisioner\Overview;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
@@ -138,7 +141,8 @@ foreach (['voicemail' => 'VoicemailManager',
 
 echo "\nwhat a user is:\n";
 
-is_eq('a pjsip device that is its own extension', Users::SHAPE, "d.tech = 'pjsip' AND d.id = d.user");
+is_eq('an extension, with its own pjsip device beside it when it has one', Users::FROM, "FROM users u LEFT JOIN devices d ON d.id = u.extension AND d.tech = 'pjsip' AND d.user = u.extension");
+is_eq('unless its number is held by a device of another kind', Users::SHAPE, "NOT EXISTS (SELECT 1 FROM devices o WHERE o.id = u.extension AND NOT (o.tech = 'pjsip' AND o.user = u.extension))");
 is_eq('media encryption is forced on', Users::FORCED['media_encryption'] ?? null, 'sdes');
 
 echo "\nwhat reaches a mailbox, which the call history lines up by position:\n";
@@ -300,6 +304,31 @@ try {
 }
 is_eq('so is saving a user that has gone', $threw, true);
 is_eq('which writes nothing either', FreePBX::$core->added, null);
+
+echo "\n  an extension whose device has gone is a user still:\n";
+
+$s = build();
+$s['app']->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1001'];
+$uid = $s['users']->store(['id' => '1001', 'extension' => '', 'name' => 'Back']);
+is_eq('a save gives it a device back, on its own number', [$uid, FreePBX::$core->added['id'] ?? null], ['1001', '1001']);
+is_eq('with no old device to delete first', FreePBX::$core->deleted, []);
+$threw = false;
+try {
+	$s['users']->store(['id' => '1001', 'extension' => '1002', 'name' => 'Back']);
+} catch (\Exception $e) {
+	$threw = true;
+}
+is_eq('but not on another number in the same save', $threw, true);
+
+$s = build();
+$s['app']->Modules->active = ['cdr'];
+$s['app']->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1001'];
+FreePBX::$core->users['1001'] = ['extension' => '1001'];
+is_eq('deleting it deletes what is left', $s['users']->remove('1001'), true);
+is_eq('the extension', isset(FreePBX::$core->users['1001']), false);
+is_eq('and no device, there being none', FreePBX::$core->deleted, []);
+$s = build();
+is_eq('what is neither device nor extension is not deleted', $s['users']->remove('1001'), false);
 
 echo "\n  saving an existing user starts from what it had:\n";
 
@@ -1736,30 +1765,41 @@ is_eq('the one line FreePBX\'s jail bans for, scrubbed', SecurityLog::$written, 
 
 $lines = ['Open provisioning sign-up: user x extension 1 context lobby from 1.2.3.4',
 	'Open provisioning sign-up refused (per-day) for x from 1.2.3.4',
-	'Open provisioning user 1 promoted to from-internal by admin'];
+	'Open provisioning rebuilt extension 1 for user x context lobby from 1.2.3.4'];
 is_eq('no other line looks like a login failure', array_filter($lines, function ($line) {
 	return stripos($line, 'authentication failure') !== false;
 }), []);
 
-echo "\n  promote:\n";
+echo "\n  a login that outlived its extension gets it back:\n";
+
+$s = signup_build();
+FreePBX::Userman()->processQuickCreate('pjsip', '9990000020', ['name' => 'Gina']);
+FreePBX::Userman()->users[1]['username'] = 'gina';
+FreePBX::Userman()->logins['gina:pw'] = 1;
+$found = $s['users']->findLogin('gina', 'pw');
+is_eq('findLogin() says it rebuilt it', $found, ['extension' => '9990000020', 'created' => false, 'rebuilt' => true]);
+is_eq('a device on the account\'s own number', FreePBX::$core->added['id'] ?? null, '9990000020');
+is_eq('in the lobby, whatever it was', FreePBX::$core->added['settings']['context']['value'] ?? null, 'lobby');
+is_eq('and the extension with it', isset(FreePBX::$core->users['9990000020']), true);
+is_eq('the account is the same one', count(FreePBX::Userman()->users), 1);
+
+$s = signup_build();
+FreePBX::Userman()->processQuickCreate('pjsip', 'none', ['name' => 'Admin']);
+FreePBX::Userman()->users[1]['username'] = 'boss';
+FreePBX::Userman()->logins['boss:pw'] = 1;
+is_eq('an account that names no number is not given one', thrown(function () use ($s) { $s['users']->findLogin('boss', 'pw'); }), 'RuntimeException');
+is_eq('and nothing is made for it', FreePBX::$core->added, null);
+
+echo "\n  a context is not this module's to change:\n";
 
 $s = signup_build();
 $s['users']->signUp('frank', 'pw');
 FreePBX::$core->devices['9990000013'] = FreePBX::$core->added['settings'] ? array_map(function ($setting) {
 	return $setting['value'];
 }, FreePBX::$core->added['settings']) + ['id' => '9990000013', 'tech' => 'pjsip'] : [];
-$s['app']->Database->fetches = ['WHERE d.id = :id' => [['extension' => '9990000013', 'name' => 'Frank', 'context' => 'lobby']]];
-$result = $s['users']->promote('9990000013');
-$account = FreePBX::Userman()->getUserByDefaultExtension('9990000013');
-is_eq('a lobby user is promoted', [$result['status'] ?? null, $result['reload'] ?? null], [true, true]);
-is_eq('to from-internal', FreePBX::$core->added['settings']['context']['value'] ?? null, 'from-internal');
-is_eq('keeping its name', FreePBX::$core->added['settings']['description']['value'] ?? null, 'Frank');
-is_eq('and UCP follows its groups again', FreePBX::Userman()->getModuleSettingByID($account['id'], 'ucp|Global', 'allowLogin'), null);
-is_eq('transfer is back on', strpos((string) file_get_contents($s['conf']), 'allow_transfer') === false, true);
-
-$s = build();
-$s['app']->Database->fetches = ['WHERE d.id = :id' => [['extension' => '1001', 'name' => 'Desk', 'context' => 'from-internal']]];
-is_eq('one not in the lobby is refused', $s['users']->promote('1001')['status'] ?? null, false);
+$s['users']->store(['id' => '9990000013', 'name' => 'Frank', 'context' => 'from-internal', 'promote' => true]);
+is_eq('a save of an existing user does not take a context it is handed', (FreePBX::$core->added['settings']['context']['value'] ?? null) === 'from-internal', false);
+is_eq('and there is no promote', method_exists($s['users'], 'promote'), false);
 
 echo "\n  the lobby's dialplan:\n";
 
@@ -1802,8 +1842,8 @@ is_eq('one contact', $rows['aor']['max_contacts'], '1');
 is_eq('no transfer from the lobby', $rows['endpoint']['allow_transfer'], 'no');
 is_eq('a caller id that cannot break out of its quotes', $rows['endpoint']['callerid'], '"Bob B x" <9990000013>');
 is_eq('every column is one the table has', array_diff(array_keys($rows['endpoint']), array_merge(['id'], RealtimeBridge::COLUMNS['endpoint'])), []);
-$promoted = RealtimeBridge::rows(['id' => '1001', 'context' => 'from-internal'], 'lobby');
-is_eq('transfer stays on outside it', $promoted['endpoint']['allow_transfer'], 'yes');
+$outside = RealtimeBridge::rows(['id' => '1001', 'context' => 'from-internal'], 'lobby');
+is_eq('transfer stays on outside it', $outside['endpoint']['allow_transfer'], 'yes');
 
 $text = "[settings]\nfoo => bar\n";
 $block = RealtimeBridge::block('settings', ['ps_endpoints => odbc,x,y'], true);
@@ -1872,6 +1912,244 @@ is_eq('it comes down when nothing waits', isset($s['app']->Notifications->up['or
 
 @unlink($etc . '/pjsip.endpoint.conf');
 @rmdir($etc);
+
+echo "\n  Overview:\n";
+
+is_eq('a user scope is a target', Overview::target(['user' => '1001']), ['user' => '1001']);
+is_eq('so is a client', Overview::target(['client' => '5']), ['client' => '5']);
+is_eq('a profile is not', Overview::target(['profile' => '2']), []);
+is_eq('nor an id in another spelling, which Navigator would not scope', Overview::target(['client' => '05']), []);
+is_eq('nor a new row', Overview::target(['user' => 'new']), []);
+is_eq('its address', Navigator::overviewHref('user', '1001'), '?display=oryk_provisioner&tab=overview&scope=user:1001');
+
+$subject = ['user' => '1001', 'clients' => [5, 6], 'macs' => ['0004f282e824']];
+is_eq('a ban on its client names it', Overview::names(ban_row(1, 'deny', ['client_id' => '5']), $subject), true);
+is_eq('a ban on its extension names it', Overview::names(ban_row(2, 'deny', ['extension' => '1001', 'ip' => '203.0.113.7']), $subject), true);
+is_eq('a ban on its MAC names it', Overview::names(ban_row(3, 'deny', ['mac' => '0004f282e824']), $subject), true);
+is_eq('a ban stored with "any" as Bans::ANY reads the same', Overview::names(['client_id' => 0, 'extension' => '', 'mac' => '0004f282e824'], $subject), true);
+is_eq('an address ban only applies', Overview::names(ban_row(4, 'banned', ['ip' => '203.0.113.7']), $subject), false);
+is_eq('a profile ban only applies', Overview::names(ban_row(5, 'deny', ['profile_id' => '2']), $subject), false);
+is_eq('another user\'s ban does not', Overview::names(ban_row(6, 'deny', ['extension' => '1002']), $subject), false);
+is_eq('a client scope has no extension to name', Overview::names(ban_row(7, 'deny', ['extension' => '1001']), ['user' => null, 'clients' => [5], 'macs' => []]), false);
+
+/** Overview over stubs, with one client (5, on user 1001) and whatever bans are given. */
+function overview_build(array $bans)
+{
+	$s = build();
+	$app = $s['app'];
+	$files = new FileRepo($app);
+	$bans = array_map(function ($ban) {
+		return $ban + ['note' => '', 'active' => '1'];
+	}, $bans);
+	$profiles = new Profiles($app, $files);
+	$requestLog = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($app);
+	$banRepo = new Bans($app);
+	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo);
+	$client = ['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk'];
+
+	$app->Database->fetches = [
+		'WHERE pc.id = :id' => [$client + ['token' => null, 'enabled' => '1', 'last_seen' => null, 'private_ip' => null, 'last_seen_age' => null]],
+		'WHERE b.id = :id' => $bans,
+	];
+	$app->Database->fetchAlls = [
+		'ORDER BY pc.mac' => [$client],
+		'ORDER BY b.created_at DESC' => $bans,
+	];
+
+	return $s + ['navigator' => $navigator, 'overview' => new Overview($app, $navigator, $s['users'], $s['clients'], $banRepo, $requestLog, new LogRepo($app))];
+}
+
+/** The statements that deleted from a table: [sql, params]. */
+function overview_deletes($db, $table)
+{
+	return array_values(array_filter($db->params, function ($call) use ($table) {
+		return preg_match('/^\s*DELETE FROM `' . $table . '`/', $call[0]) === 1;
+	}));
+}
+
+$s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824']), ban_row(12, 'banned', ['ip' => '203.0.113.7'])]);
+$found = $s['overview']->inventory(['client' => '5']);
+is_eq('a client\'s inventory is its own', [$found['kind'], $found['clients'], $found['macs']], ['client', [5], ['0004f282e824']]);
+is_eq('the MAC ban names it', $found['named'], [11]);
+is_eq('the address ban applies too', $found['applying'], [11, 12]);
+is_eq('nothing for a client that is not there', $s['overview']->inventory(['client' => 'x']), null);
+is_eq('nor for a profile', $s['overview']->inventory(['profile' => '2']), null);
+
+$s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824'])]);
+$purged = $s['overview']->purge(['client' => '5']);
+is_eq('Delete all on a client', $purged, ['status' => true, 'bans' => 1, 'clients' => 1]);
+$deleted = overview_deletes($s['app']->Database, 'oryk_provisioner_bans');
+is_eq('deletes the ban naming it by id', $deleted[0][1] ?? null, [':id' => 11]);
+is_eq('and the client', count(overview_deletes($s['app']->Database, 'oryk_provisioner_clients')), 1);
+is_eq('and never its user', FreePBX::$core->deleted, []);
+
+$s = overview_build([ban_row(11, 'deny', ['mac' => '0004f282e824']), ban_row(13, 'deny', ['extension' => '1001']), ban_row(12, 'banned', ['ip' => '203.0.113.7'])]);
+$s['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+FreePBX::$core->devices['1001'] = ['id' => '1001', 'user' => '1001', 'tech' => 'pjsip'];
+$found = $s['overview']->inventory(['user' => '1001']);
+is_eq('a user\'s inventory has its clients', [$found['kind'], $found['clients'], $found['macs']], ['user', [5], ['0004f282e824']]);
+is_eq('the bans on its extension and its client\'s MAC name it', $found['named'], [11, 13]);
+$s['app']->Database->fetchAlls['FROM devices WHERE user = ? AND id <> ?'] = ['1001-cell'];
+$purged = $s['overview']->purge(['user' => '1001']);
+is_eq('Delete all on a user', $purged, ['status' => true, 'reload' => true, 'bans' => 2, 'clients' => 1]);
+is_eq('deletes its device, and the other one on its extension', array_column(FreePBX::$core->deleted, 0), ['1001', '1001-cell']);
+is_eq('and the extension all the same', isset(FreePBX::$core->users['1001']), false);
+$byId = array_values(array_filter(array_map(function ($call) {
+	return $call[1][':id'] ?? null;
+}, overview_deletes($s['app']->Database, 'oryk_provisioner_bans'))));
+is_eq('and the two bans naming it, not the address one', $byId, [11, 13]);
+
+$s['app']->Database->fetchAlls['LIMIT :limit OFFSET :offset'] = [['id' => '5', 'mac' => '0004f282e824', 'extension' => '1001']];
+$listed = $s['overview']->listClients(['client' => '5']);
+is_eq('its Clients table says what each has stored', [$listed['rows'][0]['stored_files'], $listed['rows'][0]['stored_bytes']], [0, 0]);
+$listed = $s['overview']->listUsers(['client' => '5']);
+is_eq('its Users table says which account its user has', [$listed['rows'][0]['account'], $listed['rows'][0]['account_id']], ['', 0]);
+is_eq('neither lists anything for a profile', [$s['overview']->listClients(['profile' => '2']), $s['overview']->listUsers(['profile' => '2'])], [['total' => 0, 'rows' => []], ['total' => 0, 'rows' => []]]);
+
+is_eq('a client has no call history to list', $s['overview']->listCalls(['client' => '5']), ['total' => 0, 'rows' => [], 'available' => false]);
+is_eq('nor to clear', $s['overview']->clearHistory(['client' => '5'])['status'], false);
+$d = overview_build([]);
+$d['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+$d['app']->Database->fetchAlls['FROM devices WHERE user = ?'] = [['id' => '1001', 'tech' => 'pjsip', 'description' => 'Desk'], ['id' => '1001-cell', 'tech' => 'pjsip', 'description' => 'Cell']];
+$devices = $d['overview']->listDevices(['user' => '1001']);
+is_eq('a user\'s devices say which is its own', array_column($devices['rows'], 'own', 'id'), ['1001' => 1, '1001-cell' => 0]);
+is_eq('a device that is not on its extension is not deleted', $d['overview']->deleteDevice(['user' => '1001'], '2002')['status'], false);
+$d['app']->Database->answers = ['FROM devices WHERE id = ? AND user = ?' => 1];
+is_eq('another device on it is', $d['overview']->deleteDevice(['user' => '1001'], '1001-cell'), ['status' => true, 'reload' => true]);
+is_eq('through Core, and only that one', FreePBX::$core->deleted, [['1001-cell', false]]);
+$unassigned = array_values(array_filter($d['app']->Database->params, function ($call) {
+	return strpos($call[0], "SET device_id = '' WHERE device_id = :id") !== false;
+}));
+is_eq('a client on it is unassigned', $unassigned[0][1] ?? null, [':id' => '1001-cell']);
+is_eq('and not deleted', count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), 0);
+$d['app']->Database->fetchAlls["WHERE device_id = :id"] = [['id' => '5']];
+is_eq('asked for its clients too, it goes the same way', $d['overview']->deleteDevice(['user' => '1001'], '1001-cell', true)['status'], true);
+is_eq('and they are deleted, not unassigned', [count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), count(array_filter($d['app']->Database->params, function ($call) {
+	return strpos($call[0], "SET device_id = ''") !== false;
+}))], [1, 1]);
+unset($d['app']->Database->fetchAlls["WHERE device_id = :id"]);
+FreePBX::$core->deleted = [];
+$d['app']->Database->answers['SELECT user FROM devices WHERE id = ?'] = '1001';
+is_eq('a client deleted with its device', $d['overview']->deleteClientWithDevice('5'), ['status' => true, 'reload' => true]);
+is_eq('takes the device it was using', FreePBX::$core->deleted, [['1001', false]]);
+unset($d['app']->Database->answers['SELECT user FROM devices WHERE id = ?']);
+FreePBX::$core->deleted = [];
+FreePBX::$core->users['1001'] = ['extension' => '1001'];
+is_eq('its own device is deleted as a device too', $d['overview']->deleteDevice(['user' => '1001'], '1001'), ['status' => true, 'reload' => true]);
+is_eq('and the extension is left standing', [FreePBX::$core->deleted[0] ?? null, isset(FreePBX::$core->users['1001'])], [['1001', false], true]);
+is_eq('a client has no device to delete', $d['overview']->deleteDevice(['client' => '5'], '1001-cell')['status'], false);
+is_eq('with nothing to ask Asterisk, a device\'s status is unknown', $devices['rows'][0]['status']['state'], 'unknown');
+
+$aor = "      Aor:  <Aor..............................................>  <MaxContact>\n"
+	. "    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>\n"
+	. "==========================================================================================\n\n"
+	. "      Aor:  1001                                                 1\n"
+	. "    Contact:  1001/sip:1001@203.0.113.7:5062;transport=tls 4ea6b7c2d1 Avail        23.512\n";
+is_eq('a reachable contact is registered, with where and how fast', DeviceStatus::parse($aor), ['state' => 'registered', 'contacts' => 1, 'address' => '203.0.113.7:5062', 'rtt' => 23.5]);
+is_eq('an unqualified one is registered too', DeviceStatus::parse("    Contact:  1001/sip:1001@10.0.0.9:5060 abc123 NonQual         nan\n")['state'], 'registered');
+is_eq('only unreachable contacts is unreachable', DeviceStatus::parse("    Contact:  1001/sip:1001@10.0.0.9:5060 abc123 Unavail         nan\n")['state'], 'unreachable');
+is_eq('one reachable among them is enough', DeviceStatus::parse("    Contact:  1001/sip:a@10.0.0.9 h1 Unavail nan\n    Contact:  1001/sip:b@10.0.0.8 h2 Avail 4.0\n"), ['state' => 'registered', 'contacts' => 2, 'address' => '10.0.0.8', 'rtt' => 4.0]);
+is_eq('an AOR with no contact is not registered', DeviceStatus::parse("      Aor:  1001                                                 1\n")['state'], 'unregistered');
+is_eq('nor is no such AOR', DeviceStatus::parse('Unable to find object 1001.')['state'], 'unregistered');
+$asked = new DeviceStatus($d['app']);
+is_eq('a device that does not register has none', $asked->of('1001', 'dahdi')['state'], 'none');
+is_eq('an id that is not one is never put in a command', $asked->of('1001; core stop now', 'pjsip')['state'], 'unknown');
+is_eq('a client has no devices to list', $d['overview']->listDevices(['client' => '5']), ['total' => 0, 'rows' => []]);
+
+$c = overview_build([]);
+$c['app']->Database->fetches['WHERE u.extension = :id'] = [['extension' => '1001', 'name' => 'Desk', 'context' => 'lobby', 'clients' => '1', 'last_seen' => null]];
+is_eq('with no CDR module there is none to read', $c['overview']->listCalls(['user' => '1001'])['available'], false);
+$c['app']->Modules->active = ['cdr'];
+$_REQUEST['sort'] = 'calldate; DROP TABLE cdr';
+$calls = $c['overview']->listCalls(['user' => '1001']);
+unset($_REQUEST['sort']);
+is_eq('a user\'s is read from cdr', [$calls['available'], $calls['total']], [true, 0]);
+$listing = array_values(array_filter(FreePBX::$cdr->handle->statements, function ($q) {
+	return strpos($q, 'SELECT `calldate`') === 0;
+}));
+is_eq('by src or dst, bound, sorted by a column it has', strpos($listing[0] ?? '', 'FROM `cdr` WHERE (`src` = :m0 OR `dst` = :m1) ORDER BY `calldate` DESC LIMIT 10 OFFSET 0') !== false, true);
+$cleared = $c['overview']->clearHistory(['user' => '1001']);
+is_eq('clearing it purges and keeps the user', [$cleared['status'], $cleared['rows'] > 0, FreePBX::$core->deleted], [true, true, []]);
+is_eq('what is not a number lists nothing', $c['cdr']->listCalls('1001 OR 1=1')['available'], false);
+
+$box = sys_get_temp_dir() . '/oryk-vm-' . getmypid();
+@mkdir($box . '/INBOX', 0700, true);
+@mkdir($box . '/Old', 0700, true);
+file_put_contents($box . '/unavail.wav', 'greeting');
+file_put_contents($box . '/INBOX/msg0000.txt', "[message]\ncallerid=\"Front Desk\" <1002>\norigtime=1700000000\nduration=12\n");
+file_put_contents($box . '/INBOX/msg0000.wav', 'audio');
+file_put_contents($box . '/Old/msg0000.txt', "[message]\ncallerid=5551234\norigtime=1700000500\nduration=3\n");
+file_put_contents($box . '/Old/msg0000.WAV', 'audio');
+file_put_contents($box . '/Old/notes.txt', 'not a message');
+$messages = $c['voicemail']->messagesIn($box);
+is_eq('a mailbox\'s messages are listed newest first', array_column($messages, 'id'), ['Old/msg0000', 'INBOX/msg0000']);
+is_eq('with who left each and how long it is', [$messages[1]['callerid'], $messages[1]['duration'], $messages[1]['folder']], ['"Front Desk" <1002>', 12, 'INBOX']);
+foreach (['msg0001', 'msg0002'] as $more) {
+	file_put_contents($box . '/INBOX/' . $more . '.txt', "origtime=17000001" . substr($more, -2) . "\ncallerid=" . $more . "\n");
+	file_put_contents($box . '/INBOX/' . $more . '.wav', 'audio');
+}
+is_eq('an id that is a path somewhere else deletes nothing', $c['voicemail']->deleteIn($box, '../INBOX/msg0000'), false);
+is_eq('nor one that is not listed', $c['voicemail']->deleteIn($box, 'INBOX/msg0009'), false);
+is_eq('one message is deleted', $c['voicemail']->deleteIn($box, 'INBOX/msg0001'), true);
+is_eq('and the ones after it close the gap, audio with them', array_map('basename', glob($box . '/INBOX/msg*')), ['msg0000.txt', 'msg0000.wav', 'msg0001.txt', 'msg0001.wav']);
+is_eq('keeping what they were', strpos((string) file_get_contents($box . '/INBOX/msg0001.txt'), 'callerid=msg0002') !== false, true);
+is_eq('the other folder is left alone', is_file($box . '/Old/msg0000.txt'), true);
+is_eq('a client has no message to delete', $c['overview']->deleteVoicemail(['client' => '5'], 'INBOX/msg0000')['status'], false);
+is_eq('clearing removes the messages', $c['voicemail']->clearIn($box), 3);
+is_eq('audio included', glob($box . '/*/msg*'), []);
+is_eq('and leaves the greeting and what is not a message', [is_file($box . '/unavail.wav'), is_file($box . '/Old/notes.txt')], [true, true]);
+is_eq('no mailbox lists nothing', $c['voicemail']->messagesIn(''), []);
+is_eq('and a client has no voicemail to clear', $c['overview']->clearVoicemail(['client' => '5'])['status'], false);
+is_eq('a user with no mailbox clears nothing', $c['overview']->clearVoicemail(['user' => '1001']), ['status' => true, 'removed' => 0]);
+@unlink($box . '/unavail.wav');
+@unlink($box . '/Old/notes.txt');
+@rmdir($box . '/INBOX');
+@rmdir($box . '/Old');
+@rmdir($box);
+
+$levels = [];
+foreach ($s['navigator']->levels(['client' => '5'], 'overview') as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('on Overview a client option re-opens Overview', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&tab=overview&scope=client:5');
+is_eq('while the crumb still names the client\'s page', $levels['client']['href'], '?display=oryk_provisioner&client=5');
+$levels = [];
+foreach ($s['navigator']->levels(['client' => '5']) as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('anywhere else it opens the client', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&client=5');
+$bar = array_column($s['navigator']->sections('users', ['user' => '1001']), 'href', 'key');
+is_eq('from a user\'s page the bar\'s Overview opens on it', $bar['overview'], '?display=oryk_provisioner&tab=overview&scope=user:1001');
+$bar = array_column($s['navigator']->sections('users', ['user' => 'new']), 'href', 'key');
+is_eq('but not from a new one', $bar['overview'], '?display=oryk_provisioner&tab=overview');
+is_eq('Users is still where a bare URL lands', $s['navigator']->section(''), 'users');
+
+$s = overview_build([]);
+$s['app']->Database->fetches = [];
+is_eq('Delete all on a row that has gone is refused', $s['overview']->purge(['client' => '5'])['status'], false);
+is_eq('and deletes nothing', count(overview_deletes($s['app']->Database, 'oryk_provisioner_clients')), 0);
+
+$s = build();
+$log = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']);
+$log->clearFor([]);
+$cleared = overview_deletes($s['app']->Database, 'oryk_provisioner_logs');
+is_eq('clearing no MACs can match no row', strpos($cleared[0][0], 'WHERE 1 = 0') !== false, true);
+$log->clearFor(['0004f282e824']);
+$cleared = overview_deletes($s['app']->Database, 'oryk_provisioner_logs');
+is_eq('clearing a MAC binds it', $cleared[1][1], [':mac_0' => '0004f282e824']);
+
+$logs = new LogRepo($s['app']);
+is_eq('a client that sent nothing has nothing stored', $logs->clientLogStats(987654321), ['files' => 0, 'bytes' => 0]);
+
+echo "\n  the module class imports every class it builds:\n";
+
+// Nothing above loads Oryk_provisioner.class.php, so a `new Overview(...)`
+// without its `use` fatals only on a PBX.
+$module = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php');
+preg_match_all('/^use\s+(?:[A-Za-z0-9_\\\\]+\\\\)?([A-Za-z0-9_]+);/m', $module, $imports);
+preg_match_all('/\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(|\b([A-Z][A-Za-z0-9_]*)::/', $module, $named);
+$missing = array_values(array_diff(array_unique(array_filter(array_merge($named[1], $named[2]))), $imports[1], ['Oryk_provisioner']));
+is_eq('none is missing its use', $missing, []);
 
 
 foreach ($TEMPORARY as $path) {
