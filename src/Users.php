@@ -769,64 +769,6 @@ class Users extends Service
 	}
 
 	/**
-	 * Make sure a user has what a phone needs: a device, and a client to be
-	 * provisioned as. The Repair button.
-	 *
-	 * A missing device is made on the user's own number, as a save of a
-	 * device-less user makes one, in the lobby when asked and from-internal
-	 * otherwise. A user with no client at all is given one on an internal
-	 * MAC with a generated token, which its next open-provisioning login
-	 * replaces with its own. Whatever is already there is left alone.
-	 *
-	 * @param mixed $extension Extension number.
-	 * @param mixed $context   'lobby' to make a missing device in the sign-up
-	 *                         context; anything else is from-internal.
-	 *
-	 * @return array<string, mixed> Status, device and client (whether each was
-	 *                              made), and `reload` when a device was; or
-	 *                              a message.
-	 */
-	public function repair($extension, $context = '')
-	{
-		try {
-			return $this->withLock(function () use ($extension, $context) {
-				$row = $this->userRow($extension);
-
-				if (!$row) {
-					return ['status' => false, 'message' => _('That user no longer exists.')];
-				}
-
-				$extension = (string) $row['extension'];
-				$made = ['device' => false, 'client' => false];
-
-				if (empty($row['device'])) {
-					$input = ['id' => $extension, 'name' => (string) $row['name']];
-
-					if ((string) $context === 'lobby') {
-						$input += [
-							'context' => $this->lobbyContext(),
-							'emergency_cid' => (string) $this->settings()->get(Settings::OPEN_EMERGENCY_CID),
-							'lobby' => true,
-						];
-					}
-
-					$this->store($input);
-					$made['device'] = true;
-				}
-
-				if ((int) $row['clients'] === 0) {
-					$client = $this->clients->findOrCreateForDevice($extension);
-					$made['client'] = !empty($client['created']);
-				}
-
-				return ['status' => true, 'reload' => $made['device']] + $made;
-			});
-		} catch (\Exception $e) {
-			return ['status' => false, 'message' => $e->getMessage()];
-		}
-	}
-
-	/**
 	 * Give an account's number its extension and device back: findLogin(),
 	 * for a login that outlived them.
 	 *

@@ -573,7 +573,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listUsers':
 			case 'saveUser':
 			case 'deleteUser':
-			case 'repairUser':
 			case 'deleteExpiredUsers':
 			case 'saveSettings':
 			case 'listBans':
@@ -723,9 +722,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteExpiredUsers':
 				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
-
-			case 'repairUser':
-				return $this->users->repair($_REQUEST['id'] ?? null, $_REQUEST['context'] ?? '');
 
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);

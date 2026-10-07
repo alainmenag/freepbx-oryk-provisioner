@@ -535,8 +535,6 @@ class Pages extends Service
 				: [],
 			// Whether the Users table offers Expired: Lobby Expiry is on.
 			'expireDays' => $tab === 'users' ? (int) $this->settings->get(Settings::OPEN_EXPIRE_DAYS) : 0,
-			// What Repair offers to make a missing device in.
-			'lobbyContext' => $tab === 'users' ? $this->users->lobbyContext() : '',
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
 			// What the State column warns with before refusing your own address.
@@ -567,7 +565,6 @@ class Pages extends Service
 		return $this->view('admin', [
 			'tab' => 'overview',
 			'overview' => $found,
-			'lobbyContext' => $this->users->lobbyContext(),
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections('overview'),
 			'navigator' => $this->navigator->levels($found ? $at : [], 'overview'),
