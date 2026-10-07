@@ -1,7 +1,7 @@
 <?php
 /**
- * The module page: one pane per section -- Users, Clients, Profiles, Logs,
- * Bans, Overview and Settings.
+ * The module page: one pane per section -- Users, Clients, Profiles,
+ * Services, Logs, Bans, Overview and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -28,6 +28,8 @@
  *
  * Settings is the one tab with fields rather than a table, drawn by
  * partials/settings.php and saved by the action bar's Save.
+ *
+ * Services is drawn by partials/services.php.
  *
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
@@ -158,6 +160,12 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 						</table>
 					</div>
 
+					<?php endif; ?>
+
+					<?php if ($tab === 'services'): ?>
+					<div class="tab-pane active" id="oryk_services">
+						<?php include __DIR__ . '/partials/services.php'; ?>
+					</div>
 					<?php endif; ?>
 
 					<?php if ($tab === 'users'): ?>

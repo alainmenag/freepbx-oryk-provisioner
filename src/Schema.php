@@ -297,6 +297,31 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a services table written before services had a slug up to date.
+	 *
+	 * Nullable, because the rows already there have none until
+	 * Services::seed() makes each one from its name, straight after this.
+	 * NULLs never collide on the unique key; every row written since has one.
+	 *
+	 * @return void
+	 */
+	public function addServiceSlugColumn()
+	{
+		if (!$this->schemaHas($this->servicesTable, 'column', 'slug')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->servicesTable}`
+				ADD COLUMN `slug` VARCHAR(64) NULL DEFAULT NULL AFTER `name`"
+			);
+		}
+
+		if (!$this->schemaHas($this->servicesTable, 'index', 'slug')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->servicesTable}` ADD UNIQUE KEY `slug` (`slug`)"
+			);
+		}
+	}
+
+	/**
 	 * Give a table the column that says whether the endpoint answers for it.
 	 *
 	 * The same column on two tables: a client and a profile are switched off by

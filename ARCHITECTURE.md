@@ -24,6 +24,11 @@ matches `phone.cfg`, and that resource is rendered and served.
 
 Everything else is that sentence with the edge cases filled in.
 
+A **service** is a name, linked to any number of services it is under and any
+number under it. Services are stored and edited and nothing else reads them:
+the endpoint, the dropdowns and every other table know nothing of a service.
+See [Schema](#schema).
+
 A **user** is the other half of the module: a pjsip device that is its own
 extension, managed from the Users tab, and stored in none of this module's
 tables. A client's device is usually one. See [Users](#users). A **ban** is a
@@ -238,7 +243,7 @@ engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge
-src/                         44 files, namespace FreePBX\Modules\Oryk_Provisioner
+src/                         48 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -258,7 +263,7 @@ views/                       one view per page, plus views/partials/
 | `Schema` | the columns added after a table first existed |
 | `FileRepo` | `ASTSPOOLDIR/repo`, one file per resource id |
 | `LogRepo` | `ASTLOGDIR/provisioner/<client id>/`, what a phone sent back |
-| `Clients`, `Profiles`, `Resources` | one per table |
+| `Clients`, `Profiles`, `Resources`, `Services` | one per table |
 | `Matcher` | a filename is a MAC and a name, read both ways |
 | `Previews` | which filename does this phone ask this file by |
 | `ProvisioningLog` | one row per request the endpoint answered |
@@ -291,7 +296,7 @@ friendly URL, and the endpoint stays reachable at its real path.
 
 ## Schema
 
-Five tables, and the bridge's three (below). Every `Schema` step is additive and asks `information_schema`
+Seven tables, and the bridge's three (below). Every `Schema` step is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -399,6 +404,71 @@ file (1.0.7).
   is out of `ACTIVE_EXPR`, the list and `banRow()` -- gone, to anyone looking
   -- and the minute job purges it once its copy is out. Adding the same ban
   again reopens it like any other row.
+
+**`oryk_provisioner_services`** -- `name` (unique), `slug` (unique). Where a
+service sits is the table below.
+
+- **The slug is the identity anything but a person uses**: lowercase letters
+  and digits joined by hyphens (`Services::SLUG_PATTERN`). **It is never
+  typed**: a save makes it from the name (`slugify()`, then `-2`, `-3` until
+  free, stepping over the defaults') on a new service and again whenever the
+  name changes. No page shows it but in its own address.
+- **A slug that changes is carried to every reference in the same
+  transaction** (`Services::renameLinks()`): today that is both columns of the
+  links table. Anything else that comes to store a service's slug must be
+  added to that method, or a rename leaves it naming nothing. A default's
+  slug never changes -- renaming one in `DEFAULTS` renames the row only. The column is
+  nullable only for rows older than it (`Schema::addServiceSlugColumn()`),
+  which `seed()` fills on the same install; every save writes one.
+- **The module's own services are `Services::DEFAULTS`**, by slug: a name, and
+  the slugs under it. **Adding, renaming or regrouping one is an edit to that
+  array and nothing else** -- `install()` runs `Services::seed()`, which makes
+  or renames each row and sets what is under it to exactly what the array
+  says. Like a setting, a change appears once the module is installed or
+  upgraded. A slug taken out of the array leaves its row behind as an
+  ordinary service.
+- **"Managed" is the slug being in `DEFAULTS`** (`Services::managed()`), not a
+  column, so the code and the table cannot disagree about it. A managed
+  service is refused every save and delete, its page is drawn disabled with
+  only Close, and its slug is never given to another service.
+- **`seed()` owns only the links between two defaults.** One `DEFAULTS` no
+  longer has is removed and one it has is added; a link with a service of the
+  operator's own at either end is theirs and is left. So a managed service is
+  locked on its own page, but a service of the operator's own can be put
+  under it or over it from that service's page. A default link the
+  operator's links would turn into a loop is not added, and install says so.
+- A service already named like a default when the slug column arrives is given
+  that slug by the backfill and so becomes the default, links and id kept. A
+  default whose name another slug already holds is not written, and install
+  says so.
+
+**`oryk_provisioner_service_links`** -- `parent`, `child`: one row says the
+child is under the parent. **Both are slugs, not ids**, so a link reads the
+same in the table, in `DEFAULTS` and to anything outside the module.
+
+- **A table of its own rather than a `parent_id` column**, because a service
+  has many parents: "Voicemail" is under both "Basic User" and "Advanced
+  User", and each of those is over many services.
+- The pair is the primary key, so a link exists once. `child` has its own
+  index for the walk upwards.
+- A deleted service's links go by its slug, and a renamed one's follow it,
+  so no link names a slug with no row.
+- **No loop is ever written.** `Services::saveService()` refuses a set of
+  parents and children when a service is on both sides or a parent is already
+  somewhere under a child (`loops()`, pure, asked of the whole links table),
+  and the editor draws those choices disabled (`related()`). Every walk stops
+  at a row seen twice, so a loop put there by hand hangs nothing.
+- **A save replaces a side whole, or leaves it alone.** `parents` and
+  `children` are each the full set of slugs; a key that is not submitted leaves
+  that side as it was. Name and links are one transaction.
+- Deleting a service deletes its links and nothing else: what was over or
+  under it stays.
+- **A service pack is a service with at least one child**, read off the links
+  (`listServices`' `children`) and stored nowhere, so it cannot disagree with
+  them. The list's one column about links is that tick.
+- A service's page is `?service=<slug>`, one tab. A save lands on
+  the slug its answer names, which is a new address after a rename; saves and
+  deletes are posted the row's id.
 
 ### Migrations deliberately not written
 
@@ -868,7 +938,7 @@ made from one of the tables is answered by loading the page again.
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?ban=`, and `?log=` for one provisioning log entry, which is read and
+  `?service=`, `?ban=`, and `?log=` for one provisioning log entry, which is read and
   deleted but never edited or created. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
@@ -878,7 +948,7 @@ made from one of the tables is answered by loading the page again.
   `views/partials/sections.php` is the module's sections, a bar on every page,
   lit by the branch the page is in (a resource page is in Profiles). Sections
   listed together in `Navigator::sectionGroups()` share one entry on the bar
-  -- Users, Clients and Profiles do, and Logs, Bans and Overview. The entry is
+  -- Users, Clients, Profiles and Services do, and Logs, Bans and Overview. The entry is
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.

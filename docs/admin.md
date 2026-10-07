@@ -5,7 +5,7 @@ carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 Every page is topped by the same bar of sections — Users, Clients, Profiles,
-Logs, Bans, Overview, Settings — with the one you are in underlined, so any section is
+Services, Logs, Bans, Overview, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
 Users, Clients, Profiles, Resources, Logs, Bans — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
@@ -30,6 +30,7 @@ which are views of that one row.
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
 | `&user=<extension>` | one user (`&user=` for a new one) | User, Clients |
+| `&service=<slug>` | one service (`&service=` for a new one) | Service |
 | `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
 | `&log=<id>` | one provisioning log entry, read-only | Log Entry |
 

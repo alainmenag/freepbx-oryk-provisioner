@@ -391,7 +391,7 @@ class Navigator extends Service
 	 * group's first section would have stood: the active section of the group,
 	 * else its first, with every section of the group under 'items'.
 	 *
-	 * @param string               $section clients|profiles|users|logs|bans|overview|settings.
+	 * @param string               $section clients|profiles|services|users|logs|bans|overview|settings.
 	 * @param array<string, mixed> $at      Row being viewed, as levels() takes it.
 	 *
 	 * @return array<int, array<string, mixed>> Each: key, text, href, active;
@@ -474,6 +474,7 @@ class Navigator extends Service
 			'users' => _('Users'),
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
+			'services' => _('Services'),
 			'logs' => _('Logs'),
 			'bans' => _('Bans'),
 			'overview' => _('Overview'),
@@ -493,7 +494,7 @@ class Navigator extends Service
 	private function sectionGroups()
 	{
 		return [
-			['users', 'clients', 'profiles'],
+			['users', 'clients', 'profiles', 'services'],
 			['logs', 'bans', 'overview'],
 		];
 	}

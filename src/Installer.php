@@ -34,6 +34,9 @@ class Installer extends Service
 	/** @var RealtimeBridge|null */
 	private $bridge;
 
+	/** @var Services|null */
+	private $services;
+
 	/** The FreePBX job the minute sync is registered as. */
 	const SYNC_JOB = 'fail2ban-sync';
 
@@ -43,7 +46,7 @@ class Installer extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null, ?Services $services = null)
 	{
 		parent::__construct($freepbx);
 
@@ -53,6 +56,7 @@ class Installer extends Service
 		$this->settings = $settings;
 		$this->fail2ban = $fail2ban;
 		$this->bridge = $bridge;
+		$this->services = $services;
 	}
 
 	/**
@@ -229,6 +233,32 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->servicesTable}` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`name` VARCHAR(191) NOT NULL,
+				`slug` VARCHAR(64) NULL DEFAULT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				PRIMARY KEY (`id`),
+				UNIQUE KEY `name` (`name`),
+				UNIQUE KEY `slug` (`slug`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
+		// Both ends are slugs, not ids. The pair is the key, so a link exists
+		// once; `child` has an index of its own for the walk upwards, which the
+		// key's left column cannot serve.
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->serviceLinksTable}` (
+				`parent` VARCHAR(64) NOT NULL,
+				`child` VARCHAR(64) NOT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (`parent`, `child`),
+				KEY `child` (`child`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
 		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already there,
 		// so every column added after a table first existed is added from here.
 		// Order matters in one place: addResourceTypeColumn() backfills from
@@ -244,6 +274,15 @@ class Installer extends Service
 		$this->schema->addCoreIndexes();
 		$this->schema->addBanSyncColumns();
 		$this->schema->addClientSignupColumns();
+		$this->schema->addServiceSlugColumn();
+
+		// The services the module ships -- Services::DEFAULTS -- made, renamed
+		// and regrouped to match. After the slug column: they are found by it.
+		if ($this->services) {
+			foreach ($this->services->seed() as $line) {
+				$this->installMessage('Provisioner: ' . $line);
+			}
+		}
 
 		// Advanced Settings -> Oryk Provisioner. Registering again on an upgrade
 		// keeps whatever is set there.
