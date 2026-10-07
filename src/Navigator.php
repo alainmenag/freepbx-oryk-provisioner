@@ -387,19 +387,31 @@ class Navigator extends Service
 	 *
 	 * On a user's or client's page, Overview opens on that row.
 	 *
+	 * The sections sectionGroups() puts together are one entry, where the
+	 * group's first section would have stood: the active section of the group,
+	 * else its first, with every section of the group under 'items'.
+	 *
 	 * @param string               $section clients|profiles|users|logs|bans|overview|settings.
 	 * @param array<string, mixed> $at      Row being viewed, as levels() takes it.
 	 *
-	 * @return array<int, array<string, mixed>> Each: key, text, href, active.
+	 * @return array<int, array<string, mixed>> Each: key, text, href, active;
+	 *                                          a group also has items[] of the same.
 	 */
 	public function sections($section, array $at = [])
 	{
 		$section = $this->section($section);
 		$target = Overview::target($at);
+		$groupOf = [];
+
+		foreach ($this->sectionGroups() as $group => $keys) {
+			$groupOf += array_fill_keys($keys, $group);
+		}
+
 		$bar = [];
+		$slots = [];
 
 		foreach ($this->sectionNames() as $key => $text) {
-			$bar[] = [
+			$item = [
 				'key' => $key,
 				'text' => $text,
 				'href' => ($key === 'overview' && $target && $this->written((string) current($target)))
@@ -407,6 +419,26 @@ class Navigator extends Service
 					: '?display=oryk_provisioner&tab=' . $key,
 				'active' => $key === $section,
 			];
+
+			if (!isset($groupOf[$key])) {
+				$bar[] = $item;
+
+				continue;
+			}
+
+			$group = $groupOf[$key];
+
+			if (!isset($slots[$group])) {
+				$slots[$group] = count($bar);
+				$bar[] = $item + ['items' => []];
+			}
+
+			$slot = $slots[$group];
+			$bar[$slot]['items'][] = $item;
+
+			if ($item['active']) {
+				$bar[$slot] = $item + $bar[$slot];
+			}
 		}
 
 		return $bar;
@@ -446,6 +478,23 @@ class Navigator extends Service
 			'bans' => _('Bans'),
 			'overview' => _('Overview'),
 			'settings' => _('Settings'),
+		];
+	}
+
+	/**
+	 * Which sections share one dropdown on the bar.
+	 *
+	 * Adding a group, or a section to one, is a line here and nothing else.
+	 * They are sectionNames() keys and keep that order; a section in no group
+	 * stands on the bar alone.
+	 *
+	 * @return array<int, array<int, string>> Groups, each a list of section keys.
+	 */
+	private function sectionGroups()
+	{
+		return [
+			['users', 'clients', 'profiles'],
+			['logs', 'bans', 'overview'],
 		];
 	}
 

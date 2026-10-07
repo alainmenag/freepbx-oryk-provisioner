@@ -876,7 +876,12 @@ made from one of the tables is answered by loading the page again.
   extension, so a renumbering save lands on a new address.
 - **Every page is topped the same way, and each strip means one thing.**
   `views/partials/sections.php` is the module's sections, a bar on every page,
-  lit by the branch the page is in (a resource page is in Profiles).
+  lit by the branch the page is in (a resource page is in Profiles). Sections
+  listed together in `Navigator::sectionGroups()` share one entry on the bar
+  -- Users, Clients and Profiles do, and Logs, Bans and Overview. The entry is
+  a link to the group's active section, else its first, and hovering or
+  focusing it opens a menu of the group's sections; grouping more is a line in
+  that one array.
   `views/partials/navigator.php` is a row of six searchable dropdowns under
   it -- Users, Clients, Profiles, Resources, Logs, Bans -- scoped by the row the
   page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
