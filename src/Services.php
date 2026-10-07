@@ -495,6 +495,20 @@ class Services extends Service
 	}
 
 	/**
+	 * Every service a user has: for `{{extension.services}}`.
+	 *
+	 * @param mixed $extension The user's extension.
+	 *
+	 * @return array<int, string> Their slugs, each once, in order.
+	 */
+	public function userSlugs($extension)
+	{
+		$assigned = $this->assigned($extension);
+
+		return $assigned ? self::held($this->links(), $assigned) : [];
+	}
+
+	/**
 	 * The packs: every service with at least one under it.
 	 *
 	 * @return array<int, string> Their slugs, each once.
@@ -749,6 +763,32 @@ class Services extends Service
 	public static function descendants(array $links, $slug)
 	{
 		return self::reach($links, [(string) $slug], 0, 1, (string) $slug);
+	}
+
+	/**
+	 * What some assigned services amount to: themselves, and everything under them.
+	 *
+	 * @param array<int, array{0: string, 1: string}> $links    Every link: [parent, child], slugs.
+	 * @param array<int, string>                      $assigned What is assigned, by slug.
+	 *
+	 * @return array<int, string> Slugs, each once, in order.
+	 */
+	public static function held(array $links, array $assigned)
+	{
+		$held = [];
+
+		foreach ($assigned as $slug) {
+			$held[] = (string) $slug;
+
+			foreach (self::descendants($links, $slug) as $under) {
+				$held[] = (string) $under;
+			}
+		}
+
+		$held = array_values(array_unique($held));
+		sort($held, SORT_STRING);
+
+		return $held;
 	}
 
 	/**

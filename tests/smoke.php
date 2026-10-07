@@ -972,7 +972,7 @@ is_eq('and a row storing "any" as 0 or \'\' sets nothing there',
 echo "\n  the endpoint asks before it answers:\n";
 
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
@@ -1267,7 +1267,7 @@ echo "\n  what openClient() answers before a user is found:\n";
 
 $s = build();
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
@@ -1719,7 +1719,7 @@ echo "\n  what openClient() answers a sign-up:\n";
 function signup_endpoint(array $s)
 {
 	$settings = new Settings($s['app']);
-	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
 
 	return new Endpoint(
 		$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
@@ -2164,6 +2164,9 @@ is_eq('a new service is checked through what it is given', Services::loops($link
 is_eq('its own old links are not held against it', Services::loops($links, 'vm', ['greeting'], []), false);
 is_eq('a loop in the data is walked once, not for ever', Services::descendants([['a', 'b'], ['b', 'a']], 'a'), ['b']);
 is_eq('a slug of digits is still a string', Services::descendants([['100', '200']], '100'), ['200']);
+is_eq('a user has what it is assigned and everything under it', Services::held($links, ['basic']), ['basic', 'greeting', 'vm']);
+is_eq('each once, however many packs it comes through', Services::held($links, ['vm', 'advanced', 'basic']), ['advanced', 'basic', 'greeting', 'vm']);
+is_eq('and a user assigned nothing has nothing', Services::held($links, []), []);
 is_eq('slugs arrive as one string', Services::slugs('vm, Basic,vm,not ok,,-x,'), ['vm', 'basic']);
 is_eq('or as an array', Services::slugs(['fax', 'fax', [], 'call-recording']), ['fax', 'call-recording']);
 is_eq('and nothing is no slugs', Services::slugs(''), []);
@@ -2200,6 +2203,23 @@ $s = build();
 $services = new Services($s['app']);
 is_eq('a service needs a name', $services->saveService(['name' => '  '])['status'], false);
 is_eq('and one that fits the column', $services->saveService(['name' => str_repeat('x', 192)])['status'], false);
+
+/** Services, answering for one user without a table. */
+class GuestServices extends Services
+{
+	public function userSlugs($extension)
+	{
+		return (string) $extension === '9990000001' ? ['guest-user', 'support'] : [];
+	}
+}
+
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), new Settings($s['app']), new GuestServices($s['app']));
+$render = function (array $client) use ($template) {
+	return $template->renderTemplate('SERVICES={{extension.services}}', $template->provisioningValues($client));
+};
+is_eq('a template is given them as one value', $render(['mac' => '0004f282e824', 'extension' => '9990000001']), 'SERVICES=guest-user,support');
+is_eq('a user with none renders empty', $render(['mac' => '0004f282e824', 'extension' => '1001']), 'SERVICES=');
+is_eq('and so does a client with no user', $render(['mac' => '0004f282e824']), 'SERVICES=');
 
 echo "\n  the module class imports every class it builds:\n";
 

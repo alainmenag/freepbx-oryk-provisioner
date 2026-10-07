@@ -498,10 +498,14 @@ slug, as everywhere else; the pair is the primary key.
   follow its extension (`Services::moveUser()`, from `ExtensionRenumberer`)
   and a deleted user's go with it (`forgetUser()`, from `Users::remove()`),
   since a freed number is handed out again.
-- Nothing reads an assignment yet but that tab, the Services list's
-  Assignments column and the navigator's Services level
-  (`Services::assignedTo()`, `usersOf()`). All three count a service's own
+- That tab, the Services list's Assignments column and the navigator's
+  Services level (`Services::assignedTo()`, `usersOf()`) count a service's own
   rows -- the users ticked for it, not those who have it through a pack.
+- **A template is the one reader that follows the packs.**
+  `{{extension.services}}` is `Services::userSlugs()`: what the user is
+  assigned and everything under it, each slug once, sorted, joined by commas
+  -- a phone asks whether the user has a service, not how. Nothing else acts
+  on an assignment yet.
 
 ### Migrations deliberately not written
 
