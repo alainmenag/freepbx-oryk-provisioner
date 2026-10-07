@@ -2118,11 +2118,16 @@ foreach ($s['navigator']->levels(['client' => '5']) as $level) {
 	$levels[$level['key']] = $level;
 }
 is_eq('anywhere else it opens the client', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&client=5');
-$bar = array_column($s['navigator']->sections('users', ['user' => '1001']), 'href', 'key');
+$bar = array_column(array_column($s['navigator']->sections('users', ['user' => '1001']), null, 'key')['logs']['items'], 'href', 'key');
 is_eq('from a user\'s page the bar\'s Overview opens on it', $bar['overview'], '?display=oryk_provisioner&tab=overview&scope=user:1001');
-$bar = array_column($s['navigator']->sections('users', ['user' => 'new']), 'href', 'key');
+$bar = array_column(array_column($s['navigator']->sections('users', ['user' => 'new']), null, 'key')['logs']['items'], 'href', 'key');
 is_eq('but not from a new one', $bar['overview'], '?display=oryk_provisioner&tab=overview');
 is_eq('Users is still where a bare URL lands', $s['navigator']->section(''), 'users');
+$bar = $s['navigator']->sections('clients');
+is_eq('a group is one bar entry: its active section, else its first', array_column($bar, 'active', 'key'), ['clients' => true, 'logs' => false, 'settings' => false]);
+is_eq('which goes where that section does', [$bar[0]['href'], $bar[1]['href']], ['?display=oryk_provisioner&tab=clients', '?display=oryk_provisioner&tab=logs']);
+is_eq('and lists the whole group in order', array_column($bar[0]['items'], 'active', 'key'), ['users' => false, 'clients' => true, 'profiles' => false]);
+is_eq('an ungrouped section has no menu', isset($bar[2]['items']), false);
 
 $s = overview_build([]);
 $s['app']->Database->fetches = [];

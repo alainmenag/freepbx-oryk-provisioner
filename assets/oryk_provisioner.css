@@ -155,7 +155,7 @@ tr.oryk-disabled > td a:not(.btn) {
 	font-weight: 400;
 	color: #999;
 }
-.oryk-sections ul {
+.oryk-sections > ul {
 	display: flex;
 	flex-wrap: wrap;
 	margin: 0;
@@ -163,7 +163,7 @@ tr.oryk-disabled > td a:not(.btn) {
 	list-style: none;
 	margin-bottom: -2px;
 }
-.oryk-sections ul > li > a {
+.oryk-sections > ul > li > a {
 	display: block;
 	margin-bottom: -1px;
 	padding: 10px 14px 9px;
@@ -174,14 +174,70 @@ tr.oryk-disabled > td a:not(.btn) {
 	font-weight: 700;
 	color: #0f5a59;
 }
-.oryk-sections ul > li > a:hover,
-.oryk-sections ul > li > a:focus {
+.oryk-sections > ul > li > a:hover,
+.oryk-sections > ul > li > a:focus,
+.oryk-sections > ul > li.oryk-sections-group:hover > a {
 	border-bottom-color: #ccc;
 	background: #f7f7f7;
 }
-.oryk-sections ul > li.active > a {
+.oryk-sections > ul > li.active > a {
 	border-bottom-color: currentColor;
 	color: currentColor;
+}
+
+/*
+ * A group of sections: a bar entry with a menu under it. Every bar rule
+ * above is a child selector for this menu's sake -- it is a <ul> inside the
+ * bar, and would otherwise be laid out as a second bar.
+ *
+ * The entry is a link like any other, so nothing toggles the menu: it is
+ * open while the pointer or the focus is in the group. It has no top margin
+ * so the pointer never crosses a gap on its way down.
+ */
+.oryk-sections .oryk-sections-group {
+	position: relative;
+}
+/* Wide enough for the longest name in a group, so the bar does not shift
+   when the entry changes from one of its sections to another. */
+.oryk-sections > ul > li.oryk-sections-group > a {
+	min-width: 124px;
+}
+.oryk-sections .oryk-sections-group:hover > .oryk-sections-menu,
+.oryk-sections .oryk-sections-group:focus-within > .oryk-sections-menu {
+	display: block;
+}
+.oryk-sections .oryk-sections-caret {
+	width: 10px;
+	height: 10px;
+	margin-left: 6px;
+	vertical-align: 1px;
+	stroke-width: 3;
+	opacity: 0.6;
+}
+.oryk-sections .oryk-sections-menu {
+	min-width: 160px;
+	margin: 0;
+	padding: 4px 0;
+	list-style: none;
+}
+.oryk-sections .oryk-sections-menu > li > a {
+	display: block;
+	padding: 7px 16px;
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 600;
+	text-decoration: none;
+	white-space: nowrap;
+	color: #0f5a59;
+}
+.oryk-sections .oryk-sections-menu > li > a:hover,
+.oryk-sections .oryk-sections-menu > li > a:focus {
+	background: #f5f5f5;
+}
+/* Stated in full, as the navigator's is: Bootstrap draws this white-on-blue. */
+.oryk-sections .oryk-sections-menu > li.active > a {
+	background: #eef2f0;
+	color: #333;
 }
 
 /* ----------------------------------------------------------------------
