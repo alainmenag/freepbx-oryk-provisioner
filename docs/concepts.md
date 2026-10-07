@@ -60,8 +60,12 @@ both `Basic User` and `Advanced User`. Both sides are edited on the service's
 page, as a list of every other service to tick. A service cannot be under
 itself or under anything beneath it — those choices are greyed out. Deleting a
 service removes its links and leaves the services over and under it in place.
-A service with at least one service under it is a **service pack**, ticked in
-the Service Pack column of the Services list; nothing is set to make it one.
+A service with at least one service under it is a **service pack**; nothing
+is set to make it one.
+Two filters beside Add Service narrow the list: Custom or Module
+services — it opens on Custom, the ones you made — and Services or Service
+Packs. There, Services means the ones with nothing under them, and is what
+the list opens on.
 Every service also has a **slug** — `call-recording` — unique, lowercase
 letters and digits joined by hyphens. It is made from the name and is not editable:
 renaming a service gives it a new slug, and everything that referred to the

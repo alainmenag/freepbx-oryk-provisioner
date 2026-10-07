@@ -96,6 +96,9 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
 	 *                                                        the list, narrowed
 	 *                                                        to what that row scopes
+	 *   ?display=oryk_provisioner&tab=services&source=<custom|module>&kind=<single|pack>
+	 *                                                        the Services list,
+	 *                                                        as its filters are set
 	 *   ?display=oryk_provisioner&tab=overview&scope=<user|client>:<id>
 	 *                                                        everything tied to
 	 *                                                        that user or client
@@ -575,10 +578,10 @@ class Pages extends Service
 					Settings::OPEN_EMERGENCY_CID => _('the extension'),
 				])
 				: [],
-			// Whether the Users table offers Expired: Lobby Expiry is on.
-			'expireDays' => $tab === 'users' ? (int) $this->settings->get(Settings::OPEN_EXPIRE_DAYS) : 0,
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
+			// The Services list's two filters, as the address has them.
+			'serviceFilter' => $tab === 'services' ? Services::filters($_REQUEST) : [],
 			// What the State column warns with before refusing your own address.
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),

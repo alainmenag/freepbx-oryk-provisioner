@@ -2,22 +2,46 @@
 /**
  * views/partials/services.php -- the services, as a table.
  *
- * Service Pack is ticked on a service with at least one service under it;
- * which ones, and what it is under itself, are on its own page. One of the
+ * A name and its actions: what a service is under, and what is under it, are
+ * on its own page. One of the
  * module's own is labelled so, and has View where the others have a trash
  * can and Edit.
+ *
+ * Two selects in the toolbar narrow it, independently: whose the service is
+ * (Custom, which it opens on, or Module) and which kind it is: Services,
+ * which it opens on and which means one with nothing under it, or Service
+ * Packs. Neither select has an "all". **The filters are the address**
+ * (`&source=`, `&kind=`, each left out at its default): changing one is a
+ * page load, so a reload, a bookmark and Back all keep them. Each option says how many services it
+ * would list with the other select left as it is, from the `counts` every
+ * listServices answer carries, so a delete or a change of filter keeps them
+ * true. They count every service, whatever is in the search box.
  *
  * Included by views/admin.php, which already defines orykPost() and
  * orykEscape().
  *
- * @var callable $icon Prints assets/icons/<name>.svg
+ * @var array<string, string> $serviceFilter Services::filters(): source, kind
+ * @var callable              $icon          Prints assets/icons/<name>.svg
  */
+
+$serviceFilter = (isset($serviceFilter) && is_array($serviceFilter) ? $serviceFilter : []) + ['source' => 'custom', 'kind' => 'single'];
+$serviceChosen = function ($filter, $value) use ($serviceFilter) {
+	return $serviceFilter[$filter] === $value ? ' selected' : '';
+};
 ?>
 
 <div id="service_toolbar" class="oryk-toolbar">
 	<a class="btn btn-primary" href="?display=oryk_provisioner&amp;service=">
 		<?php echo $icon('plus'); ?> <?php echo _('Add Service'); ?>
 	</a>
+	<select class="form-control oryk-toolbar-filter" id="service_source" aria-label="<?php echo _('Show services from'); ?>">
+		<option value="custom" data-label="<?php echo _('Custom'); ?>"<?php echo $serviceChosen('source', 'custom'); ?>><?php echo _('Custom'); ?></option>
+		<option value="module" data-label="<?php echo _('Module'); ?>"<?php echo $serviceChosen('source', 'module'); ?>><?php echo _('Module'); ?></option>
+	</select>
+	<select class="form-control oryk-toolbar-filter" id="service_kind" aria-label="<?php echo _('Show service packs'); ?>">
+		<option value="single" data-label="<?php echo _('Services'); ?>"<?php echo $serviceChosen('kind', 'single'); ?>><?php echo _('Services'); ?></option>
+		<option value="pack" data-label="<?php echo _('Service Packs'); ?>"<?php echo $serviceChosen('kind', 'pack'); ?>><?php echo _('Service Packs'); ?></option>
+	</select>
 </div>
 
 <table
@@ -25,6 +49,7 @@
 	data-toggle="table"
 	data-url="ajax.php?module=oryk_provisioner&command=listServices"
 	data-toolbar="#service_toolbar"
+	data-query-params="orykServiceQuery"
 	class="table table-striped"
 	data-side-pagination="server"
 	data-pagination="true"
@@ -38,13 +63,53 @@
 	<thead>
 		<tr>
 			<th data-field="name" data-formatter="formatServiceName" data-sortable="true"><?php echo _('Name'); ?></th>
-			<th data-field="pack" data-formatter="formatServicePack" data-sortable="true" data-align="center"><?php echo _('Service Pack'); ?></th>
 			<th data-field="actions" data-formatter="formatServiceActions" data-align="right"><?php echo _('Actions'); ?></th>
 		</tr>
 	</thead>
 </table>
 
 <script>
+
+	// Both filters ride in the list's query, read off the selects the page
+	// drew from its address. The server whitelists the values.
+	function orykServiceQuery(params) {
+		params.source = $('#service_source').val() || '';
+		params.kind = $('#service_kind').val() || '';
+
+		return params;
+	}
+
+	// A filter is part of the address, so choosing one goes there; a default
+	// is the address without it.
+	$(document).on('change', '#service_source, #service_kind', function () {
+		const source = $('#service_source').val();
+		const kind = $('#service_kind').val();
+
+		window.location = '?display=oryk_provisioner&tab=services'
+			+ (source !== 'custom' ? '&source=' + encodeURIComponent(source) : '')
+			+ (kind !== 'single' ? '&kind=' + encodeURIComponent(kind) : '');
+	});
+
+	// Each option's count is of what choosing it would list, the other select
+	// staying where it is: the two filters cross.
+	$(document).on('load-success.bs.table', '#service_table', function (event, data) {
+		const counts = data && data.counts;
+
+		if (!counts) {
+			return;
+		}
+
+		const source = $('#service_source').val();
+		const kind = $('#service_kind').val();
+
+		$('#service_source option').each(function () {
+			$(this).text(`${$(this).data('label')} (${(counts[this.value] || {})[kind] || 0})`);
+		});
+
+		$('#service_kind option').each(function () {
+			$(this).text(`${$(this).data('label')} (${(counts[source] || {})[this.value] || 0})`);
+		});
+	});
 
 	// A service's page is named by its slug.
 	function orykServiceHref(row) {
@@ -63,15 +128,6 @@
 			: link;
 	}
 
-
-	// A pack is a service with services under it; the title says how many.
-	function formatServicePack(value, row) {
-		const count = Number(row.children);
-
-		return count
-			? `<span title="${count} service${count === 1 ? '' : 's'} under it" aria-label="Service pack">${orykIcon('check')}</span>`
-			: '';
-	}
 
 	function formatServiceActions(value, row) {
 		const href = orykServiceHref(row);

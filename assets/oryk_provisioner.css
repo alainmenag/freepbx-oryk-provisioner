@@ -520,8 +520,8 @@ tr.oryk-disabled > td a:not(.btn) {
 	margin-left: 8px;
 }
 
-/* The Users table's All / Lobby / Expired, beside Add User in its toolbar. */
-.oryk-user-filter {
+/* A select narrowing a table, beside Add in its toolbar: Services' two. */
+.oryk-toolbar-filter {
 	display: inline-block;
 	width: auto;
 	margin-left: 6px;

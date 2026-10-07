@@ -464,8 +464,19 @@ same in the table, in `DEFAULTS` and to anything outside the module.
 - Deleting a service deletes its links and nothing else: what was over or
   under it stays.
 - **A service pack is a service with at least one child**, read off the links
-  (`listServices`' `children`) and stored nowhere, so it cannot disagree with
-  them. The list's one column about links is that tick.
+  (`listServices`' `kind` filter) and stored nowhere, so it cannot disagree
+  with them. The list has no column for it. Its toolbar's two
+  selects narrow it by `source` (`custom`, which the page opens on, or
+  `module`) and `kind` (`single`, labelled Services and what the page opens
+  on, or `pack`); neither select offers "all", though the command answers
+  unnarrowed when a filter is not sent. Each option carries a count in its
+  text -- what it would list with the other select left alone, from
+  `Services::counts()` on every list answer, of every service whatever is
+  searched for. They are option text, not badges. **The filters are in the page's address**
+  (`&tab=services&source=module&kind=pack`, a default left out;
+  `Services::filters()` reads them and the selects are drawn chosen), so a
+  change of filter is a page load, as a tab is. Both filters are asked in SQL so the page
+  count stays true.
 - A service's page is `?service=<slug>`, one tab. A save lands on
   the slug its answer names, which is a new address after a rename; saves and
   deletes are posted the row's id.

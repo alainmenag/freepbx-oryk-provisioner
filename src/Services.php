@@ -52,17 +52,20 @@ class Services extends Service
 	const SLUG_PATTERN = '/^[a-z0-9]+(-[a-z0-9]+)*$/';
 
 	/**
-	 * Rows for the Services table. `children` is how many services are
-	 * directly under each: above zero, it is a service pack. `managed` is
-	 * whether it is one of the module's.
+	 * Rows for the Services table. `managed` is whether each is one of the
+	 * module's.
 	 *
-	 * @return array<string, mixed> Total row count and the page of rows.
+	 * Narrowed by two filters, each off unless it is one of its two values:
+	 * `source` (`module`, `custom`) and `kind` (`pack`, a service with at
+	 * least one under it, or `single`).
+	 *
+	 * @return array<string, mixed> Total row count, the page of rows, and
+	 *                              counts(), for the filters' own labels.
 	 */
 	public function listServices()
 	{
 		$sortable = [
 			'name' => 's.name',
-			'pack' => 'children',
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['name'];
@@ -73,13 +76,30 @@ class Services extends Service
 		$search = (string) ($_REQUEST['search'] ?? '');
 
 		$params = [];
-		$where = '';
+		$clauses = [];
 
 		if ($search !== '') {
-			$where = 'WHERE s.name LIKE :search OR s.slug LIKE :search_slug';
+			$clauses[] = '(s.name LIKE :search OR s.slug LIKE :search_slug)';
 			$params[':search'] = '%' . $search . '%';
 			$params[':search_slug'] = '%' . $search . '%';
 		}
+
+		$source = (string) ($_REQUEST['source'] ?? '');
+
+		// "Module" is the slug being in DEFAULTS, as managed() has it.
+		if ($source === 'module' || $source === 'custom') {
+			$clauses[] = ($source === 'custom' ? 'NOT ' : '')
+				. '(' . $this->inClause('s.slug', array_map('strval', array_keys(self::DEFAULTS)), 'default', $params) . ')';
+		}
+
+		$kind = (string) ($_REQUEST['kind'] ?? '');
+
+		if ($kind === 'pack' || $kind === 'single') {
+			$clauses[] = ($kind === 'single' ? 'NOT ' : '')
+				. "EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug)";
+		}
+
+		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
 
 		$countStmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->servicesTable}` s $where");
 		$countStmt->execute($params);
@@ -89,12 +109,7 @@ class Services extends Service
 			SELECT
 				s.id,
 				s.name,
-				s.slug,
-				(
-					SELECT COUNT(*)
-					FROM `{$this->serviceLinksTable}` l
-					WHERE l.parent = s.slug
-				) AS children
+				s.slug
 			FROM `{$this->servicesTable}` s
 			$where
 			ORDER BY $sort $order
@@ -112,7 +127,54 @@ class Services extends Service
 		return [
 			'total' => $total,
 			'rows' => array_map([$this, 'marked'], $stmt->fetchAll(PDO::FETCH_ASSOC)),
+			'counts' => $this->counts(),
 		];
+	}
+
+	/**
+	 * What the Services page's address says its two filters are set to.
+	 *
+	 * @param array<string, mixed> $request The page's request: `source`, `kind`.
+	 *
+	 * @return array<string, string> source (custom|module) and kind
+	 *                               (single|pack); custom and single when the
+	 *                               address names neither, or names nonsense.
+	 */
+	public static function filters(array $request)
+	{
+		return [
+			'source' => ($request['source'] ?? '') === 'module' ? 'module' : 'custom',
+			'kind' => ($request['kind'] ?? '') === 'pack' ? 'pack' : 'single',
+		];
+	}
+
+	/**
+	 * How many services each pairing of the list's two filters holds.
+	 *
+	 * Of every service, whatever is in the search box: these label the
+	 * filters, and the table's own total is what says how many matched.
+	 *
+	 * @return array<string, array<string, int>> By source (custom|module), then kind (single|pack).
+	 */
+	public function counts()
+	{
+		$counts = [
+			'custom' => ['single' => 0, 'pack' => 0],
+			'module' => ['single' => 0, 'pack' => 0],
+		];
+
+		$stmt = $this->db->prepare(
+			"SELECT s.slug,
+				EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug) AS pack
+			FROM `{$this->servicesTable}` s"
+		);
+		$stmt->execute();
+
+		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+			$counts[self::managed($row['slug']) ? 'module' : 'custom'][(int) $row['pack'] ? 'pack' : 'single']++;
+		}
+
+		return $counts;
 	}
 
 	/**
