@@ -85,8 +85,8 @@ diffing. Never rewrite a file wholesale to reword its comments.
   never shows it.
 - Icons are `assets/icons/*.svg`, printed with `$icon('<name>')` in a view and
   `orykIcon('<name>')` in JS. No `fa fa-*`.
-- The only badges are the navigator dropdown titles' `count`, from `Navigator`;
-  tabs and the section bar carry none.
+- The only badges are the navigator's, from `Navigator`: a dropdown title's
+  `count`, and an option's `badge` ("Pack"); tabs and the section bar carry none.
 - `Schema` steps are additive and ask `information_schema`, never a dbversion.
   `addResourceTypeColumn()` must stay after `addResourceFileColumns()`.
 - `bin/oryk-fail2ban` is the root privilege boundary: it re-checks every

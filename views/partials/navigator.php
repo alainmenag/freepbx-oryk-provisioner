@@ -2,7 +2,7 @@
 /**
  * views/partials/navigator.php -- the row of dropdowns under the section bar.
  *
- * Users, Clients, Profiles, Resources, Logs, Bans, each scoped by the row the
+ * Users, Clients, Profiles, Resources, Services, Logs, Bans, each scoped by the row the
  * page is viewing: on a profile, Clients lists that profile's clients. What is in
  * scope is Navigator's business (see src/Navigator.php); this only draws it.
  *
@@ -40,7 +40,7 @@
  *                                       Each: key, title of text and href,
  *                                       text, href (the chosen row's
  *                                       page, or ''), mono, prompt, search,
- *                                       options[] of text, note, href, active,
+ *                                       options[] of text, note, badge, href, active,
  *                                       empty (what a menu with no options
  *                                       says), count (the title's badge, or
  *                                       null for none), add of text, href,
@@ -114,7 +114,7 @@ $e = function ($value) {
 					<?php foreach ($level['options'] as $option): ?>
 						<li class="oryk-nav-option<?php echo !empty($option['active']) ? ' active' : ''; ?>">
 							<a href="<?php echo $e($option['href']); ?>">
-								<span class="oryk-nav-label<?php echo $mono; ?>"><?php echo $e($option['text']); ?></span>
+								<span class="oryk-nav-label<?php echo $mono; ?>"><?php echo $e($option['text']); ?><?php if ((string) ($option['badge'] ?? '') !== ''): ?> <span class="badge oryk-nav-badge"><?php echo $e($option['badge']); ?></span><?php endif; ?></span>
 								<?php if ((string) $option['note'] !== ''): ?>
 									<span class="oryk-nav-note"><?php echo $e($option['note']); ?></span>
 								<?php endif; ?>

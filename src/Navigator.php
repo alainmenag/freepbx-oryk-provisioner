@@ -10,8 +10,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Two halves. sections() is the module's top level, drawn as the bar over
  * every page by views/partials/sections.php. levels() is the row of dropdowns
  * views/partials/navigator.php draws under it: Users, Clients, Profiles,
- * Resources, Logs and Bans, always all six, always in that order -- who, which
- * phone, what configuration, which file, what it asked, what refuses it.
+ * Resources, Services, Logs and Bans, always all seven, always in that order
+ * -- who, which phone, what configuration, which file, what they are assigned,
+ * what it asked, what refuses it.
  *
  * The page being viewed sets the scope; ARCHITECTURE.md, "Conventions that
  * hold everywhere", has the rules. A new row has no links yet, so it scopes
@@ -55,10 +56,13 @@ class Navigator extends Service
 	/** @var Bans */
 	private $bans;
 
+	/** @var Services */
+	private $services;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, Services $services)
 	{
 		parent::__construct($freepbx);
 
@@ -68,14 +72,16 @@ class Navigator extends Service
 		$this->users = $users;
 		$this->requestLog = $requestLog;
 		$this->bans = $bans;
+		$this->services = $services;
 	}
 
 	/**
-	 * The six dropdowns, scoped by the row a page is viewing.
+	 * The seven dropdowns, scoped by the row a page is viewing.
 	 *
 	 * `$at` names that row: `user` (an extension), `client`, `profile`,
-	 * `profile` and `resource` together, `log` or `ban`. Each is an id, or 'new'
-	 * on a page writing one that does not exist yet. Empty on a page viewing no row.
+	 * `profile` and `resource` together, `log`, `ban` or `service` (a slug).
+	 * Each is an id, or 'new' on a page writing one that does not exist yet.
+	 * Empty on a page viewing no row.
 	 *
 	 * On Overview the Users and Clients options re-open Overview on the row
 	 * chosen, since choosing one is how that page is pointed at something.
@@ -85,7 +91,7 @@ class Navigator extends Service
 	 *                                      options depend on it: 'overview'.
 	 *
 	 * @return array<int, array<string, mixed>> Users, clients, profiles,
-	 *                                           resources, logs, bans.
+	 *                                           resources, services, logs, bans.
 	 */
 	public function levels(array $at = [], $section = '')
 	{
@@ -97,6 +103,7 @@ class Navigator extends Service
 		$resource = isset($at['resource']) ? (string) $at['resource'] : null;
 		$log = isset($at['log']) ? (string) $at['log'] : null;
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
+		$service = isset($at['service']) ? (string) $at['service'] : null;
 
 		$clientRows = $this->clients->clientChoices();
 		$profileNames = [];
@@ -126,6 +133,7 @@ class Navigator extends Service
 			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile, $from, $overview),
 			$this->profileLevel($profileNames, $scope['profiles'], $profile, $from),
 			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
+			$this->serviceLevel($scope['services'], $service, $user, $from),
 			$this->logLevel($scope['logs'], $scope['ip'], $log, $scope['entry'], $client, $from),
 			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $scope['entry'], $from),
 		];
@@ -142,7 +150,8 @@ class Navigator extends Service
 	 * @param array<string, mixed> $at Row being viewed, as levels() takes it.
 	 *
 	 * @return array<string, mixed> users, clients, profiles, files, bans: ids
-	 *                              or null for unscoped; logs: MACs or null;
+	 *                              or null for unscoped; services: slugs or
+	 *                              null; logs: MACs or null;
 	 *                              ip: address or null; entry: the viewed log
 	 *                              entry's logRow() or null; banRows: the bans
 	 *                              that apply, when bans is scoped, or null.
@@ -167,7 +176,7 @@ class Navigator extends Service
 	 */
 	public function scopeKey(array $at)
 	{
-		foreach (['client', 'user', 'profile', 'log', 'ban'] as $kind) {
+		foreach (['client', 'user', 'profile', 'log', 'ban', 'service'] as $kind) {
 			if (isset($at[$kind]) && $this->written((string) $at[$kind])) {
 				return $kind . ':' . (string) $at[$kind];
 			}
@@ -189,7 +198,7 @@ class Navigator extends Service
 	{
 		$parts = explode(':', (string) $key, 2);
 
-		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban'], true)) {
+		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban', 'service'], true)) {
 			return [];
 		}
 
@@ -234,7 +243,7 @@ class Navigator extends Service
 	/**
 	 * Whether a section's list is narrowed by a scope(), and so drawn with `&scope=`.
 	 *
-	 * @param string               $section users|clients|profiles|logs|bans.
+	 * @param string               $section users|clients|profiles|services|logs|bans.
 	 * @param array<string, mixed> $scope   scope().
 	 *
 	 * @return bool Narrowed.
@@ -245,7 +254,7 @@ class Navigator extends Service
 			return $scope['logs'] !== null || $scope['ip'] !== null;
 		}
 
-		return in_array($section, ['users', 'clients', 'profiles', 'bans'], true) && $scope[$section] !== null;
+		return in_array($section, ['users', 'clients', 'profiles', 'services', 'bans'], true) && $scope[$section] !== null;
 	}
 
 	/**
@@ -263,13 +272,19 @@ class Navigator extends Service
 		$profile = isset($at['profile']) ? (string) $at['profile'] : null;
 		$log = isset($at['log']) ? (string) $at['log'] : null;
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
+		$service = isset($at['service']) ? (string) $at['service'] : null;
 
 		// null is "not scoped": the level lists everything. An array is the ids
 		// linked to the row being viewed, and may be empty. Logs are scoped by
 		// MAC, and by address in `ip`.
-		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'logs' => null, 'bans' => null];
+		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'services' => null, 'logs' => null, 'bans' => null];
 		$ip = null;
 		$entry = null;
+
+		// Services follow Users: whose assignments the Services level lists.
+		// A viewed service lists all of its kind, like any row's own level.
+		$holders = null;
+		$own = false;
 
 		// What the viewed row's requests would be, for Bans::applies(); null
 		// where the Bans level is not scoped.
@@ -290,6 +305,7 @@ class Navigator extends Service
 			$scope['profiles'] = [];
 			$linked = [];
 			$requests = [['user' => $user]];
+			$holders = [$user];
 
 			foreach ($clientRows as $row) {
 				if ($this->owner($row) === $user) {
@@ -356,6 +372,43 @@ class Navigator extends Service
 				$scope = $this->banScope($row, $clientRows) + $scope;
 				$ip = $row['ip'] !== null ? (string) $row['ip'] : null;
 			}
+		} elseif ($this->written($service)) {
+			// The other way round, like a ban: the users assigned it themselves
+			// -- never through a pack -- and what their phones are linked to.
+			$own = true;
+			$scope['users'] = $this->services->usersOf($service);
+			$scope['clients'] = [];
+			$scope['profiles'] = [];
+			$linked = [];
+			$requests = [];
+
+			foreach ($scope['users'] as $extension) {
+				$requests[] = ['user' => $extension];
+			}
+
+			foreach ($clientRows as $row) {
+				if (in_array($this->owner($row), $scope['users'], true)) {
+					$scope['clients'][] = (int) $row['id'];
+					$linked[] = $row;
+					$requests[] = $this->subjects($row);
+
+					if ((int) $row['profile_id']) {
+						$scope['profiles'][] = (int) $row['profile_id'];
+					}
+				}
+			}
+
+			$scope['profiles'] = array_values(array_unique($scope['profiles']));
+			$scope['files'] = $scope['profiles'];
+			$scope['logs'] = $this->macs($linked);
+		}
+
+		if (!$own && $holders === null) {
+			$holders = $scope['users'];
+		}
+
+		if ($holders !== null) {
+			$scope['services'] = $this->services->assignedTo($holders);
 		}
 
 		$applying = null;
@@ -688,6 +741,56 @@ class Navigator extends Service
 	}
 
 	/**
+	 * Services: all of them, or the ones the users in scope are assigned
+	 * themselves. One a user has only through a pack is not listed. A service
+	 * pack is badged "Pack".
+	 *
+	 * @param array<int, string>|null $scope Slugs assigned, or null for all.
+	 * @param string|null             $at    Slug being viewed, 'new', or null.
+	 * @param string|null             $user  Extension being viewed, or null.
+	 * @param string                  $from  scopeKey() of the viewed row, or ''.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function serviceLevel($scope, $at, $user, $from)
+	{
+		$rows = [];
+		$packs = $this->services->packs();
+
+		foreach ($this->services->serviceChoices() as $row) {
+			$slug = (string) $row['slug'];
+
+			// A page is addressed by slug, so a row with none yet has no page.
+			if ($slug === '') {
+				continue;
+			}
+
+			$rows[] = [
+				'id' => $slug,
+				'text' => (string) $row['name'],
+				'note' => '',
+				'badge' => in_array($slug, $packs, true) ? _('Pack') : '',
+				'href' => '?display=oryk_provisioner&service=' . rawurlencode($slug),
+			];
+		}
+
+		// The list this level is drawn from: the viewed user's own Services tab.
+		$list = $this->written($user)
+			? '?display=oryk_provisioner&user=' . rawurlencode($user) . '&tab=services'
+			: self::listHref('services', $from, $scope !== null);
+
+		return $this->level($rows, $scope, $at, [
+			'key' => 'service',
+			'title' => ['text' => _('Services'), 'href' => $list],
+			'mono' => false,
+			'new' => _('New service'),
+			'search' => _('Search services'),
+			'none' => _('No services here'),
+			'add' => ['text' => _('New service'), 'href' => '?display=oryk_provisioner&service='],
+		]);
+	}
+
+	/**
 	 * The levels a ban scopes, from the clients it applies to.
 	 *
 	 * Users and Profiles add the user and profile the ban names, which may have
@@ -956,12 +1059,14 @@ class Navigator extends Service
 	/**
 	 * One level, from every row of its kind and the scope it is narrowed to.
 	 *
-	 * The row being viewed is the active one. A scope of exactly one row makes
-	 * that row active too: it is the only thing this level can be, here.
+	 * Only the row being viewed is the active one: a scope of exactly one row
+	 * is still a list of one, and is not chosen for you.
 	 *
 	 * @param array<int, array<string, mixed>> $rows  Each: id, text, note, href,
-	 *                                                and page where the row's
-	 *                                                own page is not its href.
+	 *                                                page where the row's
+	 *                                                own page is not its href,
+	 *                                                and badge where the option
+	 *                                                carries one.
 	 * @param array<int, mixed>|null           $scope Ids to keep, or null for all.
 	 * @param string|null                      $at    Id being viewed, 'new', or null.
 	 * @param array<string, mixed>             $meta  key, title, mono, new,
@@ -992,11 +1097,12 @@ class Navigator extends Service
 				continue;
 			}
 
-			$active = $at === $id || ($keep !== null && count($keep) === 1);
+			$active = $at === $id;
 
 			$options[] = [
 				'text' => $row['text'],
 				'note' => $row['note'],
+				'badge' => isset($row['badge']) ? (string) $row['badge'] : '',
 				'href' => $row['href'],
 				'active' => $active,
 			];

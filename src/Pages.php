@@ -359,8 +359,10 @@ class Pages extends Service
 			'choices' => $this->services->serviceChoices(),
 			'related' => $this->services->related((string) ($service['slug'] ?? '')),
 			'sections' => $this->navigator->sections('services'),
-			// A service is linked to nothing the dropdowns list, so it scopes nothing.
-			'navigator' => $this->navigator->levels(),
+			// An unwritten service is assigned to nobody yet, so it scopes nothing.
+			'navigator' => $this->navigator->levels([
+				'service' => (string) $service['slug'] !== '' ? (string) $service['slug'] : 'new',
+			]),
 		]);
 	}
 
@@ -646,6 +648,7 @@ class Pages extends Service
 			'profile' => _('profile %s'),
 			'log' => _('log entry %s'),
 			'ban' => _('ban %s'),
+			'service' => _('service %s'),
 		];
 
 		foreach ($navigator as $level) {

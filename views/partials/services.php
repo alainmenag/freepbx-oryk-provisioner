@@ -10,21 +10,26 @@
  * Two selects in the toolbar narrow it, independently: whose the service is
  * (Available, which is every one and what it opens on, Custom or Module) and which kind
  * it is: All, which it opens on, Services, which means one with nothing
- * under it, or Service Packs. **The filters are the address**
+ * under it, or Packs. **The filters are the address**
  * (`&source=`, `&kind=`, each left out at its default): changing one is a
  * page load, so a reload, a bookmark and Back all keep them. Each option says how many services it
  * would list with the other select left as it is, from the `counts` every
  * listServices answer carries, so a delete or a change of filter keeps them
- * true. They count every service, whatever is in the search box.
+ * true. They count every service in scope, whatever is in the search box.
+ *
+ * Narrowed by `&scope=` like every list (see views/admin.php), and a change
+ * of filter keeps it.
  *
  * Included by views/admin.php, which already defines orykPost() and
  * orykEscape().
  *
  * @var array<string, string> $serviceFilter Services::filters(): source, kind
+ * @var array<string, string>|null $scope    What the list is narrowed to, or null
  * @var callable              $icon          Prints assets/icons/<name>.svg
  */
 
 $serviceFilter = (isset($serviceFilter) && is_array($serviceFilter) ? $serviceFilter : []) + ['source' => 'all', 'kind' => 'all'];
+$serviceScope = (isset($scope) && is_array($scope)) ? (string) $scope['key'] : '';
 $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 	return $serviceFilter[$filter] === $value ? ' selected' : '';
 };
@@ -39,17 +44,17 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 		<option value="custom" data-label="<?php echo _('Custom'); ?>"<?php echo $serviceChosen('source', 'custom'); ?>><?php echo _('Custom'); ?></option>
 		<option value="module" data-label="<?php echo _('Module'); ?>"<?php echo $serviceChosen('source', 'module'); ?>><?php echo _('Module'); ?></option>
 	</select>
-	<select class="form-control oryk-toolbar-filter" id="service_kind" aria-label="<?php echo _('Show service packs'); ?>">
+	<select class="form-control oryk-toolbar-filter" id="service_kind" aria-label="<?php echo _('Show packs'); ?>">
 		<option value="all" data-label="<?php echo _('All'); ?>"<?php echo $serviceChosen('kind', 'all'); ?>><?php echo _('All'); ?></option>
 		<option value="single" data-label="<?php echo _('Services'); ?>"<?php echo $serviceChosen('kind', 'single'); ?>><?php echo _('Services'); ?></option>
-		<option value="pack" data-label="<?php echo _('Service Packs'); ?>"<?php echo $serviceChosen('kind', 'pack'); ?>><?php echo _('Service Packs'); ?></option>
+		<option value="pack" data-label="<?php echo _('Packs'); ?>"<?php echo $serviceChosen('kind', 'pack'); ?>><?php echo _('Packs'); ?></option>
 	</select>
 </div>
 
 <table
 	id="service_table"
 	data-toggle="table"
-	data-url="ajax.php?module=oryk_provisioner&command=listServices"
+	data-url="ajax.php?module=oryk_provisioner&command=listServices<?php echo htmlspecialchars($serviceScope !== '' ? '&scope=' . rawurlencode($serviceScope) : '', ENT_QUOTES, 'UTF-8'); ?>"
 	data-toolbar="#service_toolbar"
 	data-query-params="orykServiceQuery"
 	class="table table-striped"
@@ -88,7 +93,10 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 		const source = $('#service_source').val();
 		const kind = $('#service_kind').val();
 
+		const scope = <?php echo json_encode($serviceScope); ?>;
+
 		window.location = '?display=oryk_provisioner&tab=services'
+			+ (scope !== '' ? '&scope=' + encodeURIComponent(scope) : '')
 			+ (source !== 'all' ? '&source=' + encodeURIComponent(source) : '')
 			+ (kind !== 'all' ? '&kind=' + encodeURIComponent(kind) : '');
 	});

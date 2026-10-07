@@ -498,9 +498,10 @@ slug, as everywhere else; the pair is the primary key.
   follow its extension (`Services::moveUser()`, from `ExtensionRenumberer`)
   and a deleted user's go with it (`forgetUser()`, from `Users::remove()`),
   since a freed number is handed out again.
-- Nothing reads an assignment yet but that tab and the Services list's
-  Assignments column, which counts a service's own rows -- the users ticked
-  for it, not those who have it through a pack.
+- Nothing reads an assignment yet but that tab, the Services list's
+  Assignments column and the navigator's Services level
+  (`Services::assignedTo()`, `usersOf()`). All three count a service's own
+  rows -- the users ticked for it, not those who have it through a pack.
 
 ### Migrations deliberately not written
 
@@ -985,11 +986,16 @@ made from one of the tables is answered by loading the page again.
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.
-  `views/partials/navigator.php` is a row of six searchable dropdowns under
-  it -- Users, Clients, Profiles, Resources, Logs, Bans -- scoped by the row the
+  `views/partials/navigator.php` is a row of seven searchable dropdowns under
+  it -- Users, Clients, Profiles, Resources, Services, Logs, Bans -- scoped by the row the
   page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
   what is linked to that row, the viewed row's own level lists all of its kind
-  with it selected, and a linked level with exactly one row shows it selected.
+  with it selected, and nothing else is ever selected: a linked level with
+  exactly one row lists that one row.
+  Services follow Users: the level lists what the users in scope -- the viewed
+  user, else the Users level's -- are assigned themselves, never what reaches
+  them through a pack. From the other side, a service scopes the users
+  assigned it themselves, and their clients, profiles, logs and bans.
   Logs are linked by MAC: a client's own, a user's or profile's clients'. Logs
   lists only the newest `Navigator::LOG_LIMIT` entries in scope, and its badge
   counts those; an unscoped Bans level likewise lists the newest
@@ -1002,7 +1008,7 @@ made from one of the tables is answered by loading the page again.
   address); a log entry scopes like the client with its MAC, and its Bans are
   those that apply to that request. A page viewing nothing (lists, Settings)
   scopes nothing. A level's title links to the table of what it counts: the
-  viewed row's own tab where it has one (a user's Clients, a client's Logs),
+  viewed row's own tab where it has one (a user's Clients or Services, a client's Logs),
   else the section's list with `&scope=<kind>:<id>` naming the viewed row; an
   unscoped level's title is the whole list. `Navigator::scope()` is the one
   computation behind both the dropdowns and every list command asked with
@@ -1060,9 +1066,10 @@ made from one of the tables is answered by loading the page again.
   one element with id `<id>-help` -- so help without that pair is never seen.
   A field with several paragraphs puts them in `.oryk-help-part` spans inside
   one block.
-- **The only badges are on the navigator's dropdown titles** -- the number of
+- **The only badges are in the navigator.** A dropdown's title carries the number of
   options that dropdown lists, from `Navigator`, so it always matches its menu
-  and is scoped like it. Neither the section bar nor a tab strip carries one,
+  and is scoped like it; an option may carry one saying what kind of row it
+  is -- a service pack is "Pack", read off the links (`Services::packs()`). Neither the section bar nor a tab strip carries one,
   and none is ever read off a table: a table with something in its search box
   answers with the total of what matched. They are drawn with the page and not
   refreshed in place.

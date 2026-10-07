@@ -324,6 +324,16 @@ tr.oryk-disabled > td a:not(.btn) {
 	vertical-align: 1px;
 }
 
+/* What kind of row an option is -- a service pack -- beside its name. */
+.oryk-nav .oryk-nav-menu .oryk-nav-badge {
+	margin-left: 4px;
+	padding: 1px 5px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 12px;
+	vertical-align: 1px;
+}
+
 /* A name that is typed exactly -- a filename, twelve hex digits -- is
    shown as it is spelled, here as everywhere else in the module. */
 .oryk-nav-mono {

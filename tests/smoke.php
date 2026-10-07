@@ -1945,7 +1945,7 @@ function overview_build(array $bans)
 	$profiles = new Profiles($app, $files);
 	$requestLog = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($app);
 	$banRepo = new Bans($app);
-	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo);
+	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo, new \FreePBX\Modules\Oryk_Provisioner\Services($app));
 	$client = ['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk'];
 
 	$app->Database->fetches = [

@@ -63,10 +63,13 @@ class Services extends Service
 	 * `source` (`module`, `custom`) and `kind` (`pack`, a service with at
 	 * least one under it, or `single`).
 	 *
+	 * @param array<int, string>|null $scope Slugs to keep, or null for all: a
+	 *                                       navigator scope.
+	 *
 	 * @return array<string, mixed> Total row count, the page of rows, and
 	 *                              counts(), for the filters' own labels.
 	 */
-	public function listServices()
+	public function listServices($scope = null)
 	{
 		$sortable = [
 			'name' => 's.name',
@@ -82,6 +85,10 @@ class Services extends Service
 
 		$params = [];
 		$clauses = [];
+
+		if ($scope !== null) {
+			$clauses[] = '(' . $this->inClause('s.slug', $scope, 'scope', $params) . ')';
+		}
 
 		if ($search !== '') {
 			$clauses[] = '(s.name LIKE :search OR s.slug LIKE :search_slug)';
@@ -137,7 +144,7 @@ class Services extends Service
 		return [
 			'total' => $total,
 			'rows' => array_map([$this, 'marked'], $stmt->fetchAll(PDO::FETCH_ASSOC)),
-			'counts' => $this->counts(),
+			'counts' => $this->counts($scope),
 		];
 	}
 
@@ -161,12 +168,14 @@ class Services extends Service
 	/**
 	 * How many services each pairing of the list's two filters holds.
 	 *
-	 * Of every service, whatever is in the search box: these label the
-	 * filters, and the table's own total is what says how many matched.
+	 * Of every service in scope, whatever is in the search box: these label
+	 * the filters, and the table's own total is what says how many matched.
+	 *
+	 * @param array<int, string>|null $scope Slugs to count, or null for all.
 	 *
 	 * @return array<string, array<string, int>> By source (custom|module), then kind (single|pack).
 	 */
-	public function counts()
+	public function counts($scope = null)
 	{
 		$counts = [
 			'custom' => ['single' => 0, 'pack' => 0],
@@ -181,6 +190,10 @@ class Services extends Service
 		$stmt->execute();
 
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+			if ($scope !== null && !in_array((string) $row['slug'], array_map('strval', $scope), true)) {
+				continue;
+			}
+
 			$counts[self::managed($row['slug']) ? 'module' : 'custom'][(int) $row['pack'] ? 'pack' : 'single']++;
 		}
 
@@ -479,6 +492,56 @@ class Services extends Service
 		}
 
 		return $rows;
+	}
+
+	/**
+	 * The packs: every service with at least one under it.
+	 *
+	 * @return array<int, string> Their slugs, each once.
+	 */
+	public function packs()
+	{
+		return array_values(array_unique(array_column($this->links(), 0)));
+	}
+
+	/**
+	 * The services some users are assigned themselves, for the navigator.
+	 *
+	 * @param array<int, string> $extensions The users' extensions.
+	 *
+	 * @return array<int, string> Their slugs, each once.
+	 */
+	public function assignedTo(array $extensions)
+	{
+		if (!$extensions) {
+			return [];
+		}
+
+		$params = [];
+		$stmt = $this->db->prepare(
+			"SELECT DISTINCT service FROM `{$this->serviceAssignmentsTable}` WHERE "
+			. $this->inClause('extension', $extensions, 'extension', $params)
+		);
+		$stmt->execute($params);
+
+		return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+	}
+
+	/**
+	 * The users assigned a service themselves, for the navigator.
+	 *
+	 * @param mixed $slug The service's slug.
+	 *
+	 * @return array<int, string> Their extensions.
+	 */
+	public function usersOf($slug)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT extension FROM `{$this->serviceAssignmentsTable}` WHERE service = :service"
+		);
+		$stmt->execute([':service' => (string) $slug]);
+
+		return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
 	}
 
 	/**
@@ -858,6 +921,7 @@ class Services extends Service
 
 	/**
 	 * A slug nobody else has: the one given, or it with `-2`, `-3`, ... after it.
+	 * Never `new`, which is how a page and the navigator name one not yet written.
 	 *
 	 * @param string $base     Slug wanted, from slugify().
 	 * @param int    $id       The service it is for, or 0 for a new one.
@@ -871,7 +935,7 @@ class Services extends Service
 			$tail = $n === 1 ? '' : '-' . $n;
 			$slug = substr($base, 0, self::SLUG_MAX - strlen($tail)) . $tail;
 
-			if (!($reserved && self::managed($slug)) && !$this->slugTaken($slug, $id)) {
+			if ($slug !== 'new' && !($reserved && self::managed($slug)) && !$this->slugTaken($slug, $id)) {
 				return $slug;
 			}
 		}

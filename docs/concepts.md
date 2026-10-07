@@ -64,7 +64,7 @@ A service with at least one service under it is a **service pack**; nothing
 is set to make it one.
 Two filters beside Add Service narrow the list: Available (every
 service), Custom (the ones you made) or Module — it opens on Available — and All, Services or
-Service Packs. There, Services means the ones with nothing under them; the
+Packs. There, Services means the ones with nothing under them; the
 list opens on All.
 Every service also has a **slug** — `call-recording` — unique, lowercase
 letters and digits joined by hyphens. It is made from the name and is not editable:
