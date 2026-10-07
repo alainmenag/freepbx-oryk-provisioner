@@ -714,18 +714,21 @@ class Users extends Service
 
 	/**
 	 * The user an existing User Manager login names: its account's default
-	 * extension. Takes no lock and makes nothing -- see signUp() for a username
-	 * no account holds.
+	 * extension. See signUp() for a username no account holds.
+	 *
+	 * A login whose extension or device has been deleted is given them back
+	 * (rebuild()), and `rebuilt` says so; otherwise this makes nothing.
 	 *
 	 * @param mixed $username Username offered.
 	 * @param mixed $password Password offered.
 	 *
-	 * @return array{extension: string, created: bool}|null Null when they are
-	 *                                                       not a login.
+	 * @return array<string, mixed>|null extension, created (false), and
+	 *                                   rebuilt when it was; null when they
+	 *                                   are not a login.
 	 *
 	 * @throws \InvalidArgumentException When the username or password is unusable.
 	 * @throws \RuntimeException         When User Manager is not available, or
-	 *                                   the account has no Extension/User.
+	 *                                   the account names no number to rebuild.
 	 */
 	public function findLogin($username, $password)
 	{
@@ -752,15 +755,63 @@ class Users extends Service
 		}
 
 		$extension = (string) ($account['default_extension'] ?? '');
-
-		// A phone needs the device: an extension whose device has gone is not a login.
 		$row = $this->userRow($extension);
 
-		if (!$row || empty($row['device'])) {
-			throw new \RuntimeException(_('That login has no Extension/User.'));
+		if ($row && !empty($row['device'])) {
+			return ['extension' => $extension, 'created' => false];
 		}
 
-		return ['extension' => $extension, 'created' => false];
+		// A good login whose extension or device has been deleted gets them
+		// back, on the number the account still names.
+		$this->rebuild($extension, (string) ($row['name'] ?? ($account['displayname'] ?? '')));
+
+		return ['extension' => $extension, 'created' => false, 'rebuilt' => true];
+	}
+
+	/**
+	 * Give an account's number its extension and device back: findLogin(),
+	 * for a login that outlived them.
+	 *
+	 * As a sign-up makes them -- in the lobby, one phone per login, live
+	 * through the bridge before Apply Config -- whatever the user was before:
+	 * open provisioning never makes anything outside the lobby. The account
+	 * is the one that just logged in, and is left as it is.
+	 *
+	 * @param string $extension The account's default extension.
+	 * @param string $name      What to call it; blank is the number.
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the account names no number, or one a
+	 *                           device of another kind holds.
+	 */
+	private function rebuild($extension, $name)
+	{
+		$this->withLock(function () use ($extension, $name) {
+			// Asked again under the lock: two requests from one phone arrive together.
+			$row = $this->userRow($extension);
+
+			if ($row && !empty($row['device'])) {
+				return;
+			}
+
+			if (!preg_match('/^[0-9]{1,20}$/', $extension) || $this->device($extension)) {
+				throw new \RuntimeException(_('That login has no Extension/User.'));
+			}
+
+			$this->store([
+				'id' => $extension,
+				'name' => $name,
+				'context' => $this->lobbyContext(),
+				'emergency_cid' => (string) $this->settings()->get(Settings::OPEN_EMERGENCY_CID),
+				'lobby' => true,
+				'rebuild' => true,
+			]);
+
+			if ($this->bridge) {
+				$this->bridge->add($extension);
+			}
+		});
 	}
 
 	/**
@@ -989,8 +1040,10 @@ class Users extends Service
 		$stored = $id === '' ? null : $this->device($id);
 
 		// An extension whose device has been deleted: this save gives it one
-		// back on its own number, as a new user's would.
-		$bare = $id !== '' && !$stored && $this->extensions->exists($id);
+		// back on its own number, as a new user's would. `rebuild` is
+		// findLogin()'s, for a number whose extension has gone as well; never
+		// the editor's, since saveUser() posts only FIELDS.
+		$bare = $id !== '' && !$stored && ($this->extensions->exists($id) || !empty($input['rebuild']));
 
 		// Only a user is saved as one: a handset posted here would be deleted
 		// and added back as an extension of its own

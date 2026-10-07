@@ -1764,10 +1764,31 @@ is_eq('a held name under another password is a 401', $result['code'] ?? null, 40
 is_eq('the one line FreePBX\'s jail bans for, scrubbed', SecurityLog::$written, ['Authentication failure for dave from 203.0.113.9?']);
 
 $lines = ['Open provisioning sign-up: user x extension 1 context lobby from 1.2.3.4',
-	'Open provisioning sign-up refused (per-day) for x from 1.2.3.4'];
+	'Open provisioning sign-up refused (per-day) for x from 1.2.3.4',
+	'Open provisioning rebuilt extension 1 for user x context lobby from 1.2.3.4'];
 is_eq('no other line looks like a login failure', array_filter($lines, function ($line) {
 	return stripos($line, 'authentication failure') !== false;
 }), []);
+
+echo "\n  a login that outlived its extension gets it back:\n";
+
+$s = signup_build();
+FreePBX::Userman()->processQuickCreate('pjsip', '9990000020', ['name' => 'Gina']);
+FreePBX::Userman()->users[1]['username'] = 'gina';
+FreePBX::Userman()->logins['gina:pw'] = 1;
+$found = $s['users']->findLogin('gina', 'pw');
+is_eq('findLogin() says it rebuilt it', $found, ['extension' => '9990000020', 'created' => false, 'rebuilt' => true]);
+is_eq('a device on the account\'s own number', FreePBX::$core->added['id'] ?? null, '9990000020');
+is_eq('in the lobby, whatever it was', FreePBX::$core->added['settings']['context']['value'] ?? null, 'lobby');
+is_eq('and the extension with it', isset(FreePBX::$core->users['9990000020']), true);
+is_eq('the account is the same one', count(FreePBX::Userman()->users), 1);
+
+$s = signup_build();
+FreePBX::Userman()->processQuickCreate('pjsip', 'none', ['name' => 'Admin']);
+FreePBX::Userman()->users[1]['username'] = 'boss';
+FreePBX::Userman()->logins['boss:pw'] = 1;
+is_eq('an account that names no number is not given one', thrown(function () use ($s) { $s['users']->findLogin('boss', 'pw'); }), 'RuntimeException');
+is_eq('and nothing is made for it', FreePBX::$core->added, null);
 
 echo "\n  a context is not this module's to change:\n";
 

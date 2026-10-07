@@ -228,6 +228,17 @@ class Endpoint extends Service
 
 			if ($user) {
 				$client = $this->clients->findOrCreateForDevice($user['extension'], $token);
+
+				// A login that outlived its extension or device was just given them back.
+				if (!empty($user['rebuilt'])) {
+					SecurityLog::write(sprintf(
+						'Open provisioning rebuilt extension %s for user %s context %s from %s',
+						$user['extension'],
+						SecurityLog::scrub($username),
+						$this->users->lobbyContext(),
+						SecurityLog::scrub($address)
+					));
+				}
 			} else {
 				// One lock across the user, its client and its bridge rows: the
 				// limits count clients, so a second sign-up must not count before
@@ -290,7 +301,7 @@ class Endpoint extends Service
 			'status' => true,
 			'mac' => $client['mac'],
 			'extension' => $user['extension'],
-			'created' => $user['created'] || $client['created'],
+			'created' => $user['created'] || $client['created'] || !empty($user['rebuilt']),
 		];
 	}
 

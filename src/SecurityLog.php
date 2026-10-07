@@ -9,7 +9,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * watches.
  *
  * **Only an `Authentication failure for <user> from <ip>` line may match that
- * jail.** Every other line written here -- a sign-up, a refused sign-up --
+ * jail.** Every other line written here -- a sign-up, a refused sign-up, a rebuild --
  * is worded so it never does, or a phone that retries would get
  * its whole site banned. See ARCHITECTURE.md, "Open provisioning".
  */

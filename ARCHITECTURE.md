@@ -91,7 +91,11 @@ answered by its Basic credentials instead of a client row
 1. no credentials -> 401, which is the challenge that makes a phone send them
 2. `Users::findLogin()`: a User Manager login answers with the account's
    default extension, and its client (step 4) -- no lock, no limits, nothing
-   made; no User Manager, or a login with no Extension/User -> 409
+   made; no User Manager, or a login whose account names no number -> 409
+   A login whose extension or device has been deleted is **rebuilt** first
+   (`Users::rebuild()`): the extension and a device on the number the account
+   still names, made as a sign-up makes them -- in the lobby, whatever the user
+   was -- bridged, and written to the security log.
 3. otherwise a **sign-up**, all of it under `Users::LOCK` (one `withLock()`
    in `openClient()` around `Users::signUp()`, the client and the bridge; the
    lock is re-entrant, so `store()` inside it takes nothing more):
