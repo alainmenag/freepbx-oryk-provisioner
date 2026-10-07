@@ -84,6 +84,16 @@ any of them can be removed on its own, and **Delete All** removes the user
 with all of it — including the bans naming its extension or its clients'
 MACs, which a plain delete leaves.
 
+## Services
+
+A user's **Services** tab lists every [service](concepts.md), each with a box:
+tick it to assign the service to the user, untick it to take it away. A change
+is saved as it is made — there is no Save on that tab, and no Apply Config.
+Assigning a service pack gives the user every service under it; those are
+marked *included in* the pack, and stay with the user for as long as the pack
+is assigned and holds them. Renumbering a user keeps its services, deleting it
+removes them, and deleting a service takes it off every user.
+
 ## From Domain
 
 Each user's PJSIP endpoint gets a `from_domain`, written to

@@ -324,6 +324,16 @@ tr.oryk-disabled > td a:not(.btn) {
 	vertical-align: 1px;
 }
 
+/* What kind of row an option is -- a service pack -- beside its name. */
+.oryk-nav .oryk-nav-menu .oryk-nav-badge {
+	margin-left: 4px;
+	padding: 1px 5px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 12px;
+	vertical-align: 1px;
+}
+
 /* A name that is typed exactly -- a filename, twelve hex digits -- is
    shown as it is spelled, here as everywhere else in the module. */
 .oryk-nav-mono {
@@ -520,8 +530,8 @@ tr.oryk-disabled > td a:not(.btn) {
 	margin-left: 8px;
 }
 
-/* The Users table's All / Lobby / Expired, beside Add User in its toolbar. */
-.oryk-user-filter {
+/* A select narrowing a table, beside Add in its toolbar: Services' two. */
+.oryk-toolbar-filter {
 	display: inline-block;
 	width: auto;
 	margin-left: 6px;
@@ -558,4 +568,34 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 .oryk-ask .modal-footer .btn + .btn {
 	margin-left: 8px;
+}
+/* A service's Parents and Services: every other service, to tick. */
+.oryk-checks {
+	max-height: 220px;
+	overflow-y: auto;
+	padding: 6px 10px;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.oryk-check {
+	display: block;
+	margin: 0;
+	padding: 2px 0;
+	font-weight: normal;
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+.oryk-check.disabled {
+	color: #999;
+	cursor: not-allowed;
+}
+/* A user's Services tab: the whole list, not a box to scroll in. */
+.oryk-user-services {
+	max-height: none;
+}
+/* Which assigned pack a service already comes with, after its name. */
+.oryk-service-via {
+	margin-left: 6px;
+	font-size: 12px;
 }

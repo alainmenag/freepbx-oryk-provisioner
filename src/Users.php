@@ -143,6 +143,9 @@ class Users extends Service
 	/** @var RealtimeBridge|null Null where nothing is bridged: the tests. */
 	private $bridge;
 
+	/** @var Services|null The services assigned to a user, which go with it. */
+	private $services;
+
 	/** @var Settings|null Made when first asked for; see settings(). */
 	private $settings;
 
@@ -158,6 +161,7 @@ class Users extends Service
 	 * @param EndpointSettings    $endpoints  Custom pjsip endpoint settings.
 	 * @param Clients             $clients    Provisioner clients pointing at a user.
 	 * @param RealtimeBridge|null $bridge     Sign-ups live before Apply Config.
+	 * @param Services|null       $services   Services assigned to a user.
 	 */
 	public function __construct(
 		$freepbx,
@@ -170,7 +174,8 @@ class Users extends Service
 		CdrHistory $cdr,
 		EndpointSettings $endpoints,
 		Clients $clients,
-		?RealtimeBridge $bridge = null
+		?RealtimeBridge $bridge = null,
+		?Services $services = null
 	) {
 		parent::__construct($freepbx);
 
@@ -184,6 +189,7 @@ class Users extends Service
 		$this->endpoints = $endpoints;
 		$this->clients = $clients;
 		$this->bridge = $bridge;
+		$this->services = $services;
 	}
 
 	/**
@@ -1310,6 +1316,11 @@ class Users extends Service
 
 		if ($this->bridge) {
 			$this->bridge->remove($user);
+		}
+
+		// Its number can be handed out again, and the next user is owed none of these.
+		if ($this->services) {
+			$this->services->forgetUser($user);
 		}
 
 		self::pending();

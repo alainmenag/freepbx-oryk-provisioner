@@ -53,6 +53,35 @@ here, served byte for byte) or **Log** (received from the phone rather than
 served to it, and read back at the same URL). The main configuration file is a
 resource like every other file, named `.cfg`.
 
+**Service** — a name, and its links to other services. A service can be under
+any number of **parents** and have any number of services under it, so one
+service is shared rather than copied: make `Voicemail` once and tick it under
+both `Basic User` and `Advanced User`. Both sides are edited on the service's
+page, as a list of every other service to tick. A service cannot be under
+itself or under anything beneath it — those choices are greyed out. Deleting a
+service removes its links and leaves the services over and under it in place.
+A service with at least one service under it is a **service pack**; nothing
+is set to make it one.
+Two filters beside Add Service narrow the list: Available (every
+service), Custom (the ones you made) or Module — it opens on Available — and All, Services or
+Packs. There, Services means the ones with nothing under them; the
+list opens on All.
+Every service also has a **slug** — `call-recording` — unique, lowercase
+letters and digits joined by hyphens. It is made from the name and is not editable:
+renaming a service gives it a new slug, and everything that referred to the
+old one is updated with it. It is the last part of the service's page address.
+
+Some services come **with the module**, listed under Module on the Services list: Advanced
+User, Basic User, Guest User, Call Recording, Find Me Follow, On Demand
+Recording, Support and Voicemail, grouped into packs. They cannot be edited
+or deleted, but a service of your own can be put under any of them, or over
+it, from your service's page. They are written when the module is installed or
+upgraded.
+
+Services are assigned to users on each user's
+[Services tab](users.md#services). Nothing a phone is served depends on a
+service.
+
 A client with no device still provisions — the device-derived placeholders are
 simply empty, which is what a profile of static configuration wants. A client
 with no profile is served the profile named after its vendor, when there is

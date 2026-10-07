@@ -37,6 +37,15 @@ abstract class Service
 	/** @var string Who the endpoint refuses, or answers in spite of a ban. */
 	protected $bansTable = 'oryk_provisioner_bans';
 
+	/** @var string The services: a name each. */
+	protected $servicesTable = 'oryk_provisioner_services';
+
+	/** @var string Which service is under which: one row per parent and child, by slug. */
+	protected $serviceLinksTable = 'oryk_provisioner_service_links';
+
+	/** @var string Which user has which service: one row per extension and service slug. */
+	protected $serviceAssignmentsTable = 'oryk_provisioner_service_assignments';
+
 	/** @var string Name of the web-root symlink pointing at engine/. */
 	protected $engineLink = 'provisioner';
 

@@ -67,6 +67,9 @@ class ExtensionRenumberer extends Service
 	 */
 	private $clients;
 
+	/** @var Services|null The services assigned to a user, by its extension. */
+	private $services;
+
 	/**
 	 * @param object            $freepbx    FreePBX application instance.
 	 * @param ExtensionManager  $extensions Core extensions.
@@ -76,6 +79,7 @@ class ExtensionRenumberer extends Service
 	 * @param CdrHistory        $cdr        Call history.
 	 * @param EndpointSettings  $endpoints  Custom pjsip endpoint settings.
 	 * @param Clients|null      $clients    Provisioner clients to repoint.
+	 * @param Services|null     $services   Assigned services to carry over.
 	 */
 	public function __construct(
 		$freepbx,
@@ -85,7 +89,8 @@ class ExtensionRenumberer extends Service
 		UcpAssignments $ucp,
 		CdrHistory $cdr,
 		EndpointSettings $endpoints,
-		?Clients $clients = null
+		?Clients $clients = null,
+		?Services $services = null
 	) {
 		parent::__construct($freepbx);
 
@@ -96,6 +101,7 @@ class ExtensionRenumberer extends Service
 		$this->cdr = $cdr;
 		$this->endpoints = $endpoints;
 		$this->clients = $clients;
+		$this->services = $services;
 	}
 
 	/**
@@ -219,6 +225,11 @@ class ExtensionRenumberer extends Service
 		// So do the phones this module provisions for it
 		if ($this->clients) {
 			$this->clients->repointDevice($old, $new);
+		}
+
+		// And the services it was assigned, which name it by its extension
+		if ($this->services) {
+			$this->services->moveUser($old, $new);
 		}
 
 		// What the account is allowed to open, before the history it opens

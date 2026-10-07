@@ -40,6 +40,7 @@ use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\SecurityLog;
+use FreePBX\Modules\Oryk_Provisioner\Services;
 use FreePBX\Modules\Oryk_Provisioner\SignupRefused;
 use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
@@ -971,7 +972,7 @@ is_eq('and a row storing "any" as 0 or \'\' sets nothing there',
 echo "\n  the endpoint asks before it answers:\n";
 
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
@@ -1266,7 +1267,7 @@ echo "\n  what openClient() answers before a user is found:\n";
 
 $s = build();
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
@@ -1718,7 +1719,7 @@ echo "\n  what openClient() answers a sign-up:\n";
 function signup_endpoint(array $s)
 {
 	$settings = new Settings($s['app']);
-	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings);
+	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
 
 	return new Endpoint(
 		$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
@@ -1944,7 +1945,7 @@ function overview_build(array $bans)
 	$profiles = new Profiles($app, $files);
 	$requestLog = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($app);
 	$banRepo = new Bans($app);
-	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo);
+	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo, new \FreePBX\Modules\Oryk_Provisioner\Services($app));
 	$client = ['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk'];
 
 	$app->Database->fetches = [
@@ -2126,7 +2127,7 @@ is_eq('Users is still where a bare URL lands', $s['navigator']->section(''), 'us
 $bar = $s['navigator']->sections('clients');
 is_eq('a group is one bar entry: its active section, else its first', array_column($bar, 'active', 'key'), ['clients' => true, 'logs' => false, 'settings' => false]);
 is_eq('which goes where that section does', [$bar[0]['href'], $bar[1]['href']], ['?display=oryk_provisioner&tab=clients', '?display=oryk_provisioner&tab=logs']);
-is_eq('and lists the whole group in order', array_column($bar[0]['items'], 'active', 'key'), ['users' => false, 'clients' => true, 'profiles' => false]);
+is_eq('and lists the whole group in order', array_column($bar[0]['items'], 'active', 'key'), ['users' => false, 'clients' => true, 'profiles' => false, 'services' => false]);
 is_eq('an ungrouped section has no menu', isset($bar[2]['items']), false);
 
 $s = overview_build([]);
@@ -2145,6 +2146,80 @@ is_eq('clearing a MAC binds it', $cleared[1][1], [':mac_0' => '0004f282e824']);
 
 $logs = new LogRepo($s['app']);
 is_eq('a client that sent nothing has nothing stored', $logs->clientLogStats(987654321), ['files' => 0, 'bytes' => 0]);
+
+echo "\n  a service and what it is under:\n";
+
+// [parent, child], by slug: basic and advanced are both over vm; vm is over greeting.
+$links = [['basic', 'vm'], ['advanced', 'vm'], ['vm', 'greeting']];
+is_eq('a service is under more than one parent', Services::ancestors($links, 'vm'), ['basic', 'advanced']);
+is_eq('and everything over those, at any depth', Services::ancestors($links, 'greeting'), ['vm', 'basic', 'advanced']);
+is_eq('everything under a service, at any depth', Services::descendants($links, 'basic'), ['vm', 'greeting']);
+is_eq('a service linked to nothing', [Services::ancestors($links, 'fax'), Services::descendants($links, 'fax')], [[], []]);
+is_eq('a second parent closes no loop', Services::loops($links, 'greeting', ['vm', 'fax'], []), false);
+is_eq('nor does a child two parents already share', Services::loops($links, 'fax', [], ['vm']), false);
+is_eq('a service under itself does', Services::loops($links, 'vm', ['vm'], []), true);
+is_eq('so does a parent that is already under it', Services::loops($links, 'basic', ['greeting'], ['vm']), true);
+is_eq('and one service on both sides', Services::loops($links, 'fax', ['basic'], ['basic']), true);
+is_eq('a new service is checked through what it is given', Services::loops($links, '', ['greeting'], ['basic']), true);
+is_eq('its own old links are not held against it', Services::loops($links, 'vm', ['greeting'], []), false);
+is_eq('a loop in the data is walked once, not for ever', Services::descendants([['a', 'b'], ['b', 'a']], 'a'), ['b']);
+is_eq('a slug of digits is still a string', Services::descendants([['100', '200']], '100'), ['200']);
+is_eq('a user has what it is assigned and everything under it', Services::held($links, ['basic']), ['basic', 'greeting', 'vm']);
+is_eq('each once, however many packs it comes through', Services::held($links, ['vm', 'advanced', 'basic']), ['advanced', 'basic', 'greeting', 'vm']);
+is_eq('and a user assigned nothing has nothing', Services::held($links, []), []);
+is_eq('slugs arrive as one string', Services::slugs('vm, Basic,vm,not ok,,-x,'), ['vm', 'basic']);
+is_eq('or as an array', Services::slugs(['fax', 'fax', [], 'call-recording']), ['fax', 'call-recording']);
+is_eq('and nothing is no slugs', Services::slugs(''), []);
+
+is_eq('a slug is made from a name', Services::slugify('  On-Demand  Recording! '), 'on-demand-recording');
+is_eq('and from one with nothing usable in it', Services::slugify('***'), 'service');
+is_eq('never longer than the column', strlen(Services::slugify(str_repeat('ab ', 40))) <= Services::SLUG_MAX, true);
+is_eq('a default is the module\'s', [Services::managed('voicemail'), Services::managed('my-pack'), Services::managed(null)], [true, false, false]);
+
+$defaultLinks = [];
+$unknown = [];
+foreach (Services::DEFAULTS as $slug => $default) {
+	if (!preg_match(Services::SLUG_PATTERN, (string) $slug) || strlen($slug) > Services::SLUG_MAX || trim((string) ($default['name'] ?? '')) === '') {
+		$unknown[] = $slug;
+	}
+	foreach ($default['services'] ?? [] as $child) {
+		if (!isset(Services::DEFAULTS[$child])) {
+			$unknown[] = $slug . ' > ' . $child;
+		}
+		$defaultLinks[] = [(string) $slug, (string) $child];
+	}
+}
+is_eq('every default is a slug with a name, over defaults only', $unknown, []);
+is_eq('no two defaults share a name', count(array_unique(array_column(Services::DEFAULTS, 'name'))), count(Services::DEFAULTS));
+$looped = [];
+foreach ($defaultLinks as $link) {
+	if ($link[0] === $link[1] || in_array($link[0], Services::descendants($defaultLinks, $link[1]), true)) {
+		$looped[] = $link[0] . ' > ' . $link[1];
+	}
+}
+is_eq('and the defaults close no loop', $looped, []);
+
+$s = build();
+$services = new Services($s['app']);
+is_eq('a service needs a name', $services->saveService(['name' => '  '])['status'], false);
+is_eq('and one that fits the column', $services->saveService(['name' => str_repeat('x', 192)])['status'], false);
+
+/** Services, answering for one user without a table. */
+class GuestServices extends Services
+{
+	public function userSlugs($extension)
+	{
+		return (string) $extension === '9990000001' ? ['guest-user', 'support'] : [];
+	}
+}
+
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), new Settings($s['app']), new GuestServices($s['app']));
+$render = function (array $client) use ($template) {
+	return $template->renderTemplate('SERVICES={{extension.services}}', $template->provisioningValues($client));
+};
+is_eq('a template is given them as one value', $render(['mac' => '0004f282e824', 'extension' => '9990000001']), 'SERVICES=guest-user,support');
+is_eq('a user with none renders empty', $render(['mac' => '0004f282e824', 'extension' => '1001']), 'SERVICES=');
+is_eq('and so does a client with no user', $render(['mac' => '0004f282e824']), 'SERVICES=');
 
 echo "\n  the module class imports every class it builds:\n";
 

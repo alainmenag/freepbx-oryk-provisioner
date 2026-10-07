@@ -297,6 +297,80 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a services table written before services had a slug up to date.
+	 *
+	 * Nullable, because the rows already there have none until
+	 * Services::seed() makes each one from its name, straight after this.
+	 * NULLs never collide on the unique key; dropServiceIdColumn() then makes
+	 * the column the primary key. A table keyed by slug already is left alone.
+	 *
+	 * @return void
+	 */
+	public function addServiceSlugColumn()
+	{
+		if (!$this->schemaHas($this->servicesTable, 'column', 'id')) {
+			return;
+		}
+
+		if (!$this->schemaHas($this->servicesTable, 'column', 'slug')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->servicesTable}`
+				ADD COLUMN `slug` VARCHAR(64) NULL DEFAULT NULL AFTER `name`"
+			);
+		}
+
+		if (!$this->schemaHas($this->servicesTable, 'index', 'slug')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->servicesTable}` ADD UNIQUE KEY `slug` (`slug`)"
+			);
+		}
+	}
+
+	/**
+	 * Re-key a services table written with an `id`: the slug becomes the
+	 * primary key and the id goes.
+	 *
+	 * **Must run after Services::seed()**, which gives every older row its
+	 * slug. A row still without one stops this -- it cannot be a key -- and
+	 * the table is left as it was for the next install to try again. One
+	 * statement, so the table is never without a primary key.
+	 *
+	 * @return bool False when the table still has its id afterwards.
+	 */
+	public function dropServiceIdColumn()
+	{
+		if (!$this->schemaHas($this->servicesTable, 'column', 'id')) {
+			return true;
+		}
+
+		try {
+			$bare = $this->db->query(
+				"SELECT COUNT(*) FROM `{$this->servicesTable}` WHERE slug IS NULL OR slug = ''"
+			);
+
+			if ($bare->fetchColumn()) {
+				$this->log('oryk_provisioner: services not re-keyed by slug', 'a service has no slug', 'WARNING');
+
+				return false;
+			}
+
+			$this->db->exec(
+				"ALTER TABLE `{$this->servicesTable}`
+				DROP COLUMN `id`,
+				DROP INDEX `slug`,
+				MODIFY `slug` VARCHAR(64) NOT NULL FIRST,
+				ADD PRIMARY KEY (`slug`)"
+			);
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: services not re-keyed by slug', $e->getMessage(), 'WARNING');
+
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Give a table the column that says whether the endpoint answers for it.
 	 *
 	 * The same column on two tables: a client and a profile are switched off by

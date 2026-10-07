@@ -1,7 +1,7 @@
 <?php
 /**
- * The module page: one pane per section -- Users, Clients, Profiles, Logs,
- * Bans, Overview and Settings.
+ * The module page: one pane per section -- Users, Clients, Profiles,
+ * Services, Logs, Bans, Overview and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -29,6 +29,8 @@
  * Settings is the one tab with fields rather than a table, drawn by
  * partials/settings.php and saved by the action bar's Save.
  *
+ * Services is drawn by partials/services.php.
+ *
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
  *
@@ -48,14 +50,13 @@
  * @var array<string, mixed>              $sync      Fail2ban::status(), on the Bans tab
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
- * @var int                               $expireDays ORYK_OPEN_EXPIRE_DAYS, on the Users tab: Expired is offered above 0
+ * @var array<string, string>              $serviceFilter Services::filters(), on Services -- see partials/services.php
  * @var array<string, mixed>|null         $overview  Overview::inventory(), on Overview -- see partials/overview.php
  */
 
 $tab = (string) ($tab ?? 'users');
 $sync = isset($sync) && is_array($sync) ? $sync : [];
 $scope = isset($scope) && is_array($scope) ? $scope : null;
-$expireDays = (int) ($expireDays ?? 0);
 // Appended to every list command's URL, so a refresh stays narrowed.
 $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) : '', ENT_QUOTES, 'UTF-8');
 ?>
@@ -160,22 +161,18 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 					<?php endif; ?>
 
+					<?php if ($tab === 'services'): ?>
+					<div class="tab-pane active" id="oryk_services">
+						<?php include __DIR__ . '/partials/services.php'; ?>
+					</div>
+					<?php endif; ?>
+
 					<?php if ($tab === 'users'): ?>
 					<div class="tab-pane active" id="oryk_users">
 						<div id="user_toolbar" class="oryk-toolbar">
 							<a class="btn btn-primary" href="?display=oryk_provisioner&amp;user=">
 								<?php echo $icon('plus'); ?> <?php echo _('Add User'); ?>
 							</a>
-							<select class="form-control oryk-user-filter" id="user_filter" aria-label="<?php echo _('Show'); ?>">
-								<option value=""><?php echo _('All users'); ?></option>
-								<option value="lobby"><?php echo _('Lobby'); ?></option>
-								<?php if ($expireDays > 0): ?>
-								<option value="expired"><?php echo sprintf(_('Expired (unseen %d days)'), $expireDays); ?></option>
-								<?php endif; ?>
-							</select>
-							<button type="button" class="btn btn-danger hidden" id="user_delete_expired">
-								<?php echo $icon('trash'); ?> <?php echo _('Delete listed'); ?>
-							</button>
 						</div>
 
 						<table
@@ -183,7 +180,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							data-toggle="table"
 							data-url="ajax.php?module=oryk_provisioner&command=listUsers<?php echo $scopeQuery; ?>"
 							data-toolbar="#user_toolbar"
-							data-query-params="orykUserQuery"
 							class="table table-striped"
 							data-side-pagination="server"
 							data-pagination="true"
@@ -198,7 +194,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 								<tr>
 									<th data-field="extension" data-formatter="formatUserExtension" data-sortable="true"><?php echo _('Extension'); ?></th>
 									<th data-field="name" data-formatter="formatText" data-sortable="true"><?php echo _('Name'); ?></th>
-									<th data-field="email" data-formatter="formatText" data-sortable="true"><?php echo _('Email'); ?></th>
 									<th data-field="clients" data-formatter="formatUserClients" data-sortable="true"><?php echo _('Clients'); ?></th>
 									<th data-field="secure" data-formatter="formatClientSecure" data-sortable="true"><?php echo _('Secure'); ?></th>
 									<th data-field="context" data-formatter="formatUserContext" data-sortable="true"><?php echo _('Context'); ?></th>
@@ -704,19 +699,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		].join('');
 	}
 
-	// The Lobby and Expired filters ride in the list's query, so a refresh,
-	// a sort or a page keeps them. The server whitelists the value.
-	function orykUserQuery(params) {
-		params.filter = $('#user_filter').val() || '';
-
-		return params;
-	}
-
-	$(document).on('change', '#user_filter', function () {
-		$('#user_delete_expired').toggleClass('hidden', $(this).val() !== 'expired');
-		$('#user_table').bootstrapTable('refresh', { pageNumber: 1 });
-	});
-
 	// The context a user's calls are placed in, as it is named.
 	function formatUserContext(value) {
 		return value ? orykEscape(value) : '-';
@@ -729,39 +711,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			toggle_reload_button('show');
 		}
 	}
-
-	// Asked with what the table shows: the server deletes only those it still
-	// finds expired, and says how many it skipped.
-	$(document).on('click', '#user_delete_expired', function () {
-		const ids = $('#user_table').bootstrapTable('getData').map(function (row) {
-			return row.extension;
-		});
-
-		if (!ids.length) {
-			notie.alert(2, 'Nothing is listed.', 2);
-			return;
-		}
-
-		orykAsk(`Delete the ${ids.length} expired lobby user${ids.length === 1 ? '' : 's'} listed? Each extension, its account, voicemail, call history and clients are removed permanently. A user whose phone has been seen since is skipped.`).done(() => {
-			const button = $(this).prop('disabled', true);
-
-			orykPost('deleteExpiredUsers', { ids: ids }).done(function (response) {
-				button.prop('disabled', false);
-
-				if (!response || !response.status) {
-					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
-					return;
-				}
-
-				orykPending(response);
-				$('#user_table').bootstrapTable('refresh');
-				notie.alert(1, `Deleted ${response.deleted}${response.skipped ? `, skipped ${response.skipped}` : ''}.`, 3);
-			}).fail(function () {
-				button.prop('disabled', false);
-				notie.alert(3, 'Could not delete.', 4);
-			});
-		});
-	});
 
 	function orykBanUrl(row) {
 		return `?display=oryk_provisioner&ban=${encodeURIComponent(row.id)}`;

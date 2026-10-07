@@ -35,6 +35,7 @@ use FreePBX\Modules\Oryk_Provisioner\ProvisioningLog;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\Resources;
 use FreePBX\Modules\Oryk_Provisioner\Schema;
+use FreePBX\Modules\Oryk_Provisioner\Services;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
 use FreePBX\Modules\Oryk_Provisioner\Template;
@@ -83,6 +84,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Clients          |
  *   Profiles         |  one per table
  *   Resources        |
+ *   Services         |
  *   Matcher          a filename is a MAC and a name, read both ways
  *   Previews         which filename does this phone ask this file by
  *   ProvisioningLog  one row per request the endpoint answered
@@ -192,6 +194,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Schema */
 	private $schema;
 
+	/** @var Services */
+	private $services;
+
 	/** @var Settings */
 	private $settings;
 
@@ -231,7 +236,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->tokens = new Tokens($freepbx);
 		$this->provisioningLog = new ProvisioningLog($freepbx);
 		$this->settings = new Settings($freepbx);
-		$this->template = new Template($freepbx, $this->pbx, $this->settings);
+		$this->services = new Services($freepbx);
+		$this->template = new Template($freepbx, $this->pbx, $this->settings, $this->services);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
@@ -251,7 +257,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->users = new Users(
 			$freepbx,
 			new NumberAllocator($freepbx, $userman),
-			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients),
+			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients, $this->services),
 			$extensions,
 			$userman,
 			$voicemail,
@@ -259,7 +265,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$cdr,
 			$this->endpointSettings,
 			$this->clients,
-			$bridge
+			$bridge,
+			$this->services
 		);
 
 		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
@@ -267,10 +274,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->banSync = new BanSync($freepbx, $this->fail2ban, $escalation);
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services);
 		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge, $this->services);
 
 		$this->endpoint = new Endpoint(
 			$freepbx,
@@ -302,7 +309,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->settings,
 			$this->bans,
 			$this->fail2ban,
-			$this->overview
+			$this->overview,
+			$this->services
 		);
 	}
 
@@ -574,6 +582,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveUser':
 			case 'deleteUser':
 			case 'deleteExpiredUsers':
+			case 'listServices':
+			case 'saveService':
+			case 'deleteService':
+			case 'setUserService':
 			case 'saveSettings':
 			case 'listBans':
 			case 'saveBan':
@@ -616,7 +628,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// A list opened from a navigator title is narrowed the way that title's
 		// badge was counted: `&scope=<kind>:<id>` names the row, Navigator says
 		// what it scopes. Read only by the list commands.
-		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans'], true)
+		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans', 'listServices'], true)
 			? $this->navigator->scope(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
 			: null;
 
@@ -722,6 +734,19 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteExpiredUsers':
 				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
+
+			case 'listServices':
+				return $this->services->listServices($scope['services']);
+
+			case 'saveService':
+				return $this->services->saveService($_REQUEST);
+
+			case 'deleteService':
+				return $this->services->deleteService($_REQUEST['slug'] ?? null);
+
+			// One service, on or off one user, from that user's Services tab.
+			case 'setUserService':
+				return $this->services->setUserService($_REQUEST);
 
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);

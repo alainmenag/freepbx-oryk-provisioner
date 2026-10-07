@@ -60,10 +60,13 @@ class Pages extends Service
 	/** @var Overview */
 	private $overview;
 
+	/** @var Services */
+	private $services;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services)
 	{
 		parent::__construct($freepbx);
 
@@ -81,17 +84,21 @@ class Pages extends Service
 		$this->bans = $bans;
 		$this->fail2ban = $fail2ban;
 		$this->overview = $overview;
+		$this->services = $services;
 	}
 
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list, five editors and a log entry, told apart by which key the URL carries.
+	 * A list, six editors and a log entry, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
 	 *                                                        the list, narrowed
 	 *                                                        to what that row scopes
+	 *   ?display=oryk_provisioner&tab=services&source=<all|custom|module>&kind=<all|single|pack>
+	 *                                                        the Services list,
+	 *                                                        as its filters are set
 	 *   ?display=oryk_provisioner&tab=overview&scope=<user|client>:<id>
 	 *                                                        everything tied to
 	 *                                                        that user or client
@@ -103,6 +110,8 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
 	 *   ?display=oryk_provisioner&user=<extension>           one user
 	 *   ?display=oryk_provisioner&user=                      a new one
+	 *   ?display=oryk_provisioner&service=<slug>             one service
+	 *   ?display=oryk_provisioner&service=                   a new one
 	 *   ?display=oryk_provisioner&ban=<id>                   one ban
 	 *   ?display=oryk_provisioner&ban=                       a new one
 	 *   ?display=oryk_provisioner&log=<id>                   one log entry
@@ -120,6 +129,10 @@ class Pages extends Service
 
 		if (isset($_REQUEST['ban'])) {
 			return $this->showBan(trim((string) $_REQUEST['ban']));
+		}
+
+		if (isset($_REQUEST['service'])) {
+			return $this->showService(trim((string) $_REQUEST['service']));
 		}
 
 		// Checked before ?profile= only because neither URL carries the other's
@@ -238,7 +251,7 @@ class Pages extends Service
 	 * Core device, and a renumbering save moves it to a new address.
 	 *
 	 * @param string $wanted Extension, or '' for a new one.
-	 * @param string $tab    Tab to open on: user|clients.
+	 * @param string $tab    Tab to open on: user|clients|services.
 	 *
 	 * @return string Rendered page output.
 	 */
@@ -269,6 +282,8 @@ class Pages extends Service
 			// Blank on the form is not nothing: it is this.
 			'pbxDomain' => $this->endpoints->fromDomain(null),
 			'available' => $available,
+			// Every service, as this user has them; only that tab draws them.
+			'services' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->userServices($extension) : [],
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
 		]);
 	}
@@ -318,6 +333,40 @@ class Pages extends Service
 	}
 
 	/**
+	 * Render the service editor.
+	 *
+	 * @param string $wanted Service slug, or '' for a new one.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showService($wanted)
+	{
+		$service = ['name' => '', 'slug' => '', 'managed' => false];
+
+		if ($wanted !== '') {
+			// doConfigPageInit() has already bounced one that has gone.
+			$found = $this->services->serviceBySlug($wanted);
+
+			if (!$found) {
+				return $this->showList('services');
+			}
+
+			$service = $found;
+		}
+
+		return $this->view('service', [
+			'service' => $service,
+			'choices' => $this->services->serviceChoices(),
+			'related' => $this->services->related((string) ($service['slug'] ?? '')),
+			'sections' => $this->navigator->sections('services'),
+			// An unwritten service is assigned to nobody yet, so it scopes nothing.
+			'navigator' => $this->navigator->levels([
+				'service' => (string) $service['slug'] !== '' ? (string) $service['slug'] : 'new',
+			]),
+		]);
+	}
+
+	/**
 	 * Render one provisioning log entry. There is no new one: the endpoint is
 	 * the only thing that writes them.
 	 *
@@ -353,6 +402,7 @@ class Pages extends Service
 	{
 		return [
 			'clients' => (string) ($user['extension'] ?? '') !== '',
+			'services' => (string) ($user['extension'] ?? '') !== '',
 		];
 	}
 
@@ -397,8 +447,8 @@ class Pages extends Service
 			return '';
 		}
 
-		// A ban has one tab.
-		if (isset($_REQUEST['ban'])) {
+		// A ban has one tab, and so has a service.
+		if (isset($_REQUEST['ban']) || isset($_REQUEST['service'])) {
 			return '';
 		}
 
@@ -533,10 +583,10 @@ class Pages extends Service
 					Settings::OPEN_EMERGENCY_CID => _('the extension'),
 				])
 				: [],
-			// Whether the Users table offers Expired: Lobby Expiry is on.
-			'expireDays' => $tab === 'users' ? (int) $this->settings->get(Settings::OPEN_EXPIRE_DAYS) : 0,
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
+			// The Services list's two filters, as the address has them.
+			'serviceFilter' => $tab === 'services' ? Services::filters($_REQUEST) : [],
 			// What the State column warns with before refusing your own address.
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),
@@ -598,6 +648,7 @@ class Pages extends Service
 			'profile' => _('profile %s'),
 			'log' => _('log entry %s'),
 			'ban' => _('ban %s'),
+			'service' => _('service %s'),
 		];
 
 		foreach ($navigator as $level) {
@@ -737,6 +788,14 @@ class Pages extends Service
 		// buttons act on.
 		if (isset($_REQUEST['ban'])) {
 			$row = trim((string) $_REQUEST['ban']);
+		} elseif (isset($_REQUEST['service'])) {
+			$row = trim((string) $_REQUEST['service']);
+			$service = $this->services->serviceBySlug($row);
+
+			// One of the module's is read, not edited: nothing to save or delete.
+			if ($service && $service['managed']) {
+				return ['orykclose' => ['name' => 'orykclose', 'id' => 'orykclose', 'value' => _('Close')]];
+			}
 		} elseif (isset($_REQUEST['user'])) {
 			$row = trim((string) $_REQUEST['user']);
 		} elseif (isset($_REQUEST['client'])) {
@@ -823,6 +882,18 @@ class Pages extends Service
 
 			if ($ban !== '' && !$this->bans->banRow($ban)) {
 				header('Location: config.php?display=oryk_provisioner&tab=bans');
+				exit;
+			}
+
+			return;
+		}
+
+		// Empty is the new-service editor. A service's key is its slug.
+		if (isset($_REQUEST['service'])) {
+			$service = trim((string) $_REQUEST['service']);
+
+			if ($service !== '' && !$this->services->serviceBySlug($service)) {
+				header('Location: config.php?display=oryk_provisioner&tab=services');
 				exit;
 			}
 

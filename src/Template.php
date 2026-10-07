@@ -21,17 +21,22 @@ class Template extends Service
 	/** @var Settings */
 	private $settings;
 
+	/** @var Services */
+	private $services;
+
 	/**
 	 * @param object   $freepbx  FreePBX application instance.
 	 * @param Freepbx  $pbx      FreePBX lookups.
 	 * @param Settings $settings The module's settings.
+	 * @param Services $services What a user is assigned.
 	 */
-	public function __construct($freepbx, Freepbx $pbx, Settings $settings)
+	public function __construct($freepbx, Freepbx $pbx, Settings $settings, Services $services)
 	{
 		parent::__construct($freepbx);
 
 		$this->pbx = $pbx;
 		$this->settings = $settings;
+		$this->services = $services;
 	}
 
 	/**
@@ -93,6 +98,7 @@ class Template extends Service
 			'extension.number' => (string) ($row['extension'] ?? ''),
 			'extension.name' => (string) ($extension['name'] ?? ''),
 			'extension.voicemail' => (string) ($extension['voicemail'] ?? ''),
+			'extension.services' => $this->extensionServices($row['extension'] ?? null),
 			// The client's own facts, under `client.` rather than `device.` because
 			// they are the module's and not FreePBX's. `client.id` is the one an
 			// operator meets outside a template: it is the directory a phone's logs
@@ -115,6 +121,23 @@ class Template extends Service
 		}
 
 		return $values;
+	}
+
+	/**
+	 * The services a user has, as one value.
+	 *
+	 * Through a pack as much as assigned: a template asks whether the user has a
+	 * service, not how it came by it.
+	 *
+	 * @param mixed $extension The client's extension, or null with no device.
+	 *
+	 * @return string Slugs joined by commas; empty with no user or no service.
+	 */
+	private function extensionServices($extension)
+	{
+		$extension = (string) $extension;
+
+		return $extension === '' ? '' : implode(',', $this->services->userSlugs($extension));
 	}
 
 	/**
@@ -173,6 +196,7 @@ class Template extends Service
 				'extension.number' => _('Extension the device is attached to'),
 				'extension.name' => _('Display name'),
 				'extension.voicemail' => _('Voicemail setting'),
+				'extension.services' => _('Services the user has, as slugs: guest-user,support'),
 			],
 			_('Profile and server') => [
 				'profile.name' => _('This profile'),

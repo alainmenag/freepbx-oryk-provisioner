@@ -223,7 +223,8 @@
 	 * fields are for, since half of each editor exists only once the row does:
 	 * a resource's file box and template, a profile's Resources tab.
 	 *
-	 * editor.values()  what to post, including the row id
+	 * editor.values()  what to post, including the row's key
+	 * editor.key       optional; what that key is called in values(), `id` unless said
 	 * editor.save      command that writes it
 	 * editor.saved(r)  optional; runs on a successful save, before the reload
 	 * editor.remove    command that deletes it
@@ -261,7 +262,11 @@
 			event.preventDefault();
 
 			orykAsk(editor.confirm).done(() => {
-				orykPost(editor.remove, { id: editor.values().id }).done(function (response) {
+				var key = editor.key || 'id';
+				var row = {};
+				row[key] = editor.values()[key];
+
+				orykPost(editor.remove, row).done(function (response) {
 					if (!response || !response.status) {
 						orykShowError(response && response.message);
 						return;
