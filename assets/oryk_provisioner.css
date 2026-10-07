@@ -580,3 +580,12 @@ tr.oryk-disabled > td a:not(.btn) {
 	color: #999;
 	cursor: not-allowed;
 }
+/* A user's Services tab: the whole list, not a box to scroll in. */
+.oryk-user-services {
+	max-height: none;
+}
+/* Which assigned pack a service already comes with, after its name. */
+.oryk-service-via {
+	margin-left: 6px;
+	font-size: 12px;
+}

@@ -259,6 +259,19 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
+		// A user is its extension and a service its slug, as everywhere else.
+		// `service` has an index of its own: a renamed or deleted service is
+		// looked up by it.
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->serviceAssignmentsTable}` (
+				`extension` VARCHAR(20) NOT NULL,
+				`service` VARCHAR(64) NOT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (`extension`, `service`),
+				KEY `service` (`service`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
 		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already there,
 		// so every column added after a table first existed is added from here.
 		// Order matters in one place: addResourceTypeColumn() backfills from

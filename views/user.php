@@ -1,6 +1,6 @@
 <?php
 /**
- * views/user.php -- one Extension/User, over two tabs.
+ * views/user.php -- one Extension/User, over three tabs.
  *
  * Reached at ?display=oryk_provisioner&user=<extension>, or &user= (present,
  * empty) for a new one. A user is a Core device, not a row of this module's
@@ -10,10 +10,16 @@
  * Clients is the provisioner clients pointing at this user, with a way to add
  * one already pointed at it.
  *
+ * Services is every service, each ticked when this user is assigned it. A
+ * tick is saved as it is made (setUserService) and touches nothing else of
+ * the user, so the tab has no Save and raises no Apply Config. A service the
+ * user already has through an assigned pack says which pack.
+ *
  * @var array<string, mixed>             $user       extension ('' when new), name, email, from_domain, secure, clients, context
  * @var string                           $pbxDomain  What a blank From Domain resolves to
  * @var array<string, bool>              $available  Which of the other tabs have anything on them
- * @var string                           $tab        Tab to open on: user|clients
+ * @var string                           $tab        Tab to open on: user|clients|services
+ * @var array<int, array<string, mixed>> $services   Services::userServices(), on the Services tab
  * @var array<int, array<string, mixed>> $navigator  Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>> $sections Navigator::sections() -- see partials/sections.php
  * @var string                           $version  Module version -- see partials/sections.php
@@ -30,7 +36,8 @@ $h = function ($value) {
 
 $extension = (string) $user['extension'];
 $isNew = $extension === '';
-$tab = ($tab ?? '') === 'clients' && !empty($available['clients']) ? 'clients' : 'user';
+$tab = (in_array($tab ?? '', ['clients', 'services'], true) && !empty($available[$tab])) ? $tab : 'user';
+$services = isset($services) && is_array($services) ? $services : [];
 $clientCount = (int) ($user['clients'] ?? 0);
 
 $userUrl = '?display=oryk_provisioner&user=' . rawurlencode($extension);
@@ -44,6 +51,12 @@ $tabs = [
 		'label' => _('Clients'),
 		'href' => $userUrl . '&tab=clients',
 		'disabled' => empty($available['clients']),
+		'title' => _('Save the user first.'),
+	],
+	'services' => [
+		'label' => _('Services'),
+		'href' => $userUrl . '&tab=services',
+		'disabled' => empty($available['services']),
 		'title' => _('Save the user first.'),
 	],
 ];
@@ -283,6 +296,34 @@ if ($clientCount > 0) {
 					</div>
 					<?php endif; ?>
 
+					<?php if ($tab === 'services'): ?>
+					<div class="tab-pane oryk-tab-section active" id="oryk_user_services">
+
+						<?php if (!$services): ?>
+						<p class="text-muted">
+							<?php echo _('There are no services yet.'); ?>
+							<a href="?display=oryk_provisioner&amp;tab=services"><?php echo _('Services'); ?></a>
+						</p>
+						<?php else: ?>
+						<p class="text-muted"><?php echo _('Tick a service to assign it to this user; a change is saved as it is made. Assigning a service pack gives the user every service under it.'); ?></p>
+
+						<div class="oryk-checks oryk-user-services">
+							<?php foreach ($services as $service): ?>
+							<label class="oryk-check">
+								<input type="checkbox" name="user_service" value="<?php echo $h($service['slug']); ?>"<?php echo $service['assigned'] ? ' checked' : ''; ?>>
+								<?php echo $h($service['name']); ?>
+								<?php if ($service['pack']): ?>
+								<span class="label label-default"><?php echo _('pack'); ?></span>
+								<?php endif; ?>
+								<span class="oryk-service-via text-muted" data-slug="<?php echo $h($service['slug']); ?>"><?php echo $service['via'] ? $h(sprintf(_('included in %s'), implode(', ', $service['via']))) : ''; ?></span>
+							</label>
+							<?php endforeach; ?>
+						</div>
+						<?php endif; ?>
+
+					</div>
+					<?php endif; ?>
+
 				</div>
 
 			</div>
@@ -313,6 +354,43 @@ if ($clientCount > 0) {
 	function formatUserClientActions(value, row) {
 		return `<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`;
 	}
+
+	// A service is assigned or taken away the moment its box changes. The
+	// state is sent, not toggled; a refusal puts the box back. The answer is
+	// every service as the user now has them, which is what says which
+	// others a pack has just brought with it, or taken.
+	$(document).on('change', '[name="user_service"]', function () {
+		const box = $(this).prop('disabled', true);
+		const wanted = box.prop('checked');
+
+		const refused = function (message) {
+			box.prop('checked', !wanted);
+			notie.alert(3, message || 'Could not save.', 4);
+		};
+
+		orykPost('setUserService', {
+			extension: orykUserId,
+			service: box.val(),
+			assigned: wanted ? 1 : 0
+		}).done(function (response) {
+			if (!response || !response.status) {
+				refused(response && response.message);
+				return;
+			}
+
+			(response.services || []).forEach(function (service) {
+				$('.oryk-service-via').filter(function () {
+					return $(this).data('slug') === service.slug;
+				}).text(service.via.length ? 'included in ' + service.via.join(', ') : '');
+			});
+
+			notie.alert(1, wanted ? 'Assigned.' : 'Unassigned.', 2);
+		}).fail(function () {
+			refused('The server could not be reached.');
+		}).always(function () {
+			box.prop('disabled', false);
+		});
+	});
 
 	orykEditor({
 		save: 'saveUser',

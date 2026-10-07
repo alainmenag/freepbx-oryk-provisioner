@@ -16,6 +16,9 @@ use PDO;
  * off the links, never stored. Not to be confused with Service, the base class
  * this extends.
  *
+ * A user is assigned services in a third table, by extension and slug; see
+ * userServices() and setUserService().
+ *
  * Every service has a slug, made from its name and never typed, and the ones whose slug is in DEFAULTS are the
  * module's: written by seed() on install, and refused every edit and delete.
  */
@@ -53,7 +56,8 @@ class Services extends Service
 
 	/**
 	 * Rows for the Services table. `managed` is whether each is one of the
-	 * module's.
+	 * module's; `assignments` is how many users are assigned it themselves,
+	 * not counting those who have it only through a pack.
 	 *
 	 * Narrowed by two filters, each off unless it is one of its two values:
 	 * `source` (`module`, `custom`) and `kind` (`pack`, a service with at
@@ -66,6 +70,7 @@ class Services extends Service
 	{
 		$sortable = [
 			'name' => 's.name',
+			'assignments' => 'assignments',
 		];
 
 		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['name'];
@@ -109,7 +114,12 @@ class Services extends Service
 			SELECT
 				s.id,
 				s.name,
-				s.slug
+				s.slug,
+				(
+					SELECT COUNT(*)
+					FROM `{$this->serviceAssignmentsTable}` a
+					WHERE a.service = s.slug
+				) AS assignments
 			FROM `{$this->servicesTable}` s
 			$where
 			ORDER BY $sort $order
@@ -136,15 +146,15 @@ class Services extends Service
 	 *
 	 * @param array<string, mixed> $request The page's request: `source`, `kind`.
 	 *
-	 * @return array<string, string> source (custom|module) and kind
-	 *                               (single|pack); custom and single when the
-	 *                               address names neither, or names nonsense.
+	 * @return array<string, string> source (all|custom|module) and kind
+	 *                               (all|single|pack); all for either when the
+	 *                               address does not name it, or names nonsense.
 	 */
 	public static function filters(array $request)
 	{
 		return [
-			'source' => ($request['source'] ?? '') === 'module' ? 'module' : 'custom',
-			'kind' => ($request['kind'] ?? '') === 'pack' ? 'pack' : 'single',
+			'source' => in_array($request['source'] ?? '', ['custom', 'module'], true) ? (string) $request['source'] : 'all',
+			'kind' => in_array($request['kind'] ?? '', ['single', 'pack'], true) ? (string) $request['kind'] : 'all',
 		];
 	}
 
@@ -384,8 +394,9 @@ class Services extends Service
 	/**
 	 * Remove a service, and every link to or from it.
 	 *
-	 * The services it was over or under are kept: only the links go. One of
-	 * the module's is refused.
+	 * The services it was over or under are kept: only the links go, and it
+	 * is taken off every user it was assigned to. One of the module's is
+	 * refused.
 	 *
 	 * @param mixed $id Service id.
 	 *
@@ -405,12 +416,151 @@ class Services extends Service
 				"DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent OR child = :child"
 			);
 			$links->execute([':parent' => $row['slug'], ':child' => $row['slug']]);
+
+			$assigned = $this->db->prepare(
+				"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE service = :slug"
+			);
+			$assigned->execute([':slug' => $row['slug']]);
 		}
 
 		$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE id = :id");
 		$stmt->execute([':id' => $id]);
 
 		return ['status' => true];
+	}
+
+	/**
+	 * Every service, as one user has them: for the user editor's Services tab.
+	 *
+	 * `assigned` is the service being given to the user itself. `via` is the
+	 * assigned services it is somewhere under, by name: it reaches the user
+	 * through those whether or not it is assigned as well.
+	 *
+	 * @param mixed $extension The user's extension.
+	 *
+	 * @return array<int, array<string, mixed>> slug, name, managed, pack,
+	 *                                          assigned, via; ordered by name.
+	 */
+	public function userServices($extension)
+	{
+		$choices = $this->serviceChoices();
+		$names = array_column($choices, 'name', 'slug');
+		$links = $this->links();
+		$assigned = $this->assigned($extension);
+		$packs = array_column($links, 0);
+		$via = [];
+
+		foreach ($assigned as $slug) {
+			foreach (self::descendants($links, $slug) as $under) {
+				if (isset($names[$slug])) {
+					$via[$under][] = (string) $names[$slug];
+				}
+			}
+		}
+
+		$rows = [];
+
+		foreach ($choices as $choice) {
+			$slug = (string) $choice['slug'];
+
+			// An assignment names a slug, so a row with none yet cannot be assigned.
+			if ($slug === '') {
+				continue;
+			}
+
+			$rows[] = [
+				'slug' => $slug,
+				'name' => (string) $choice['name'],
+				'managed' => (bool) $choice['managed'],
+				'pack' => in_array($slug, $packs, true),
+				'assigned' => in_array($slug, $assigned, true),
+				'via' => $via[$slug] ?? [],
+			];
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Give a user a service, or take it away.
+	 *
+	 * **The state is sent, not toggled**: the same request twice leaves the
+	 * user where the first put it. Nothing about the user itself is written,
+	 * so this raises no Apply Config.
+	 *
+	 * @param array<string, mixed> $request extension, service (a slug), assigned.
+	 *
+	 * @return array<string, mixed> Status and userServices() as it now is, or a message when refused.
+	 */
+	public function setUserService($request)
+	{
+		$extension = trim((string) ($request['extension'] ?? ''));
+		$service = $this->serviceBySlug(trim((string) ($request['service'] ?? '')));
+
+		if (!ctype_digit($extension) || !$this->userExists($extension)) {
+			return ['status' => false, 'message' => _('That user no longer exists.')];
+		}
+
+		if (!$service) {
+			return ['status' => false, 'message' => _('That service no longer exists.')];
+		}
+
+		$said = strtolower(trim((string) ($request['assigned'] ?? '1')));
+		$on = !in_array($said, ['0', '', 'false', 'off', 'no'], true);
+		$bind = [':extension' => $extension, ':service' => $service['slug']];
+
+		$stmt = $this->db->prepare(
+			"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension AND service = :service"
+		);
+		$stmt->execute($bind);
+
+		if ($on) {
+			$stmt = $this->db->prepare(
+				"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service) VALUES (:extension, :service)"
+			);
+			$stmt->execute($bind);
+		}
+
+		return ['status' => true, 'assigned' => $on, 'services' => $this->userServices($extension)];
+	}
+
+	/**
+	 * Take every service off a user: it has been deleted.
+	 *
+	 * @param mixed $extension The user's extension.
+	 *
+	 * @return void
+	 */
+	public function forgetUser($extension)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension"
+			);
+			$stmt->execute([':extension' => (string) $extension]);
+		} catch (\Exception $e) {
+			// No table before the upgrade that adds it: nothing to delete.
+		}
+	}
+
+	/**
+	 * Carry a user's services to its new number: it has been renumbered.
+	 *
+	 * @param mixed $old The extension it had.
+	 * @param mixed $new The extension it has.
+	 *
+	 * @return void
+	 */
+	public function moveUser($old, $new)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"UPDATE `{$this->serviceAssignmentsTable}` SET extension = :new WHERE extension = :old"
+			);
+			$stmt->execute([':new' => (string) $new, ':old' => (string) $old]);
+		} catch (\Exception $e) {
+			$this->logError('could not move the services of ' . $old . ' to ' . $new . ': ' . $e->getMessage());
+		}
 	}
 
 	/**
@@ -641,6 +791,42 @@ class Services extends Service
 	}
 
 	/**
+	 * The services assigned to a user itself.
+	 *
+	 * @param mixed $extension The user's extension.
+	 *
+	 * @return array<int, string> Their slugs.
+	 */
+	private function assigned($extension)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT service FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension"
+		);
+		$stmt->execute([':extension' => (string) $extension]);
+
+		return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+	}
+
+	/**
+	 * Whether an extension is a FreePBX user: what the module's users are.
+	 *
+	 * @param string $extension Digits.
+	 *
+	 * @return bool True when Core's users table has it.
+	 */
+	private function userExists($extension)
+	{
+		try {
+			$stmt = $this->db->prepare("SELECT 1 FROM `users` WHERE extension = :extension");
+			$stmt->execute([':extension' => $extension]);
+
+			return (bool) $stmt->fetchColumn();
+		} catch (\Exception $e) {
+			return false;
+		}
+	}
+
+	/**
 	 * A row, with `managed` added: whether its slug is one of the module's.
 	 *
 	 * @param array<string, mixed> $row A services row carrying `slug`.
@@ -752,7 +938,8 @@ class Services extends Service
 	 * Carry a changed slug to everything that names the old one.
 	 *
 	 * **Anything that comes to store a service's slug is added here**: this is
-	 * the one place a rename is followed.
+	 * the one place a rename is followed. Today: both ends of a link, and a
+	 * user's assignments.
 	 *
 	 * @param string $was  The slug the references hold.
 	 * @param string $slug The slug they are to hold.
@@ -767,6 +954,11 @@ class Services extends Service
 			);
 			$stmt->execute([':slug' => $slug, ':was' => $was]);
 		}
+
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->serviceAssignmentsTable}` SET service = :slug WHERE service = :was"
+		);
+		$stmt->execute([':slug' => $slug, ':was' => $was]);
 	}
 
 	/**

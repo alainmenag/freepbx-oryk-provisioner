@@ -25,8 +25,9 @@ matches `phone.cfg`, and that resource is rendered and served.
 Everything else is that sentence with the edge cases filled in.
 
 A **service** is a name, linked to any number of services it is under and any
-number under it. Services are stored and edited and nothing else reads them:
-the endpoint, the dropdowns and every other table know nothing of a service.
+number under it, and assigned to users. Services are stored, edited and
+assigned and nothing else reads them: the endpoint and the dropdowns know
+nothing of a service.
 See [Schema](#schema).
 
 A **user** is the other half of the module: a pjsip device that is its own
@@ -296,7 +297,7 @@ friendly URL, and the endpoint stays reachable at its real path.
 
 ## Schema
 
-Seven tables, and the bridge's three (below). Every `Schema` step is additive and asks `information_schema`
+Eight tables, and the bridge's three (below). Every `Schema` step is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -415,7 +416,7 @@ service sits is the table below.
   name changes. No page shows it but in its own address.
 - **A slug that changes is carried to every reference in the same
   transaction** (`Services::renameLinks()`): today that is both columns of the
-  links table. Anything else that comes to store a service's slug must be
+  links table and a user's assignments. Anything else that comes to store a service's slug must be
   added to that method, or a rename leaves it naming nothing. A default's
   slug never changes -- renaming one in `DEFAULTS` renames the row only. The column is
   nullable only for rows older than it (`Schema::addServiceSlugColumn()`),
@@ -466,20 +467,40 @@ same in the table, in `DEFAULTS` and to anything outside the module.
 - **A service pack is a service with at least one child**, read off the links
   (`listServices`' `kind` filter) and stored nowhere, so it cannot disagree
   with them. The list has no column for it. Its toolbar's two
-  selects narrow it by `source` (`custom`, which the page opens on, or
-  `module`) and `kind` (`single`, labelled Services and what the page opens
-  on, or `pack`); neither select offers "all", though the command answers
-  unnarrowed when a filter is not sent. Each option carries a count in its
+  selects narrow it by `source` (`all`, labelled Available and what the page
+  opens on, `custom` or `module`) and `kind` (`all`, which the page opens on, `single`,
+  labelled Services, or `pack`). The command answers unnarrowed for a filter
+  that is not one of its two values. Each option carries a count in its
   text -- what it would list with the other select left alone, from
   `Services::counts()` on every list answer, of every service whatever is
   searched for. They are option text, not badges. **The filters are in the page's address**
-  (`&tab=services&source=module&kind=pack`, a default left out;
+  (`&tab=services&source=module&kind=pack`, a default -- `all` for both -- left out;
   `Services::filters()` reads them and the selects are drawn chosen), so a
   change of filter is a page load, as a tab is. Both filters are asked in SQL so the page
   count stays true.
 - A service's page is `?service=<slug>`, one tab. A save lands on
   the slug its answer names, which is a new address after a rename; saves and
   deletes are posted the row's id.
+
+**`oryk_provisioner_service_assignments`** -- `extension`, `service`: one row
+says the user has the service. A user is its extension and a service its
+slug, as everywhere else; the pair is the primary key.
+
+- **Only what was ticked is stored.** A user assigned a pack has one row, for
+  the pack; the services under it are worked out when asked
+  (`Services::userServices()`, which names the pack under `via`), so
+  regrouping a pack changes what its users have without touching this table.
+- **One box, one write** (`setUserService`): the state is sent, not toggled,
+  and nothing of the user itself is written, so there is no Apply Config and
+  the user's Services tab has no Save.
+- **It follows both ends.** A renamed service's rows follow its slug
+  (`renameLinks()`) and a deleted one's go with it; a renumbered user's rows
+  follow its extension (`Services::moveUser()`, from `ExtensionRenumberer`)
+  and a deleted user's go with it (`forgetUser()`, from `Users::remove()`),
+  since a freed number is handed out again.
+- Nothing reads an assignment yet but that tab and the Services list's
+  Assignments column, which counts a service's own rows -- the users ticked
+  for it, not those who have it through a pack.
 
 ### Migrations deliberately not written
 
@@ -543,6 +564,7 @@ lives elsewhere:
 | call history | `asteriskcdrdb` | `CdrHistory` |
 | From Domain | `pjsip.endpoint_custom_post.conf` | `EndpointSettings` |
 | provisioner clients | `oryk_provisioner_clients.device_id` | `Clients` |
+| assigned services | `oryk_provisioner_service_assignments.extension` | `Services` |
 
 **A save** (`Users::store()`) deletes the device and adds it again -- Core has
 no edit -- so it starts from the device's stored settings, not driver defaults:

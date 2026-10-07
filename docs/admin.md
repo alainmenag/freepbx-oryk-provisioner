@@ -25,12 +25,12 @@ which are views of that one row.
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
 | `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log` or `ban` row scopes | — |
-| `&tab=services&source=module&kind=pack` | the Services list with its filters set; each is left out at its default (Custom, Services) | — |
+| `&tab=services&source=module&kind=pack` | the Services list with its filters set; each is left out at its default (Available, All) | — |
 | `&tab=overview&scope=user:<extension>` or `client:<id>` | [Overview](#overview): everything tied to that user or client | — |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
-| `&user=<extension>` | one user (`&user=` for a new one) | User, Clients |
+| `&user=<extension>` | one user (`&user=` for a new one) | User, Clients, Services |
 | `&service=<slug>` | one service (`&service=` for a new one) | Service |
 | `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
 | `&log=<id>` | one provisioning log entry, read-only | Log Entry |

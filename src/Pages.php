@@ -96,7 +96,7 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
 	 *                                                        the list, narrowed
 	 *                                                        to what that row scopes
-	 *   ?display=oryk_provisioner&tab=services&source=<custom|module>&kind=<single|pack>
+	 *   ?display=oryk_provisioner&tab=services&source=<all|custom|module>&kind=<all|single|pack>
 	 *                                                        the Services list,
 	 *                                                        as its filters are set
 	 *   ?display=oryk_provisioner&tab=overview&scope=<user|client>:<id>
@@ -251,7 +251,7 @@ class Pages extends Service
 	 * Core device, and a renumbering save moves it to a new address.
 	 *
 	 * @param string $wanted Extension, or '' for a new one.
-	 * @param string $tab    Tab to open on: user|clients.
+	 * @param string $tab    Tab to open on: user|clients|services.
 	 *
 	 * @return string Rendered page output.
 	 */
@@ -282,6 +282,8 @@ class Pages extends Service
 			// Blank on the form is not nothing: it is this.
 			'pbxDomain' => $this->endpoints->fromDomain(null),
 			'available' => $available,
+			// Every service, as this user has them; only that tab draws them.
+			'services' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->userServices($extension) : [],
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
 		]);
 	}
@@ -398,6 +400,7 @@ class Pages extends Service
 	{
 		return [
 			'clients' => (string) ($user['extension'] ?? '') !== '',
+			'services' => (string) ($user['extension'] ?? '') !== '',
 		];
 	}
 

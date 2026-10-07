@@ -241,6 +241,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
+
 		$this->services = new Services($freepbx);
 
 		$bridge = new RealtimeBridge($freepbx);
@@ -257,7 +258,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->users = new Users(
 			$freepbx,
 			new NumberAllocator($freepbx, $userman),
-			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients),
+			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients, $this->services),
 			$extensions,
 			$userman,
 			$voicemail,
@@ -265,7 +266,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$cdr,
 			$this->endpointSettings,
 			$this->clients,
-			$bridge
+			$bridge,
+			$this->services
 		);
 
 		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
@@ -584,6 +586,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listServices':
 			case 'saveService':
 			case 'deleteService':
+			case 'setUserService':
 			case 'saveSettings':
 			case 'listBans':
 			case 'saveBan':
@@ -741,6 +744,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteService':
 				return $this->services->deleteService($_REQUEST['id'] ?? null);
+
+			// One service, on or off one user, from that user's Services tab.
+			case 'setUserService':
+				return $this->services->setUserService($_REQUEST);
 
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);
