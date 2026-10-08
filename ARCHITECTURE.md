@@ -245,7 +245,7 @@ engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
-src/                         52 files, namespace FreePBX\Modules\Oryk_Provisioner
+src/                         52 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -289,7 +289,8 @@ views/                       one view per page, plus views/partials/
 | `LobbyContext` | the lobby's dialplan, on Apply Config |
 | `Jobs` | the jobs and their steps: written, listed, and what the worker asks while it runs one |
 | `ServiceEngine`, `HandlerFailed` | what a change means for a user (`changes()`, static), and the worker; a handler that threw (exception) |
-| `Reactions` | the module's own reaction to its own services |
+| `Reactions` | the module's own jobs: finds the classes in `src/Jobs/`, and runs the one a step's service names |
+| `Jobs\Job`, `Jobs\*` | one class per job of the module's own, each naming the services it is run for |
 
 `AsteriskConfig` through `Users` came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
@@ -648,7 +649,11 @@ Edit mode is a save -- Core deletes and re-adds the user -- and is passed
 over. `ExtensionRenumberer` moves a user's services and jobs **before** it
 deletes the old number, which this hook would otherwise take them with.
 
-**The module's own reactions** (`Reactions`, only for `Services::DEFAULTS`):
+**The module's own reactions** are the classes in `src/Jobs/`: each extends
+`Jobs\Job`, names the service slugs it is run for in `SERVICES`, and has
+`granted()` and `revoked()`. **Adding one is adding a file** -- `Reactions`
+finds them -- and they are written for `Services::DEFAULTS`, the module's own
+services:
 Voicemail makes a mailbox in `default` with a random PIN where there is none,
 or takes it out of voicemail.conf and sets the extension `novm` -- **the
 messages on disk are kept**; Call Recording sets the four recording keys to

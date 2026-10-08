@@ -128,7 +128,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *
  *   Jobs             the jobs and their steps
  *   ServiceEngine    what a change means for a user, and the worker that runs it
- *   Reactions        the module's own reaction to its own services
+ *   Reactions        the module's own jobs, one class each in src/Jobs/
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {

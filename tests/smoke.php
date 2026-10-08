@@ -2245,6 +2245,9 @@ is_eq('every value has a label', [array_keys(Jobs::labels()['state']), array_key
 is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::title(['name' => 'Gold'])], ['Module upgrade', 'Gold']);
 is_eq('a job is a scope', Navigator::scopeAt('job:12'), ['job' => '12']);
 is_eq('the Jobs list is narrowed when its scope is', [Navigator::narrows('jobs', ['jobs' => ['extensions' => ['100']]]), Navigator::narrows('jobs', ['jobs' => null])], [true, false]);
+$ownJobs = \FreePBX\Modules\Oryk_Provisioner\Reactions::jobs();
+is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['call-recording', 'find-me-follow', 'on-demand-recording', 'voicemail']);
+is_eq('and each is one of the module\'s own services', array_values(array_filter(array_keys($ownJobs), function ($slug) { return !Services::managed($slug); })), []);
 is_eq('the done_by list reads back', Jobs::doneBy(['done_by' => 'oryk_provisioner,testmod']), ['oryk_provisioner', 'testmod']);
 
 // The module class is not loaded here (it needs FreePBX), so its methods are read off the file.
