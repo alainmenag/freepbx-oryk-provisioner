@@ -73,7 +73,8 @@ public function onServiceGranted(array $event)
   module before yours that finished is not called again, but yours may be: when
   it threw, or when the worker died while it ran.
 - **Do not reload.** Raise Apply Config (`needreload()`) if you changed what it
-  writes; the provisioner never reloads.
+  writes: when the last job has run, the provisioner runs one `fwconsole
+  reload` for everything the jobs raised.
 - **Do not count on the service still existing.** A `service-deleted` revoke
   arrives after the service has gone; `name` is all there is of it.
 - **Expect to run in the background**, as the web user, from

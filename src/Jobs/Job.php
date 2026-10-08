@@ -17,7 +17,8 @@ use FreePBX\Modules\Oryk_Provisioner\Service;
  * this one is found by Reactions, and its SERVICES are the slugs it is run
  * for. Throwing fails the step, which is retried; so granted() and revoked()
  * each set a state rather than flip one, and running one twice is running it
- * once. None reloads: one that changes what Apply Config writes raises it.
+ * once. None reloads: one that changes what Apply Config writes raises it,
+ * and the worker reloads once when the last job has run.
  */
 abstract class Job extends Service
 {

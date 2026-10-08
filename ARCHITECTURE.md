@@ -618,6 +618,16 @@ for **Retry** (back to `queued`, the worker started). Other users never wait on
 it. A job left `running` by a worker that died is failed by the next holder of
 its user's lock -- only a lock holder runs jobs -- and retried like any other.
 
+**When the jobs are done, it reloads.** A run that ran at least one job, and
+leaves none queued or running for any user, runs `fwconsole reload` if
+FreePBX has Apply Config raised (`admin.need_reload`) -- once, after all of
+them, under one lock across workers (`ServiceEngine::reloadIfIdle()`). A job
+and a hooked module raise Apply Config and never reload themselves; the
+worker that finishes last does it for all. **It applies everything pending**,
+an admin's unapplied changes included, as Apply Config would; a minute run
+that ran no job never reloads. A failed reload is logged and leaves Apply
+Config raised.
+
 **The minute job** (`bin/oryk-jobs`, registered by `install()`) runs every
 user with a job queued or left running -- an upgrade's jobs, and anything whose
 background start was lost -- and purges `done` jobs finished more than
@@ -666,7 +676,8 @@ messages on disk are kept**; Call Recording sets the four recording keys to
 `force`, or back to `dontcare`; On Demand Recording `enabled` / `disabled`;
 Find Me Follow switches Find Me/Follow Me on (made with its own defaults where
 there is none) or off, its list kept. Each sets a state, so a second run is the
-first; none reloads, and one that changes what Apply Config writes raises it. A
+first; none reloads, and one that changes what Apply Config writes raises it
+for the reload after the last job. A
 missing module fails the step and says so. Packs, Support, Guest User and Lobby
 User have none: a context is changed in Extensions.
 

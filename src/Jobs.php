@@ -540,6 +540,26 @@ class Jobs extends Service
 	}
 
 	/**
+	 * Take the lock the reload after the jobs runs under, if no worker has it.
+	 *
+	 * @return bool False when another worker is reloading.
+	 */
+	public function lockReload()
+	{
+		return $this->getLock('oryk_provisioner_reload', 0);
+	}
+
+	/**
+	 * Give lockReload()'s lock back.
+	 *
+	 * @return void
+	 */
+	public function unlockReload()
+	{
+		$this->releaseLock('oryk_provisioner_reload');
+	}
+
+	/**
 	 * Whose a job is now: renumbering a user moves its jobs, a running one included.
 	 *
 	 * @param int $id Job id.

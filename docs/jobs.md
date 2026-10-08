@@ -36,8 +36,12 @@ The provisioner's own services do something on the PBX:
 | On Demand Recording | *Enable* | *Disable* |
 | Find Me Follow | Find Me/Follow Me switched on, set up with its defaults where it never was | switched off; its list and settings are kept |
 
-Voicemail and a new Find Me/Follow Me raise **Apply Config**; nothing reloads
-on its own. Service packs, Support, Guest User, Lobby User and your own
+Voicemail and a new Find Me/Follow Me need the configuration applied. When
+the last job has run — none queued or running for anyone — the provisioner
+runs `fwconsole reload` once, if FreePBX says Apply Config is needed. That
+applies **everything pending**, including changes of yours not yet applied,
+as pressing Apply Config would. A reload that fails is logged, and Apply
+Config stays up. Service packs, Support, Guest User, Lobby User and your own
 services do nothing here — a guest's context is changed in Extensions — but
 every step is also passed to any other module that hooks the provisioner
 ([hooks](hooks.md)), for every service.

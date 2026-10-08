@@ -81,15 +81,19 @@ class ServiceEngine extends Service
 	/**
 	 * One run of the worker: one user's queue, or every user's with something in it.
 	 *
+	 * A run that ran a job, and leaves none queued or running anywhere, ends
+	 * with `fwconsole reload` when FreePBX says Apply Config is needed -- once,
+	 * for everything the jobs changed. See reloadIfIdle().
+	 *
 	 * A user that throws is logged and passed over; the others still run.
 	 *
 	 * @param string|null $extension One user, or null for all of them and the purge.
 	 *
-	 * @return array<string, int> users, done, failed, purged.
+	 * @return array<string, int> users, done, failed, purged, reloaded (0 or 1).
 	 */
 	public function run($extension = null)
 	{
-		$result = ['users' => 0, 'done' => 0, 'failed' => 0, 'purged' => 0];
+		$result = ['users' => 0, 'done' => 0, 'failed' => 0, 'purged' => 0, 'reloaded' => 0];
 		$users = $extension !== null ? [(string) $extension] : $this->jobs->usersWaiting();
 
 		foreach ($users as $user) {
@@ -110,7 +114,90 @@ class ServiceEngine extends Service
 			$result['purged'] = $this->jobs->purge();
 		}
 
+		// Only after jobs: a minute run that ran none never applies an
+		// admin's pending changes for them.
+		if ($result['done'] + $result['failed'] > 0) {
+			$result['reloaded'] = (int) $this->reloadIfIdle();
+		}
+
 		return $result;
+	}
+
+	/**
+	 * `fwconsole reload`, when no job is left to run and Apply Config is needed.
+	 *
+	 * The worker that finishes last does it: one still running anywhere means
+	 * it will. **It applies everything pending**, an admin's unapplied
+	 * changes included -- what Apply Config would. One reload at a time,
+	 * across workers.
+	 *
+	 * @return bool True when it reloaded.
+	 */
+	private function reloadIfIdle()
+	{
+		if ($this->jobs->usersWaiting() || !$this->reloadNeeded()) {
+			return false;
+		}
+
+		if (!$this->jobs->lockReload()) {
+			return false;
+		}
+
+		try {
+			// Asked again under the lock: another worker may have just done it.
+			if ($this->jobs->usersWaiting() || !$this->reloadNeeded()) {
+				return false;
+			}
+
+			$output = [];
+			$status = 1;
+			@exec(escapeshellarg($this->fwconsole()) . ' reload 2>&1', $output, $status);
+
+			if ($status !== 0) {
+				$this->logError('fwconsole reload after the service jobs failed (' . $status . '): ' . trim(implode(' ', array_slice($output, -5))));
+
+				return false;
+			}
+
+			$this->logInfo('reloaded after the service jobs');
+
+			return true;
+		} finally {
+			$this->jobs->unlockReload();
+		}
+	}
+
+	/**
+	 * Whether FreePBX has Apply Config raised: the admin table's need_reload.
+	 *
+	 * @return bool True when it does.
+	 */
+	private function reloadNeeded()
+	{
+		try {
+			$stmt = $this->db->prepare("SELECT value FROM `admin` WHERE variable = 'need_reload'");
+			$stmt->execute();
+
+			return (string) $stmt->fetchColumn() === 'true';
+		} catch (\Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Where fwconsole is: AMPSBIN, else the PATH.
+	 *
+	 * @return string Its path.
+	 */
+	private function fwconsole()
+	{
+		try {
+			$sbin = (string) $this->FreePBX->Config->get('AMPSBIN');
+		} catch (\Throwable $e) {
+			$sbin = '';
+		}
+
+		return ($sbin !== '' && is_executable($sbin . '/fwconsole')) ? $sbin . '/fwconsole' : 'fwconsole';
 	}
 
 	/**
