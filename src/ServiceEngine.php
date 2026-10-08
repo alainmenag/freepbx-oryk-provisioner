@@ -256,7 +256,7 @@ class ServiceEngine extends Service
 	 */
 	public function dispatch($event, array $payload, array $skip = [], ?callable $finished = null)
 	{
-		foreach ($this->handlers($event) as $name => $call) {
+		foreach ($this->handlers($event, (string) ($payload['service'] ?? '')) as $name => $call) {
 			if (in_array($name, $skip, true)) {
 				continue;
 			}
@@ -370,15 +370,20 @@ class ServiceEngine extends Service
 	}
 
 	/**
-	 * Every handler of an event, by the rawname recorded for it, in the order called.
+	 * Every handler of an event for one service, by the name recorded for it
+	 * in `done_by`, in the order called: a module's rawname, or
+	 * `rawname:method` for a listener declared for some services only, which
+	 * is left out for the rest. A module's second catch-all is not called,
+	 * as FreePBX allows one.
 	 *
-	 * @param string $event granted|revoked.
+	 * @param string $event   granted|revoked.
+	 * @param string $service The step's service.
 	 *
 	 * @return array<string, callable> Handlers.
 	 *
 	 * @throws HandlerFailed When FreePBX's hook list cannot be read.
 	 */
-	private function handlers($event)
+	private function handlers($event, $service)
 	{
 		$handlers = [];
 
@@ -390,8 +395,19 @@ class ServiceEngine extends Service
 
 		foreach ((array) $hooks as $hook) {
 			$name = strtolower((string) ($hook['module'] ?? ''));
+			$only = self::onlyFor($hook);
 
-			if ($name === '' || isset($handlers[$name])) {
+			// A `services` listener is one of several a module may have for an
+			// event, so it is recorded by its method too.
+			if ($only !== null) {
+				$name .= ':' . (string) ($hook['method'] ?? '');
+
+				if (!in_array($service, $only, true)) {
+					continue;
+				}
+			}
+
+			if ($name === '' || $name[0] === ':' || isset($handlers[$name])) {
 				continue;
 			}
 
@@ -443,6 +459,29 @@ class ServiceEngine extends Service
 		} finally {
 			$this->jobs->unlockReactions();
 		}
+
+		// Which job it was, for the job's page; a direct call has no step.
+		if (!empty($payload['step'])) {
+			$class = (string) Reactions::jobs()[(string) $payload['service']];
+			$this->jobs->stepOwnJob((int) $payload['step'], substr($class, strrpos($class, '\\') + 1));
+		}
+	}
+
+	/**
+	 * The services a listener is for, from its `<method services="...">` in
+	 * module.xml: FreePBX keeps every attribute a method is declared with.
+	 *
+	 * @param array<string, mixed> $hook Hooks::returnHooksByClassMethod() entry.
+	 *
+	 * @return array<int, string>|null Slugs, or null for every service.
+	 */
+	public static function onlyFor(array $hook)
+	{
+		if (!isset($hook['services']) || trim((string) $hook['services']) === '') {
+			return null;
+		}
+
+		return Services::slugs((string) $hook['services']);
 	}
 
 	/**

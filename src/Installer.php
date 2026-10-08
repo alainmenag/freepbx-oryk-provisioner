@@ -300,7 +300,8 @@ class Installer extends Service
 
 		// A job's services, in the order they run: revokes first. `via` is the
 		// assigned service it came or went through, NULL for the service itself;
-		// `done_by` the handlers that have finished it, comma-separated rawnames.
+		// `done_by` the handlers that have finished it, comma-separated rawnames;
+		// `own_job` the src/Jobs/ class this module ran for it, NULL for none.
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->jobStepsTable}` (
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -312,6 +313,7 @@ class Installer extends Service
 				`event` VARCHAR(8) NOT NULL,
 				`state` VARCHAR(16) NOT NULL DEFAULT 'pending',
 				`done_by` VARCHAR(255) NOT NULL DEFAULT '',
+				`own_job` VARCHAR(64) NULL DEFAULT NULL,
 				`attempts` INT(10) UNSIGNED NOT NULL DEFAULT 0,
 				`error` TEXT NULL,
 				`finished_at` DATETIME NULL DEFAULT NULL,
@@ -338,6 +340,7 @@ class Installer extends Service
 		$this->schema->addBanSyncColumns();
 		$this->schema->addClientSignupColumns();
 		$this->schema->addServiceSlugColumn();
+		$this->schema->addJobStepOwnJobColumn();
 
 		// The services the module ships -- Services::DEFAULTS -- made, renamed
 		// and regrouped to match. After the slug column: they are found by it.

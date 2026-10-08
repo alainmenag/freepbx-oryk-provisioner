@@ -707,6 +707,20 @@ class Jobs extends Service
 	}
 
 	/**
+	 * Record which of the module's own jobs ran for a step.
+	 *
+	 * @param int    $id    Step id.
+	 * @param string $class Its class name under src/Jobs/, unqualified.
+	 *
+	 * @return void
+	 */
+	public function stepOwnJob($id, $class)
+	{
+		$stmt = $this->db->prepare("UPDATE `{$this->jobStepsTable}` SET own_job = :job WHERE id = :id");
+		$stmt->execute([':job' => mb_substr((string) $class, 0, 64), ':id' => (int) $id]);
+	}
+
+	/**
 	 * Record how a run of a job ended.
 	 *
 	 * @param int         $id    Job id.

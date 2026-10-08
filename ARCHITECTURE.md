@@ -528,7 +528,9 @@ made, last started and finished.
 `job_id` and `position` (revokes first, then grants, each by slug), `service`
 and `name`, `via` (the assigned service it comes or went through, NULL for
 the service itself), `event` (`granted`, `revoked`), `state` (`pending`,
-`done`, `failed`, `skipped`), `done_by`, `attempts`, `error`.
+`done`, `failed`, `skipped`), `done_by`, `own_job` (the `src/Jobs/` class
+this module ran for it, shown beside `oryk_provisioner` on the job's page),
+`attempts`, `error`.
 
 - **Steps are rows, not a JSON column on the job**, so a renamed service is
   an UPDATE (`renameLinks()` carries `service`, and a step's `via`, with the
@@ -648,7 +650,12 @@ it would hook Core:
 ```
 
 FreePBX files that under `FreePBX\modules\Oryk_provisioner` when the module
-is installed or enabled. **The worker does not call `processHooks()`**: that
+is installed or enabled. **A listener can be for some services only**:
+`<method ... services="voicemail,call-recording">` -- FreePBX keeps every
+attribute a method is declared with, and the worker skips the listener for any
+other service (`ServiceEngine::onlyFor()`). A module may have several of these
+for one event, each recorded in `done_by` as `rawname:method`; a catch-all is
+recorded as the rawname, one per module. **The worker does not call `processHooks()`**: that
 loops the listeners with no catch, so the first throw stops the rest with
 nothing saying which, and leaves the thrower's text domain pushed. It reads the
 same list (`Hooks::returnHooksByClassMethod()`, public in framework 16 and 17:

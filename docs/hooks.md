@@ -26,8 +26,18 @@ In your module's `module.xml`, the way you would hook Core:
   `module.xml` hooks only from modules that have one. With `class` the same as
   your module's BMO class, the method is called on it; another class is
   constructed with the FreePBX object.
-- One method per event per module, as FreePBX allows: a second `<method>`
-  with the same `callingMethod` is not called.
+- **For some services only**, add `services` to the method, comma-separated
+  slugs; it is not called for any other service. A module can have several of
+  these for one event — a method per service:
+
+  ```xml
+  <method callingMethod="serviceGranted" class="Mymodule" namespace="FreePBX\modules" services="voicemail">onVoicemailGranted</method>
+  <method callingMethod="serviceGranted" class="Mymodule" namespace="FreePBX\modules" services="call-recording,on-demand-recording">onRecordingGranted</method>
+  ```
+
+  Without `services` a method is called for every service, and only one such
+  method per event per module is called, as FreePBX allows. A job's page
+  lists a filtered method as `mymodule:onVoicemailGranted`.
 - FreePBX reads hooks when a module is installed or enabled, so install or
   upgrade yours (or the provisioner) after adding them. Disabled modules are
   not called.

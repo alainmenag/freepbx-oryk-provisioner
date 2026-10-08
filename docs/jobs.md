@@ -44,7 +44,7 @@ as pressing Apply Config would. A reload that fails is logged, and Apply
 Config stays up. Service packs, Support, Guest User, Lobby User and your own
 services do nothing here — a guest's context is changed in Extensions — but
 every step is also passed to any other module that hooks the provisioner
-([hooks](hooks.md)), for every service.
+([hooks](hooks.md)): for every service, or only the ones it asks for.
 
 ## Running and failing
 
@@ -65,7 +65,7 @@ start within a minute of the upgrade.
 - **Jobs**, beside Logs and Bans: every job, newest first, filtered by state
   (Queued, Running, Done, Failed), reason and where it came from. The filters
   are in the address.
-- A job's own page: each step, what it did, which modules finished it, and the
+- A job's own page: each step, what it did, which modules finished it — the provisioner's own with the job it ran, as in `oryk_provisioner (Voicemail)` —, and the
   error from the one that failed, with **Retry** and **Delete**. Deleting a
   running job stops it before its next step; what it already did stays done.
 - A user's **Services** tab: each service whose last job is queued, running or

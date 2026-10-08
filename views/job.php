@@ -119,7 +119,15 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 										<p class="text-danger oryk-job-error"><?php echo $h($step['error']); ?></p>
 										<?php endif; ?>
 									</td>
-									<td><?php echo (string) $step['done_by'] !== '' ? $h(str_replace(',', ', ', (string) $step['done_by'])) : '-'; ?></td>
+									<td><?php
+									// This module's own entry names the job in src/Jobs/ it ran.
+									$finished = array_map(function ($name) use ($step) {
+										return $name === 'oryk_provisioner' && (string) ($step['own_job'] ?? '') !== ''
+											? $name . ' (' . $step['own_job'] . ')'
+											: $name;
+									}, Jobs::doneBy($step));
+									echo $finished ? $h(implode(', ', $finished)) : '-';
+									?></td>
 									<td><?php echo $h($step['attempts']); ?></td>
 								</tr>
 								<?php endforeach; ?>
