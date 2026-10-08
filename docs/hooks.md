@@ -1,8 +1,10 @@
 # Hooking the provisioner
 
 Another FreePBX module can react when a user gains or loses a service. Every
-[job step](jobs.md) is passed to every module that hooks it: the provisioner's
-own reaction runs first, then each hooked module in turn.
+[job step](jobs.md) is passed to every module that hooks it, in turn. The
+provisioner hooks itself the same way, at priority 100, to run its own jobs
+(Voicemail, the recording services, Find Me Follow): declare a higher
+priority to run after them.
 
 ## Declaring the hook
 

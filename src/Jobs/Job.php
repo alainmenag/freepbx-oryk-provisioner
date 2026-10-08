@@ -9,8 +9,9 @@ use FreePBX\Modules\Oryk_Provisioner\Service;
 
 /**
  * One of the module's own jobs: what it does when a user gains or loses the
- * services it names. The first handler of every step for those services,
- * before any hooked module -- see ARCHITECTURE.md, "Jobs".
+ * services it names. Run through this module's own hook on serviceGranted and
+ * serviceRevoked, like any hooked module's handler, and at priority 100 first
+ * of them -- see ARCHITECTURE.md, "Jobs".
  *
  * **A job is a file here and nothing else**: a class in src/Jobs/ extending
  * this one is found by Reactions, and its SERVICES are the slugs it is run

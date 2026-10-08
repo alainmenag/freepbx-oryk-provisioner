@@ -2259,7 +2259,8 @@ foreach ($hooks->hooks->children() as $module => $methods) {
 		$hooked[] = $module . '::' . $method['callingMethod'] . ' -> ' . $method . (preg_match('/public function ' . preg_quote((string) $method, '/') . '\\(/', $moduleSource) ? '' : ' (missing)');
 	}
 }
-is_eq('module.xml hooks Core\'s delUser, to a method that exists', $hooked, ['core::delUser -> coreDelUser']);
+is_eq('module.xml hooks Core\'s delUser, and itself for its own jobs, to methods that exist', $hooked, ['core::delUser -> coreDelUser', 'oryk_provisioner::serviceGranted -> runOwnJobGranted', 'oryk_provisioner::serviceRevoked -> runOwnJobRevoked']);
+is_eq('its own hook goes before a module that does not say', (string) $hooks->hooks->oryk_provisioner['priority'], '100');
 
 echo "\n  the module class imports every class it builds:\n";
 

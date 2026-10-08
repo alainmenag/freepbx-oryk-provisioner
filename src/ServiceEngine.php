@@ -8,14 +8,14 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * What a change to services means for a user, and running it: the job worker.
  *
  * changes() turns a user's services before and after a change into steps;
- * run() and drain() carry them out, one job at a time per user, calling the
- * module's own reaction and then every module hooked to serviceGranted or
- * serviceRevoked. The rules -- ordering, retries, what stops a job -- are
+ * run() and drain() carry them out, one job at a time per user, calling
+ * every module hooked to serviceGranted or serviceRevoked -- this one
+ * included, first by its priority, which runs src/Jobs/ through ownJob(). The rules -- ordering, retries, what stops a job -- are
  * ARCHITECTURE.md, "Jobs".
  */
 class ServiceEngine extends Service
 {
-	/** The name the module's own reaction is recorded under in a step's `done_by`. */
+	/** This module's rawname, as its own hook is listed and recorded in a step's `done_by`. */
 	const OWN = 'oryk_provisioner';
 
 	/** The class other modules hook in their module.xml, as FreePBX keys it: namespace\class. */
@@ -155,8 +155,8 @@ class ServiceEngine extends Service
 	}
 
 	/**
-	 * Call every handler of one event in turn: the module's own, then each
-	 * hooked module in FreePBX's hook order.
+	 * Call every module hooked to one event in turn, in FreePBX's hook order:
+	 * this one's own, at priority 100, first unless another asks for less.
 	 *
 	 * @param string                $event    granted|revoked.
 	 * @param array<string, mixed>  $payload  What each handler is given; see payload().
@@ -293,23 +293,7 @@ class ServiceEngine extends Service
 	 */
 	private function handlers($event)
 	{
-		$handlers = [
-			self::OWN => function (array $payload) use ($event) {
-				if (!Reactions::handles((string) ($payload['service'] ?? ''))) {
-					return;
-				}
-
-				if (!$this->jobs->lockReactions()) {
-					throw new \RuntimeException(_('another worker held the module\'s reactions too long'));
-				}
-
-				try {
-					$this->reactions->handle($event, $payload);
-				} finally {
-					$this->jobs->unlockReactions();
-				}
-			},
-		];
+		$handlers = [];
 
 		try {
 			$hooks = $this->FreePBX->Hooks->returnHooksByClassMethod(self::HOOK_CLASS, self::METHODS[$event]);
@@ -329,7 +313,49 @@ class ServiceEngine extends Service
 			};
 		}
 
+		// A service with a job of this module's own, and this module not hooked:
+		// FreePBX has not read module.xml since it gained the hook. Said, rather
+		// than the step passing as done with nothing run.
+		if (!isset($handlers[self::OWN])) {
+			$handlers = [self::OWN => function (array $payload) {
+				if (Reactions::handles((string) ($payload['service'] ?? ''))) {
+					throw new \RuntimeException(_('the module\'s own hook is not registered: run fwconsole ma install oryk_provisioner'));
+				}
+			}] + $handlers;
+		}
+
 		return $handlers;
+	}
+
+	/**
+	 * Run this module's own job for one event, if its service has one: what
+	 * its own hook on serviceGranted and serviceRevoked calls.
+	 *
+	 * Under one lock across every worker: users' queues run side by side, and
+	 * Voicemail's job rewrites all of voicemail.conf.
+	 *
+	 * @param string               $event   granted|revoked.
+	 * @param array<string, mixed> $payload The event; see payload().
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the job cannot be done, or the lock not had.
+	 */
+	public function ownJob($event, array $payload)
+	{
+		if (!Reactions::handles((string) ($payload['service'] ?? ''))) {
+			return;
+		}
+
+		if (!$this->jobs->lockReactions()) {
+			throw new \RuntimeException(_('another worker held the module\'s reactions too long'));
+		}
+
+		try {
+			$this->reactions->handle($event, $payload);
+		} finally {
+			$this->jobs->unlockReactions();
+		}
 	}
 
 	/**

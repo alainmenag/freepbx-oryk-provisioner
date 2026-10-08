@@ -540,8 +540,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * their module.xml (`callingMethod="serviceGranted"`).
 	 *
 	 * The job worker calls the same handlers, one at a time, and records each;
-	 * called directly, this runs the module's own reaction and every hooked
-	 * module for one event, outside any job. See docs/hooks.md.
+	 * called directly, this runs every hooked module -- this one's own jobs
+	 * included -- for one event, outside any job. See docs/hooks.md.
 	 *
 	 * @param array<string, mixed> $event extension and service at least; see docs/hooks.md.
 	 *
@@ -566,6 +566,36 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function serviceRevoked(array $event)
 	{
 		$this->engine->dispatch('revoked', ['event' => 'revoked'] + $event);
+	}
+
+	/**
+	 * This module's own hook on serviceGranted (module.xml): runs the job in
+	 * src/Jobs/ for the service, if there is one. Called by the job worker,
+	 * like every hooked module.
+	 *
+	 * @param array<string, mixed> $event See docs/hooks.md.
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the job cannot be done.
+	 */
+	public function runOwnJobGranted(array $event)
+	{
+		$this->engine->ownJob('granted', $event);
+	}
+
+	/**
+	 * This module's own hook on serviceRevoked: runOwnJobGranted()'s other half.
+	 *
+	 * @param array<string, mixed> $event See docs/hooks.md.
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the job cannot be done.
+	 */
+	public function runOwnJobRevoked(array $event)
+	{
+		$this->engine->ownJob('revoked', $event);
 	}
 
 	/**

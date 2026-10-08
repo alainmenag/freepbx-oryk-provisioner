@@ -28,7 +28,8 @@ A **service** is a name, linked to any number of services it is under and any
 number under it, and assigned to users. The endpoint knows nothing of a
 service, but a template can ask what a user holds, and every change to what a
 user holds is a **job**: one step per service gained or lost, run at once,
-calling the module's own reaction and every module hooked to it.
+calling every module hooked to it -- this one included, whose own jobs are
+classes in `src/Jobs/`.
 See [Schema](#schema) and [Jobs](#jobs).
 
 A **user** is the other half of the module: a pjsip device that is its own
@@ -535,7 +536,7 @@ the service itself), `event` (`granted`, `revoked`), `state` (`pending`,
 - **Names are snapshots.** A job for a deleted service still says what it was;
   a page links a slug only while a service has it.
 - **`done_by` is the handlers that have finished a step**, comma-separated
-  rawnames (`oryk_provisioner` first). It is written as each returns, so a
+  rawnames. It is written as each returns, so a
   retry starts at the one that threw and never calls a finished one again.
 - **A job belongs to its user.** `forgetUser()` deletes a deleted user's
   jobs, `moveUser()` carries a renumbered one's; there is no foreign key to
@@ -596,11 +597,15 @@ after letting go. Different users run side by side. Per job:
   does not, else it is `skipped`. That is what makes running a failed job
   after a later one safe: a grant that failed and was then unassigned is never
   granted back;
-- the step's **handlers** run one at a time: `Reactions` (as
-  `oryk_provisioner`), then each module hooked to `serviceGranted` or
-  `serviceRevoked`, in FreePBX's hook order. A reaction runs under one lock
-  across every worker (`Jobs::lockReactions()`): users' queues run side by
-  side, and Voicemail's rewrites all of voicemail.conf;
+- the step's **handlers** run one at a time: every module hooked to
+  `serviceGranted` or `serviceRevoked`, in FreePBX's hook order -- **this
+  one included**, through its own module.xml at priority 100, so first unless
+  another asks for less. Its hook (`runOwnJobGranted()` / `runOwnJobRevoked()`
+  → `ServiceEngine::ownJob()`) runs the `src/Jobs/` class for the service,
+  under one lock across every worker (`Jobs::lockReactions()`): users' queues
+  run side by side, and Voicemail's rewrites all of voicemail.conf. A service
+  with a job of its own while FreePBX has not yet read that hook fails the
+  step and says to reinstall, rather than passing with nothing run;
 - **the first handler that throws stops the job there** -- its later steps
   stay `pending` -- with "<module>: <message>" on the step and the job, which
   is `failed`.
@@ -649,7 +654,8 @@ Edit mode is a save -- Core deletes and re-adds the user -- and is passed
 over. `ExtensionRenumberer` moves a user's services and jobs **before** it
 deletes the old number, which this hook would otherwise take them with.
 
-**The module's own reactions** are the classes in `src/Jobs/`: each extends
+**The module's own reactions** are the classes in `src/Jobs/`, reached through
+its own hook like any other module's: each extends
 `Jobs\Job`, names the service slugs it is run for in `SERVICES`, and has
 `granted()` and `revoked()`. **Adding one is adding a file** -- `Reactions`
 finds them -- and they are written for `Services::DEFAULTS`, the module's own

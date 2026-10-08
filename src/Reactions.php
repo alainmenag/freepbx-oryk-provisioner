@@ -9,8 +9,8 @@ use FreePBX\Modules\Oryk_Provisioner\Jobs\Job;
 /**
  * The module's own jobs, found in src/Jobs/, and which one a step runs.
  *
- * A step for a service some job names in its SERVICES runs that job first,
- * before any hooked module; a service no job names -- the packs, Support,
+ * A step for a service some job names in its SERVICES runs that job, from
+ * this module's own hook (ServiceEngine::ownJob()); a service no job names -- the packs, Support,
  * Guest User, Lobby User -- is an event for other modules alone. A guest's or
  * lobby user's context is changed in Extensions, never here.
  */

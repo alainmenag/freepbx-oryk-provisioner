@@ -59,6 +59,10 @@
 		<core class="Core" namespace="FreePBX\modules">
 			<method callingMethod="delUser" class="Oryk_provisioner" namespace="FreePBX\modules">coreDelUser</method>
 		</core>
+		<oryk_provisioner class="Oryk_provisioner" namespace="FreePBX\modules" priority="100">
+			<method callingMethod="serviceGranted" class="Oryk_provisioner" namespace="FreePBX\modules">runOwnJobGranted</method>
+			<method callingMethod="serviceRevoked" class="Oryk_provisioner" namespace="FreePBX\modules">runOwnJobRevoked</method>
+		</oryk_provisioner>
 	</hooks>
 	<depends>
 		<module>core</module>
