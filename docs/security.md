@@ -11,6 +11,12 @@ Know what this is before you expose it:
   emptied, so a client without one is still possible —
   restrict who can reach `/provisioner/` at the network layer, and prefer
   HTTPS, since Basic credentials over plain http are credentials in the clear.
+- **Every answer allows any origin.** The endpoint sends
+  `Access-Control-Allow-Origin: *` and allows the `Authorization` header, which
+  is what lets a softphone running in a browser provision itself. It also means
+  a web page open in any browser that can reach the endpoint can ask it and
+  read the answer: a client with no token by its MAC alone, one with a token
+  when the page has the token.
 - **A token is not rate limited and there is no lockout.** A wrong one costs
   the caller a single bcrypt verification over an endpoint anyone can reach.
 - **An uploaded File resource is served to a caller with no client behind it

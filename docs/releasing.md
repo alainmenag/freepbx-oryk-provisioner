@@ -12,7 +12,7 @@ inside it from disagreeing.
 
 The build also lints every PHP file and runs the tests -- `tests/smoke.php`,
 and `tests/services_db.php` against a MariaDB it starts for itself -- and
-publishes nothing if either fails.
+publishes nothing if any of them fails.
 
 ## Cutting a release
 
@@ -45,11 +45,12 @@ git tag "$v" && git push origin "$v"
 1. Strips a leading `v` from the tag and compares it with the first
    `<version>` in `module.xml` **at the tagged commit**. A mismatch stops here.
 2. Runs `php -l` over every PHP file.
-3. Builds the zip with `git archive` from the tagged commit, with everything
+3. Runs `tests/smoke.php`, then `tests/services_db.php` against MariaDB.
+4. Builds the zip with `git archive` from the tagged commit, with everything
    under an `oryk_provisioner/` directory. Paths marked `export-ignore` in
    `.gitattributes` — `.github`, `tests`, `CLAUDE.md` and the git dotfiles — are
    left out.
-4. Creates the GitHub Release, titled with the tag, with notes generated from
+5. Creates the GitHub Release, titled with the tag, with notes generated from
    the PRs merged since the last one.
 
 Uncommitted or unpushed work never reaches the zip: it is built from the tag,

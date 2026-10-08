@@ -27,14 +27,18 @@ resource of which profile that names is worked out by the module.
 
 GET and HEAD fetch; PUT sends. A PUT needs a MAC — what a phone sends is
 written to disk, so it has to be a phone this module knows — where a fetch does
-not, since firmware is asked for by name alone. Anything else is a 404 and a
-log line.
+not, since firmware is asked for by name alone. An `OPTIONS` request is
+answered `204` before anything is looked up, and logged nowhere: every answer
+carries CORS headers allowing any origin and the `Authorization` header, so a
+softphone running in a browser on another site can fetch its configuration.
+Anything else is a 404 and a log line.
 
 A MAC that is not associated, a client with no profile, and a filename the
 profile does not serve are all 404s. A client that has been switched off, or
 whose profile has, is a 403, and so is a request a [ban](bans.md) refuses —
 that is asked before anything else, and answered with a bare `Forbidden`. A client that has a token and did not
-present it is a 401.
+present it is a 401. With **Settings → Provisioning** Disabled, every request
+is a 503 and none is logged.
 
 ## A client with no profile
 
@@ -52,9 +56,12 @@ profile refuses, as any disabled profile does.
 | AudioCodes | `AudioCodes` or `AUDC-` |
 | Mitel | `Mitel` or `Aastra` |
 | WebKit | `WebKit` — a browser, or a softphone built on one |
+| PostmanRuntime | `PostmanRuntime` — a request sent from Postman |
 
-The first that matches, in that order, is the vendor: a phone that also names
-WebKit is its own vendor. A request with no vendor, or no profile by its name,
+They are tried in this order, and the first that matches is the vendor:
+Polycom, Yealink, Grandstream, Cisco, Snom, AudioCodes, Fanvil, Htek, Mitel,
+Avaya, Obihai, Panasonic, Gigaset, Akuvox, WebKit, PostmanRuntime. So a phone
+that also names WebKit is its own vendor. A request with no vendor, or no profile by its name,
 is served as a client with no profile — uploaded files by name, and nothing
 else.
 

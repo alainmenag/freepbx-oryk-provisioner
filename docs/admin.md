@@ -1,12 +1,15 @@
 # The admin interface
 
-*Oryk → Provisioner*. A list, five editors, a log entry page and a job page, told apart by which key the URL
+*Oryk → Provisioner*. A list, six editors, a log entry page and a job page, told apart by which key the URL
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
-Every page is topped by the same bar of sections — Users, Clients, Profiles,
-Services, Logs, Bans, Jobs, Overview, Settings — with the one you are in underlined, so any section is
-one click away from anywhere. Under it is a row of searchable dropdowns —
+Every page is topped by the same bar of sections, with the one you are in
+underlined. Users, Clients, Profiles and Services share one entry on it, Logs,
+Bans, Jobs and Overview another, and Settings has its own. A shared entry is
+named for the section of its group you are in — or the group's first, Users
+or Logs — and clicking it goes there; hovering it opens a menu of the group's
+sections. Under the bar is a row of searchable dropdowns —
 Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
 people they belong to; on a client, Users and Profiles list its user and its profile,
@@ -108,24 +111,27 @@ It is tables, the same ones the lists show:
 | **User** | the user, with a link to its User Manager account | its user, which is kept |
 | **Devices** | the FreePBX devices on its extension | — |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
-| **Call history** | the calls it made or received | — |
+| **Call Detail Record** | the calls it made or received | — |
 | **Voicemail** | the messages in its mailbox, every folder | — |
-| **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
+| **Provisioning Logs** | the requests from its clients' MACs | the requests from its MAC |
 | **Jobs** | its [jobs](jobs.md) | — |
 | **Bans** | every ban naming it or applying to it | the same |
 
-Each part can be removed where it is listed: a client, a job or a ban by its trash
-can, a user's jobs all at once with **Clear** (what they did stays done), the log entries with **Clear These Entries**, a client's stored logs with
-the trash can beside their count.
+Each part can be removed where it is listed: a client, a device, a voicemail
+message, a job or a ban by its trash can, and a client's stored logs with the
+trash can beside their count. Call Detail Record, Voicemail, Provisioning Logs
+and Jobs each have a **Clear** button over the table, which empties that table
+for this row and asks first. Clearing a user's jobs leaves what they did done.
 
-**Clear Call History** removes a user's calls and their recordings and keeps
-the user. It is what deleting the user does to its history, so a call between
+**Clear** over Call Detail Record removes a user's calls and their recordings
+and keeps the user. It is what deleting the user does to its history, so a call between
 two extensions is removed from the other's history too, and there is no undo —
-back up `asteriskcdrdb` first if the history matters. **Clear Voicemail**
+back up `asteriskcdrdb` first if the history matters. **Clear** over Voicemail
 deletes every message in the user's mailbox and keeps the mailbox and its
-greetings, and each message has its own trash can; a phone's message-waiting light follows within a minute or so.
+greetings; a phone's message-waiting light follows within a minute or so.
 
-**Delete All**, in the action bar, removes the user or client and everything
+**Delete All**, in the action bar — and the trash can on the user's own row
+in the User table — removes the user or client and everything
 listed for it in one go, after saying how much that is. For a user that is the
 whole of [deleting a user](users.md#deleting) — extension, account, voicemail,
 call history and recordings — plus its clients, their logs and the bans naming
@@ -138,7 +144,8 @@ row — delete it from its own trash can if you mean to.
 
 The Devices table's **Status** is whether Asterisk has the device registered
 right now — Registered, Unreachable (registered, but not answering),
-or Not registered — with the address it registered from on hover. In it, a trash can deletes that device; when a
+Not registered, or Unknown when Asterisk could not be asked — with the address it registered from on hover. **Edit**
+opens the device in FreePBX. A trash can deletes that device; when a
 client uses it you are asked whether to delete the **Device Only**, which
 keeps the client with no device assigned, or **Device + Client**. Deleting the user's own device — the one
 numbered like the extension — leaves the user on the Users list marked **no
@@ -166,5 +173,5 @@ any, and stays on the tab.
 | **Sign-ups per Day, PBX** (`ORYK_OPEN_PER_DAY_TOTAL`) | 0 (off): how many users open provisioning makes in any 24 hours from every address together. Reaching it puts a notice on the dashboard. |
 | **Lobby Calls** (`ORYK_OPEN_CALLS`) | 1: calls one lobby extension places at once. 0 is no limit. Takes effect on Apply Config. |
 | **Lobby Emergency Caller ID** (`ORYK_OPEN_EMERGENCY_CID`) | Blank: a sign-up's emergency caller id is its extension. Set it to a number an emergency operator can call back. Given to users as they sign up. |
-| **Lobby Expiry** (`ORYK_OPEN_EXPIRE_DAYS`) | 0 (off): days a lobby user may go unseen before it is listed under **Expired** on the Users tab — see [The lobby](users.md#the-lobby). |
+| **Lobby Expiry** (`ORYK_OPEN_EXPIRE_DAYS`) | 0 (off): days a lobby user may go unseen before it counts as expired. No page lists expired users at present, so the value changes nothing you can see — see [The lobby](users.md#the-lobby). |
 | **Fail2ban Sync** (`ORYK_FAIL2BAN_SYNC`) | Yes (the default): IP bans are kept in step with fail2ban every minute and on every save — see [Syncing with fail2ban](fail2ban.md). No: paused; nothing is read from or written to fail2ban, and nothing already there is undone. |

@@ -9,14 +9,18 @@ Vendor-specific syntax stays in templates you write; the module holds the data
 and the rendering.
 
 Alongside provisioning it manages **users** (an extension, its User Manager
-account, mailbox and SIP device as one number), **bans** — refusing, or
-explicitly allowing, an address, MAC, user, client or profile, with IP bans
-kept in step with fail2ban — and logs every request a phone makes.
+account, mailbox and SIP device as one number), **services** — named
+features, and packs of them, assigned to users, with a job run for every
+change — **bans** — refusing, or explicitly allowing, an address, MAC, user,
+client or profile, with IP bans kept in step with fail2ban — and logs every
+request a phone makes.
 
 > [!WARNING]
-> A client with no token is served to anyone who can reach the URL and knows
-> its MAC address — configuration, SIP secret included. Read
-> [Security](docs/security.md) before putting this anywhere public.
+> A new client is given a token when you save it, and is then served only to
+> a caller that presents it. A client whose token has been emptied is served
+> to anyone who can reach the URL and knows its MAC address — configuration,
+> SIP secret included — and an uploaded file to anyone who knows its name.
+> Read [Security](docs/security.md) before putting this anywhere public.
 
 ## Getting started
 
@@ -42,7 +46,8 @@ run as root does it for you.
 1. **Make a profile.** *Oryk → Provisioner → Profiles → Add Profile*, name it
    (`Polycom VVX 500`) and save.
 2. **Add the main config.** On the profile's **Resources** tab, *Add
-   Resource* with filename `{{device.mac}}.cfg` and a template:
+   Resource* with filename `.cfg` — the main config, answered for
+   `<mac>.cfg` — and a template:
 
    ```
    reg.1.address="{{extension.number}}"
@@ -56,16 +61,20 @@ run as root does it for you.
    Add a resource for each other file the phone fetches — `phone.cfg`,
    `directory.xml`, firmware.
 3. **Add a client.** *Clients → Add Client*: the MAC, the FreePBX device it
-   stands for, the profile.
+   stands for, the profile. Leave **Token** empty and one is generated — a
+   `user:password` shown once when you save. Copy it: it is what the phone
+   signs in with.
 4. **Check it.** The client's **Resources** tab lists every file it will ask
    for, each with **Render**, which opens it as the phone will get it, and **Open**,
-   which fetches it from the endpoint as the phone does.
-5. **Point the phone at** `http://<pbx>/provisioner/`. Most phones append their
-   own MAC and filename.
+   which fetches it from the endpoint as the phone does — the browser asks
+   for the token.
+5. **Point the phone at** `http://<pbx>/provisioner/`, with the token's user
+   and password as its provisioning server credentials. Most phones append
+   their own MAC and filename.
 
 ## Documentation
 
 Everything else is in [`docs/`](docs/README.md): the endpoint and filename
-matching, every template placeholder, the admin pages, users, bans and fail2ban,
-security, and [releasing a version](docs/releasing.md). How the module is built
+matching, every template placeholder, the admin pages, users, services and
+jobs, bans and fail2ban, security, and [releasing a version](docs/releasing.md). How the module is built
 is in [`ARCHITECTURE.md`](ARCHITECTURE.md).

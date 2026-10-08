@@ -100,8 +100,9 @@ diffing. Never rewrite a file wholesale to reword its comments.
 ## Working practices
 
 - `php tests/smoke.php` runs standalone checks against stubs, with nothing
-  installed; it covers the Users subsystems, not the provisioning side. `php -l`
-  is the other check. Neither is always to hand -- the sandbox Claude runs
+  installed. It covers most of `src/` -- users, tokens, bans and the fail2ban
+  plan, open provisioning, transcoding, Overview, services and jobs -- but no
+  view, and nothing that needs a real PBX. `php -l` is the other check. Neither is always to hand -- the sandbox Claude runs
   commands in on this machine has no PHP -- so run them wherever there is one:
   a container, or the PBX itself.
 - `php tests/services_db.php` runs `Services::seed()` against real tables and

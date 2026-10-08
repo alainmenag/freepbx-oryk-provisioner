@@ -48,6 +48,9 @@ phone
   -> engine/provisioner.php    who is asking (MAC) + what they asked for (last
                                path segment). Bootstraps FreePBX directly:
                                freepbx_auth=false, restrict_mods=true.
+                               CORS headers on every answer (any origin,
+                               Authorization allowed); OPTIONS: 204, before
+                               FreePBX is loaded.
                                ORYK_PROVISIONING=DISABLED: 503, unlogged
   -> Oryk_provisioner::serve() / ::receive()      thin passthrough
      or ::openProvision()                         MAC 000000000000, OPEN only
@@ -87,8 +90,9 @@ phone would get a config that parses and is wrong.
 **Known exposure, inherent to MAC-based provisioning.** Anyone who reaches the
 URL and knows a MAC gets that client's config, `device.secret` included, unless
 the client has a token. An uploaded file can be fetched by anyone who knows what
-it is called. Restrict the URL at the network layer until the token scheme is
-mandatory.
+it is called. A new client is given a token when it is saved without one
+(`Clients::saveClient()`), but an update can empty it, so restrict the URL at
+the network layer.
 
 ### Open provisioning
 
@@ -180,7 +184,9 @@ User Manager's to switch back. **Expired** (`ORYK_OPEN_EXPIRE_DAYS`): a lobby us
 newest client was last seen, or whose sign-up client was made, more than N days
 ago -- `Users::expired()` in PHP and `expiredExpr()` in SQL, which must agree:
 the list shows what the SQL matches, and `deleteExpired()` deletes only what
-the PHP still says yes to.
+the PHP still says yes to. **No page asks for either at present**: `listUsers`
+still takes `filter=lobby` or `expired` and `deleteExpiredUsers` is still
+answered, but the Users list draws no filter and no Delete listed.
 
 **Unverified**: the forward guard, the included context names and UCP's
 per-user override are written from FreePBX's and Asterisk's documentation and
@@ -247,7 +253,8 @@ engine/.htaccess             rewrites everything under engine/ to provisioner.ph
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
 src/                         52 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
-tests/                       smoke.php and the stubs it runs against
+tests/                       smoke.php, the stubs it runs against and its lexical check
+                             (namespacing.php); services_db.php, seed() on real tables
 views/                       one view per page, plus views/partials/
 ```
 
@@ -502,7 +509,7 @@ same in the table, in `DEFAULTS` and to anything outside the module.
   count stays true.
 - A service's page is `?service=<slug>`, one tab. A save lands on
   the slug its answer names, which is a new address after a rename; saves and
-  deletes are posted the row's id.
+  deletes are posted the row's slug.
 
 **`oryk_provisioner_service_assignments`** -- `extension`, `service`: one row
 says the user has the service. A user is its extension and a service its
@@ -712,8 +719,9 @@ Find Me Follow switches Find Me/Follow Me on (made with its own defaults where
 there is none) or off, its list kept. Each sets a state, so a second run is the
 first; none reloads, and one that changes what Apply Config writes raises it
 for the reload after the last job. A
-missing module fails the step and says so. Packs, Support, Guest User and Lobby
-User have none: a context is changed in Extensions.
+missing module fails the step and says so. Packs -- Guest User and Lobby User
+are two -- Support and Knowledge Base have none: a context is changed in
+Extensions.
 
 **Where it shows.** The Jobs section (`?tab=jobs`, filtered by state, reason and
 source in the address, as Services is); a job's page (`?job=<id>`), its steps

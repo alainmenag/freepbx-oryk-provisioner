@@ -36,6 +36,7 @@ it away. A new client saved with the box empty is given a generated one — a
 random `user:password`, shown once in a prompt when you save, and never again.
 **A colon is what marks a value as a token still to be hashed**; a
 value without one is stored as it was typed and verifies against nothing.
+The Clients list's **Secure** column says whether a client has one.
 
 While a client has a token, the endpoint refuses it everything until it
 presents one: the request needs HTTP Basic credentials, and `user:password` is
@@ -71,12 +72,19 @@ letters and digits joined by hyphens. It is made from the name and is not editab
 renaming a service gives it a new slug, and everything that referred to the
 old one is updated with it. It is the last part of the service's page address.
 
-Some services come **with the module**, listed under Module on the Services list: Advanced
-User, Basic User, Guest User, Call Recording, Find Me Follow, On Demand
-Recording, Support and Voicemail, grouped into packs. They cannot be edited
-or deleted, but a service of your own can be put under any of them, or over
-it, from your service's page. They are written when the module is installed or
-upgraded.
+Some services come **with the module**, listed under Module on the Services
+list — six services, and four packs, each built on the one above it here:
+
+| Pack | Holds |
+| --- | --- |
+| Guest User | Knowledge Base |
+| Lobby User | Guest User, Support |
+| Basic User | Lobby User, Find Me Follow, Voicemail |
+| Advanced User | Basic User, Call Recording, On Demand Recording |
+
+They cannot be edited or deleted, but a service of your own can be put under
+any of them, or over it, from your service's page. They are written again
+whenever the module is installed or upgraded.
 
 Services are assigned to users on each user's
 [Services tab](users.md#services). Every change to what a user has is a
