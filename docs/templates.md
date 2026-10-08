@@ -25,6 +25,7 @@ box; click one to copy it.
 | `{{profile.id}}`, `{{profile.name}}` | the profile serving the file |
 | `{{server.host}}` | the Hostname setting (`ORYK_HOSTNAME`); blank, the host the request arrived on, port stripped |
 | `{{server.port}}` | `5060` |
+| `{{provisioning.server}}` | the Provisioning Server setting (`ORYK_PROVISIONING_SERVER`): a host, with a port and a path if it has them, and no scheme. Blank, `{{server.host}}` followed by `/provisioner` |
 
 Plus **everything else the device is configured with in FreePBX**, under a `sip.`
 prefix — one placeholder per row the device has in the `sip` table, so

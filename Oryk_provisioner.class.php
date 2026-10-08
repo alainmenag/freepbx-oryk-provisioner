@@ -21,6 +21,7 @@ use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
 use FreePBX\Modules\Oryk_Provisioner\Jobs;
+use FreePBX\Modules\Oryk_Provisioner\Library;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Logs;
@@ -88,6 +89,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Profiles         |  one per table
  *   Resources        |
  *   Services         |
+ *   Library          the profiles the module ships, and copying one
  *   Matcher          a filename is a MAC and a name, read both ways
  *   Previews         which filename does this phone ask this file by
  *   ProvisioningLog  one row per request the endpoint answered
@@ -200,6 +202,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Profiles */
 	private $profiles;
 
+	/** @var Library */
+	private $library;
+
 	/** @var ProvisioningLog */
 	private $provisioningLog;
 
@@ -258,6 +263,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
+		$this->library = new Library($freepbx, $this->profiles, $this->resources);
 
 		$bridge = new RealtimeBridge($freepbx);
 		$this->sweep = new SignupSweep($freepbx, $this->clients, $bridge, $this->settings, new Notices($freepbx));
@@ -328,7 +334,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->fail2ban,
 			$this->overview,
 			$this->services,
-			$this->jobs
+			$this->jobs,
+			$this->library
 		);
 	}
 
@@ -818,7 +825,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->clients->saveClient($_REQUEST);
 
 			case 'saveProfile':
-				return $this->profiles->saveProfile($_REQUEST);
+				return $this->library->saveProfile($_REQUEST);
 
 			// `device` is the answer "Client + Device": the device it used goes too.
 			case 'deleteClient':

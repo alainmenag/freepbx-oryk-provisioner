@@ -207,6 +207,58 @@ class Profiles extends Service
 	}
 
 	/**
+	 * Record the library entry a profile was made from.
+	 *
+	 * Never fails the save that made the profile: without the columns -- the
+	 * module's files are newer than its last install -- the profile is simply
+	 * one that does not say where it came from.
+	 *
+	 * @param mixed  $id      Profile id.
+	 * @param string $library Entry id, as Library::entry() takes it.
+	 * @param int    $version The entry's version when it was copied.
+	 *
+	 * @return void
+	 */
+	public function setLibrary($id, $library, $version)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"UPDATE `{$this->profilesTable}`
+				SET library = :library, library_version = :version
+				WHERE id = :id"
+			);
+			$stmt->execute([':library' => (string) $library, ':version' => (int) $version, ':id' => (int) $id]);
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: could not record the library entry of profile ' . (int) $id, null, 'WARNING');
+		}
+	}
+
+	/**
+	 * The library entry a profile was made from.
+	 *
+	 * Asked on its own rather than read with profileRow(), so a table without
+	 * the columns yet still has profiles that open.
+	 *
+	 * @param mixed $id Profile id.
+	 *
+	 * @return array<string, mixed>|null library and library_version; null when it was made from none.
+	 */
+	public function library($id)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT library, library_version FROM `{$this->profilesTable}` WHERE id = :id"
+			);
+			$stmt->execute([':id' => (int) $id]);
+			$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return null;
+		}
+
+		return $row && (string) $row['library'] !== '' ? $row : null;
+	}
+
+	/**
 	 * Switch a profile on or off.
 	 *
 	 * The client's switch one level up: a profile switched off stops every phone

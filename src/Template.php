@@ -110,6 +110,7 @@ class Template extends Service
 			'profile.name' => (string) ($row['profile_name'] ?? ''),
 			'server.host' => $this->serverHost(),
 			'server.port' => '5060',
+			'provisioning.server' => $this->provisioningServer(),
 		];
 
 		// Everything else the device is configured with in FreePBX, under its own
@@ -164,6 +165,28 @@ class Template extends Service
 	}
 
 	/**
+	 * Where a phone fetches its files, as it is told in a template.
+	 *
+	 * ORYK_PROVISIONING_SERVER when it is set. Otherwise serverHost() and the
+	 * path of the web-root link Installer makes, which is where the endpoint
+	 * is on a PBX nothing stands in front of.
+	 *
+	 * @return string Host, then a port and a path if it has them; no scheme.
+	 */
+	public function provisioningServer()
+	{
+		$configured = trim((string) $this->settings->get(Settings::PROVISIONING_SERVER));
+
+		if ($configured !== '') {
+			return $configured;
+		}
+
+		$host = $this->serverHost();
+
+		return $host !== '' ? $host . '/provisioner' : '';
+	}
+
+	/**
 	 * What a template can refer to, as the editor lists it.
 	 *
 	 * Written out here rather than derived from a rendering, because the resource
@@ -202,6 +225,7 @@ class Template extends Service
 				'profile.name' => _('This profile'),
 				'server.host' => _('Host the PBX is reached on'),
 				'server.port' => _('5060'),
+				'provisioning.server' => _('Where phones fetch their files'),
 			],
 		];
 	}

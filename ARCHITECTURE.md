@@ -246,7 +246,8 @@ engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
-src/                         52 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
+src/                         53 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
+library/                     the profiles the module ships, one directory each -- see The library
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -267,6 +268,7 @@ views/                       one view per page, plus views/partials/
 | `FileRepo` | `ASTSPOOLDIR/repo`, one file per resource id |
 | `LogRepo` | `ASTLOGDIR/provisioner/<client id>/`, what a phone sent back |
 | `Clients`, `Profiles`, `Resources`, `Services` | one per table |
+| `Library` | the profiles the module ships, and making one of the operator's from one |
 | `Matcher` | a filename is a MAC and a name, read both ways |
 | `Previews` | which filename does this phone ask this file by |
 | `ProvisioningLog` | one row per request the endpoint answered |
@@ -301,6 +303,50 @@ URL phones are given. **Nothing about that link is allowed to fail the install**
 -- a module that could not write to the web root is a working module minus a
 friendly URL, and the endpoint stays reachable at its real path.
 
+## The library
+
+`library/<vendor>/<set>/` is one **entry**: a `manifest.json` and the files it
+names. `Library` reads them; nothing is seeded into a table, and the endpoint
+never serves from here.
+
+```json
+{
+	"name": "Polycom VVX",
+	"vendor": "Polycom",
+	"version": 1,
+	"skus": ["VVX500"],
+	"resources": [
+		{"name": "{{device.mac}}.cfg", "type": "template", "source": "mac.cfg"},
+		{"name": "app.log", "type": "log"},
+		{"name": "sip.ld", "type": "file", "note": "what to upload"}
+	]
+}
+```
+
+- **A profile made from an entry is a copy.** `Library::saveProfile()` writes
+  the profile, then each resource through `Resources::saveResource()`, then
+  records the entry's id and version on the profile. From there it is the
+  operator's: an upgrade that changes the entry changes no profile. This is the
+  opposite of a module-owned service, which is seeded and refused every edit --
+  nobody edits a service, and everybody edits a phone's configuration.
+- **All or nothing, twice.** A manifest with one unusable resource is no entry
+  (`entry()` answers null), and a profile whose resources could not all be made
+  is deleted again.
+- **A resource's `name` is not a filename on disk.** `{{device.mac}}.cfg` is
+  kept as `mac.cfg`; `source` says which, is one path segment
+  (`SOURCE_PATTERN`), and is the only thing read.
+- **What each type carries.** A template has a `source`. A log has none: it is
+  only the declaration that a phone may PUT that name. A file may have one --
+  its bytes are stored as an upload's would be -- or none, and is then made with
+  nothing uploaded, which the [schema](#schema) already calls an unfinished
+  resource. That is how firmware is declared without being shipped; its `note`
+  says what to upload, and the resource's page shows it for as long as the
+  resource keeps the name the manifest gave it.
+- **An entry's id is the one value a request turns into a path**, and only
+  after `ID_PATTERN`.
+- `skus` are the models the entry is known to work on. Nothing matches on them
+  yet.
+
 ## Schema
 
 Ten tables, and the bridge's three (below). Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
@@ -322,9 +368,14 @@ a dead connection on every MySQL build this runs on.
 | `state` | `provisioned` (the default, and every row older than 1.2.5) or `created`: a sign-up whose extension Apply Config has not yet been seen to write. Read by the [sweep](#the-realtime-bridge) |
 | `signup_ip` | the address open provisioning made the client for, as `Clients::signupKey()` stores it -- an IPv6 address as its /64, since that is what the limits count by. NULL on every other client. Keyed with `created_at`, which is what the limits count. Deleting a user deletes its clients and so lowers the count; only an admin can |
 
-**`oryk_provisioner_profiles`** -- `name` (unique), `enabled`. A profile has no
-template of its own; the main config is a resource named `.cfg` like any other
-file (1.0.7).
+**`oryk_provisioner_profiles`** -- `name` (unique), `enabled`, `library`,
+`library_version`. A profile has no template of its own; the main config is a
+resource named `.cfg` like any other file (1.0.7). `library` and
+`library_version` are the [library](#the-library) entry a profile was copied
+from and its version then, NULL on one written by hand. A record, not a link:
+nothing reads them to decide what is served. They are asked for on their own
+(`Profiles::library()`), so a table that has not been given them yet still has
+profiles that open.
 
 **`oryk_provisioner_resources`** -- `profile_id`, `name`, `type`, `template`,
 `file_size`, `file_uploaded_at`.
@@ -1363,13 +1414,16 @@ bootstrap FreePBX on its own.
   sign-ups are limited per address and per PBX, but a wrong password for an
   existing login reaches fail2ban only through FreePBX's security log, and the
   limits trust `REMOTE_ADDR` -- behind a proxy every sign-up is one address.
-- Copying resources between profiles, or a seeded starting resource. A profile
-  is set up one file at a time from empty.
+- Copying resources between profiles, and exporting or importing a profile. A
+  profile is made empty or from the [library](#the-library).
+- The library has one entry, and nothing reads its `skus`: a phone's model is
+  not detected, and a client with no profile is still served the profile named
+  after its vendor.
 - No `fwconsole` command. Backup/restore hooks are stubs.
 - Only Connect's Extension/User kind was ported. Handsets are clients here;
   Connect's softphone and RTSP kinds have no equivalent, and an RTSP device
   needs Connect's driver installed.
 - Renumbering does not check ring groups, queues or other destinations for the
   old number. A PBX-wide From Domain change is not pushed to existing endpoints.
-- GraphQL API, per-client parameter overrides, a bundled vendor template
-  library, template filters/sections/escaping.
+- GraphQL API, per-client parameter overrides, template
+  filters/sections/escaping.

@@ -78,6 +78,8 @@ class Installer extends Service
 				`id` INT(11) NOT NULL AUTO_INCREMENT,
 				`name` VARCHAR(191) NOT NULL,
 				`enabled` TINYINT(1) NOT NULL DEFAULT 1,
+				`library` VARCHAR(128) NULL DEFAULT NULL,
+				`library_version` INT(10) UNSIGNED NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`id`),
@@ -336,6 +338,7 @@ class Installer extends Service
 		$this->schema->addClientTokenColumn();
 		$this->schema->addClientEnabledColumn();
 		$this->schema->addProfileEnabledColumn();
+		$this->schema->addProfileLibraryColumns();
 		$this->schema->addClientLastSeenColumn();
 		$this->schema->addClientAddressColumns();
 		$this->schema->relaxClientMacColumn();

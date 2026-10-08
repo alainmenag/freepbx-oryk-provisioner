@@ -774,6 +774,143 @@ is_eq('but not when that is an address', $named->hostname() !== '203.0.113.7', t
 
 unset(FreePBX::$config[Settings::HOSTNAME]);
 
+echo "\n  the provisioning server is a setting, and a placeholder:\n";
+
+$s = build();
+$settings = new Settings($s['app']);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
+$_SERVER['HTTP_HOST'] = 'arrived.example.net:8443';
+
+is_eq('blank is the host the request arrived on, and the link\'s path',
+	$template->provisioningServer(), 'arrived.example.net/provisioner');
+
+FreePBX::$config[Settings::HOSTNAME] = 'pbx.example.net';
+
+is_eq('or the Hostname setting, when there is one',
+	$template->provisioningServer(), 'pbx.example.net/provisioner');
+is_eq('a host is taken', $settings->set(Settings::PROVISIONING_SERVER, 'prov.example.net'), null);
+is_eq('and is the whole answer: no path is added to it',
+	$template->provisioningServer(), 'prov.example.net');
+is_eq('a template is given it',
+	$template->provisioningValues(['mac' => '0004f282e824'])['provisioning.server'], 'prov.example.net');
+is_eq('a port and a path are taken',
+	$settings->set(Settings::PROVISIONING_SERVER, 'pbx.example.net:8443/provisioner'), null);
+is_eq('a scheme is refused',
+	$settings->set(Settings::PROVISIONING_SERVER, 'https://prov.example.net') !== null, true);
+is_eq('and so is a trailing slash, a query or a space', [
+	$settings->set(Settings::PROVISIONING_SERVER, 'prov.example.net/') !== null,
+	$settings->set(Settings::PROVISIONING_SERVER, 'prov.example.net/?mac=1') !== null,
+	$settings->set(Settings::PROVISIONING_SERVER, 'prov example.net') !== null,
+], [true, true, true]);
+is_eq('a refused value is not stored',
+	FreePBX::Config()->get(Settings::PROVISIONING_SERVER), 'pbx.example.net:8443/provisioner');
+is_eq('blank is saved as blank', [$settings->set(Settings::PROVISIONING_SERVER, ''), $template->provisioningServer()],
+	[null, 'pbx.example.net/provisioner']);
+
+unset(FreePBX::$config[Settings::HOSTNAME], $_SERVER['HTTP_HOST']);
+
+echo "\n  the library is read off the disk, and a profile made from it is a copy:\n";
+
+$s = build();
+$db = $s['app']->Database;
+$repo = new FileRepo($s['app']);
+$profiles = new Profiles($s['app'], $repo);
+$resources = new \FreePBX\Modules\Oryk_Provisioner\Resources($s['app'], $profiles, $repo);
+$library = new \FreePBX\Modules\Oryk_Provisioner\Library($s['app'], $profiles, $resources);
+
+$shipped = $library->entries();
+$vvx = $shipped['polycom/vvx'] ?? ['resources' => []];
+is_eq('every entry the module ships can be read', array_keys($shipped),
+	array_map(function ($manifest) { return basename(dirname($manifest, 2)) . '/' . basename(dirname($manifest)); },
+		glob(dirname(__DIR__) . '/library/*/*/manifest.json')));
+is_eq('the Polycom entry is templates, logs and the firmware it cannot ship',
+	array_column($vvx['resources'], 'type', 'name'),
+	['{{device.mac}}.cfg' => 'template', 'phone.cfg' => 'template', 'web.cfg' => 'template',
+		'app.log' => 'log', 'boot.log' => 'log', 'sip.ld' => 'file']);
+is_eq('a resource\'s name is not its filename on disk',
+	basename((string) $vvx['resources'][0]['source']), 'mac.cfg');
+is_eq('the firmware has no file, and says what to upload',
+	[$vvx['resources'][5]['source'], $library->note('polycom/vvx', 'sip.ld') !== ''], [null, true]);
+is_eq('nothing a shipped template says is one site\'s own',
+	preg_match('/oryk\.io|5060/', implode('', array_map(function ($resource) {
+		return $resource['type'] === 'template' ? file_get_contents($resource['source']) : '';
+	}, $vvx['resources']))), 0);
+is_eq('an id is a vendor and a set, and nothing that climbs',
+	[$library->entry('../polycom/vvx'), $library->entry('polycom/../vvx'), $library->entry('polycom'), $library->entry('Polycom/VVX')],
+	[null, null, null, null]);
+
+$scratch = sys_get_temp_dir() . '/oryk-library-' . getmypid();
+mkdir($scratch . '/acme/desk', 0700, true);
+file_put_contents($scratch . '/acme/desk/a.cfg', 'HOST={{server.host}}');
+file_put_contents($scratch . '/acme/desk/ring.wav', 'RIFF');
+$manifest = function (array $list) use ($scratch) {
+	file_put_contents($scratch . '/acme/desk/manifest.json', json_encode(['name' => 'Acme Desk', 'version' => 2, 'resources' => $list]));
+};
+$own = new \FreePBX\Modules\Oryk_Provisioner\Library($s['app'], $profiles, $resources, $scratch);
+
+$manifest([['name' => '.cfg', 'type' => 'template', 'source' => '../desk/a.cfg']]);
+is_eq('a source that is a path is no entry', $own->entry('acme/desk'), null);
+$manifest([['name' => '.cfg', 'type' => 'template']]);
+is_eq('nor is a template with nothing to copy', $own->entry('acme/desk'), null);
+$manifest([['name' => 'app.log', 'type' => 'log', 'source' => 'a.cfg']]);
+is_eq('nor a log that has a file', $own->entry('acme/desk'), null);
+$manifest([['name' => '.cfg', 'type' => 'template', 'source' => 'a.cfg'], ['name' => 'x', 'type' => 'firmware']]);
+is_eq('one resource wrong and the whole entry is left out', [$own->entry('acme/desk'), $own->entries()], [null, []]);
+
+$manifest([
+	['name' => '.cfg', 'type' => 'template', 'source' => 'a.cfg'],
+	['name' => 'app.log', 'type' => 'log'],
+	['name' => 'ring.wav', 'type' => 'file', 'source' => 'ring.wav'],
+	['name' => 'sip.ld', 'type' => 'file', 'note' => 'the firmware'],
+]);
+FreePBX::$config['ASTSPOOLDIR'] = $scratch . '/spool';
+$db->insertId = 7;
+$db->answers = ['profiles` WHERE id = :id' => 7];
+$db->params = [];
+
+is_eq('a new profile naming an entry is saved',
+	$own->saveProfile(['name' => 'Desks', 'library' => 'acme/desk']), ['status' => true, 'id' => 7, 'name' => 'Desks']);
+$made = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'INSERT INTO `oryk_provisioner_resources`') !== false; }));
+is_eq('with each resource the entry has, the template\'s text and all',
+	array_map(function ($p) { return [$p[1][':profile_id'], $p[1][':name'], $p[1][':type'], $p[1][':template']]; }, $made),
+	[[7, '.cfg', 'template', 'HOST={{server.host}}'], [7, 'app.log', 'log', ''], [7, 'ring.wav', 'file', ''], [7, 'sip.ld', 'file', '']]);
+$stored = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'SET file_size') !== false; }));
+is_eq('a file it ships is stored as an upload would be, and one it does not is left with nothing',
+	[count($stored), $stored[0][1][':size'] ?? null, file_get_contents($repo->repoFile(7))], [1, 4, 'RIFF']);
+$stamped = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'SET library') !== false; }));
+is_eq('and the profile says where it came from', $stamped[0][1] ?? null, [':library' => 'acme/desk', ':version' => 2, ':id' => 7]);
+
+$db->params = [];
+is_eq('an entry that is not there is refused before anything is written',
+	[$own->saveProfile(['name' => 'Desks', 'library' => 'acme/gone'])['status'], $db->params], [false, []]);
+$own->saveProfile(['name' => 'Plain', 'library' => '']);
+$own->saveProfile(['id' => 7, 'name' => 'Desks', 'library' => 'acme/desk']);
+is_eq('an empty start, or a profile already written, copies nothing',
+	array_filter($db->params, function ($p) { return strpos($p[0], 'oryk_provisioner_resources') !== false; }), []);
+
+$db->params = [];
+$db->answers = ['profiles` WHERE id = :id' => 7, 'profile_id = :profile_id AND name = :name' => 9];
+is_eq('a resource that cannot be made takes the profile back with it', [
+	$own->saveProfile(['name' => 'Desks', 'library' => 'acme/desk'])['status'],
+	count(array_filter($db->params, function ($p) { return strpos($p[0], 'DELETE FROM `oryk_provisioner_profiles`') !== false; })),
+], [false, 1]);
+
+$db->fetches = ['SELECT library, library_version' => [['library' => 'acme/desk', 'library_version' => '2']]];
+is_eq('a profile made from the library says so', $profiles->library(7), ['library' => 'acme/desk', 'library_version' => '2']);
+$db->fetches = ['SELECT library, library_version' => [['library' => null, 'library_version' => null]]];
+is_eq('and one written by hand does not', $profiles->library(8), null);
+
+$db->answers = [];
+$db->fetches = [];
+$db->insertId = 0;
+FreePBX::$config['ASTSPOOLDIR'] = '/var/spool/asterisk';
+foreach (['/spool/repo/7', '/acme/desk/manifest.json', '/acme/desk/a.cfg', '/acme/desk/ring.wav'] as $file) {
+	@unlink($scratch . $file);
+}
+foreach (['/spool/repo', '/spool', '/acme/desk', '/acme', ''] as $dir) {
+	@rmdir($scratch . $dir);
+}
+
 echo "\n  a setting that works out to nothing is taken off the endpoint:\n";
 
 $s = build();

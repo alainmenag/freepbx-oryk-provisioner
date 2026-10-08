@@ -43,6 +43,7 @@
  * &tab=clients. Each tab is a link and only the tab asked for is rendered --
  * see partials/tabs.php.
  *
+ * @var string                               $fileNote     What the library says to upload here; '' when nothing
  * @var array<string, mixed>                 $resource     id (0 when new), profile_id, name, type, template, file_size, file_uploaded_at
  * @var string                               $logPath      Where a log a phone PUTs is written
  * @var array<string, mixed>                 $profile      The profile it belongs to
@@ -231,6 +232,9 @@ $tabs = [
 											</p>
 										</div>
 										<div id="resource_file_absent" class="<?php echo $hasFile ? 'hidden' : ''; ?>">
+											<?php if (!empty($fileNote)): ?>
+											<p class="form-control-static"><?php echo $h($fileNote); ?></p>
+											<?php endif; ?>
 											<input type="file" id="resource_file">
 											<div class="progress hidden" id="resource_file_progress" style="margin-top: 8px;">
 												<div class="progress-bar" role="progressbar" style="width: 0%;"></div>

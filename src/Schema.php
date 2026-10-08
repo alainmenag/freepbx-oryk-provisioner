@@ -116,6 +116,27 @@ class Schema extends Service
 	}
 
 	/**
+	 * Add what a profile made from the library says about where it came from.
+	 *
+	 * Both NULL on every profile written by hand, which is every one there was.
+	 *
+	 * @return void
+	 */
+	public function addProfileLibraryColumns()
+	{
+		$columns = [
+			'library' => 'ADD COLUMN `library` VARCHAR(128) NULL DEFAULT NULL AFTER `enabled`',
+			'library_version' => 'ADD COLUMN `library_version` INT(10) UNSIGNED NULL DEFAULT NULL AFTER `library`',
+		];
+
+		foreach ($columns as $column => $clause) {
+			if (!$this->schemaHas($this->profilesTable, 'column', $column)) {
+				$this->db->exec("ALTER TABLE `{$this->profilesTable}` $clause");
+			}
+		}
+	}
+
+	/**
 	 * Bring a clients table written before 1.0.17 up to date.
 	 *
 	 * Nullable with no default: a column that answered "never seen" with the

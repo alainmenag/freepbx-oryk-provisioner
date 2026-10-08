@@ -66,10 +66,13 @@ class Pages extends Service
 	/** @var Jobs */
 	private $jobs;
 
+	/** @var Library */
+	private $library;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs, Library $library)
 	{
 		parent::__construct($freepbx);
 
@@ -89,6 +92,7 @@ class Pages extends Service
 		$this->overview = $overview;
 		$this->services = $services;
 		$this->jobs = $jobs;
+		$this->library = $library;
 	}
 
 	/**
@@ -195,8 +199,17 @@ class Pages extends Service
 		// a new one opens on Profile whichever tab is asked for.
 		$tabs = ['resources', 'clients'];
 
+		$from = $profile['id'] ? $this->profiles->library($profile['id']) : null;
+
 		return $this->view('profile', [
 			'profile' => $profile,
+			// What a new profile can start from; nothing once it is written.
+			'library' => $profile['id'] ? [] : $this->library->entries(),
+			// The entry's name while the module still ships it, its id after.
+			'madeFrom' => $from ? [
+				'name' => $this->library->entry($from['library'])['name'] ?? $from['library'],
+				'version' => (int) $from['library_version'],
+			] : null,
 			'sections' => $this->navigator->sections('profiles'),
 			// A profile that has not been written is 'new' rather than an id: it has
 			// no links yet, so nothing else is scoped by it.
@@ -570,6 +583,11 @@ class Pages extends Service
 				'resource' => $resource['id'] ? (int) $resource['id'] : 'new',
 			]),
 			'profile' => $profile,
+			// What the library says to upload to a file it could not ship.
+			'fileNote' => $this->library->note(
+				$this->profiles->library($profile['id'])['library'] ?? '',
+				(string) $resource['name']
+			),
 			'placeholders' => $this->template->templatePlaceholders(),
 			// Printed rather than described: where a log lands is the whole of what an
 			// operator needs from that type, and it is read off this server's own
@@ -617,6 +635,7 @@ class Pages extends Service
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([
 					Settings::FROM_DOMAIN => $this->endpoints->hostname(),
+					Settings::PROVISIONING_SERVER => $this->template->provisioningServer(),
 					Settings::BAN_DENY_AFTER => _('off'),
 					Settings::OPEN_EMERGENCY_CID => _('the extension'),
 				])

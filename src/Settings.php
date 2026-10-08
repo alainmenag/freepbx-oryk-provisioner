@@ -25,6 +25,9 @@ class Settings extends Service
 	 */
 	const FROM_DOMAIN = 'ORYK_FROM_DOMAIN';
 
+	/** Where phones fetch their files, as `{{provisioning.server}}`. Blank is Template::provisioningServer()'s fallback. */
+	const PROVISIONING_SERVER = 'ORYK_PROVISIONING_SERVER';
+
 	/**
 	 * Whether the all-zero MAC logs in, or creates a user, with its credentials.
 	 * OPEN, CLOSED or DISABLED (every request refused with a 503); CLOSED
@@ -67,6 +70,13 @@ class Settings extends Service
 
 	/** What a context name may be: it is written into the dialplan and the bridge. */
 	const CONTEXT_PATTERN = '/^[A-Za-z0-9_-]{1,79}$/';
+
+	/**
+	 * What a provisioning server may be: a host, then a port and a path if it
+	 * has them. No scheme -- a phone is told that separately -- and no
+	 * trailing slash.
+	 */
+	const SERVER_PATTERN = '/^[A-Za-z0-9]([A-Za-z0-9\-.]*[A-Za-z0-9])?(:[0-9]{1,5})?(\/[A-Za-z0-9._~\-]+)*$/';
 
 	/**
 	 * What every setting is filed under in Advanced Settings.
@@ -121,6 +131,17 @@ class Settings extends Service
 				'type' => 'text',
 				'default' => '',
 				'pattern' => EndpointSettings::DOMAIN_PATTERN,
+				'emptyok' => true,
+			],
+			self::PROVISIONING_SERVER => [
+				'name' => 'Provisioning Server',
+				'description' => 'Where phones fetch their files, as {{provisioning.server}} in a template: '
+					. 'a host, with a port and a path if it has them, and no http:// or https:// -- '
+					. 'prov.example.com, or pbx.example.com/provisioner. Left blank, it is the Hostname '
+					. 'setting, or the host each request arrived on, followed by /provisioner.',
+				'type' => 'text',
+				'default' => '',
+				'pattern' => self::SERVER_PATTERN,
 				'emptyok' => true,
 			],
 			self::PROVISIONING => [
