@@ -28,7 +28,7 @@ which are views of that one row.
 | URL | Page | Tabs |
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
-| `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log`, `ban`, `service` or `job` row scopes | — |
+| `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log`, `ban`, `service` or `job` row scopes; `holders:<slug>` is a service's users with those who have it through a pack | — |
 | `&tab=services&source=module&kind=pack` | the Services list with its filters set; each is left out at its default (Available, All) | — |
 | `&tab=jobs&state=failed&reason=&source=` | the Jobs list with its filters set; each is left out at its default (any) | — |
 | `&tab=overview&scope=user:<extension>` or `client:<id>` | [Overview](#overview): everything tied to that user or client | — |

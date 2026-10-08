@@ -86,17 +86,30 @@ MACs, which a plain delete leaves.
 
 ## Services
 
-A user's **Services** tab lists every [service](concepts.md), each with a box:
-tick it to assign the service to the user, untick it to take it away. A change
-is saved as it is made — there is no Save on that tab, and no Apply Config.
-Assigning a service pack gives the user every service under it; those are
-marked *included in* the pack, and stay with the user for as long as the pack
-is assigned and holds them. Renumbering a user keeps its services, deleting it
-removes them, and deleting a service takes it off every user.
+A user's **Services** tab lists every [service](concepts.md) in two lists,
+**Service Packs** and **Services**, each with a box: tick it to assign the
+service to the user, untick it to take it away. Nothing is saved as you tick.
+A changed row is marked *to assign* or *to unassign*, and **Save** in the
+action bar asks first, listing what will be assigned and unassigned, what the
+user gains and loses -- with what that does on the PBX, where it does
+something: losing Voicemail removes the mailbox -- and anything unassigned
+that the user keeps through another pack. **Reset** puts the boxes back. There is no Apply Config.
 
-A change to what the user has is a [job](jobs.md), run straight away: a service
-whose job is queued, running or has failed says so beside it, with a link to
-the job.
+Assigning a service pack gives the user every service under it; those are
+marked *included in* the pack, with a half-filled box, and stay with the user
+for as long as the pack is assigned and holds them. One can still be ticked on
+its own, and then stays when the pack goes. The button at the end of a pack's
+row, which counts what it gives, opens that list; click the line above the
+list to show it as a tree, pack inside pack, and again to go back. Both follow
+the boxes as they are ticked, before anything is saved.
+
+Renumbering a user keeps its services, deleting it removes them, and deleting
+a service takes it off every user.
+
+Everything saved at once is one change: a [job](jobs.md), run straight away,
+when it changes what the user has. Swapping one pack for another in a single
+save leaves alone the services both give. A service whose job is queued,
+running or has failed says so beside it, with a link to the job.
 
 ## From Domain
 

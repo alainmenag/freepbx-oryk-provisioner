@@ -74,7 +74,8 @@ diffing. Never rewrite a file wholesale to reword its comments.
   from a request. Sort columns are whitelisted and mapped; everything else is
   bound.
 - A new AJAX command must be named in **both** `ajaxRequest()` and
-  `ajaxHandler()`.
+  `ajaxHandler()`, and in `READS` when it only reads: anything not there is
+  answered only to a POST.
 - No view contains a `<form>`; fields are read by id and posted over AJAX.
 - CSS goes in `assets/oryk_provisioner.css`, not in a `<style>` in a view.
 - A question before an action is `orykAsk(message, {title, choices})` from
@@ -103,4 +104,7 @@ diffing. Never rewrite a file wholesale to reword its comments.
   is the other check. Neither is always to hand -- the sandbox Claude runs
   commands in on this machine has no PHP -- so run them wherever there is one:
   a container, or the PBX itself.
+- `php tests/services_db.php` runs `Services::seed()` against real tables and
+  needs MySQL or MariaDB (`ORYK_TEST_DSN`, `ORYK_TEST_USER`, `ORYK_TEST_PASS`);
+  without the DSN it runs nothing. The release workflow runs both.
 - Branches are named `amena-<topic>` and merged to `main` through a PR.

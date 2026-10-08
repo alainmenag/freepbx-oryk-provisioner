@@ -13,6 +13,14 @@ class FindMeFollow extends Job
 	const SERVICES = ['find-me-follow'];
 
 	/**
+	 * @return array<string, string> granted, revoked: a phrase each.
+	 */
+	public static function effects()
+	{
+		return ['granted' => _('Find Me/Follow Me is switched on'), 'revoked' => _('Find Me/Follow Me is switched off; its list is kept')];
+	}
+
+	/**
 	 * Switch it on, making it first if the user has none.
 	 *
 	 * @param array<string, mixed> $event The step's event.

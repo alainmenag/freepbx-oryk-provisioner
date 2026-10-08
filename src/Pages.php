@@ -688,7 +688,7 @@ class Pages extends Service
 			'profile' => _('profile %s'),
 			'log' => _('log entry %s'),
 			'ban' => _('ban %s'),
-			'service' => _('service %s'),
+			'service' => !empty($at['held']) ? _('service %s, assigned or through a pack') : _('service %s'),
 			'job' => _('job %s'),
 		];
 
@@ -872,6 +872,21 @@ class Pages extends Service
 				'name' => 'oryksave',
 				'id' => 'oryksave',
 				'value' => _('Save'),
+			];
+		}
+
+		// A user's Services tab stages its ticks and has its own Save and Reset
+		// (views/partials/user_services.php): orykEditor()'s posts the User tab's fields.
+		if (isset($_REQUEST['user']) && $this->openTab() === 'services') {
+			$bar['orykservicessave'] = [
+				'name' => 'orykservicessave',
+				'id' => 'orykservicessave',
+				'value' => _('Save'),
+			];
+			$bar['orykservicesreset'] = [
+				'name' => 'orykservicesreset',
+				'id' => 'orykservicesreset',
+				'value' => _('Reset'),
 			];
 		}
 

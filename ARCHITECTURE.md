@@ -412,7 +412,9 @@ file (1.0.7).
   -- and the minute job purges it once its copy is out. Adding the same ban
   again reopens it like any other row.
 
-**`oryk_provisioner_services`** -- `slug` (the primary key), `name` (unique).
+**`oryk_provisioner_services`** -- `slug` (the primary key), `name` (unique),
+`owner` (0, the default, is the module; a service made on the Services page
+is 1).
 There is no numeric id: a page, a save, a delete, a link and an assignment all
 name a service by its slug. Where a service sits is the table below.
 
@@ -433,15 +435,25 @@ name a service by its slug. Where a service sits is the table below.
   one `Schema` step that takes something away.
 - **The module's own services are `Services::DEFAULTS`**, by slug: a name, and
   the slugs under it. **Adding, renaming or regrouping one is an edit to that
-  array and nothing else** -- `install()` runs `Services::seed()`, which makes
-  or renames each row and sets what is under it to exactly what the array
-  says. Like a setting, a change appears once the module is installed or
-  upgraded. A slug taken out of the array leaves its row behind as an
-  ordinary service.
-- **"Managed" is the slug being in `DEFAULTS`** (`Services::managed()`), not a
-  column, so the code and the table cannot disagree about it. A managed
-  service is refused every save and delete, its page is drawn disabled with
-  only Close, and its slug is never given to another service.
+  array and nothing else** -- `install()` runs `Services::seed()`, which
+  **deletes every row with `owner` 0 and writes the array again**, and sets
+  what is under each to exactly what the array says. Like a setting, a
+  change appears once the module is installed or upgraded. Assignments and
+  links name a slug, so they stay with a default that is written again; a
+  slug taken out of the array is deleted with its links and assignments, and
+  the users who held it get a job revoking it -- install names each one
+  removed and how many assignments went with it. **A default's slug that a
+  release changes goes in `Services::RENAMED`** (old => new): `seed()` carries
+  its links, assignments and jobs to the new slug first, and no job is made.
+  An operator's row that holds a
+  default's slug becomes the module's. `created_at` on a default is its last
+  install.
+- **"Managed" is `owner` 0**, on a row. A managed service is refused every
+  save and delete and its page is drawn disabled with only Close.
+  `Services::managed()` is the other question, asked of a slug: whether
+  `DEFAULTS` has it, which is what keeps it from being given to an operator's
+  service. `Schema::addServiceOwnerColumn()` backfills the column once, making
+  every row outside `DEFAULTS` the operator's, and must run before `seed()`.
 - **`seed()` owns only the links between two defaults.** One `DEFAULTS` no
   longer has is removed and one it has is added; a link with a service of the
   operator's own at either end is theirs and is left. So a managed service is
@@ -500,17 +512,28 @@ slug, as everywhere else; the pair is the primary key.
   the pack; the services under it are worked out when asked
   (`Services::userServices()`, which names the pack under `via`), so
   regrouping a pack changes what its users have without touching this table.
-- **One box, one write** (`setUserService`): the state is sent, not toggled,
-  and nothing of the user itself is written, so there is no Apply Config and
-  the user's Services tab has no Save.
+- **Staged, then one write** (`setUserServices`): the user's Services tab
+  (`views/partials/user_services.php`) is two lists, packs and single
+  services, whose ticks write nothing until its own Save -- which first asks
+  `userServicesImpact`, the same request worked out and not written, and
+  shows what would be assigned, unassigned, gained, lost and kept, and
+  beside a gain or loss what the module's own job does about it
+  (`Jobs\Job::effects()`, a phrase each for granted and revoked). The save
+  names the services to assign and to unassign: each one's state is sent, not
+  toggled, and one not named is not touched, so a page drawn before someone
+  else's change cannot undo it. Nothing of the user itself is written, so
+  there is no Apply Config.
 - **It follows both ends.** A renamed service's rows follow its slug
   (`renameLinks()`) and a deleted one's go with it; a renumbered user's rows
   follow its extension (`Services::moveUser()`, from `ExtensionRenumberer`)
   and a deleted user's go with it (`forgetUser()`, from `Users::remove()`),
   since a freed number is handed out again.
-- That tab, the Services list's Assignments column and the navigator's
+- That tab and the navigator's
   Services level (`Services::assignedTo()`, `usersOf()`) count a service's own
-  rows -- the users ticked for it, not those who have it through a pack.
+  rows -- the users ticked for it, not those who have it through a pack. The
+  Services list's one count, **Holders**, is of both (`holdersOf()`), and opens the Users
+  list at `&scope=holders:<slug>`: a `service` scope with `held` set
+  (`Navigator::scopeAt()`), which is the one place a scope follows the packs.
 - **A template is the one reader that follows the packs.**
   `{{extension.services}}` is `Services::userSlugs()`: what the user is
   assigned and everything under it, each slug once, sorted, joined by commas
@@ -519,8 +542,10 @@ slug, as everywhere else; the pair is the primary key.
 
 **`oryk_provisioner_jobs`** -- one change to what one user holds: `extension`,
 `service` and `name` (the service the change was made to, the name a
-snapshot; both '' for an upgrade), `reason` (`assigned`, `unassigned`,
-`service-deleted`, `pack-changed`), `source` (`gui`, `upgrade`), `state`
+snapshot; both '' for an upgrade, and for several services saved on a user
+at once), `reason` (`assigned`, `unassigned`, `changed`,
+`service-deleted`, `pack-changed`), `admin` (who was signed in when a page
+made it, '' otherwise), `source` (`gui`, `upgrade`), `state`
 (`queued`, `running`, `done`, `failed`), `attempts`, `error`, and when it was
 made, last started and finished.
 
@@ -556,7 +581,7 @@ assigned and everything under that (`Services::held()`):
 
 | change | users affected | reason |
 | --- | --- | --- |
-| assign or unassign (`setUserService`) | that user | assigned / unassigned |
+| a save of a user's Services tab (`setUserServices`) | that user | assigned / unassigned for one service, changed for several |
 | delete a service (`deleteService`) | everyone holding it, assigned or through a pack | service-deleted |
 | a service's Parents or Services changed (`saveService`) | everyone holding the pack it changes, at any depth | pack-changed |
 | an install or upgrade regrouping the defaults (`seed()`) | likewise | pack-changed, source `upgrade` |
@@ -568,8 +593,10 @@ read what the other was about to change, and owe a revoke neither made), and `Se
 the steps: a grant for what a user holds after and did not before, a revoke
 for the reverse. So **a service still held another way is never revoked**
 (Voicemail under both Basic and Advanced User), one already held is never
-granted again, the same state ticked again is no job, and a user a change
-does not touch gets none. A rename is not a change: the before is read as if
+granted again, the same state saved again is no job, and a user a change
+does not touch gets none. Several services saved on a user at once are one
+change and at most one job, so swapping Basic User for Advanced User never
+revokes the Voicemail both give. A rename is not a change: the before is read as if
 it had always had the new slug. A renumbered user changes nobody's holdings
 and gets no job; its jobs move with it.
 
@@ -692,7 +719,8 @@ User have none: a context is changed in Extensions.
 source in the address, as Services is); a job's page (`?job=<id>`), its steps
 and Retry; the Jobs dropdown; a user's Services tab, where each service whose
 newest step is queued, running or failed says so (`Jobs::statusFor()`), asked
-again while anything is running; and a user's Overview.
+again while anything is running, with Retry beside a failed one; and a user's
+Overview.
 
 ### Migrations deliberately not written
 
@@ -1282,7 +1310,9 @@ made from one of the tables is answered by loading the page again.
   ON UPDATE CURRENT_TIMESTAMP, so without it every phone that booted would read
   as a client somebody had just edited.
 - A new AJAX command must be named in **both** `ajaxRequest()` and
-  `ajaxHandler()`.
+  `ajaxHandler()`. **One that only reads is also named in
+  `Oryk_provisioner::READS`; every other command is answered only to a
+  POST**, so a link or an image on another page cannot make one.
 - PHP and views are indented with **tabs**. Operator-facing strings go through
   `_()`.
 

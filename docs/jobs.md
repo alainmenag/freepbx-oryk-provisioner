@@ -1,7 +1,7 @@
 # Jobs
 
-A **job** is what the provisioner does when a user's services change. Ticking
-a service on a user's Services tab, deleting a service, or putting a service
+A **job** is what the provisioner does when a user's services change. Saving
+a user's Services tab, deleting a service, or putting a service
 into a pack or taking it out all change what some users have; each of those
 users gets one job, and it runs straight away.
 
@@ -9,7 +9,7 @@ users gets one job, and it runs straight away.
 
 | you | who gets a job |
 | --- | --- |
-| tick or untick a service on a user | that user |
+| save a change on a user's Services tab — one service or several, as one job | that user |
 | delete a service | everyone who had it — assigned it, or through a pack it was in |
 | change a service's **Parents** or **Services** | everyone who has the pack it changes |
 | upgrade the module, when a release regroups its own services | everyone that changes |
@@ -18,7 +18,7 @@ A job has one **step** for every service the user gains or loses: assigning a
 pack gives a step for the pack and one for each service under it. A service
 the user still has another way is not taken away — unassign Basic User from
 someone who also has Advanced User and they keep Voicemail — and one they
-already have is not given again. Ticking a box that is already ticked, or
+already have is not given again. Saving a box that is already as it was, or
 renaming a service, makes no job. Renumbering a user moves its jobs to the new
 number and makes none.
 
@@ -52,7 +52,8 @@ A user's jobs run one at a time, in the order they were made; different
 users' run side by side. If a step fails — a module it needs is missing, or a
 hooked module throws — **that job stops there, for that user only**. The user's
 next job still runs, and the failed one is tried again after it. When there is
-nothing left to run it waits: press **Retry** on it. Deleting a user deletes
+nothing left to run it waits: press **Retry** on it, or beside the failed
+service on the user's Services tab. Deleting a user deletes
 its jobs. A job that fails because something changed since — a service given
 and then taken away again — skips what is no longer true rather than undoing
 the later change.

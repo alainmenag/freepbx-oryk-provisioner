@@ -80,6 +80,21 @@ class Reactions extends Service
 	}
 
 	/**
+	 * What the module's own job does when a user gains or loses a service.
+	 *
+	 * @param string $slug  The service.
+	 * @param string $event granted|revoked.
+	 *
+	 * @return string Job::effects()' phrase, or '' when it has no job or says nothing.
+	 */
+	public static function effect($slug, $event)
+	{
+		$class = self::jobs()[(string) $slug] ?? null;
+
+		return $class ? (string) ($class::effects()[(string) $event] ?? '') : '';
+	}
+
+	/**
 	 * Run the job for one step, if its service has one.
 	 *
 	 * @param string               $event   granted|revoked.

@@ -78,7 +78,8 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 						$fact(_('User'), '<a href="?display=oryk_provisioner&amp;user=' . $h(rawurlencode((string) $job['extension'])) . '&amp;tab=services">' . $h($job['extension']) . '</a>');
 
 						$fact(_('Reason'), $h($labels['reason'][(string) $job['reason']] ?? $job['reason'])
-							. ' <span class="text-muted">' . $h($labels['source'][(string) $job['source']] ?? $job['source']) . '</span>');
+							. ' <span class="text-muted">' . $h($labels['source'][(string) $job['source']] ?? $job['source'])
+							. ((string) ($job['admin'] ?? '') !== '' ? ': ' . $h($job['admin']) : '') . '</span>');
 
 						$fact(_('State'), '<span class="label ' . ($stateClass[$state] ?? 'label-default') . '">' . $h($labels['state'][$state] ?? $state) . '</span>'
 							. ($state === 'failed'

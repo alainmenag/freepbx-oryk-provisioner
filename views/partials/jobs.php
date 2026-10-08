@@ -136,10 +136,11 @@ $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('So
 		return `<a href="${orykJobHref(row)}">#${orykEscape(value)}</a>`;
 	}
 
-	// The service it was made for, named as it was then; an upgrade names none.
+	// The service it was made for, named as it was then; an upgrade names
+	// none, nor does a save of several on a user's Services tab.
 	function formatJobName(value, row) {
 		if (!row.service) {
-			return orykEscape(orykJobLabelSet.source.upgrade);
+			return orykEscape(row.reason === 'changed' ? <?php echo json_encode(_('Several services')); ?> : orykJobLabelSet.source.upgrade);
 		}
 
 		return `<a href="?display=oryk_provisioner&service=${encodeURIComponent(row.service)}">${orykEscape(value || row.service)}</a>`;

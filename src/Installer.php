@@ -240,6 +240,7 @@ class Installer extends Service
 			"CREATE TABLE IF NOT EXISTS `{$this->servicesTable}` (
 				`slug` VARCHAR(64) NOT NULL,
 				`name` VARCHAR(191) NOT NULL,
+				`owner` INT UNSIGNED NOT NULL DEFAULT 0,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`slug`),
@@ -276,6 +277,7 @@ class Installer extends Service
 		// One change to what one user holds. `service` and `name` are the
 		// service the change was made to, the name a snapshot: a deleted
 		// service's job still says what it was. An upgrade's job names none.
+		// `admin` is who was signed in when a page made it, '' for anything else.
 		// See ARCHITECTURE.md, "Jobs".
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->jobsTable}` (
@@ -285,6 +287,7 @@ class Installer extends Service
 				`name` VARCHAR(191) NOT NULL DEFAULT '',
 				`reason` VARCHAR(16) NOT NULL,
 				`source` VARCHAR(16) NOT NULL DEFAULT 'gui',
+				`admin` VARCHAR(64) NOT NULL DEFAULT '',
 				`state` VARCHAR(16) NOT NULL DEFAULT 'queued',
 				`attempts` INT(10) UNSIGNED NOT NULL DEFAULT 0,
 				`error` TEXT NULL,
@@ -340,10 +343,13 @@ class Installer extends Service
 		$this->schema->addBanSyncColumns();
 		$this->schema->addClientSignupColumns();
 		$this->schema->addServiceSlugColumn();
+		$this->schema->addServiceOwnerColumn(array_keys(Services::DEFAULTS));
 		$this->schema->addJobStepOwnJobColumn();
+		$this->schema->addJobAdminColumn();
 
-		// The services the module ships -- Services::DEFAULTS -- made, renamed
-		// and regrouped to match. After the slug column: they are found by it.
+		// The services the module ships -- Services::DEFAULTS -- deleted and
+		// written again to match. After the slug column, which they are found
+		// by, and the owner column, which says which rows are the module's.
 		// A regrouping that changes what users hold queues their jobs, which
 		// the minute job runs: an install may be root, and jobs run as the web user.
 		if ($this->services) {

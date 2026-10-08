@@ -17,7 +17,7 @@ use PDO;
  * this extends.
  *
  * A user is assigned services in a third table, by extension and slug; see
- * userServices() and setUserService().
+ * userServices() and setUserServices().
  *
  * Every change here that changes what a user holds -- an assignment, a
  * deleted service, a pack's links, a regrouping of the defaults -- writes that
@@ -36,20 +36,37 @@ class Services extends Service
 	 * **Adding, renaming or regrouping one is an edit here and nothing else**;
 	 * seed() carries it to the tables on the next install or upgrade. A slug
 	 * is the identity, so a changed name renames the row and a changed slug is
-	 * a new service. A slug taken out leaves its row behind as an ordinary
-	 * service, which can then be edited or deleted by hand.
+	 * a new service. A slug taken out is deleted, with its links and
+	 * assignments, on the next install.
 	 */
 	const DEFAULTS = [
 		'advanced-user' => ['name' => 'Advanced User', 'services' => ['basic-user', 'call-recording', 'on-demand-recording']],
-		'basic-user' => ['name' => 'Basic User', 'services' => ['find-me-follow', 'guest-user', 'voicemail']],
-		'guest-user' => ['name' => 'Guest User', 'services' => ['support']],
-		'lobby-user' => ['name' => 'Lobby User', 'services' => ['support']],
+		'basic-user' => ['name' => 'Basic User', 'services' => ['lobby-user', 'find-me-follow', 'voicemail']],
+		'lobby-user' => ['name' => 'Lobby User', 'services' => ['guest-user', 'support']],
+		'guest-user' => ['name' => 'Guest User', 'services' => ['knowledge-base']],
 		'call-recording' => ['name' => 'Call Recording'],
 		'find-me-follow' => ['name' => 'Find Me Follow'],
 		'on-demand-recording' => ['name' => 'On Demand Recording'],
 		'support' => ['name' => 'Support'],
+		'knowledge-base' => ['name' => 'Knowledge Base'],
 		'voicemail' => ['name' => 'Voicemail'],
 	];
+
+	/**
+	 * Default slugs a release changed: old => new. seed() carries every link,
+	 * assignment and job from the old to the new before it deletes the
+	 * module's rows, so whoever held the one holds the other and nothing is
+	 * revoked. **A slug changed in DEFAULTS without an entry here is a
+	 * default dropped and another added**: its users lose it. An entry stays
+	 * while any PBX may still upgrade across it.
+	 */
+	const RENAMED = [];
+
+	/** `owner` of a service the module ships: seed() deletes and rewrites every one. */
+	const OWNER_MODULE = 0;
+
+	/** `owner` of a service made on the Services page. */
+	const OWNER_OPERATOR = 1;
 
 	/** Longest name stored: the column's width. */
 	const NAME_MAX = 191;
@@ -79,8 +96,9 @@ class Services extends Service
 
 	/**
 	 * Rows for the Services table. `managed` is whether each is one of the
-	 * module's; `assignments` is how many users are assigned it themselves,
-	 * not counting those who have it only through a pack.
+	 * module's; `holders` is how many users have it, assigned it themselves or
+	 * through a pack. That is worked out here and not by the query, so a list
+	 * sorted by it is read whole, sorted, and then cut to the page.
 	 *
 	 * Narrowed by two filters, each off unless it is one of its two values:
 	 * `source` (`module`, `custom`) and `kind` (`pack`, a service with at
@@ -94,12 +112,7 @@ class Services extends Service
 	 */
 	public function listServices($scope = null)
 	{
-		$sortable = [
-			'name' => 's.name',
-			'assignments' => 'assignments',
-		];
-
-		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['name'];
+		$byHolders = (string) ($_REQUEST['sort'] ?? '') === 'holders';
 		$order = strtolower((string) ($_REQUEST['order'] ?? '')) === 'desc' ? 'DESC' : 'ASC';
 
 		$limit = (int) ($_REQUEST['limit'] ?? 10);
@@ -121,10 +134,8 @@ class Services extends Service
 
 		$source = (string) ($_REQUEST['source'] ?? '');
 
-		// "Module" is the slug being in DEFAULTS, as managed() has it.
 		if ($source === 'module' || $source === 'custom') {
-			$clauses[] = ($source === 'custom' ? 'NOT ' : '')
-				. '(' . $this->inClause('s.slug', array_map('strval', array_keys(self::DEFAULTS)), 'default', $params) . ')';
+			$clauses[] = 's.owner ' . ($source === 'custom' ? '!=' : '=') . ' ' . self::OWNER_MODULE;
 		}
 
 		$kind = (string) ($_REQUEST['kind'] ?? '');
@@ -144,28 +155,51 @@ class Services extends Service
 			SELECT
 				s.name,
 				s.slug,
-				(
-					SELECT COUNT(*)
-					FROM `{$this->serviceAssignmentsTable}` a
-					WHERE a.service = s.slug
-				) AS assignments
+				s.owner
 			FROM `{$this->servicesTable}` s
 			$where
-			ORDER BY $sort $order
-			LIMIT :limit OFFSET :offset
+			ORDER BY s.name " . ($byHolders ? 'ASC' : $order . ' LIMIT :limit OFFSET :offset') . "
 		";
 
 		$stmt = $this->db->prepare($sql);
 		foreach ($params as $key => $value) {
 			$stmt->bindValue($key, $value);
 		}
-		$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-		$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+		if (!$byHolders) {
+			$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+			$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+		}
+
 		$stmt->execute();
+
+		$holders = [];
+		$links = $this->links();
+
+		foreach ($this->assignments() as $assigned) {
+			foreach (self::held($links, $assigned) as $slug) {
+				$holders[$slug] = ($holders[$slug] ?? 0) + 1;
+			}
+		}
+
+		$rows = [];
+
+		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+			$rows[] = $this->marked($row) + ['holders' => $holders[(string) $row['slug']] ?? 0];
+		}
+
+		// By name within a count, as the query left them: usort() is stable.
+		if ($byHolders) {
+			usort($rows, function ($a, $b) use ($order) {
+				return $order === 'DESC' ? $b['holders'] <=> $a['holders'] : $a['holders'] <=> $b['holders'];
+			});
+
+			$rows = array_slice($rows, max(0, $offset), max(0, $limit));
+		}
 
 		return [
 			'total' => $total,
-			'rows' => array_map([$this, 'marked'], $stmt->fetchAll(PDO::FETCH_ASSOC)),
+			'rows' => $rows,
 			'counts' => $this->counts($scope),
 		];
 	}
@@ -205,7 +239,7 @@ class Services extends Service
 		];
 
 		$stmt = $this->db->prepare(
-			"SELECT s.slug,
+			"SELECT s.slug, s.owner,
 				EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug) AS pack
 			FROM `{$this->servicesTable}` s"
 		);
@@ -216,7 +250,7 @@ class Services extends Service
 				continue;
 			}
 
-			$counts[self::managed($row['slug']) ? 'module' : 'custom'][(int) $row['pack'] ? 'pack' : 'single']++;
+			$counts[(int) $row['owner'] === self::OWNER_MODULE ? 'module' : 'custom'][(int) $row['pack'] ? 'pack' : 'single']++;
 		}
 
 		return $counts;
@@ -238,7 +272,7 @@ class Services extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"SELECT name, slug FROM `{$this->servicesTable}` WHERE slug = :slug"
+			"SELECT name, slug, owner FROM `{$this->servicesTable}` WHERE slug = :slug"
 		);
 		$stmt->execute([':slug' => $slug]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -254,7 +288,7 @@ class Services extends Service
 	public function serviceChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT name, slug FROM `{$this->servicesTable}` ORDER BY name"
+			"SELECT name, slug, owner FROM `{$this->servicesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 
@@ -406,7 +440,7 @@ class Services extends Service
 					}
 				} else {
 					$stmt = $this->db->prepare(
-						"INSERT INTO `{$this->servicesTable}` (name, slug) VALUES (:name, :slug)"
+						"INSERT INTO `{$this->servicesTable}` (name, slug, owner) VALUES (:name, :slug, " . self::OWNER_OPERATOR . ")"
 					);
 					$stmt->execute([':name' => $name, ':slug' => $slug]);
 				}
@@ -458,14 +492,14 @@ class Services extends Service
 	{
 		$slug = trim((string) $slug);
 
-		if (self::managed($slug)) {
-			return ['status' => false, 'message' => _('This service is managed by the module and cannot be deleted.')];
-		}
-
 		$row = $slug === '' ? null : $this->serviceBySlug($slug);
 
 		if (!$row) {
 			return ['status' => true];
+		}
+
+		if ($row['managed']) {
+			return ['status' => false, 'message' => _('This service is managed by the module and cannot be deleted.')];
 		}
 
 		if (!$this->lockChanges()) {
@@ -526,7 +560,9 @@ class Services extends Service
 	 * @param mixed $extension The user's extension.
 	 *
 	 * @return array<int, array<string, mixed>> slug, name, managed, pack,
-	 *                                          assigned, via; ordered by name.
+	 *                                          assigned, via, children (the
+	 *                                          slugs directly under it);
+	 *                                          ordered by name.
 	 */
 	public function userServices($extension)
 	{
@@ -536,6 +572,11 @@ class Services extends Service
 		$assigned = $this->assigned($extension);
 		$packs = array_column($links, 0);
 		$via = [];
+		$children = [];
+
+		foreach ($links as $link) {
+			$children[(string) $link[0]][] = (string) $link[1];
+		}
 
 		foreach ($assigned as $slug) {
 			foreach (self::descendants($links, $slug) as $under) {
@@ -557,6 +598,7 @@ class Services extends Service
 				'pack' => in_array($slug, $packs, true),
 				'assigned' => in_array($slug, $assigned, true),
 				'via' => $via[$slug] ?? [],
+				'children' => $children[$slug] ?? [],
 			];
 		}
 
@@ -602,7 +644,8 @@ class Services extends Service
 	 *                                      new one), name, parents, children.
 	 *
 	 * @return array<string, mixed> status, users (how many would get a job),
-	 *                              granted and revoked: [name, users] each, by name.
+	 *                              granted and revoked: [name, users, effect]
+	 *                              each, by name; effect is Reactions::effect().
 	 */
 	public function serviceImpact($request)
 	{
@@ -663,7 +706,7 @@ class Services extends Service
 			$rows = [];
 
 			foreach ($bySlug as $slug => $count) {
-				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'users' => $count];
+				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'users' => $count, 'effect' => Reactions::effect($slug, $event)];
 			}
 
 			usort($rows, function ($a, $b) {
@@ -710,6 +753,28 @@ class Services extends Service
 	}
 
 	/**
+	 * The users who have a service either way: assigned it themselves, or
+	 * through a pack it is under.
+	 *
+	 * @param mixed $slug The service's slug.
+	 *
+	 * @return array<int, string> Their extensions.
+	 */
+	public function holdersOf($slug)
+	{
+		$links = $this->links();
+		$found = [];
+
+		foreach ($this->assignments() as $extension => $assigned) {
+			if (in_array((string) $slug, self::held($links, $assigned), true)) {
+				$found[] = (string) $extension;
+			}
+		}
+
+		return $found;
+	}
+
+	/**
 	 * The users assigned a service themselves, for the navigator.
 	 *
 	 * @param mixed $slug The service's slug.
@@ -727,34 +792,169 @@ class Services extends Service
 	}
 
 	/**
-	 * Give a user a service, or take it away.
+	 * What a user is assigned once some services are assigned and others
+	 * unassigned, and which of those change anything.
 	 *
-	 * **The state is sent, not toggled**: the same request twice leaves the
-	 * user where the first put it. Nothing about the user itself is written,
-	 * so this raises no Apply Config. A change to what the user holds is a
-	 * job, written with it and started at once; the same state again is none.
+	 * @param array<int, string> $before   What the user is assigned, by slug.
+	 * @param array<int, string> $assign   Slugs to assign.
+	 * @param array<int, string> $unassign Slugs to unassign.
 	 *
-	 * @param array<string, mixed> $request extension, service (a slug), assigned.
-	 *
-	 * @return array<string, mixed> Status, userServices() as it now is and
-	 *                              `jobs` (Jobs::statusFor()), or a message when refused.
+	 * @return array{0: array<int, string>, 1: array<int, string>, 2: array<int, string>}
+	 *         What it is assigned after; what was newly assigned; what was taken away.
 	 */
-	public function setUserService($request)
+	public static function assignedAfter(array $before, array $assign, array $unassign)
+	{
+		$before = array_values(array_unique(array_map('strval', $before)));
+		$added = array_values(array_diff(array_unique(array_map('strval', $assign)), $before));
+		$removed = array_values(array_intersect($before, array_map('strval', $unassign)));
+
+		return [array_values(array_merge(array_diff($before, $removed), $added)), $added, $removed];
+	}
+
+	/**
+	 * A request to change a user's services, read and checked against what
+	 * the user is assigned now. Writes nothing.
+	 *
+	 * @param array<string, mixed> $request extension, assign and unassign (slugs; see slugs()).
+	 *
+	 * @return array<string, mixed> status and a message when refused; else
+	 *                              extension, links, names, before, after,
+	 *                              assign and unassign (assignedAfter()).
+	 */
+	private function userChange($request)
 	{
 		$extension = trim((string) ($request['extension'] ?? ''));
-		$service = $this->serviceBySlug(trim((string) ($request['service'] ?? '')));
 
 		if (!ctype_digit($extension) || !$this->userExists($extension)) {
 			return ['status' => false, 'message' => _('That user no longer exists.')];
 		}
 
-		if (!$service) {
-			return ['status' => false, 'message' => _('That service no longer exists.')];
+		$assign = self::slugs($request['assign'] ?? []);
+		$unassign = self::slugs($request['unassign'] ?? []);
+
+		if (array_intersect($assign, $unassign)) {
+			return ['status' => false, 'message' => _('A service cannot be assigned and unassigned at once.')];
 		}
 
-		$said = strtolower(trim((string) ($request['assigned'] ?? '1')));
-		$on = !in_array($said, ['0', '', 'false', 'off', 'no'], true);
-		$bind = [':extension' => $extension, ':service' => $service['slug']];
+		$names = $this->names();
+
+		// A service deleted since the page was drawn took its assignment with
+		// it, so only one to assign can be missing.
+		if (array_diff($assign, array_map('strval', array_keys($names)))) {
+			return ['status' => false, 'message' => _('A service no longer exists; reload the page.')];
+		}
+
+		$before = $this->assigned($extension);
+		list($after, $added, $removed) = self::assignedAfter($before, $assign, $unassign);
+
+		return [
+			'status' => true,
+			'extension' => $extension,
+			'links' => $this->links(),
+			'names' => $names,
+			'before' => $before,
+			'after' => $after,
+			'assign' => $added,
+			'unassign' => $removed,
+		];
+	}
+
+	/**
+	 * What setUserServices() would do with the same request, without doing
+	 * it: what the user's Services tab asks with before it saves.
+	 *
+	 * @param array<string, mixed> $request As setUserServices() takes it.
+	 *
+	 * @return array<string, mixed> status; assign, unassign, granted and
+	 *                              revoked, each [name, pack] by name, the
+	 *                              last two with `effect` (Reactions::effect(),
+	 *                              what the module's own job does); kept --
+	 *                              unassigned but still held -- with `via`,
+	 *                              the assigned services it stays through;
+	 *                              job, whether one would be made. Or a
+	 *                              message when the save would be refused.
+	 */
+	public function userServicesImpact($request)
+	{
+		$change = $this->userChange($request);
+
+		if (!$change['status']) {
+			return $change;
+		}
+
+		$links = $change['links'];
+		$names = $change['names'];
+		$packs = array_column($links, 0);
+
+		$named = function (array $slugs, $event = '') use ($names, $packs) {
+			$rows = [];
+
+			foreach ($slugs as $slug) {
+				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'pack' => in_array((string) $slug, $packs, true)]
+					+ ($event !== '' ? ['effect' => Reactions::effect($slug, $event)] : []);
+			}
+
+			usort($rows, function ($a, $b) {
+				return strcasecmp($a['name'], $b['name']);
+			});
+
+			return $rows;
+		};
+
+		$events = ['granted' => [], 'revoked' => []];
+
+		foreach (ServiceEngine::changes($links, $change['before'], $links, $change['after']) as $step) {
+			$events[$step['event']][] = $step['service'];
+		}
+
+		$kept = [];
+
+		foreach (array_intersect($change['unassign'], self::held($links, $change['after'])) as $slug) {
+			$via = [];
+
+			foreach ($change['after'] as $over) {
+				if (in_array($slug, self::descendants($links, $over), true)) {
+					$via[] = (string) ($names[$over] ?? $over);
+				}
+			}
+
+			sort($via, SORT_FLAG_CASE | SORT_STRING);
+			$kept[] = $named([$slug])[0] + ['via' => $via];
+		}
+
+		usort($kept, function ($a, $b) {
+			return strcasecmp($a['name'], $b['name']);
+		});
+
+		return [
+			'status' => true,
+			'assign' => $named($change['assign']),
+			'unassign' => $named($change['unassign']),
+			'granted' => $named($events['granted'], 'granted'),
+			'revoked' => $named($events['revoked'], 'revoked'),
+			'kept' => $kept,
+			'job' => (bool) ($events['granted'] || $events['revoked']),
+		];
+	}
+
+	/**
+	 * Change which services a user is assigned: several at once, as one change.
+	 *
+	 * **The state of each service named is sent, not toggled, and one not
+	 * named is not touched**: the same request twice leaves the user where
+	 * the first put it, and a page drawn before someone else's change cannot
+	 * undo that change. Everything named is one write and one net change to
+	 * what the user holds, so at most one job -- a service given up with one
+	 * pack and gained with another is never revoked on the way. Nothing about
+	 * the user itself is written, so this raises no Apply Config.
+	 *
+	 * @param array<string, mixed> $request extension, assign and unassign (slugs; see slugs()).
+	 *
+	 * @return array<string, mixed> Status, userServices() as it now is and
+	 *                              `jobs` (Jobs::statusFor()), or a message when refused.
+	 */
+	public function setUserServices($request)
+	{
 		$queued = [];
 
 		if (!$this->lockChanges()) {
@@ -762,33 +962,57 @@ class Services extends Service
 		}
 
 		try {
+			$change = $this->userChange($request);
+
+			if (!$change['status']) {
+				return $change;
+			}
+
+			$extension = $change['extension'];
+			$changed = array_merge($change['assign'], $change['unassign']);
+
+			// One service is a job named for it; several are one job named for none.
+			$one = count($changed) === 1 ? (string) $changed[0] : '';
+			$reason = $one === '' ? 'changed' : ($change['assign'] ? 'assigned' : 'unassigned');
+
 			$this->db->beginTransaction();
 
 			try {
-				$links = $this->links();
-				$before = [$extension => $this->assigned($extension)];
-
-				$stmt = $this->db->prepare(
+				$delete = $this->db->prepare(
 					"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension AND service = :service"
 				);
-				$stmt->execute($bind);
+				$insert = $this->db->prepare(
+					"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service) VALUES (:extension, :service)"
+				);
 
-				if ($on) {
-					$stmt = $this->db->prepare(
-						"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service) VALUES (:extension, :service)"
-					);
-					$stmt->execute($bind);
+				foreach ($change['unassign'] as $slug) {
+					$delete->execute([':extension' => $extension, ':service' => $slug]);
 				}
 
-				$after = [$extension => $this->assigned($extension)];
-				$queued = $this->queue($links, $before, $links, $after, $service['slug'], $service['name'], $on ? 'assigned' : 'unassigned', 'gui', $this->names());
+				foreach ($change['assign'] as $slug) {
+					$insert->execute([':extension' => $extension, ':service' => $slug]);
+				}
+
+				if ($changed) {
+					$queued = $this->queue(
+						$change['links'],
+						[$extension => $change['before']],
+						$change['links'],
+						[$extension => $change['after']],
+						$one,
+						$one === '' ? '' : (string) ($change['names'][$one] ?? $one),
+						$reason,
+						'gui',
+						$change['names']
+					);
+				}
 
 				$this->db->commit();
 			} catch (\Exception $e) {
 				$this->db->rollBack();
-				$this->logError('assigning a service failed: ' . $e->getMessage());
+				$this->logError('assigning services failed: ' . $e->getMessage());
 
-				return ['status' => false, 'message' => _('The service could not be saved.')];
+				return ['status' => false, 'message' => _('The services could not be saved.')];
 			}
 		} finally {
 			$this->unlockChanges();
@@ -800,7 +1024,6 @@ class Services extends Service
 
 		return [
 			'status' => true,
-			'assigned' => $on,
 			'services' => $this->userServices($extension),
 			'jobs' => $this->jobs ? $this->jobs->statusFor($extension) : [],
 		];
@@ -862,8 +1085,13 @@ class Services extends Service
 	 * A row older than the slug column is given a slug from its name first
 	 * -- found by its name, the one thing such a row is sure to have -- so a
 	 * service already called what a default is called becomes that default
-	 * rather than colliding with it. Then each default is made or
-	 * renamed, and the links between two defaults are made to match DEFAULTS:
+	 * rather than colliding with it. Then **every row the module owns is
+	 * deleted and DEFAULTS written again**; an operator's row holding a
+	 * default's slug becomes the module's. Assignments and links name a slug,
+	 * so they stay with a default written again, and go with one DEFAULTS no
+	 * longer has -- which install says, by name. A slug in RENAMED is carried
+	 * to its new one first, and read as if it had always been that, so it
+	 * makes no job. The links between two defaults are made to match DEFAULTS:
 	 * one it no longer has is removed, one it has is added. A link with a
 	 * service of the operator's own at either end is theirs and is left.
 	 *
@@ -889,11 +1117,14 @@ class Services extends Service
 			try {
 				$linksBefore = $this->links();
 				$before = $this->jobs ? $this->assignments() : [];
+				$namesBefore = $this->jobs ? $this->names() : [];
 
-				$this->regroup($notes);
+				foreach ($this->regroup($notes) as $was => $slug) {
+					list($linksBefore, $before) = self::renamed($linksBefore, $before, $was, $slug);
+				}
 
 				if ($this->jobs) {
-					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), '', '', 'pack-changed', 'upgrade', $this->names());
+					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), '', '', 'pack-changed', 'upgrade', $this->names() + $namesBefore);
 				}
 
 				$this->db->commit();
@@ -915,12 +1146,13 @@ class Services extends Service
 	}
 
 	/**
-	 * seed()'s writes: slugs for rows without one, the defaults made or
-	 * renamed, and the links between two defaults made to match DEFAULTS.
+	 * seed()'s writes: slugs for rows without one, RENAMED carried, the
+	 * module's rows deleted and DEFAULTS written again, what named a service
+	 * now gone deleted, and the links between two defaults made to match DEFAULTS.
 	 *
-	 * @param array<int, string> $notes What could not be done, added to.
+	 * @param array<int, string> $notes What could not be done and what was removed, added to.
 	 *
-	 * @return void
+	 * @return array<string, string> The RENAMED entries carried: old => new.
 	 */
 	private function regroup(array &$notes)
 	{
@@ -932,6 +1164,33 @@ class Services extends Service
 			$fill->execute([':slug' => $this->freeSlug(self::slugify($name), '', false), ':name' => $name]);
 		}
 
+		$mine = $this->db->prepare("SELECT slug, name FROM `{$this->servicesTable}` WHERE owner = " . self::OWNER_MODULE);
+		$mine->execute();
+		$mine = array_column($mine->fetchAll(PDO::FETCH_ASSOC), 'name', 'slug');
+		$carried = [];
+
+		// Only from a row the module owns to a default with no row yet: the
+		// references are moved, and two rows' would collide.
+		foreach (static::RENAMED as $was => $slug) {
+			$was = (string) $was;
+
+			if (!isset($mine[$was]) || isset(self::DEFAULTS[$was]) || !isset(self::DEFAULTS[$slug])) {
+				continue;
+			}
+
+			if ($this->slugTaken($slug, '')) {
+				$notes[] = sprintf('%s was not carried to %s: a service already has that slug', $was, $slug);
+
+				continue;
+			}
+
+			$this->renameLinks($was, $slug);
+			$carried[$was] = (string) $slug;
+		}
+
+		$this->db->exec("DELETE FROM `{$this->servicesTable}` WHERE owner = " . self::OWNER_MODULE);
+
+		// Only an operator's row can be found now: one holding a default's slug.
 		$find = $this->db->prepare("SELECT name FROM `{$this->servicesTable}` WHERE slug = :slug");
 		$written = [];
 
@@ -941,17 +1200,15 @@ class Services extends Service
 
 			try {
 				if (!$row) {
-					$add = $this->db->prepare("INSERT INTO `{$this->servicesTable}` (name, slug) VALUES (:name, :slug)");
+					$add = $this->db->prepare("INSERT INTO `{$this->servicesTable}` (name, slug, owner) VALUES (:name, :slug, " . self::OWNER_MODULE . ")");
 					$add->execute([':name' => $default['name'], ':slug' => $slug]);
 					$written[] = $slug;
 
 					continue;
 				}
 
-				if ((string) $row['name'] !== $default['name']) {
-					$rename = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name WHERE slug = :slug");
-					$rename->execute([':name' => $default['name'], ':slug' => $slug]);
-				}
+				$adopt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name, owner = " . self::OWNER_MODULE . " WHERE slug = :slug");
+				$adopt->execute([':name' => $default['name'], ':slug' => $slug]);
 
 				$written[] = $slug;
 			} catch (\Exception $e) {
@@ -959,6 +1216,29 @@ class Services extends Service
 				$notes[] = sprintf('the service "%s" (%s) was not written: another service already has that name', $default['name'], $slug);
 			}
 		}
+
+		// A default DEFAULTS no longer has, or one not written, is no service:
+		// nothing may go on naming it. Said, with what it takes from users.
+		$held = $this->db->prepare("SELECT COUNT(*) FROM `{$this->serviceAssignmentsTable}` WHERE service = :service");
+
+		foreach ($mine as $slug => $name) {
+			if (in_array((string) $slug, $written, true) || isset($carried[(string) $slug])) {
+				continue;
+			}
+
+			$held->execute([':service' => (string) $slug]);
+			$notes[] = sprintf('the service "%s" (%s) is no longer one of the module\'s and was removed, with its links and %d assignments', $name, $slug, (int) $held->fetchColumn());
+		}
+
+		$this->db->exec(
+			"DELETE k FROM `{$this->serviceLinksTable}` k
+			WHERE NOT EXISTS (SELECT 1 FROM `{$this->servicesTable}` s WHERE s.slug = k.parent)
+				OR NOT EXISTS (SELECT 1 FROM `{$this->servicesTable}` s WHERE s.slug = k.child)"
+		);
+		$this->db->exec(
+			"DELETE a FROM `{$this->serviceAssignmentsTable}` a
+			WHERE NOT EXISTS (SELECT 1 FROM `{$this->servicesTable}` s WHERE s.slug = a.service)"
+		);
 
 		$links = $this->links();
 		$drop = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent AND child = :child");
@@ -989,10 +1269,14 @@ class Services extends Service
 				$links[] = [$slug, $child];
 			}
 		}
+
+		return $carried;
 	}
 
 	/**
-	 * Whether a slug is one of the module's.
+	 * Whether a slug is one the module ships: seed() writes it, and no
+	 * service of an operator's is given it. Whether a *row* is the module's
+	 * is its `owner`.
 	 *
 	 * @param mixed $slug Slug, or null.
 	 *
@@ -1257,7 +1541,7 @@ class Services extends Service
 	 * @param array<string, array<int, string>>       $before      Assignments before it, by extension.
 	 * @param array<int, array{0: string, 1: string}> $linksAfter  Every link after it.
 	 * @param array<string, array<int, string>>       $after       Assignments after it, by extension.
-	 * @param string                                  $service     The service the change was made to, '' for an upgrade.
+	 * @param string                                  $service     The service the change was made to, '' for an upgrade or several at once.
 	 * @param string                                  $name        Its name.
 	 * @param string                                  $reason      Jobs::REASONS.
 	 * @param string                                  $source      Jobs::SOURCES.
@@ -1340,15 +1624,15 @@ class Services extends Service
 	}
 
 	/**
-	 * A row, with `managed` added: whether its slug is one of the module's.
+	 * A row, with `managed` added: whether the module owns it.
 	 *
-	 * @param array<string, mixed> $row A services row carrying `slug`.
+	 * @param array<string, mixed> $row A services row carrying `owner`.
 	 *
 	 * @return array<string, mixed> The same row, widened.
 	 */
 	private function marked(array $row)
 	{
-		return $row + ['managed' => self::managed($row['slug'] ?? '')];
+		return $row + ['managed' => (int) ($row['owner'] ?? self::OWNER_OPERATOR) === self::OWNER_MODULE];
 	}
 
 	/**
