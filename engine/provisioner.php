@@ -89,7 +89,7 @@ if (preg_match('/(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]?){5}[0-9A-Fa-f]{2}(?![0-9
 // Try extracting from AudioCodes User-Agent
 if (
     $mac === '' &&
-    str_contains($requestAgent, 'AUDC-IPPhone/2.0.0') &&
+    strpos($requestAgent, 'AUDC-IPPhone/2.0.0') !== false &&
     preg_match('/;\s*([0-9A-Fa-f]{12})\)/', $requestAgent, $matches)
 ) {
     $mac = $matches[1];
