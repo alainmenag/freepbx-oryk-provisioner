@@ -7,7 +7,8 @@
  * and what Delete All takes, is Overview's business (src/Overview.php, and
  * ARCHITECTURE.md, "Overview"); this draws what inventory() found.
  *
- * It is tables all the way down -- User, Clients, Provisioning log, Bans --
+ * It is tables all the way down -- User, Clients, Provisioning log, Jobs (a
+ * user's), Bans --
  * and they are the lists' own: the same ids and formatters, so
  * views/admin.php's handlers answer their buttons, with a column or two only
  * Overview has. Every
@@ -229,6 +230,15 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	$logOverview = true;
 	include __DIR__ . '/logs.php';
 	?>
+
+	<?php if ($oIsUser): ?>
+	<h4 class="oryk-overview-heading"><?php echo _('Jobs'); ?></h4>
+	<?php
+	$jobFilter = null;
+	$jobScope = $overview['key'];
+	include __DIR__ . '/jobs.php';
+	?>
+	<?php endif; ?>
 
 	<h4 class="oryk-overview-heading"><?php echo _('Bans'); ?></h4>
 	<table

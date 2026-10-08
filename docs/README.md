@@ -8,6 +8,8 @@
 | [Template placeholders](templates.md) | every `{{name}}` a template can use |
 | [The admin interface](admin.md) | the pages, tabs and previews, Overview, and the Settings tab |
 | [Users](users.md) | creating, renumbering and deleting extensions, and From Domain |
+| [Jobs](jobs.md) | what changing a user's services does, failures and Retry |
+| [Hooking the provisioner](hooks.md) | for module authors: reacting when a user gains or loses a service |
 | [Bans](bans.md) | refusing or allowing an address, MAC, user or client at the endpoint |
 | [Syncing with fail2ban](fail2ban.md) | IP bans kept in step with fail2ban, and the one-time root setup |
 | [Security](security.md) | what is exposed, and to whom — read before going public |

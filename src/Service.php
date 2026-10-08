@@ -46,6 +46,12 @@ abstract class Service
 	/** @var string Which user has which service: one row per extension and service slug. */
 	protected $serviceAssignmentsTable = 'oryk_provisioner_service_assignments';
 
+	/** @var string One change to what one user holds, run by the job worker. */
+	protected $jobsTable = 'oryk_provisioner_jobs';
+
+	/** @var string What a job means service by service: one row each, in order. */
+	protected $jobStepsTable = 'oryk_provisioner_job_steps';
+
 	/** @var string Name of the web-root symlink pointing at engine/. */
 	protected $engineLink = 'provisioner';
 
@@ -82,6 +88,17 @@ abstract class Service
 		} catch (\Throwable $e) {
 			return false;
 		}
+	}
+
+	/**
+	 * The command-line PHP, for a script under bin/: PHP_BINARY is php-fpm's
+	 * own binary when this runs in a web request.
+	 *
+	 * @return string Path, or `php` to be found on the PATH.
+	 */
+	protected function phpBinary()
+	{
+		return is_executable(PHP_BINDIR . '/php') ? PHP_BINDIR . '/php' : 'php';
 	}
 
 	/**

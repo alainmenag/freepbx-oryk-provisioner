@@ -25,10 +25,11 @@ matches `phone.cfg`, and that resource is rendered and served.
 Everything else is that sentence with the edge cases filled in.
 
 A **service** is a name, linked to any number of services it is under and any
-number under it, and assigned to users. Services are stored, edited and
-assigned and nothing else reads them: the endpoint and the dropdowns know
-nothing of a service.
-See [Schema](#schema).
+number under it, and assigned to users. The endpoint knows nothing of a
+service, but a template can ask what a user holds, and every change to what a
+user holds is a **job**: one step per service gained or lost, run at once,
+calling the module's own reaction and every module hooked to it.
+See [Schema](#schema) and [Jobs](#jobs).
 
 A **user** is the other half of the module: a pjsip device that is its own
 extension, managed from the Users tab, and stored in none of this module's
@@ -243,8 +244,8 @@ page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
-                             the open-provisioning sweep -- see The Realtime bridge
-src/                         48 files, namespace FreePBX\Modules\Oryk_Provisioner
+                             the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
+src/                         52 files, namespace FreePBX\Modules\Oryk_Provisioner
 tests/                       smoke.php and the stubs it runs against
 views/                       one view per page, plus views/partials/
 ```
@@ -286,6 +287,9 @@ views/                       one view per page, plus views/partials/
 | `Notices` | the module's dashboard notices, raised and cleared on a change only |
 | `SignupSweep` | the minute job behind open provisioning: out of the bridge once applied; the notices |
 | `LobbyContext` | the lobby's dialplan, on Apply Config |
+| `Jobs` | the jobs and their steps: written, listed, and what the worker asks while it runs one |
+| `ServiceEngine`, `HandlerFailed` | what a change means for a user (`changes()`, static), and the worker; a handler that threw (exception) |
+| `Reactions` | the module's own reaction to its own services |
 
 `AsteriskConfig` through `Users` came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
@@ -297,7 +301,7 @@ friendly URL, and the endpoint stays reachable at its real path.
 
 ## Schema
 
-Eight tables, and the bridge's three (below). Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
+Ten tables, and the bridge's three (below). Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -508,8 +512,158 @@ slug, as everywhere else; the pair is the primary key.
 - **A template is the one reader that follows the packs.**
   `{{extension.services}}` is `Services::userSlugs()`: what the user is
   assigned and everything under it, each slug once, sorted, joined by commas
-  -- a phone asks whether the user has a service, not how. Nothing else acts
-  on an assignment yet.
+  -- a phone asks whether the user has a service, not how. What a change to
+  them sets going is [Jobs](#jobs).
+
+**`oryk_provisioner_jobs`** -- one change to what one user holds: `extension`,
+`service` and `name` (the service the change was made to, the name a
+snapshot; both '' for an upgrade), `reason` (`assigned`, `unassigned`,
+`service-deleted`, `pack-changed`), `source` (`gui`, `upgrade`), `state`
+(`queued`, `running`, `done`, `failed`), `attempts`, `error`, and when it was
+made, last started and finished.
+
+**`oryk_provisioner_job_steps`** -- what one job means, service by service:
+`job_id` and `position` (revokes first, then grants, each by slug), `service`
+and `name`, `via` (the assigned service it comes or went through, NULL for
+the service itself), `event` (`granted`, `revoked`), `state` (`pending`,
+`done`, `failed`, `skipped`), `done_by`, `attempts`, `error`.
+
+- **Steps are rows, not a JSON column on the job**, so a renamed service is
+  an UPDATE (`renameLinks()` carries `service`, and a step's `via`, with the
+  rest) and a retry finds what is left by state.
+- **Names are snapshots.** A job for a deleted service still says what it was;
+  a page links a slug only while a service has it.
+- **`done_by` is the handlers that have finished a step**, comma-separated
+  rawnames (`oryk_provisioner` first). It is written as each returns, so a
+  retry starts at the one that threw and never calls a finished one again.
+- **A job belongs to its user.** `forgetUser()` deletes a deleted user's
+  jobs, `moveUser()` carries a renumbered one's; there is no foreign key to
+  Core.
+
+## Jobs
+
+A change to services is worked out, written and run as **jobs**: what makes
+one, what one is, and how the worker runs it. `Services` writes them,
+`Jobs` is the two tables, `ServiceEngine` runs them, `Reactions` is the
+module's own handler.
+
+**What makes a job.** Anything that changes what a user *holds* -- what it is
+assigned and everything under that (`Services::held()`):
+
+| change | users affected | reason |
+| --- | --- | --- |
+| assign or unassign (`setUserService`) | that user | assigned / unassigned |
+| delete a service (`deleteService`) | everyone holding it, assigned or through a pack | service-deleted |
+| a service's Parents or Services changed (`saveService`) | everyone holding the pack it changes, at any depth | pack-changed |
+| an install or upgrade regrouping the defaults (`seed()`) | likewise | pack-changed, source `upgrade` |
+
+Each takes every user's assignments and the links before and after the
+change, in the change's own transaction and under one named lock across
+every change to services (`Services::lockChanges()` -- two at once would each
+read what the other was about to change, and owe a revoke neither made), and `ServiceEngine::changes()` makes
+the steps: a grant for what a user holds after and did not before, a revoke
+for the reverse. So **a service still held another way is never revoked**
+(Voicemail under both Basic and Advanced User), one already held is never
+granted again, the same state ticked again is no job, and a user a change
+does not touch gets none. A rename is not a change: the before is read as if
+it had always had the new slug. A renumbered user changes nobody's holdings
+and gets no job; its jobs move with it.
+
+**The service page asks first.** `serviceImpact` works out the same steps
+without writing anything, so Save and Delete on a service say how many users
+it changes, and how, before they do it.
+
+**Running.** A change from a page starts `bin/oryk-jobs` in the background
+(`Jobs::start()`, `nohup`), `--user=<ext>` for one user and with no argument
+for many, and the request returns. A user's queue is run **one job at a time,
+oldest first** (`ServiceEngine::drain()`), under a MySQL named lock per user
+(`GET_LOCK`), which the server frees if the worker dies; a second worker for
+the same user finds it held and leaves it to the first, which looks again
+after letting go. Different users run side by side. Per job:
+
+- the **claim** (`queued` or `failed` to `running`, `attempts` + 1) must
+  change one row: a deleted job is not run;
+- a **user not found** fails the job, and nothing is run. It is not deleted:
+  Core saves an extension by deleting and adding it again, and a job claimed
+  in between would take the whole queue with it. A user really deleted loses
+  its jobs to the hook on Core's `delUser`;
+- each step not yet `done` or `skipped` checks the **job is still there and
+  still this user's** -- deleting one is how it is stopped, and a renumber
+  moves it to the new number's queue, whose worker takes it from there -- and
+  then that **it is still current**:
+  a grant runs only while the user holds the service, a revoke only while it
+  does not, else it is `skipped`. That is what makes running a failed job
+  after a later one safe: a grant that failed and was then unassigned is never
+  granted back;
+- the step's **handlers** run one at a time: `Reactions` (as
+  `oryk_provisioner`), then each module hooked to `serviceGranted` or
+  `serviceRevoked`, in FreePBX's hook order. A reaction runs under one lock
+  across every worker (`Jobs::lockReactions()`): users' queues run side by
+  side, and Voicemail's rewrites all of voicemail.conf;
+- **the first handler that throws stops the job there** -- its later steps
+  stay `pending` -- with "<module>: <message>" on the step and the job, which
+  is `failed`.
+
+**A failure stops that job, for that user, and nothing else.** After each job
+the worker runs the user's failed jobs older than it again (the automatic
+retry), so a failure never holds up the jobs behind it and each later job
+gives it another try; with nothing queued it stops, and a failed job waits
+for **Retry** (back to `queued`, the worker started). Other users never wait on
+it. A job left `running` by a worker that died is failed by the next holder of
+its user's lock -- only a lock holder runs jobs -- and retried like any other.
+
+**The minute job** (`bin/oryk-jobs`, registered by `install()`) runs every
+user with a job queued or left running -- an upgrade's jobs, and anything whose
+background start was lost -- and purges `done` jobs finished more than
+`Jobs::KEEP_DAYS` (30) ago. It never retries a failed job on its own.
+**`seed()` only queues**: an install may run as root, and handlers run as the
+web user.
+
+**Hooks out.** A module reacts by hooking ours in its own module.xml, the way
+it would hook Core:
+
+```xml
+<hooks>
+  <oryk_provisioner class="Oryk_provisioner" namespace="FreePBX\modules">
+    <method callingMethod="serviceGranted" class="Mymodule" namespace="FreePBX\modules">onServiceGranted</method>
+    <method callingMethod="serviceRevoked" class="Mymodule" namespace="FreePBX\modules">onServiceRevoked</method>
+  </oryk_provisioner>
+</hooks>
+```
+
+FreePBX files that under `FreePBX\modules\Oryk_provisioner` when the module
+is installed or enabled. **The worker does not call `processHooks()`**: that
+loops the listeners with no catch, so the first throw stops the rest with
+nothing saying which, and leaves the thrower's text domain pushed. It reads the
+same list (`Hooks::returnHooksByClassMethod()`, public in framework 16 and 17:
+enabled modules, by priority) and calls each entry as FreePBX's own
+`executeCall()` would, inside its own catch. `Oryk_provisioner::serviceGranted()`
+and `serviceRevoked()` exist so the hook's `callingMethod` is a real method,
+and run the same handlers for one event outside any job. What a handler is
+given and owes is docs/hooks.md.
+
+**Hooks in.** module.xml hooks Core's `delUser`: a user deleted anywhere in
+FreePBX loses its assignments and jobs (`coreDelUser()` → `forgetUser()`).
+Edit mode is a save -- Core deletes and re-adds the user -- and is passed
+over. `ExtensionRenumberer` moves a user's services and jobs **before** it
+deletes the old number, which this hook would otherwise take them with.
+
+**The module's own reactions** (`Reactions`, only for `Services::DEFAULTS`):
+Voicemail makes a mailbox in `default` with a random PIN where there is none,
+or takes it out of voicemail.conf and sets the extension `novm` -- **the
+messages on disk are kept**; Call Recording sets the four recording keys to
+`force`, or back to `dontcare`; On Demand Recording `enabled` / `disabled`;
+Find Me Follow switches Find Me/Follow Me on (made with its own defaults where
+there is none) or off, its list kept. Each sets a state, so a second run is the
+first; none reloads, and one that changes what Apply Config writes raises it. A
+missing module fails the step and says so. Packs, Support, Guest User and Lobby
+User have none: a context is changed in Extensions.
+
+**Where it shows.** The Jobs section (`?tab=jobs`, filtered by state, reason and
+source in the address, as Services is); a job's page (`?job=<id>`), its steps
+and Retry; the Jobs dropdown; a user's Services tab, where each service whose
+newest step is queued, running or failed says so (`Jobs::statusFor()`), asked
+again while anything is running; and a user's Overview.
 
 ### Migrations deliberately not written
 
@@ -905,7 +1059,8 @@ pane, by every command and by Delete All:
 | FreePBX side | `Users::related()`: owned account, mailbox | -- |
 
 The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
-Devices, Call history and Voicemail -- on either kind of row: a client's Overview lists its user,
+Devices, Call history, Voicemail and Jobs (the Jobs list's own `listJobs`,
+asked with the scope) -- on either kind of row: a client's Overview lists its user,
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
 starts, not every leg it removes. Devices are the FreePBX devices on the
@@ -980,8 +1135,8 @@ made from one of the tables is answered by loading the page again.
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?service=`, `?ban=`, and `?log=` for one provisioning log entry, which is read and
-  deleted but never edited or created. The
+  `?service=`, `?ban=`, and `?log=` for one provisioning log entry and `?job=`
+  for one job, which are read and deleted but never edited or created. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
   `showPage()` would be too late to set a header. A user's key is its
@@ -990,12 +1145,12 @@ made from one of the tables is answered by loading the page again.
   `views/partials/sections.php` is the module's sections, a bar on every page,
   lit by the branch the page is in (a resource page is in Profiles). Sections
   listed together in `Navigator::sectionGroups()` share one entry on the bar
-  -- Users, Clients, Profiles and Services do, and Logs, Bans and Overview. The entry is
+  -- Users, Clients, Profiles and Services do, and Logs, Bans, Jobs and Overview. The entry is
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.
-  `views/partials/navigator.php` is a row of seven searchable dropdowns under
-  it -- Users, Clients, Profiles, Resources, Services, Logs, Bans -- scoped by the row the
+  `views/partials/navigator.php` is a row of eight searchable dropdowns under
+  it -- Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs -- scoped by the row the
   page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
   what is linked to that row, the viewed row's own level lists all of its kind
   with it selected, and nothing else is ever selected: a linked level with
@@ -1004,6 +1159,9 @@ made from one of the tables is answered by loading the page again.
   user, else the Users level's -- are assigned themselves, never what reaches
   them through a pack. From the other side, a service scopes the users
   assigned it themselves, and their clients, profiles, logs and bans.
+  Jobs follow Users too -- the jobs of the users in scope -- except on a
+  service, whose are the jobs changes to it made; a job scopes like its user.
+  Jobs lists only the newest `Navigator::JOB_LIMIT`.
   Logs are linked by MAC: a client's own, a user's or profile's clients'. Logs
   lists only the newest `Navigator::LOG_LIMIT` entries in scope, and its badge
   counts those; an unscoped Bans level likewise lists the newest

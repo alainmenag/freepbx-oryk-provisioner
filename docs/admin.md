@@ -1,20 +1,22 @@
 # The admin interface
 
-*Oryk → Provisioner*. A list, five editors and a log entry page, told apart by which key the URL
+*Oryk → Provisioner*. A list, five editors, a log entry page and a job page, told apart by which key the URL
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
 Every page is topped by the same bar of sections — Users, Clients, Profiles,
-Services, Logs, Bans, Overview, Settings — with the one you are in underlined, so any section is
+Services, Logs, Bans, Jobs, Overview, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
-Users, Clients, Profiles, Resources, Services, Logs, Bans — narrowed to whatever you are
+Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
 people they belong to; on a client, Users and Profiles list its user and its profile,
 Resources lists the files it is served, Logs its latest requests and Bans every
 ban that would apply to it. On a ban, the other dropdowns list what that ban
 covers. Services lists the services assigned to the users in view — the ones
 ticked for them, not those that come with a pack — and on a service, Users
-lists who is assigned it and the rest follow from their phones. The dropdown for the thing you are on
+lists who is assigned it and the rest follow from their phones. Jobs lists the
+[jobs](jobs.md) of the users in view, and on a service the jobs changes to it
+made. The dropdown for the thing you are on
 lists all of its kind, so you can switch straight to another one. A
 dropdown's title, with its count, opens the table of exactly those: on a
 client, **Profiles 1** opens the Profiles list showing only that client's
@@ -26,8 +28,9 @@ which are views of that one row.
 | URL | Page | Tabs |
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
-| `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log`, `ban` or `service` row scopes | — |
+| `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log`, `ban`, `service` or `job` row scopes | — |
 | `&tab=services&source=module&kind=pack` | the Services list with its filters set; each is left out at its default (Available, All) | — |
+| `&tab=jobs&state=failed&reason=&source=` | the Jobs list with its filters set; each is left out at its default (any) | — |
 | `&tab=overview&scope=user:<extension>` or `client:<id>` | [Overview](#overview): everything tied to that user or client | — |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
@@ -36,6 +39,7 @@ which are views of that one row.
 | `&service=<slug>` | one service (`&service=` for a new one) | Service |
 | `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
 | `&log=<id>` | one provisioning log entry, read-only | Log Entry |
+| `&job=<id>` | one [job](jobs.md): its steps, Retry when it failed, Delete | Job |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor. Save leaves you on
@@ -107,9 +111,10 @@ It is tables, the same ones the lists show:
 | **Call history** | the calls it made or received | — |
 | **Voicemail** | the messages in its mailbox, every folder | — |
 | **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |
+| **Jobs** | its [jobs](jobs.md) | — |
 | **Bans** | every ban naming it or applying to it | the same |
 
-Each part can be removed where it is listed: a client or a ban by its trash
+Each part can be removed where it is listed: a client, a job or a ban by its trash
 can, the log entries with **Clear These Entries**, a client's stored logs with
 the trash can beside their count.
 

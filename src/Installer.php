@@ -9,8 +9,8 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * The tables, the module's settings, the repo directory, the web-root symlink
  * that gives a phone a short URL, the fail2ban sync -- its minute job and,
- * when this runs as root, its helper -- and open provisioning's minute sweep
- * and Realtime bridge. Nothing about the symlink, the sync or the bridge fails
+ * when this runs as root, its helper -- open provisioning's minute sweep
+ * and Realtime bridge, and the service job worker's minute run. Nothing about the symlink, the sync or the bridge fails
  * the install: without them the module still works, minus a friendly URL,
  * fail2ban, or sign-ups that register before Apply Config.
  */
@@ -42,6 +42,9 @@ class Installer extends Service
 
 	/** The FreePBX job the open-provisioning sweep is registered as. */
 	const SWEEP_JOB = 'signup-sweep';
+
+	/** The FreePBX job the service job worker's minute run is registered as. */
+	const JOBS_JOB = 'service-jobs';
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
@@ -270,6 +273,55 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
+		// One change to what one user holds. `service` and `name` are the
+		// service the change was made to, the name a snapshot: a deleted
+		// service's job still says what it was. An upgrade's job names none.
+		// See ARCHITECTURE.md, "Jobs".
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->jobsTable}` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`extension` VARCHAR(20) NOT NULL,
+				`service` VARCHAR(64) NOT NULL DEFAULT '',
+				`name` VARCHAR(191) NOT NULL DEFAULT '',
+				`reason` VARCHAR(16) NOT NULL,
+				`source` VARCHAR(16) NOT NULL DEFAULT 'gui',
+				`state` VARCHAR(16) NOT NULL DEFAULT 'queued',
+				`attempts` INT(10) UNSIGNED NOT NULL DEFAULT 0,
+				`error` TEXT NULL,
+				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				`started_at` DATETIME NULL DEFAULT NULL,
+				`finished_at` DATETIME NULL DEFAULT NULL,
+				PRIMARY KEY (`id`),
+				KEY `extension_state` (`extension`, `state`, `id`),
+				KEY `state_finished` (`state`, `finished_at`),
+				KEY `service` (`service`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
+		// A job's services, in the order they run: revokes first. `via` is the
+		// assigned service it came or went through, NULL for the service itself;
+		// `done_by` the handlers that have finished it, comma-separated rawnames.
+		$this->db->exec(
+			"CREATE TABLE IF NOT EXISTS `{$this->jobStepsTable}` (
+				`id` INT(11) NOT NULL AUTO_INCREMENT,
+				`job_id` INT(11) NOT NULL,
+				`position` SMALLINT(5) UNSIGNED NOT NULL,
+				`service` VARCHAR(64) NOT NULL,
+				`name` VARCHAR(191) NOT NULL DEFAULT '',
+				`via` VARCHAR(64) NULL DEFAULT NULL,
+				`event` VARCHAR(8) NOT NULL,
+				`state` VARCHAR(16) NOT NULL DEFAULT 'pending',
+				`done_by` VARCHAR(255) NOT NULL DEFAULT '',
+				`attempts` INT(10) UNSIGNED NOT NULL DEFAULT 0,
+				`error` TEXT NULL,
+				`finished_at` DATETIME NULL DEFAULT NULL,
+				PRIMARY KEY (`id`),
+				UNIQUE KEY `job_position` (`job_id`, `position`),
+				KEY `service` (`service`),
+				KEY `via` (`via`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+		);
+
 		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already there,
 		// so every column added after a table first existed is added from here.
 		// Order matters in one place: addResourceTypeColumn() backfills from
@@ -289,6 +341,8 @@ class Installer extends Service
 
 		// The services the module ships -- Services::DEFAULTS -- made, renamed
 		// and regrouped to match. After the slug column: they are found by it.
+		// A regrouping that changes what users hold queues their jobs, which
+		// the minute job runs: an install may be root, and jobs run as the web user.
 		if ($this->services) {
 			foreach ($this->services->seed() as $line) {
 				$this->installMessage('Provisioner: ' . $line);
@@ -328,6 +382,7 @@ class Installer extends Service
 
 		$this->registerJob(self::SYNC_JOB, 'oryk-fail2ban-sync', 'the fail2ban sync');
 		$this->registerJob(self::SWEEP_JOB, 'oryk-signup-sweep', 'the open-provisioning sweep');
+		$this->registerJob(self::JOBS_JOB, 'oryk-jobs', 'the service job worker');
 		$this->setUpFail2ban();
 
 		// Like the symlink, nothing about the bridge fails the install: without
@@ -356,7 +411,7 @@ class Installer extends Service
 	{
 		$this->unlinkEngine();
 
-		foreach ([self::SYNC_JOB, self::SWEEP_JOB] as $job) {
+		foreach ([self::SYNC_JOB, self::SWEEP_JOB, self::JOBS_JOB] as $job) {
 			try {
 				$this->FreePBX->Job->remove('oryk_provisioner', $job);
 			} catch (\Throwable $e) {
@@ -394,7 +449,7 @@ class Installer extends Service
 	 */
 	private function registerJob($job, $script, $what)
 	{
-		$php = is_executable(PHP_BINDIR . '/php') ? PHP_BINDIR . '/php' : 'php';
+		$php = $this->phpBinary();
 		$path = (realpath(dirname(__DIR__) . '/bin') ?: dirname(__DIR__) . '/bin') . '/' . $script;
 
 		try {

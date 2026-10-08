@@ -88,3 +88,39 @@ function orykAsk(message, options) {
 
 	return asked.promise();
 }
+
+/*
+ * What saving or deleting a service would change for its users, as a
+ * sentence to ask with before it is done: '' when it changes nobody's, or
+ * when the module could not say.
+ *
+ * values  action (save|delete) and slug; for a save, name, parents and
+ *         children as the save would post them.
+ *
+ * Returns a promise of the sentence; it is never rejected.
+ */
+function orykServiceImpact(values) {
+	const said = $.Deferred();
+
+	$.ajax({
+		url: 'ajax.php?module=oryk_provisioner&command=serviceImpact',
+		type: 'POST',
+		data: values,
+		dataType: 'json'
+	}).done(function (response) {
+		if (!response || !response.status || !response.users) {
+			said.resolve('');
+			return;
+		}
+
+		const parts = []
+			.concat((response.revoked || []).map((row) => `${row.name} is revoked from ${row.users}`))
+			.concat((response.granted || []).map((row) => `${row.name} is granted to ${row.users}`));
+
+		said.resolve(`This changes the services of ${response.users} ${response.users === 1 ? 'user' : 'users'}: ${parts.join('; ')}. Each gets a job, run at once.`);
+	}).fail(function () {
+		said.resolve('');
+	});
+
+	return said.promise();
+}

@@ -599,3 +599,17 @@ tr.oryk-disabled > td a:not(.btn) {
 	margin-left: 6px;
 	font-size: 12px;
 }
+/* Where a service's newest job step stands, after the pack it comes with. */
+.oryk-service-job {
+	margin-left: 6px;
+	font-size: 12px;
+}
+/* A job's steps, on its page: the error under the step that threw. */
+.oryk-job-steps {
+	margin-top: 10px;
+}
+.oryk-job-error {
+	white-space: pre-wrap;
+	word-break: break-word;
+	margin: 0;
+}

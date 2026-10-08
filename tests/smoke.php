@@ -40,6 +40,8 @@ use FreePBX\Modules\Oryk_Provisioner\Notices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\SecurityLog;
+use FreePBX\Modules\Oryk_Provisioner\Jobs;
+use FreePBX\Modules\Oryk_Provisioner\ServiceEngine;
 use FreePBX\Modules\Oryk_Provisioner\Services;
 use FreePBX\Modules\Oryk_Provisioner\SignupRefused;
 use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
@@ -2220,6 +2222,41 @@ $render = function (array $client) use ($template) {
 is_eq('a template is given them as one value', $render(['mac' => '0004f282e824', 'extension' => '9990000001']), 'SERVICES=guest-user,support');
 is_eq('a user with none renders empty', $render(['mac' => '0004f282e824', 'extension' => '1001']), 'SERVICES=');
 is_eq('and so does a client with no user', $render(['mac' => '0004f282e824']), 'SERVICES=');
+
+echo "\n  what a change to services makes a job of:\n";
+
+// gold is over fax and sms; silver over fax.
+$packs = [['gold', 'fax'], ['gold', 'sms'], ['silver', 'fax']];
+$change = function (array $before, array $after, ?array $linksAfter = null) use ($packs) {
+	return array_map(function ($step) {
+		return $step['event'][0] . ':' . $step['service'] . ($step['via'] !== null ? '<' . $step['via'] : '');
+	}, ServiceEngine::changes($packs, $before, $linksAfter ?? $packs, $after));
+};
+is_eq('assigning a pack grants it and all under it', $change([], ['gold']), ['g:fax<gold', 'g:gold', 'g:sms<gold']);
+is_eq('nothing already held is granted again', $change(['silver'], ['silver', 'gold']), ['g:gold', 'g:sms<gold']);
+is_eq('nothing still held another way is revoked', $change(['silver', 'gold'], ['silver']), ['r:gold', 'r:sms<gold']);
+is_eq('revokes come before grants', $change(['silver'], ['gold']), ['r:silver', 'g:gold', 'g:sms<gold']);
+is_eq('the same state again is nothing', $change(['gold'], ['gold']), []);
+is_eq('a pack losing a service revokes it', $change(['gold'], ['gold'], [['gold', 'fax'], ['silver', 'fax']]), ['r:sms<gold']);
+is_eq('one gaining a service grants it', $change(['silver'], ['silver'], [['gold', 'fax'], ['gold', 'sms'], ['silver', 'fax'], ['silver', 'sms']]), ['g:sms<silver']);
+is_eq('a deleted service goes, with what came only through it', $change(['gold', 'silver'], ['silver'], [['silver', 'fax']]), ['r:gold', 'r:sms<gold']);
+is_eq('a filter is one of its values, or all', Jobs::filters(['state' => 'failed', 'reason' => 'x', 'source' => 'upgrade']), ['state' => 'failed', 'reason' => 'all', 'source' => 'upgrade']);
+is_eq('every value has a label', [array_keys(Jobs::labels()['state']), array_keys(Jobs::labels()['reason']), array_keys(Jobs::labels()['source'])], [Jobs::STATES, Jobs::REASONS, Jobs::SOURCES]);
+is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::title(['name' => 'Gold'])], ['Module upgrade', 'Gold']);
+is_eq('a job is a scope', Navigator::scopeAt('job:12'), ['job' => '12']);
+is_eq('the Jobs list is narrowed when its scope is', [Navigator::narrows('jobs', ['jobs' => ['extensions' => ['100']]]), Navigator::narrows('jobs', ['jobs' => null])], [true, false]);
+is_eq('the done_by list reads back', Jobs::doneBy(['done_by' => 'oryk_provisioner,testmod']), ['oryk_provisioner', 'testmod']);
+
+// The module class is not loaded here (it needs FreePBX), so its methods are read off the file.
+$hooks = simplexml_load_file(dirname(__DIR__) . '/module.xml');
+$moduleSource = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php');
+$hooked = [];
+foreach ($hooks->hooks->children() as $module => $methods) {
+	foreach ($methods->method as $method) {
+		$hooked[] = $module . '::' . $method['callingMethod'] . ' -> ' . $method . (preg_match('/public function ' . preg_quote((string) $method, '/') . '\\(/', $moduleSource) ? '' : ' (missing)');
+	}
+}
+is_eq('module.xml hooks Core\'s delUser, to a method that exists', $hooked, ['core::delUser -> coreDelUser']);
 
 echo "\n  the module class imports every class it builds:\n";
 

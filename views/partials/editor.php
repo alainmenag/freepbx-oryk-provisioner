@@ -226,9 +226,12 @@
 	 * editor.values()  what to post, including the row's key
 	 * editor.key       optional; what that key is called in values(), `id` unless said
 	 * editor.save      command that writes it
+	 * editor.ask(v)    optional; a promise Save waits on before it posts v,
+	 *                  rejected to save nothing -- a question asked first
 	 * editor.saved(r)  optional; runs on a successful save, before the reload
 	 * editor.remove    command that deletes it
-	 * editor.confirm   what Delete asks before it does
+	 * editor.confirm   what Delete asks before it does, or a function
+	 *                  returning a promise of it
 	 * editor.page(id)  this editor's own URL for a row
 	 * editor.closed    where Close and a finished Delete go
 	 */
@@ -239,29 +242,41 @@
 			// Held down until the answer: a second press would post the form
 			// again underneath it.
 			var button = $(this).prop('disabled', true);
+			var values = editor.values();
+			var asked = editor.ask ? editor.ask(values) : $.Deferred().resolve().promise();
 
-			orykPost(editor.save, editor.values()).done(function (response) {
-				if (!response || !response.status) {
-					button.prop('disabled', false);
-					orykShowError(response && response.message);
-					return;
-				}
-
-				if (editor.saved) {
-					editor.saved(response);
-				}
-
-				window.location = editor.page(response.id);
-			}).fail(function () {
+			asked.fail(function () {
 				button.prop('disabled', false);
-				orykShowError('The server could not be reached.');
+			});
+
+			asked.done(function () {
+				orykPost(editor.save, values).done(function (response) {
+					if (!response || !response.status) {
+						button.prop('disabled', false);
+						orykShowError(response && response.message);
+						return;
+					}
+
+					if (editor.saved) {
+						editor.saved(response);
+					}
+
+					window.location = editor.page(response.id);
+				}).fail(function () {
+					button.prop('disabled', false);
+					orykShowError('The server could not be reached.');
+				});
 			});
 		});
 
 		$(document).on('click', '#orykdelete', function (event) {
 			event.preventDefault();
 
-			orykAsk(editor.confirm).done(() => {
+			var question = typeof editor.confirm === 'function'
+				? editor.confirm()
+				: $.Deferred().resolve(editor.confirm).promise();
+
+			question.done((message) => orykAsk(message).done(() => {
 				var key = editor.key || 'id';
 				var row = {};
 				row[key] = editor.values()[key];
@@ -276,7 +291,7 @@
 				}).fail(function () {
 					orykShowError('The server could not be reached.');
 				});
-			});
+			}));
 		});
 
 		$(document).on('click', '#orykclose', function (event) {

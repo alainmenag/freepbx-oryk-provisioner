@@ -2,7 +2,7 @@
 /**
  * views/partials/navigator.php -- the row of dropdowns under the section bar.
  *
- * Users, Clients, Profiles, Resources, Services, Logs, Bans, each scoped by the row the
+ * Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs, each scoped by the row the
  * page is viewing: on a profile, Clients lists that profile's clients. What is in
  * scope is Navigator's business (see src/Navigator.php); this only draws it.
  *

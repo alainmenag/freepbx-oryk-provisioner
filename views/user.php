@@ -13,13 +13,17 @@
  * Services is every service, each ticked when this user is assigned it. A
  * tick is saved as it is made (setUserService) and touches nothing else of
  * the user, so the tab has no Save and raises no Apply Config. A service the
- * user already has through an assigned pack says which pack.
+ * user already has through an assigned pack says which pack. A tick that
+ * changes what the user holds is a job (ARCHITECTURE.md, "Jobs"): each
+ * service whose newest step is waiting, running or failed says so, kept
+ * current while any is waiting or running.
  *
  * @var array<string, mixed>             $user       extension ('' when new), name, email, from_domain, secure, clients, context
  * @var string                           $pbxDomain  What a blank From Domain resolves to
  * @var array<string, bool>              $available  Which of the other tabs have anything on them
  * @var string                           $tab        Tab to open on: user|clients|services
  * @var array<int, array<string, mixed>> $services   Services::userServices(), on the Services tab
+ * @var array<string, array<string, mixed>> $serviceJobs Jobs::statusFor(), on the Services tab
  * @var array<int, array<string, mixed>> $navigator  Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>> $sections Navigator::sections() -- see partials/sections.php
  * @var string                           $version  Module version -- see partials/sections.php
@@ -38,6 +42,7 @@ $extension = (string) $user['extension'];
 $isNew = $extension === '';
 $tab = (in_array($tab ?? '', ['clients', 'services'], true) && !empty($available[$tab])) ? $tab : 'user';
 $services = isset($services) && is_array($services) ? $services : [];
+$serviceJobs = isset($serviceJobs) && is_array($serviceJobs) ? $serviceJobs : [];
 $clientCount = (int) ($user['clients'] ?? 0);
 
 $userUrl = '?display=oryk_provisioner&user=' . rawurlencode($extension);
@@ -316,6 +321,7 @@ if ($clientCount > 0) {
 								<span class="label label-default"><?php echo _('pack'); ?></span>
 								<?php endif; ?>
 								<span class="oryk-service-via text-muted" data-slug="<?php echo $h($service['slug']); ?>"><?php echo $service['via'] ? $h(sprintf(_('included in %s'), implode(', ', $service['via']))) : ''; ?></span>
+								<span class="oryk-service-job" data-slug="<?php echo $h($service['slug']); ?>"></span>
 							</label>
 							<?php endforeach; ?>
 						</div>
@@ -355,6 +361,51 @@ if ($clientCount > 0) {
 		return `<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`;
 	}
 
+	// Where each service's newest job step stands: waiting, running, or failed
+	// with a link to its job. A service with nothing outstanding says nothing.
+	const orykJobLabels = <?php echo json_encode(['queued' => _('queued'), 'running' => _('running'), 'failed' => _('failed')]); ?>;
+	let orykJobPoll = null;
+
+	function orykShowServiceJobs(jobs) {
+		let busy = false;
+
+		$('.oryk-service-job').each(function () {
+			const status = (jobs || {})[$(this).data('slug')];
+
+			if (!status) {
+				$(this).empty().attr('class', 'oryk-service-job');
+				return;
+			}
+
+			busy = busy || status.state !== 'failed';
+
+			const text = orykJobLabels[status.state] || status.state;
+			const link = $('<a>').attr('href', '?display=oryk_provisioner&job=' + encodeURIComponent(status.job)).text(text);
+
+			if (status.error) {
+				link.attr('title', status.error);
+			}
+
+			$(this).empty().append(link)
+				.attr('class', 'oryk-service-job ' + (status.state === 'failed' ? 'text-danger' : 'text-muted'));
+		});
+
+		window.clearTimeout(orykJobPoll);
+
+		// Asked again while anything is still to run; a job takes a moment.
+		if (busy) {
+			orykJobPoll = window.setTimeout(function () {
+				orykPost('userServiceJobs', { extension: orykUserId }).done(function (response) {
+					if (response && response.status) {
+						orykShowServiceJobs(response.jobs);
+					}
+				});
+			}, 1500);
+		}
+	}
+
+	orykShowServiceJobs(<?php echo json_encode((object) $serviceJobs); ?>);
+
 	// A service is assigned or taken away the moment its box changes. The
 	// state is sent, not toggled; a refusal puts the box back. The answer is
 	// every service as the user now has them, which is what says which
@@ -383,6 +434,8 @@ if ($clientCount > 0) {
 					return $(this).data('slug') === service.slug;
 				}).text(service.via.length ? 'included in ' + service.via.join(', ') : '');
 			});
+
+			orykShowServiceJobs(response.jobs);
 
 			notie.alert(1, wanted ? 'Assigned.' : 'Unassigned.', 2);
 		}).fail(function () {
