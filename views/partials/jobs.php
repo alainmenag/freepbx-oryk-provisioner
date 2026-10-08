@@ -10,7 +10,7 @@
  * each All by default -- and **are the address** (`&state=`, `&reason=`,
  * `&source=`, left out at All), as the Services list's are; each option says
  * how many it would list with the other two as they are. Overview draws the
- * same table for one user, without them.
+ * same table for one user, with Clear in their place.
  *
  * Narrowed by `&scope=` like every list (see views/admin.php).
  *
@@ -29,7 +29,14 @@ $jobLabels = Jobs::labels();
 $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('Source')];
 ?>
 
-<?php if ($jobFilter !== null): ?>
+<?php if ($jobFilter === null): ?>
+<div id="job_toolbar" class="oryk-toolbar">
+	<button type="button" class="btn btn-danger" id="oryk_overview_jobs_clear" title="<?php echo _('Clear Jobs'); ?>">
+		<?php echo $icon('trash'); ?>
+		<?php echo _('Clear'); ?>
+	</button>
+</div>
+<?php else: ?>
 <div id="job_toolbar" class="oryk-toolbar">
 	<?php foreach ($jobSelects as $jobKey => $jobAria): ?>
 	<select class="form-control oryk-toolbar-filter oryk-job-filter" id="job_<?php echo $jobKey; ?>" data-filter="<?php echo $jobKey; ?>" aria-label="<?php echo htmlspecialchars($jobAria, ENT_QUOTES, 'UTF-8'); ?>">
@@ -46,7 +53,7 @@ $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('So
 	id="job_table"
 	data-toggle="table"
 	data-url="ajax.php?module=oryk_provisioner&command=listJobs<?php echo htmlspecialchars($jobScope !== '' ? '&scope=' . rawurlencode($jobScope) : '', ENT_QUOTES, 'UTF-8'); ?>"
-	<?php if ($jobFilter !== null): ?>data-toolbar="#job_toolbar"<?php endif; ?>
+	data-toolbar="#job_toolbar"
 	data-query-params="orykJobQuery"
 	class="table table-striped"
 	data-side-pagination="server"

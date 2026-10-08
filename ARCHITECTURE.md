@@ -1096,7 +1096,7 @@ up after the row is the point and a freed number is handed out again.
 **Every command is posted the scope** -- `listOverviewUsers`,
 `listOverviewDevices`, `listOverviewClients`, `listOverviewBans`, `listOverviewCalls`,
 `listOverviewVoicemail`, `clearOverviewHistory`,
-`clearOverviewVoicemail`, `clearOverviewLogs`, `clearOverviewStored`,
+`clearOverviewVoicemail`, `clearOverviewJobs`, `clearOverviewLogs`, `clearOverviewStored`,
 `purgeOverview` -- and works out what is related from it, so nothing is
 deleted by an id a page sent. Two take an id as well, and accept it only among that user's own:
 `deleteOverviewVoicemail`, a message the walk of its mailbox produced, and

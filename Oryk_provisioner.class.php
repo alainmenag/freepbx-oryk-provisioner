@@ -711,6 +711,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listOverviewBans':
 			case 'listOverviewCalls':
 			case 'clearOverviewHistory':
+			case 'clearOverviewJobs':
 			case 'listOverviewVoicemail':
 			case 'clearOverviewVoicemail':
 			case 'deleteOverviewVoicemail':
@@ -915,6 +916,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'clearOverviewHistory':
 				return $this->overview->clearHistory(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			// A user's jobs, all of them; a client has none of its own.
+			case 'clearOverviewJobs':
+				$at = Overview::target(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+				if (!isset($at['user'])) {
+					return ['status' => false, 'message' => _('Only a user has jobs to clear.')];
+				}
+
+				$this->jobs->forgetUser($at['user']);
+
+				return ['status' => true];
 
 			case 'listOverviewVoicemail':
 				return $this->overview->listVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));

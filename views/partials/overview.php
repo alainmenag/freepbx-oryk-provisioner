@@ -434,6 +434,29 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		});
 	});
 
+	// The jobs alone: what they already did stays done, and a running one
+	// stops before its next step.
+	$(document).on('click', '#oryk_overview_jobs_clear', function () {
+		orykAsk('Clear this user\'s jobs? Every one is deleted, finished or not; what they already did stays done, and one that is running stops before its next step.').done(() => {
+			const button = $(this).prop('disabled', true);
+
+			orykPost('clearOverviewJobs', { scope: orykOverviewScope }).done(function (response) {
+				button.prop('disabled', false);
+
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not clear the jobs.', 4);
+					return;
+				}
+
+				$('#job_table').bootstrapTable('refresh');
+				notie.alert(1, 'Cleared.', 2);
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not clear the jobs.', 4);
+			});
+		});
+	});
+
 	function formatOverviewVoicemailActions(value, row) {
 		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
 			`<button type="button" class="btn btn-danger btn-sm" name="overview_voicemail_delete" value="${orykEscape(row.id)}" title="Delete this message">${orykIcon('trash')}</button>` +

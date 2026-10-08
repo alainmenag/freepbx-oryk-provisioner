@@ -115,7 +115,7 @@ It is tables, the same ones the lists show:
 | **Bans** | every ban naming it or applying to it | the same |
 
 Each part can be removed where it is listed: a client, a job or a ban by its trash
-can, the log entries with **Clear These Entries**, a client's stored logs with
+can, a user's jobs all at once with **Clear** (what they did stays done), the log entries with **Clear These Entries**, a client's stored logs with
 the trash can beside their count.
 
 **Clear Call History** removes a user's calls and their recordings and keeps
