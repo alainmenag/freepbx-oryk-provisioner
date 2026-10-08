@@ -590,19 +590,119 @@ tr.oryk-disabled > td a:not(.btn) {
 	color: #999;
 	cursor: not-allowed;
 }
-/* A user's Services tab: the whole list, not a box to scroll in. */
-.oryk-user-services {
-	max-height: none;
+/* A question's sections: what a save would do, listed above the sentence. */
+.oryk-ask .oryk-ask-section {
+	margin: 0 0 4px;
+	font-weight: bold;
 }
-/* Which assigned pack a service already comes with, after its name. */
-.oryk-service-via {
-	margin-left: 6px;
-	font-size: 12px;
+.oryk-ask .oryk-ask-list {
+	margin: 0 0 12px;
+	padding-left: 20px;
 }
-/* Where a service's newest job step stands, after the pack it comes with. */
+/*
+ * A user's Services tab: packs and single services, a list each, side by
+ * side while there is room. A grid of the module's own: FreePBX's theme
+ * stacks a Bootstrap .row here.
+ */
+.oryk-service-lists {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	gap: 0 15px;
+	align-items: start;
+	width: 100%;
+}
+.oryk-service-list {
+	margin-bottom: 15px;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.oryk-service-list-title {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 12px;
+	border-bottom: 1px solid #ddd;
+	font-weight: bold;
+}
+.oryk-service-row {
+	border-left: 3px solid transparent;
+}
+.oryk-service-row + .oryk-service-row {
+	border-top: 1px solid rgba(128, 128, 128, 0.25);
+}
+/* A box that differs from what is saved. */
+.oryk-service-staged {
+	border-left-color: #f0ad4e;
+	background: rgba(240, 173, 78, 0.08);
+}
+.oryk-service-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+}
+.oryk-service-head .oryk-check {
+	cursor: pointer;
+}
+.oryk-service-head .oryk-check input {
+	margin: 0;
+}
+.oryk-service-head .btn-xs > .oryk-icon {
+	display: block;
+	margin: 2px 0;
+}
+/* Which staged pack a service comes with, whether it is staged, and where its newest job step stands. */
+.oryk-service-via,
+.oryk-service-change,
 .oryk-service-job {
-	margin-left: 6px;
 	font-size: 12px;
+}
+/* The button that opens a pack, pushed right: how many services it gives. */
+.oryk-service-open {
+	margin-left: auto;
+}
+.oryk-service-count {
+	font-size: 12px;
+}
+.oryk-service-open.active .oryk-icon {
+	transform: rotate(180deg);
+}
+.oryk-service-gives {
+	padding: 0 12px 10px 38px;
+	font-size: 13px;
+}
+/* The line over what a pack gives: pressed, it is drawn as a tree, or flat again. */
+.oryk-service-tree {
+	display: block;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
+}
+.oryk-service-tree:hover,
+.oryk-service-tree:focus {
+	text-decoration: underline;
+}
+.oryk-service-gives ul {
+	margin: 2px 0 0;
+	padding: 0;
+	list-style: none;
+}
+.oryk-service-gives ul ul {
+	margin-left: 5px;
+	padding-left: 14px;
+	border-left: 1px solid rgba(128, 128, 128, 0.35);
+}
+.oryk-service-gives li {
+	padding: 1px 0;
+}
+.oryk-service-has {
+	margin-left: 4px;
+	font-size: 12px;
+}
+.oryk-service-none {
+	margin: 0;
+	padding: 8px 12px;
 }
 /* A job's steps, on its page: the error under the step that threw. */
 .oryk-job-steps {

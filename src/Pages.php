@@ -875,6 +875,21 @@ class Pages extends Service
 			];
 		}
 
+		// A user's Services tab stages its ticks and has its own Save and Reset
+		// (views/partials/user_services.php): orykEditor()'s posts the User tab's fields.
+		if (isset($_REQUEST['user']) && $this->openTab() === 'services') {
+			$bar['orykservicessave'] = [
+				'name' => 'orykservicessave',
+				'id' => 'orykservicessave',
+				'value' => _('Save'),
+			];
+			$bar['orykservicesreset'] = [
+				'name' => 'orykservicesreset',
+				'id' => 'orykservicesreset',
+				'value' => _('Reset'),
+			];
+		}
+
 		// Nothing to delete until there is a row.
 		if ($row !== '') {
 			$bar['orykdelete'] = [

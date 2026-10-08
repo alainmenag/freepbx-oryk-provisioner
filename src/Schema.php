@@ -313,6 +313,36 @@ class Schema extends Service
 	}
 
 	/**
+	 * Give a services table written before it its `owner`: 0 is the module,
+	 * and the column's default.
+	 *
+	 * Backfilled once, on the pass that adds it: every row but the module's
+	 * own is made an operator's (1), or Services::seed(), which deletes the
+	 * module's rows straight after this, would take them all.
+	 *
+	 * @param array<int, string> $defaults The module's slugs: Services::DEFAULTS' keys.
+	 *
+	 * @return void
+	 */
+	public function addServiceOwnerColumn(array $defaults)
+	{
+		if ($this->schemaHas($this->servicesTable, 'column', 'owner')) {
+			return;
+		}
+
+		$this->db->exec(
+			"ALTER TABLE `{$this->servicesTable}`
+			ADD COLUMN `owner` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `name`"
+		);
+
+		$mine = $defaults ? ' OR slug NOT IN (' . implode(', ', array_fill(0, count($defaults), '?')) . ')' : ' OR 1 = 1';
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->servicesTable}` SET owner = 1, updated_at = updated_at WHERE slug IS NULL" . $mine
+		);
+		$stmt->execute(array_map('strval', array_values($defaults)));
+	}
+
+	/**
 	 * Bring a services table written before services had a slug up to date.
 	 *
 	 * Nullable, because the rows already there have none until

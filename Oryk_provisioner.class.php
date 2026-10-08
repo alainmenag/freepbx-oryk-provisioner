@@ -723,7 +723,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listServices':
 			case 'saveService':
 			case 'deleteService':
-			case 'setUserService':
+			case 'setUserServices':
+			case 'userServicesImpact':
 			case 'serviceImpact':
 			case 'userServiceJobs':
 			case 'listJobs':
@@ -888,9 +889,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteService':
 				return $this->services->deleteService($_REQUEST['slug'] ?? null);
 
-			// One service, on or off one user, from that user's Services tab.
-			case 'setUserService':
-				return $this->services->setUserService($_REQUEST);
+			// What a user's Services tab has staged, saved as one change.
+			case 'setUserServices':
+				return $this->services->setUserServices($_REQUEST);
+
+			// What that save would change, asked first.
+			case 'userServicesImpact':
+				return $this->services->userServicesImpact($_REQUEST);
 
 			// What a save or delete on a service page would change, asked first.
 			case 'serviceImpact':

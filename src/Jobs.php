@@ -19,7 +19,7 @@ class Jobs extends Service
 	const STATES = ['queued', 'running', 'done', 'failed'];
 
 	/** Why a job was made. */
-	const REASONS = ['assigned', 'unassigned', 'service-deleted', 'pack-changed'];
+	const REASONS = ['assigned', 'unassigned', 'changed', 'service-deleted', 'pack-changed'];
 
 	/** What made it: the module's pages, or an install or upgrade regrouping the defaults. */
 	const SOURCES = ['gui', 'upgrade'];
@@ -37,7 +37,7 @@ class Jobs extends Service
 	 * Write one job and its steps. The caller's transaction holds it.
 	 *
 	 * @param string                           $extension The user.
-	 * @param string                           $service   Slug of the service the change was made to, '' for an upgrade.
+	 * @param string                           $service   Slug of the service the change was made to, '' for an upgrade or several at once.
 	 * @param string                           $name      Its name as it is now.
 	 * @param string                           $reason    One of REASONS.
 	 * @param string                           $source    One of SOURCES.
@@ -131,7 +131,7 @@ class Jobs extends Service
 	{
 		return [
 			'state' => ['queued' => _('Queued'), 'running' => _('Running'), 'done' => _('Done'), 'failed' => _('Failed')],
-			'reason' => ['assigned' => _('Assigned'), 'unassigned' => _('Unassigned'), 'service-deleted' => _('Service deleted'), 'pack-changed' => _('Pack changed')],
+			'reason' => ['assigned' => _('Assigned'), 'unassigned' => _('Unassigned'), 'changed' => _('Changed'), 'service-deleted' => _('Service deleted'), 'pack-changed' => _('Pack changed')],
 			'source' => ['gui' => _('Admin'), 'upgrade' => _('Upgrade')],
 			'event' => ['granted' => _('Grant'), 'revoked' => _('Revoke')],
 			'step' => ['pending' => _('Pending'), 'done' => _('Done'), 'failed' => _('Failed'), 'skipped' => _('Skipped')],
@@ -139,7 +139,7 @@ class Jobs extends Service
 	}
 
 	/**
-	 * What a job is called: the service it was made for, or the upgrade that made it.
+	 * What a job is called: the service it was made for, or what made it for none.
 	 *
 	 * @param array<string, mixed> $job A jobs row.
 	 *
@@ -147,7 +147,11 @@ class Jobs extends Service
 	 */
 	public static function title(array $job)
 	{
-		return (string) ($job['name'] ?? '') !== '' ? (string) $job['name'] : _('Module upgrade');
+		if ((string) ($job['name'] ?? '') !== '') {
+			return (string) $job['name'];
+		}
+
+		return (string) ($job['reason'] ?? '') === 'changed' ? _('Several services') : _('Module upgrade');
 	}
 
 	/**

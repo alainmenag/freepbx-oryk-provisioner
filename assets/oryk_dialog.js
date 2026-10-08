@@ -25,6 +25,9 @@
  *                   Cancel; style is a Bootstrap button class and defaults to
  *                   btn-danger, since nearly every question here is a delete.
  *                   One choice, { label: 'OK', value: true }, when absent.
+ *          sections [{ title, items }], each a heading over a list of
+ *                   texts, drawn above the message; one with no items is
+ *                   left out
  *          cancel   Cancel's label
  */
 function orykAsk(message, options) {
@@ -53,6 +56,20 @@ function orykAsk(message, options) {
 
 	modal.find('.modal-title').text(options.title || 'Are you sure?');
 	modal.find('.oryk-ask-message').text(String(message));
+
+	(options.sections || []).forEach(function (section) {
+		if (!section.items || !section.items.length) {
+			return;
+		}
+
+		const list = $('<ul class="oryk-ask-list"></ul>');
+
+		section.items.forEach(function (item) {
+			list.append($('<li></li>').text(String(item)));
+		});
+
+		modal.find('.oryk-ask-message').before($('<h5 class="oryk-ask-section"></h5>').text(section.title), list);
+	});
 
 	const footer = modal.find('.modal-footer');
 

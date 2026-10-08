@@ -54,7 +54,7 @@ One array:
 | `service` | the service's slug — `voicemail`, `call-recording`, … |
 | `name` | its name when the job was made |
 | `via` | the assigned service the user gains or loses it through (`basic-user`), or `null` when it is that service itself |
-| `reason` | `assigned`, `unassigned`, `service-deleted` or `pack-changed` |
+| `reason` | `assigned`, `unassigned`, `changed` (several services saved on a user at once), `service-deleted` or `pack-changed` |
 | `source` | `gui`, or `upgrade` for a module upgrade's regrouping |
 | `changed` | the slug of the service the change was made to: the one ticked, deleted or edited; `''` for an upgrade |
 | `job`, `step` | ids, for the job's page (`?display=oryk_provisioner&job=<job>`) |
