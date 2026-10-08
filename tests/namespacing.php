@@ -17,6 +17,8 @@ function oryk_unqualified_classes($path)
 	$declared = [];
 	$imported = [];
 	$line = 0;
+	// PHP 8 reads Foo\Bar as one token; 7.4 has no such token and reads T_STRINGs around separators
+	$qualified = defined('T_NAME_QUALIFIED') ? constant('T_NAME_QUALIFIED') : -1;
 
 	// What this file declares or imports
 	for ($i = 0; $i < count($tokens); $i++) {
@@ -43,7 +45,7 @@ function oryk_unqualified_classes($path)
 				}
 
 				if (is_array($tokens[$j])
-					&& in_array($tokens[$j][0], [T_STRING, T_NAME_QUALIFIED], true)) {
+					&& in_array($tokens[$j][0], [T_STRING, $qualified], true)) {
 					$parts = explode('\\', $tokens[$j][1]);
 					$imported[strtolower(end($parts))] = true;
 				}
@@ -94,6 +96,11 @@ function oryk_unqualified_classes($path)
 			$prev = $tokens[$j];
 
 			break;
+		}
+
+		// \Foo on 7.4: already qualified
+		if (is_array($prev) && $prev[0] === T_NS_SEPARATOR) {
+			continue;
 		}
 
 		$isNew = is_array($prev)
