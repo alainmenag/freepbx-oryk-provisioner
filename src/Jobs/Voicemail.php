@@ -17,6 +17,14 @@ class Voicemail extends Job
 	const SERVICES = ['voicemail'];
 
 	/**
+	 * @return array<string, string> granted, revoked: a phrase each.
+	 */
+	public static function effects()
+	{
+		return ['granted' => _('a mailbox is made, with a new PIN, where there is none'), 'revoked' => _('the mailbox is removed; its messages are kept')];
+	}
+
+	/**
 	 * Make the mailbox, or point the extension back at the one it has.
 	 *
 	 * @param array<string, mixed> $event The step's event.

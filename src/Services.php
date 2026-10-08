@@ -52,6 +52,16 @@ class Services extends Service
 		'voicemail' => ['name' => 'Voicemail'],
 	];
 
+	/**
+	 * Default slugs a release changed: old => new. seed() carries every link,
+	 * assignment and job from the old to the new before it deletes the
+	 * module's rows, so whoever held the one holds the other and nothing is
+	 * revoked. **A slug changed in DEFAULTS without an entry here is a
+	 * default dropped and another added**: its users lose it. An entry stays
+	 * while any PBX may still upgrade across it.
+	 */
+	const RENAMED = [];
+
 	/** `owner` of a service the module ships: seed() deletes and rewrites every one. */
 	const OWNER_MODULE = 0;
 
@@ -815,7 +825,9 @@ class Services extends Service
 	 * @param array<string, mixed> $request As setUserServices() takes it.
 	 *
 	 * @return array<string, mixed> status; assign, unassign, granted and
-	 *                              revoked, each [name, pack] by name; kept --
+	 *                              revoked, each [name, pack] by name, the
+	 *                              last two with `effect` (Reactions::effect(),
+	 *                              what the module's own job does); kept --
 	 *                              unassigned but still held -- with `via`,
 	 *                              the assigned services it stays through;
 	 *                              job, whether one would be made. Or a
@@ -833,11 +845,12 @@ class Services extends Service
 		$names = $change['names'];
 		$packs = array_column($links, 0);
 
-		$named = function (array $slugs) use ($names, $packs) {
+		$named = function (array $slugs, $event = '') use ($names, $packs) {
 			$rows = [];
 
 			foreach ($slugs as $slug) {
-				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'pack' => in_array((string) $slug, $packs, true)];
+				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'pack' => in_array((string) $slug, $packs, true)]
+					+ ($event !== '' ? ['effect' => Reactions::effect($slug, $event)] : []);
 			}
 
 			usort($rows, function ($a, $b) {
@@ -876,8 +889,8 @@ class Services extends Service
 			'status' => true,
 			'assign' => $named($change['assign']),
 			'unassign' => $named($change['unassign']),
-			'granted' => $named($events['granted']),
-			'revoked' => $named($events['revoked']),
+			'granted' => $named($events['granted'], 'granted'),
+			'revoked' => $named($events['revoked'], 'revoked'),
 			'kept' => $kept,
 			'job' => (bool) ($events['granted'] || $events['revoked']),
 		];
@@ -1035,7 +1048,9 @@ class Services extends Service
 	 * deleted and DEFAULTS written again**; an operator's row holding a
 	 * default's slug becomes the module's. Assignments and links name a slug,
 	 * so they stay with a default written again, and go with one DEFAULTS no
-	 * longer has. The links between two defaults are made to match DEFAULTS:
+	 * longer has -- which install says, by name. A slug in RENAMED is carried
+	 * to its new one first, and read as if it had always been that, so it
+	 * makes no job. The links between two defaults are made to match DEFAULTS:
 	 * one it no longer has is removed, one it has is added. A link with a
 	 * service of the operator's own at either end is theirs and is left.
 	 *
@@ -1063,7 +1078,9 @@ class Services extends Service
 				$before = $this->jobs ? $this->assignments() : [];
 				$namesBefore = $this->jobs ? $this->names() : [];
 
-				$this->regroup($notes);
+				foreach ($this->regroup($notes) as $was => $slug) {
+					list($linksBefore, $before) = self::renamed($linksBefore, $before, $was, $slug);
+				}
 
 				if ($this->jobs) {
 					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), '', '', 'pack-changed', 'upgrade', $this->names() + $namesBefore);
@@ -1088,13 +1105,13 @@ class Services extends Service
 	}
 
 	/**
-	 * seed()'s writes: slugs for rows without one, the module's rows deleted
-	 * and DEFAULTS written again, what named a service now gone deleted, and
-	 * the links between two defaults made to match DEFAULTS.
+	 * seed()'s writes: slugs for rows without one, RENAMED carried, the
+	 * module's rows deleted and DEFAULTS written again, what named a service
+	 * now gone deleted, and the links between two defaults made to match DEFAULTS.
 	 *
-	 * @param array<int, string> $notes What could not be done, added to.
+	 * @param array<int, string> $notes What could not be done and what was removed, added to.
 	 *
-	 * @return void
+	 * @return array<string, string> The RENAMED entries carried: old => new.
 	 */
 	private function regroup(array &$notes)
 	{
@@ -1104,6 +1121,30 @@ class Services extends Service
 
 		foreach ($bare->fetchAll(PDO::FETCH_COLUMN) as $name) {
 			$fill->execute([':slug' => $this->freeSlug(self::slugify($name), '', false), ':name' => $name]);
+		}
+
+		$mine = $this->db->prepare("SELECT slug, name FROM `{$this->servicesTable}` WHERE owner = " . self::OWNER_MODULE);
+		$mine->execute();
+		$mine = array_column($mine->fetchAll(PDO::FETCH_ASSOC), 'name', 'slug');
+		$carried = [];
+
+		// Only from a row the module owns to a default with no row yet: the
+		// references are moved, and two rows' would collide.
+		foreach (static::RENAMED as $was => $slug) {
+			$was = (string) $was;
+
+			if (!isset($mine[$was]) || isset(self::DEFAULTS[$was]) || !isset(self::DEFAULTS[$slug])) {
+				continue;
+			}
+
+			if ($this->slugTaken($slug, '')) {
+				$notes[] = sprintf('%s was not carried to %s: a service already has that slug', $was, $slug);
+
+				continue;
+			}
+
+			$this->renameLinks($was, $slug);
+			$carried[$was] = (string) $slug;
 		}
 
 		$this->db->exec("DELETE FROM `{$this->servicesTable}` WHERE owner = " . self::OWNER_MODULE);
@@ -1136,7 +1177,18 @@ class Services extends Service
 		}
 
 		// A default DEFAULTS no longer has, or one not written, is no service:
-		// nothing may go on naming it.
+		// nothing may go on naming it. Said, with what it takes from users.
+		$held = $this->db->prepare("SELECT COUNT(*) FROM `{$this->serviceAssignmentsTable}` WHERE service = :service");
+
+		foreach ($mine as $slug => $name) {
+			if (in_array((string) $slug, $written, true) || isset($carried[(string) $slug])) {
+				continue;
+			}
+
+			$held->execute([':service' => (string) $slug]);
+			$notes[] = sprintf('the service "%s" (%s) is no longer one of the module\'s and was removed, with its links and %d assignments', $name, $slug, (int) $held->fetchColumn());
+		}
+
 		$this->db->exec(
 			"DELETE k FROM `{$this->serviceLinksTable}` k
 			WHERE NOT EXISTS (SELECT 1 FROM `{$this->servicesTable}` s WHERE s.slug = k.parent)
@@ -1176,6 +1228,8 @@ class Services extends Service
 				$links[] = [$slug, $child];
 			}
 		}
+
+		return $carried;
 	}
 
 	/**

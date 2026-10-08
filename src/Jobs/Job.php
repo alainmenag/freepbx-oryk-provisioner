@@ -39,6 +39,17 @@ abstract class Job extends Service
 	}
 
 	/**
+	 * What granted() and revoked() do to the user, in a few words: said
+	 * beside the service where a save asks first.
+	 *
+	 * @return array<string, string> granted, revoked: a phrase each.
+	 */
+	public static function effects()
+	{
+		return [];
+	}
+
+	/**
 	 * A user has gained one of SERVICES.
 	 *
 	 * @param array<string, mixed> $event The step's event; see docs/hooks.md.

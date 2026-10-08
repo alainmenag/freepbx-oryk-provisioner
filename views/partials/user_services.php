@@ -10,9 +10,10 @@
  * would post the User tab's fields.
  *
  * A pack opens on everything it gives, flat; the line saying so, above the
- * list, is a button that draws it as the tree it is built as, and back. "included in", a half-filled box (held
- * through a pack, not assigned itself) and an open pack's ticks all follow
- * the staged boxes, so a change shows what it means before it is saved.
+ * list, is a button that draws it as the tree it is built as, and back.
+ * "included in", a half-filled box (held through a pack, not assigned
+ * itself) and an open pack's ticks all follow the staged boxes, so a change
+ * shows what it means before it is saved.
  *
  * A change to what the user holds is a job (ARCHITECTURE.md, "Jobs"): each
  * service whose newest step is waiting, running or failed says so, kept
@@ -305,7 +306,8 @@ $serviceLabels = [
 				button.prop('disabled', false);
 				notie.alert(3, message || L.refused, 4);
 			};
-			const named = (list) => (list || []).map((service) => service.name + (service.pack ? ` (${L.pack})` : ''));
+			// A gain or loss the module's own job acts on says what that does.
+			const named = (list) => (list || []).map((service) => service.name + (service.pack ? ` (${L.pack})` : '') + (service.effect ? ': ' + service.effect : ''));
 
 			orykPost('userServicesImpact', request).done(function (impact) {
 				if (!impact || !impact.status) {

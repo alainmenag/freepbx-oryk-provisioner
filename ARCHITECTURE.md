@@ -441,7 +441,11 @@ name a service by its slug. Where a service sits is the table below.
   change appears once the module is installed or upgraded. Assignments and
   links name a slug, so they stay with a default that is written again; a
   slug taken out of the array is deleted with its links and assignments, and
-  the users who held it get a job revoking it. An operator's row that holds a
+  the users who held it get a job revoking it -- install names each one
+  removed and how many assignments went with it. **A default's slug that a
+  release changes goes in `Services::RENAMED`** (old => new): `seed()` carries
+  its links, assignments and jobs to the new slug first, and no job is made.
+  An operator's row that holds a
   default's slug becomes the module's. `created_at` on a default is its last
   install.
 - **"Managed" is `owner` 0**, on a row. A managed service is refused every
@@ -512,7 +516,9 @@ slug, as everywhere else; the pair is the primary key.
   (`views/partials/user_services.php`) is two lists, packs and single
   services, whose ticks write nothing until its own Save -- which first asks
   `userServicesImpact`, the same request worked out and not written, and
-  shows what would be assigned, unassigned, gained, lost and kept. The save
+  shows what would be assigned, unassigned, gained, lost and kept, and
+  beside a gain or loss what the module's own job does about it
+  (`Jobs\Job::effects()`, a phrase each for granted and revoked). The save
   names the services to assign and to unassign: each one's state is sent, not
   toggled, and one not named is not touched, so a page drawn before someone
   else's change cannot undo it. Nothing of the user itself is written, so

@@ -647,10 +647,6 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-service-head .oryk-check input {
 	margin: 0;
 }
-.oryk-service-head .btn-xs > .oryk-icon {
-	display: block;
-	margin: 2px 0;
-}
 /* Which staged pack a service comes with, whether it is staged, and where its newest job step stands. */
 .oryk-service-via,
 .oryk-service-change,
@@ -663,9 +659,6 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 .oryk-service-count {
 	font-size: 12px;
-}
-.oryk-service-open.active .oryk-icon {
-	transform: rotate(180deg);
 }
 .oryk-service-gives {
 	padding: 0 12px 10px 38px;

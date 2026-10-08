@@ -13,6 +13,14 @@ class CallRecording extends Job
 {
 	const SERVICES = ['call-recording'];
 
+	/**
+	 * @return array<string, string> granted, revoked: a phrase each.
+	 */
+	public static function effects()
+	{
+		return ['granted' => _('every call is recorded'), 'revoked' => _('recording goes back to the default')];
+	}
+
 	/** The four calls it covers, as Core keys them under AMPUSER/<ext>/recording/. */
 	const RECORDED = ['in/external', 'out/external', 'in/internal', 'out/internal'];
 

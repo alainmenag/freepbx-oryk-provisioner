@@ -2244,6 +2244,9 @@ is_eq('several services at once are one change', Services::assignedAfter(['silve
 is_eq('and a pack swapped for another never revokes what both give', $change(['silver'], Services::assignedAfter(['silver'], ['gold'], ['silver'])[0]), ['r:silver', 'g:gold', 'g:sms<gold']);
 is_eq('naming what is already so changes nothing', Services::assignedAfter(['gold'], ['gold'], ['sms']), [['gold'], [], []]);
 is_eq('a save of several is titled as one', Jobs::title(['name' => '', 'reason' => 'changed']), 'Several services');
+is_eq('a renamed default goes from a slug DEFAULTS dropped to one it has', array_filter(Services::RENAMED, function ($slug, $was) { return isset(Services::DEFAULTS[$was]) || !isset(Services::DEFAULTS[$slug]); }, ARRAY_FILTER_USE_BOTH), []);
+is_eq('each of the module\'s own jobs says what it does, both ways', array_values(array_filter(array_keys(\FreePBX\Modules\Oryk_Provisioner\Reactions::jobs()), function ($slug) { return \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'granted') === '' || \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'revoked') === ''; })), []);
+is_eq('and a service with no job says nothing', \FreePBX\Modules\Oryk_Provisioner\Reactions::effect('support', 'revoked'), '');
 is_eq('a filter is one of its values, or all', Jobs::filters(['state' => 'failed', 'reason' => 'x', 'source' => 'upgrade']), ['state' => 'failed', 'reason' => 'all', 'source' => 'upgrade']);
 is_eq('every value has a label', [array_keys(Jobs::labels()['state']), array_keys(Jobs::labels()['reason']), array_keys(Jobs::labels()['source'])], [Jobs::STATES, Jobs::REASONS, Jobs::SOURCES]);
 is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::title(['name' => 'Gold'])], ['Module upgrade', 'Gold']);
