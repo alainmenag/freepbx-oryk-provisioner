@@ -189,7 +189,7 @@ class Navigator extends Service
 	{
 		foreach (['client', 'user', 'profile', 'log', 'ban', 'service', 'job'] as $kind) {
 			if (isset($at[$kind]) && $this->written((string) $at[$kind])) {
-				return $kind . ':' . (string) $at[$kind];
+				return ($kind === 'service' && !empty($at['held']) ? 'holders' : $kind) . ':' . (string) $at[$kind];
 			}
 		}
 
@@ -200,6 +200,8 @@ class Navigator extends Service
 	 * The row a `&scope=` value names, as levels() and scope() take it.
 	 *
 	 * Anything that is not `<kind>:<id>` with a kind listed here names nothing.
+	 * `holders:<slug>` is a service with `held` set: scoped() then takes its
+	 * users to be everyone who has it, through a pack included.
 	 *
 	 * @param string $key `&scope=` from the request.
 	 *
@@ -209,13 +211,18 @@ class Navigator extends Service
 	{
 		$parts = explode(':', (string) $key, 2);
 
-		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban', 'service', 'job'], true)) {
+		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban', 'service', 'holders', 'job'], true)) {
 			return [];
 		}
 
 		$id = trim($parts[1]);
 
-		return ($id === '' || $id === 'new') ? [] : [$parts[0] => $id];
+		if ($id === '' || $id === 'new') {
+			return [];
+		}
+
+		// A service again, scoped to everyone who has it and not only those assigned it.
+		return $parts[0] === 'holders' ? ['service' => $id, 'held' => '1'] : [$parts[0] => $id];
 	}
 
 	/**
@@ -399,9 +406,10 @@ class Navigator extends Service
 			}
 		} elseif ($this->written($service)) {
 			// The other way round, like a ban: the users assigned it themselves
-			// -- never through a pack -- and what their phones are linked to.
+			// -- never through a pack, unless `holders:` asked for those too --
+			// and what their phones are linked to.
 			$own = true;
-			$scope['users'] = $this->services->usersOf($service);
+			$scope['users'] = !empty($at['held']) ? $this->services->holdersOf($service) : $this->services->usersOf($service);
 			$scope['clients'] = [];
 			$scope['profiles'] = [];
 			$linked = [];

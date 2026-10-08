@@ -17,7 +17,7 @@
  *
  * A change to what the user holds is a job (ARCHITECTURE.md, "Jobs"): each
  * service whose newest step is waiting, running or failed says so, kept
- * current while any is waiting or running.
+ * current while any is waiting or running; a failed one has Retry beside it.
  *
  * Included by views/user.php, after partials/editor.php (orykPost(),
  * orykEscape()).
@@ -58,6 +58,7 @@ $serviceLabels = [
 	'queued' => _('queued'),
 	'running' => _('running'),
 	'failed' => _('failed'),
+	'retry' => _('Retry'),
 ];
 ?>
 <div class="tab-pane oryk-tab-section active" id="oryk_user_services">
@@ -244,6 +245,11 @@ $serviceLabels = [
 
 				$(this).empty().append(link)
 					.attr('class', 'oryk-service-job ' + (status.state === 'failed' ? 'text-danger' : 'text-muted'));
+
+				if (status.state === 'failed') {
+					$(this).append(' ', $('<button type="button" class="btn btn-default btn-xs" name="user_service_retry"></button>')
+						.val(status.job).attr({ title: L.retry, 'aria-label': L.retry }).html(orykIcon('refresh')));
+				}
 			});
 
 			window.clearTimeout(poll);
@@ -281,6 +287,27 @@ $serviceLabels = [
 		$(document).on('click', '[name="user_service_tree"]', function () {
 			open[this.value] = open[this.value] === 'tree' ? 'flat' : 'tree';
 			draw();
+		});
+
+		// A failed job is put back in the user's queue from here, as from its own page.
+		$(document).on('click', '[name="user_service_retry"]', function () {
+			$('[name="user_service_retry"]').prop('disabled', true);
+
+			orykPost('retryJob', { id: this.value }).done(function (response) {
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || L.refused, 4);
+				}
+			}).fail(function () {
+				notie.alert(3, L.unreachable, 4);
+			}).always(function () {
+				orykPost('userServiceJobs', { extension: user }).done(function (response) {
+					if (response && response.status) {
+						jobs = response.jobs;
+					}
+
+					showJobs();
+				});
+			});
 		});
 
 		$(document).on('click', '#orykservicesreset', function (event) {

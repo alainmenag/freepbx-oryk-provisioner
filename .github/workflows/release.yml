@@ -2,6 +2,8 @@
 # GitHub Release whenever a tag is pushed. The tag (with or without a leading
 # "v") must equal <version> in module.xml, or nothing is published.
 # What goes in the zip is decided by export-ignore in .gitattributes.
+# Nothing is published unless the tests pass: tests/smoke.php against stubs,
+# and tests/services_db.php against the MariaDB service below.
 name: Release
 
 on:
@@ -15,6 +17,17 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: oryk_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +44,16 @@ jobs:
 
       - name: Lint PHP
         run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Smoke tests
+        run: php tests/smoke.php
+
+      - name: Service tables, against MariaDB
+        env:
+          ORYK_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=oryk_test
+          ORYK_TEST_USER: root
+          ORYK_TEST_PASS: root
+        run: php tests/services_db.php
 
       - name: Build zip
         run: |

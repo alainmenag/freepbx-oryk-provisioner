@@ -96,8 +96,9 @@ class Services extends Service
 
 	/**
 	 * Rows for the Services table. `managed` is whether each is one of the
-	 * module's; `assignments` is how many users are assigned it themselves,
-	 * not counting those who have it only through a pack.
+	 * module's; `holders` is how many users have it, assigned it themselves or
+	 * through a pack. That is worked out here and not by the query, so a list
+	 * sorted by it is read whole, sorted, and then cut to the page.
 	 *
 	 * Narrowed by two filters, each off unless it is one of its two values:
 	 * `source` (`module`, `custom`) and `kind` (`pack`, a service with at
@@ -111,12 +112,7 @@ class Services extends Service
 	 */
 	public function listServices($scope = null)
 	{
-		$sortable = [
-			'name' => 's.name',
-			'assignments' => 'assignments',
-		];
-
-		$sort = $sortable[(string) ($_REQUEST['sort'] ?? '')] ?? $sortable['name'];
+		$byHolders = (string) ($_REQUEST['sort'] ?? '') === 'holders';
 		$order = strtolower((string) ($_REQUEST['order'] ?? '')) === 'desc' ? 'DESC' : 'ASC';
 
 		$limit = (int) ($_REQUEST['limit'] ?? 10);
@@ -159,29 +155,51 @@ class Services extends Service
 			SELECT
 				s.name,
 				s.slug,
-				s.owner,
-				(
-					SELECT COUNT(*)
-					FROM `{$this->serviceAssignmentsTable}` a
-					WHERE a.service = s.slug
-				) AS assignments
+				s.owner
 			FROM `{$this->servicesTable}` s
 			$where
-			ORDER BY $sort $order
-			LIMIT :limit OFFSET :offset
+			ORDER BY s.name " . ($byHolders ? 'ASC' : $order . ' LIMIT :limit OFFSET :offset') . "
 		";
 
 		$stmt = $this->db->prepare($sql);
 		foreach ($params as $key => $value) {
 			$stmt->bindValue($key, $value);
 		}
-		$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-		$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+		if (!$byHolders) {
+			$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+			$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+		}
+
 		$stmt->execute();
+
+		$holders = [];
+		$links = $this->links();
+
+		foreach ($this->assignments() as $assigned) {
+			foreach (self::held($links, $assigned) as $slug) {
+				$holders[$slug] = ($holders[$slug] ?? 0) + 1;
+			}
+		}
+
+		$rows = [];
+
+		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+			$rows[] = $this->marked($row) + ['holders' => $holders[(string) $row['slug']] ?? 0];
+		}
+
+		// By name within a count, as the query left them: usort() is stable.
+		if ($byHolders) {
+			usort($rows, function ($a, $b) use ($order) {
+				return $order === 'DESC' ? $b['holders'] <=> $a['holders'] : $a['holders'] <=> $b['holders'];
+			});
+
+			$rows = array_slice($rows, max(0, $offset), max(0, $limit));
+		}
 
 		return [
 			'total' => $total,
-			'rows' => array_map([$this, 'marked'], $stmt->fetchAll(PDO::FETCH_ASSOC)),
+			'rows' => $rows,
 			'counts' => $this->counts($scope),
 		];
 	}
@@ -626,7 +644,8 @@ class Services extends Service
 	 *                                      new one), name, parents, children.
 	 *
 	 * @return array<string, mixed> status, users (how many would get a job),
-	 *                              granted and revoked: [name, users] each, by name.
+	 *                              granted and revoked: [name, users, effect]
+	 *                              each, by name; effect is Reactions::effect().
 	 */
 	public function serviceImpact($request)
 	{
@@ -687,7 +706,7 @@ class Services extends Service
 			$rows = [];
 
 			foreach ($bySlug as $slug => $count) {
-				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'users' => $count];
+				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'users' => $count, 'effect' => Reactions::effect($slug, $event)];
 			}
 
 			usort($rows, function ($a, $b) {
@@ -731,6 +750,28 @@ class Services extends Service
 		$stmt->execute($params);
 
 		return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+	}
+
+	/**
+	 * The users who have a service either way: assigned it themselves, or
+	 * through a pack it is under.
+	 *
+	 * @param mixed $slug The service's slug.
+	 *
+	 * @return array<int, string> Their extensions.
+	 */
+	public function holdersOf($slug)
+	{
+		$links = $this->links();
+		$found = [];
+
+		foreach ($this->assignments() as $extension => $assigned) {
+			if (in_array((string) $slug, self::held($links, $assigned), true)) {
+				$found[] = (string) $extension;
+			}
+		}
+
+		return $found;
 	}
 
 	/**

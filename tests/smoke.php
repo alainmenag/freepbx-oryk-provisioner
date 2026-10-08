@@ -2247,6 +2247,12 @@ is_eq('a save of several is titled as one', Jobs::title(['name' => '', 'reason' 
 is_eq('a renamed default goes from a slug DEFAULTS dropped to one it has', array_filter(Services::RENAMED, function ($slug, $was) { return isset(Services::DEFAULTS[$was]) || !isset(Services::DEFAULTS[$slug]); }, ARRAY_FILTER_USE_BOTH), []);
 is_eq('each of the module\'s own jobs says what it does, both ways', array_values(array_filter(array_keys(\FreePBX\Modules\Oryk_Provisioner\Reactions::jobs()), function ($slug) { return \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'granted') === '' || \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'revoked') === ''; })), []);
 is_eq('and a service with no job says nothing', \FreePBX\Modules\Oryk_Provisioner\Reactions::effect('support', 'revoked'), '');
+preg_match('/const READS = \[(.*?)\];/s', $moduleSource = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php'), $reads);
+preg_match_all("/'([A-Za-z]+)'/", $reads[1] ?? '', $reads);
+preg_match('/function ajaxRequest.*?return true;/s', $moduleSource, $answered);
+is_eq('every command that only reads is one the module answers', array_values(array_filter($reads[1], function ($command) use ($answered) { return strpos($answered[0] ?? '', "case '$command':") === false; })), []);
+is_eq('and none of them saves, deletes, sets, clears, retries, uploads or purges', array_values(preg_grep('/^(save|delete|set|clear|retry|upload|purge)/', $reads[1])), []);
+is_eq('holders: is a service, scoped to everyone who has it', [Navigator::scopeAt('holders:voicemail'), Navigator::scopeAt('service:voicemail')], [['service' => 'voicemail', 'held' => '1'], ['service' => 'voicemail']]);
 is_eq('a filter is one of its values, or all', Jobs::filters(['state' => 'failed', 'reason' => 'x', 'source' => 'upgrade']), ['state' => 'failed', 'reason' => 'all', 'source' => 'upgrade']);
 is_eq('every value has a label', [array_keys(Jobs::labels()['state']), array_keys(Jobs::labels()['reason']), array_keys(Jobs::labels()['source'])], [Jobs::STATES, Jobs::REASONS, Jobs::SOURCES]);
 is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::title(['name' => 'Gold'])], ['Module upgrade', 'Gold']);

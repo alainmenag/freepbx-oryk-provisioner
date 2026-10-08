@@ -52,7 +52,8 @@ A user's jobs run one at a time, in the order they were made; different
 users' run side by side. If a step fails — a module it needs is missing, or a
 hooked module throws — **that job stops there, for that user only**. The user's
 next job still runs, and the failed one is tried again after it. When there is
-nothing left to run it waits: press **Retry** on it. Deleting a user deletes
+nothing left to run it waits: press **Retry** on it, or beside the failed
+service on the user's Services tab. Deleting a user deletes
 its jobs. A job that fails because something changed since — a service given
 and then taken away again — skips what is no longer true rather than undoing
 the later change.

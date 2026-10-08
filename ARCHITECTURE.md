@@ -528,9 +528,12 @@ slug, as everywhere else; the pair is the primary key.
   follow its extension (`Services::moveUser()`, from `ExtensionRenumberer`)
   and a deleted user's go with it (`forgetUser()`, from `Users::remove()`),
   since a freed number is handed out again.
-- That tab, the Services list's Assignments column and the navigator's
+- That tab and the navigator's
   Services level (`Services::assignedTo()`, `usersOf()`) count a service's own
-  rows -- the users ticked for it, not those who have it through a pack.
+  rows -- the users ticked for it, not those who have it through a pack. The
+  Services list's one count, **Holders**, is of both (`holdersOf()`), and opens the Users
+  list at `&scope=holders:<slug>`: a `service` scope with `held` set
+  (`Navigator::scopeAt()`), which is the one place a scope follows the packs.
 - **A template is the one reader that follows the packs.**
   `{{extension.services}}` is `Services::userSlugs()`: what the user is
   assigned and everything under it, each slug once, sorted, joined by commas
@@ -541,7 +544,8 @@ slug, as everywhere else; the pair is the primary key.
 `service` and `name` (the service the change was made to, the name a
 snapshot; both '' for an upgrade, and for several services saved on a user
 at once), `reason` (`assigned`, `unassigned`, `changed`,
-`service-deleted`, `pack-changed`), `source` (`gui`, `upgrade`), `state`
+`service-deleted`, `pack-changed`), `admin` (who was signed in when a page
+made it, '' otherwise), `source` (`gui`, `upgrade`), `state`
 (`queued`, `running`, `done`, `failed`), `attempts`, `error`, and when it was
 made, last started and finished.
 
@@ -715,7 +719,8 @@ User have none: a context is changed in Extensions.
 source in the address, as Services is); a job's page (`?job=<id>`), its steps
 and Retry; the Jobs dropdown; a user's Services tab, where each service whose
 newest step is queued, running or failed says so (`Jobs::statusFor()`), asked
-again while anything is running; and a user's Overview.
+again while anything is running, with Retry beside a failed one; and a user's
+Overview.
 
 ### Migrations deliberately not written
 
@@ -1305,7 +1310,9 @@ made from one of the tables is answered by loading the page again.
   ON UPDATE CURRENT_TIMESTAMP, so without it every phone that booted would read
   as a client somebody had just edited.
 - A new AJAX command must be named in **both** `ajaxRequest()` and
-  `ajaxHandler()`.
+  `ajaxHandler()`. **One that only reads is also named in
+  `Oryk_provisioner::READS`; every other command is answered only to a
+  POST**, so a link or an image on another page cannot make one.
 - PHP and views are indented with **tabs**. Operator-facing strings go through
   `_()`.
 

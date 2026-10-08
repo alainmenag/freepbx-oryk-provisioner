@@ -48,8 +48,8 @@ class Jobs extends Service
 	public function enqueue($extension, $service, $name, $reason, $source, array $steps)
 	{
 		$stmt = $this->db->prepare(
-			"INSERT INTO `{$this->jobsTable}` (extension, service, name, reason, source)
-			VALUES (:extension, :service, :name, :reason, :source)"
+			"INSERT INTO `{$this->jobsTable}` (extension, service, name, reason, source, admin)
+			VALUES (:extension, :service, :name, :reason, :source, :admin)"
 		);
 		$stmt->execute([
 			':extension' => (string) $extension,
@@ -57,6 +57,7 @@ class Jobs extends Service
 			':name' => mb_substr((string) $name, 0, Services::NAME_MAX),
 			':reason' => (string) $reason,
 			':source' => (string) $source,
+			':admin' => (string) $source === 'gui' ? self::admin() : '',
 		]);
 
 		$id = (int) $this->db->lastInsertId();
@@ -78,6 +79,18 @@ class Jobs extends Service
 		}
 
 		return $id;
+	}
+
+	/**
+	 * Who is signed in to FreePBX, for the job a page's change makes.
+	 *
+	 * @return string The administrator's username, or '' outside a session.
+	 */
+	private static function admin()
+	{
+		$user = $_SESSION['AMP_user'] ?? null;
+
+		return is_object($user) && isset($user->username) ? mb_substr((string) $user->username, 0, 64) : '';
 	}
 
 	/**

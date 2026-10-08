@@ -313,6 +313,21 @@ class Schema extends Service
 	}
 
 	/**
+	 * Give a jobs table written before it its `admin`: who made the job.
+	 *
+	 * @return void
+	 */
+	public function addJobAdminColumn()
+	{
+		if (!$this->schemaHas($this->jobsTable, 'column', 'admin')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->jobsTable}`
+				ADD COLUMN `admin` VARCHAR(64) NOT NULL DEFAULT '' AFTER `source`"
+			);
+		}
+	}
+
+	/**
 	 * Give a services table written before it its `owner`: 0 is the module,
 	 * and the column's default.
 	 *

@@ -688,7 +688,7 @@ class Pages extends Service
 			'profile' => _('profile %s'),
 			'log' => _('log entry %s'),
 			'ban' => _('ban %s'),
-			'service' => _('service %s'),
+			'service' => !empty($at['held']) ? _('service %s, assigned or through a pack') : _('service %s'),
 			'job' => _('job %s'),
 		];
 

@@ -657,6 +657,10 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-service-open {
 	margin-left: auto;
 }
+.oryk-service-job .btn-xs > .oryk-icon {
+	display: block;
+	margin: 2px 0;
+}
 .oryk-service-count {
 	font-size: 12px;
 }

@@ -10,6 +10,10 @@ nothing is published. The version FreePBX shows for an installed module is the
 one in `module.xml`, so the check is what keeps a release's name and the module
 inside it from disagreeing.
 
+The build also lints every PHP file and runs the tests -- `tests/smoke.php`,
+and `tests/services_db.php` against a MariaDB it starts for itself -- and
+publishes nothing if either fails.
+
 ## Cutting a release
 
 1. On your branch, bump `<version>` in `module.xml` and add a `*<version>*`

@@ -131,8 +131,8 @@ function orykServiceImpact(values) {
 		}
 
 		const parts = []
-			.concat((response.revoked || []).map((row) => `${row.name} is revoked from ${row.users}`))
-			.concat((response.granted || []).map((row) => `${row.name} is granted to ${row.users}`));
+			.concat((response.revoked || []).map((row) => `${row.name} is revoked from ${row.users}` + (row.effect ? ` (${row.effect})` : '')))
+			.concat((response.granted || []).map((row) => `${row.name} is granted to ${row.users}` + (row.effect ? ` (${row.effect})` : '')));
 
 		said.resolve(`This changes the services of ${response.users} ${response.users === 1 ? 'user' : 'users'}: ${parts.join('; ')}. Each gets a job, run at once.`);
 	}).fail(function () {

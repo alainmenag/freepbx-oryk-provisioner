@@ -2,8 +2,8 @@
 /**
  * views/partials/services.php -- the services, as a table.
  *
- * A name, how many users are assigned it -- a link to those users, on the
- * Users list -- and its actions: what a service
+ * A name, how many users hold it (assigned it, or through a pack) -- a
+ * link to those users, on the Users list -- and its actions: what a service
  * is under, and what is under it, are on its own page. One of the
  * module's own has View (an eye) where the others have a trash can and Edit
  * (a pencil); every action is an icon, named by its title.
@@ -71,7 +71,7 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 	<thead>
 		<tr>
 			<th data-field="name" data-formatter="formatServiceName" data-sortable="true"><?php echo _('Name'); ?></th>
-			<th data-field="assignments" data-formatter="formatServiceAssignments" data-sortable="true" data-align="center"><?php echo _('Assignments'); ?></th>
+			<th data-field="holders" data-formatter="formatServiceHolders" data-sortable="true" data-align="center"><?php echo _('Holders'); ?></th>
 			<th data-field="actions" data-formatter="formatServiceActions" data-align="right"><?php echo _('Actions'); ?></th>
 		</tr>
 	</thead>
@@ -144,13 +144,13 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 	}
 
 
-	// The Users list, narrowed to the users assigned this service themselves:
-	// the same scope the navigator's Users dropdown opens on a service's page.
-	function formatServiceAssignments(value, row) {
+	// The Users list, narrowed to everyone who has this service: assigned
+	// it, or through a pack.
+	function formatServiceHolders(value, row) {
 		const count = Number(value) || 0;
 
 		return count
-			? `<a href="?display=oryk_provisioner&tab=users&scope=service:${encodeURIComponent(row.slug)}">${count}</a>`
+			? `<a href="?display=oryk_provisioner&tab=users&scope=holders:${encodeURIComponent(row.slug)}">${count}</a>`
 			: '0';
 	}
 

@@ -688,6 +688,21 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * The AJAX commands that only read. **Every other command changes
+	 * something and is answered only to a POST** (ajaxHandler()), which a
+	 * link, an image or a redirect cannot make. A new command that reads is
+	 * named here as well as in ajaxRequest() and ajaxHandler(); one left out
+	 * is taken to write.
+	 */
+	const READS = [
+		'listClients', 'listProfiles', 'listResources', 'viewResource', 'downloadResource',
+		'listLogs', 'listUsers', 'listServices', 'listJobs', 'listBans',
+		'userServicesImpact', 'serviceImpact', 'userServiceJobs',
+		'listOverviewUsers', 'listOverviewDevices', 'listOverviewClients',
+		'listOverviewBans', 'listOverviewCalls', 'listOverviewVoicemail',
+	];
+
+	/**
 	 * Which AJAX commands this module answers.
 	 *
 	 * @param string $req     Command being requested.
@@ -769,6 +784,10 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function ajaxHandler()
 	{
 		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
+
+		if (!in_array($command, self::READS, true) && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') {
+			return ['status' => false, 'message' => _('This can only be done with a POST.')];
+		}
 
 		// A list opened from a navigator title is narrowed the way that title's
 		// badge was counted: `&scope=<kind>:<id>` names the row, Navigator says
