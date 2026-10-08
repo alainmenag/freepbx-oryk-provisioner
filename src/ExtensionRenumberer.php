@@ -180,6 +180,13 @@ class ExtensionRenumberer extends Service
 			$this->extensions->setVoicemailContext($new, $context);
 		}
 
+		// The services it was assigned, and its jobs, name it by its extension.
+		// Before Core::delUser($old): this module's hook on it forgets a deleted
+		// user's services, and the old number is about to be one.
+		if ($this->services) {
+			$this->services->moveUser($old, $new);
+		}
+
 		// Only now is the old number given up
 		try {
 			\FreePBX::Core()->delDevice($old);
@@ -225,11 +232,6 @@ class ExtensionRenumberer extends Service
 		// So do the phones this module provisions for it
 		if ($this->clients) {
 			$this->clients->repointDevice($old, $new);
-		}
-
-		// And the services it was assigned, which name it by its extension
-		if ($this->services) {
-			$this->services->moveUser($old, $new);
 		}
 
 		// What the account is allowed to open, before the history it opens

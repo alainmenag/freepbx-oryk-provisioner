@@ -19,6 +19,11 @@ use PDO;
  * A user is assigned services in a third table, by extension and slug; see
  * userServices() and setUserService().
  *
+ * Every change here that changes what a user holds -- an assignment, a
+ * deleted service, a pack's links, a regrouping of the defaults -- writes that
+ * user a job in the same transaction, and a page's change starts the worker;
+ * see ARCHITECTURE.md, "Jobs".
+ *
  * Every service has a slug, made from its name and never typed, and the ones whose slug is in DEFAULTS are the
  * module's: written by seed() on install, and refused every edit and delete.
  */
@@ -38,6 +43,7 @@ class Services extends Service
 		'advanced-user' => ['name' => 'Advanced User', 'services' => ['basic-user', 'call-recording', 'on-demand-recording']],
 		'basic-user' => ['name' => 'Basic User', 'services' => ['find-me-follow', 'guest-user', 'voicemail']],
 		'guest-user' => ['name' => 'Guest User', 'services' => ['support']],
+		'lobby-user' => ['name' => 'Lobby User', 'services' => ['support']],
 		'call-recording' => ['name' => 'Call Recording'],
 		'find-me-follow' => ['name' => 'Find Me Follow'],
 		'on-demand-recording' => ['name' => 'On Demand Recording'],
@@ -53,6 +59,23 @@ class Services extends Service
 
 	/** A slug: lowercase letters and digits, in runs joined by single hyphens. */
 	const SLUG_PATTERN = '/^[a-z0-9]+(-[a-z0-9]+)*$/';
+
+	/** Seconds a change to services waits for another to finish being written. */
+	const CHANGE_WAIT = 10;
+
+	/** @var Jobs|null Null where no job is written: the tests. */
+	private $jobs;
+
+	/**
+	 * @param object    $freepbx FreePBX application instance.
+	 * @param Jobs|null $jobs    Where a change's jobs are written.
+	 */
+	public function __construct($freepbx, ?Jobs $jobs = null)
+	{
+		parent::__construct($freepbx);
+
+		$this->jobs = $jobs;
+	}
 
 	/**
 	 * Rows for the Services table. `managed` is whether each is one of the
@@ -291,6 +314,9 @@ class Services extends Service
 	 * is changed on every link naming it, in the same transaction, so nothing
 	 * that names the service by it is left pointing at nothing.
 	 *
+	 * Links changed are a pack edit: every user holding something different
+	 * afterwards gets a job, in the transaction, and the worker is started.
+	 *
 	 * @param array<string, mixed> $request slug, name, parents, children.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
@@ -351,35 +377,66 @@ class Services extends Service
 			}
 		}
 
-		$this->db->beginTransaction();
+		if (!$this->lockChanges()) {
+			return ['status' => false, 'message' => _('Another change to services is being saved; try again.')];
+		}
 
 		try {
-			if ($row) {
-				$stmt = $this->db->prepare(
-					"UPDATE `{$this->servicesTable}` SET name = :name, slug = :slug WHERE slug = :was"
-				);
-				$stmt->execute([':name' => $name, ':slug' => $slug, ':was' => $was]);
+			$this->db->beginTransaction();
+			$queued = [];
 
-				if ($was !== $slug) {
-					$this->renameLinks($was, $slug);
+			try {
+				// Only links change what anyone holds; a rename alone changes no one's.
+				$watch = $sides && $this->jobs;
+
+				if ($watch) {
+					$linksBefore = $this->links();
+					$before = $this->assignments();
+					$names = $this->names();
 				}
-			} else {
-				$stmt = $this->db->prepare(
-					"INSERT INTO `{$this->servicesTable}` (name, slug) VALUES (:name, :slug)"
-				);
-				$stmt->execute([':name' => $name, ':slug' => $slug]);
+
+				if ($row) {
+					$stmt = $this->db->prepare(
+						"UPDATE `{$this->servicesTable}` SET name = :name, slug = :slug WHERE slug = :was"
+					);
+					$stmt->execute([':name' => $name, ':slug' => $slug, ':was' => $was]);
+
+					if ($was !== $slug) {
+						$this->renameLinks($was, $slug);
+					}
+				} else {
+					$stmt = $this->db->prepare(
+						"INSERT INTO `{$this->servicesTable}` (name, slug) VALUES (:name, :slug)"
+					);
+					$stmt->execute([':name' => $name, ':slug' => $slug]);
+				}
+
+				foreach ($sides as $side => $others) {
+					$this->relink($slug, $side, $others);
+				}
+
+				if ($watch) {
+					// Before, as if it had always had the new slug: the rename is not a change.
+					if ($was !== '' && $was !== $slug) {
+						list($linksBefore, $before) = self::renamed($linksBefore, $before, $was, $slug);
+					}
+
+					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), $slug, $name, 'pack-changed', 'gui', $this->names() + $names);
+				}
+
+				$this->db->commit();
+			} catch (\Exception $e) {
+				$this->db->rollBack();
+				$this->logError('saving a service failed: ' . $e->getMessage());
+
+				return ['status' => false, 'message' => _('The service could not be saved.')];
 			}
+		} finally {
+			$this->unlockChanges();
+		}
 
-			foreach ($sides as $side => $others) {
-				$this->relink($slug, $side, $others);
-			}
-
-			$this->db->commit();
-		} catch (\Exception $e) {
-			$this->db->rollBack();
-			$this->logError('saving a service failed: ' . $e->getMessage());
-
-			return ['status' => false, 'message' => _('The service could not be saved.')];
+		if ($queued) {
+			$this->jobs->startFor($queued);
 		}
 
 		return ['status' => true, 'name' => $name, 'slug' => $slug];
@@ -390,7 +447,8 @@ class Services extends Service
 	 *
 	 * The services it was over or under are kept: only the links go, and it
 	 * is taken off every user it was assigned to. One of the module's is
-	 * refused.
+	 * refused. Every user holding something different afterwards -- it, or
+	 * what they held only through it -- gets a job, in the same transaction.
 	 *
 	 * @param mixed $slug The service's slug.
 	 *
@@ -404,22 +462,56 @@ class Services extends Service
 			return ['status' => false, 'message' => _('This service is managed by the module and cannot be deleted.')];
 		}
 
-		if ($slug === '') {
+		$row = $slug === '' ? null : $this->serviceBySlug($slug);
+
+		if (!$row) {
 			return ['status' => true];
 		}
 
-		$links = $this->db->prepare(
-			"DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent OR child = :child"
-		);
-		$links->execute([':parent' => $slug, ':child' => $slug]);
+		if (!$this->lockChanges()) {
+			return ['status' => false, 'message' => _('Another change to services is being saved; try again.')];
+		}
 
-		$assigned = $this->db->prepare(
-			"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE service = :slug"
-		);
-		$assigned->execute([':slug' => $slug]);
+		try {
+			$this->db->beginTransaction();
+			$queued = [];
 
-		$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE slug = :slug");
-		$stmt->execute([':slug' => $slug]);
+			try {
+				$linksBefore = $this->links();
+				$before = $this->jobs ? $this->assignments() : [];
+				$names = $this->names();
+
+				$links = $this->db->prepare(
+					"DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent OR child = :child"
+				);
+				$links->execute([':parent' => $slug, ':child' => $slug]);
+
+				$assigned = $this->db->prepare(
+					"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE service = :slug"
+				);
+				$assigned->execute([':slug' => $slug]);
+
+				$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE slug = :slug");
+				$stmt->execute([':slug' => $slug]);
+
+				if ($this->jobs) {
+					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), $slug, (string) $row['name'], 'service-deleted', 'gui', $names);
+				}
+
+				$this->db->commit();
+			} catch (\Exception $e) {
+				$this->db->rollBack();
+				$this->logError('deleting a service failed: ' . $e->getMessage());
+
+				return ['status' => false, 'message' => _('The service could not be deleted.')];
+			}
+		} finally {
+			$this->unlockChanges();
+		}
+
+		if ($queued) {
+			$this->jobs->startFor($queued);
+		}
 
 		return ['status' => true];
 	}
@@ -486,6 +578,105 @@ class Services extends Service
 	}
 
 	/**
+	 * Whether a user holds a service, assigned it or through a pack.
+	 *
+	 * @param mixed $extension The user's extension.
+	 * @param mixed $slug      The service's slug.
+	 *
+	 * @return bool True when it does.
+	 */
+	public function hasService($extension, $slug)
+	{
+		return in_array((string) $slug, $this->userSlugs($extension), true);
+	}
+
+	/**
+	 * What saving or deleting a service would change for its users, without
+	 * doing it: what the service page asks with before it does.
+	 *
+	 * A save is worked out from the links it would write -- `parents` and
+	 * `children` as saveService() takes them -- and a delete from the
+	 * service gone. Whether the save would be refused is saveService()'s to say.
+	 *
+	 * @param array<string, mixed> $request action (save|delete), slug ('' for a
+	 *                                      new one), name, parents, children.
+	 *
+	 * @return array<string, mixed> status, users (how many would get a job),
+	 *                              granted and revoked: [name, users] each, by name.
+	 */
+	public function serviceImpact($request)
+	{
+		$was = trim((string) ($request['slug'] ?? ''));
+		$links = $this->links();
+		$before = $this->assignments();
+		$names = $this->names();
+		$linksAfter = $links;
+		$after = $before;
+
+		if ((string) ($request['action'] ?? '') === 'delete') {
+			$linksAfter = array_values(array_filter($links, function ($link) use ($was) {
+				return $link[0] !== $was && $link[1] !== $was;
+			}));
+
+			foreach ($after as $extension => $slugs) {
+				$after[$extension] = array_values(array_diff($slugs, [$was]));
+			}
+		} else {
+			// 'new' is never a slug (freeSlug() refuses it), so it stands in for one not yet made.
+			$key = $was !== '' ? $was : 'new';
+			$name = trim((string) ($request['name'] ?? ''));
+			$names[$key] = $name !== '' ? $name : ($names[$key] ?? $key);
+
+			foreach (['parents' => 1, 'children' => 0] as $side => $mine) {
+				if (!array_key_exists($side, $request)) {
+					continue;
+				}
+
+				$linksAfter = array_values(array_filter($linksAfter, function ($link) use ($key, $mine) {
+					return $link[$mine] !== $key;
+				}));
+
+				foreach (self::slugs($request[$side]) as $other) {
+					$linksAfter[] = $mine ? [$other, $key] : [$key, $other];
+				}
+			}
+		}
+
+		$users = 0;
+		$counts = ['granted' => [], 'revoked' => []];
+
+		foreach (array_keys($before + $after) as $extension) {
+			$steps = ServiceEngine::changes($links, $before[$extension] ?? [], $linksAfter, $after[$extension] ?? []);
+
+			if ($steps) {
+				$users++;
+			}
+
+			foreach ($steps as $step) {
+				$counts[$step['event']][$step['service']] = ($counts[$step['event']][$step['service']] ?? 0) + 1;
+			}
+		}
+
+		$result = ['status' => true, 'users' => $users];
+
+		foreach ($counts as $event => $bySlug) {
+			$rows = [];
+
+			foreach ($bySlug as $slug => $count) {
+				$rows[] = ['name' => (string) ($names[(string) $slug] ?? $slug), 'users' => $count];
+			}
+
+			usort($rows, function ($a, $b) {
+				return strcasecmp($a['name'], $b['name']);
+			});
+
+			$result[$event] = $rows;
+		}
+
+		return $result;
+	}
+
+	/**
 	 * The packs: every service with at least one under it.
 	 *
 	 * @return array<int, string> Their slugs, each once.
@@ -540,11 +731,13 @@ class Services extends Service
 	 *
 	 * **The state is sent, not toggled**: the same request twice leaves the
 	 * user where the first put it. Nothing about the user itself is written,
-	 * so this raises no Apply Config.
+	 * so this raises no Apply Config. A change to what the user holds is a
+	 * job, written with it and started at once; the same state again is none.
 	 *
 	 * @param array<string, mixed> $request extension, service (a slug), assigned.
 	 *
-	 * @return array<string, mixed> Status and userServices() as it now is, or a message when refused.
+	 * @return array<string, mixed> Status, userServices() as it now is and
+	 *                              `jobs` (Jobs::statusFor()), or a message when refused.
 	 */
 	public function setUserService($request)
 	{
@@ -562,24 +755,61 @@ class Services extends Service
 		$said = strtolower(trim((string) ($request['assigned'] ?? '1')));
 		$on = !in_array($said, ['0', '', 'false', 'off', 'no'], true);
 		$bind = [':extension' => $extension, ':service' => $service['slug']];
+		$queued = [];
 
-		$stmt = $this->db->prepare(
-			"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension AND service = :service"
-		);
-		$stmt->execute($bind);
-
-		if ($on) {
-			$stmt = $this->db->prepare(
-				"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service) VALUES (:extension, :service)"
-			);
-			$stmt->execute($bind);
+		if (!$this->lockChanges()) {
+			return ['status' => false, 'message' => _('Another change to services is being saved; try again.')];
 		}
 
-		return ['status' => true, 'assigned' => $on, 'services' => $this->userServices($extension)];
+		try {
+			$this->db->beginTransaction();
+
+			try {
+				$links = $this->links();
+				$before = [$extension => $this->assigned($extension)];
+
+				$stmt = $this->db->prepare(
+					"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension AND service = :service"
+				);
+				$stmt->execute($bind);
+
+				if ($on) {
+					$stmt = $this->db->prepare(
+						"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service) VALUES (:extension, :service)"
+					);
+					$stmt->execute($bind);
+				}
+
+				$after = [$extension => $this->assigned($extension)];
+				$queued = $this->queue($links, $before, $links, $after, $service['slug'], $service['name'], $on ? 'assigned' : 'unassigned', 'gui', $this->names());
+
+				$this->db->commit();
+			} catch (\Exception $e) {
+				$this->db->rollBack();
+				$this->logError('assigning a service failed: ' . $e->getMessage());
+
+				return ['status' => false, 'message' => _('The service could not be saved.')];
+			}
+		} finally {
+			$this->unlockChanges();
+		}
+
+		if ($queued) {
+			$this->jobs->startFor($queued);
+		}
+
+		return [
+			'status' => true,
+			'assigned' => $on,
+			'services' => $this->userServices($extension),
+			'jobs' => $this->jobs ? $this->jobs->statusFor($extension) : [],
+		];
 	}
 
 	/**
-	 * Take every service off a user: it has been deleted.
+	 * Take every service off a user, and delete its jobs: it has been deleted.
+	 *
+	 * Nothing is revoked: there is no user left to react on.
 	 *
 	 * @param mixed $extension The user's extension.
 	 *
@@ -595,10 +825,15 @@ class Services extends Service
 		} catch (\Exception $e) {
 			// No table before the upgrade that adds it: nothing to delete.
 		}
+
+		if ($this->jobs) {
+			$this->jobs->forgetUser($extension);
+		}
 	}
 
 	/**
-	 * Carry a user's services to its new number: it has been renumbered.
+	 * Carry a user's services and jobs to its new number: it has been
+	 * renumbered. Nothing it holds changes, so no job is made.
 	 *
 	 * @param mixed $old The extension it had.
 	 * @param mixed $new The extension it has.
@@ -615,6 +850,10 @@ class Services extends Service
 		} catch (\Exception $e) {
 			$this->logError('could not move the services of ' . $old . ' to ' . $new . ': ' . $e->getMessage());
 		}
+
+		if ($this->jobs) {
+			$this->jobs->moveUser($old, $new);
+		}
 	}
 
 	/**
@@ -628,12 +867,63 @@ class Services extends Service
 	 * one it no longer has is removed, one it has is added. A link with a
 	 * service of the operator's own at either end is theirs and is left.
 	 *
-	 * @return array<int, string> What could not be done, for the install's output.
+	 * All one transaction, with the jobs a regrouping that changes what users
+	 * hold writes them -- which it does not start: an install may run as
+	 * root, and the minute job runs them.
+	 *
+	 * @return array<int, string> What could not be done, and how many users
+	 *                            were given jobs, for the install's output.
 	 */
 	public function seed()
 	{
 		$notes = [];
+		$queued = [];
 
+		if (!$this->lockChanges()) {
+			return ['the module\'s services were not brought up to date: another change to services held them'];
+		}
+
+		try {
+			$this->db->beginTransaction();
+
+			try {
+				$linksBefore = $this->links();
+				$before = $this->jobs ? $this->assignments() : [];
+
+				$this->regroup($notes);
+
+				if ($this->jobs) {
+					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), '', '', 'pack-changed', 'upgrade', $this->names());
+				}
+
+				$this->db->commit();
+			} catch (\Exception $e) {
+				$this->db->rollBack();
+				$notes[] = 'the module\'s services could not be brought up to date: ' . $e->getMessage();
+
+				return $notes;
+			}
+		} finally {
+			$this->unlockChanges();
+		}
+
+		if ($queued) {
+			$notes[] = sprintf('the services of %d users changed with the module\'s defaults; their jobs are queued for the minute job', count($queued));
+		}
+
+		return $notes;
+	}
+
+	/**
+	 * seed()'s writes: slugs for rows without one, the defaults made or
+	 * renamed, and the links between two defaults made to match DEFAULTS.
+	 *
+	 * @param array<int, string> $notes What could not be done, added to.
+	 *
+	 * @return void
+	 */
+	private function regroup(array &$notes)
+	{
 		$bare = $this->db->prepare("SELECT name FROM `{$this->servicesTable}` WHERE slug IS NULL OR slug = '' ORDER BY name");
 		$bare->execute();
 		$fill = $this->db->prepare("UPDATE `{$this->servicesTable}` SET slug = :slug WHERE name = :name");
@@ -699,8 +989,6 @@ class Services extends Service
 				$links[] = [$slug, $child];
 			}
 		}
-
-		return $notes;
 	}
 
 	/**
@@ -889,13 +1177,157 @@ class Services extends Service
 	}
 
 	/**
+	 * Hold the one lock every change to services is worked out and written
+	 * under: two at once would each read what the other was about to change,
+	 * and a revoke both owe would be made by neither. A MySQL named lock,
+	 * freed by the server if the process dies.
+	 *
+	 * @return bool False when another change held it for CHANGE_WAIT seconds.
+	 */
+	private function lockChanges()
+	{
+		try {
+			$stmt = $this->db->prepare('SELECT GET_LOCK(:name, ' . (int) self::CHANGE_WAIT . ')');
+			$stmt->execute([':name' => 'oryk_provisioner_services']);
+
+			return (string) $stmt->fetchColumn() !== '0';
+		} catch (\Exception $e) {
+			// No named locks to be had: the change goes ahead as it always did.
+			return true;
+		}
+	}
+
+	/**
+	 * Give lockChanges()'s lock back.
+	 *
+	 * @return void
+	 */
+	private function unlockChanges()
+	{
+		try {
+			$stmt = $this->db->prepare('SELECT RELEASE_LOCK(:name)');
+			$stmt->execute([':name' => 'oryk_provisioner_services']);
+		} catch (\Exception $e) {
+			// The server frees it with the connection.
+		}
+	}
+
+	/**
+	 * Every user's assignments, for working out what a change does to them.
+	 *
+	 * @return array<string, array<int, string>> Slugs assigned, by extension.
+	 */
+	private function assignments()
+	{
+		$stmt = $this->db->prepare(
+			"SELECT extension, service FROM `{$this->serviceAssignmentsTable}` ORDER BY extension, service"
+		);
+		$stmt->execute();
+
+		$assigned = [];
+
+		foreach ($stmt->fetchAll(PDO::FETCH_NUM) as $row) {
+			$assigned[(string) $row[0]][] = (string) $row[1];
+		}
+
+		return $assigned;
+	}
+
+	/**
+	 * Every service's name, for the names a job's steps keep.
+	 *
+	 * @return array<string, string> Names, by slug.
+	 */
+	private function names()
+	{
+		$names = [];
+
+		foreach ($this->serviceChoices() as $row) {
+			$names[(string) $row['slug']] = (string) $row['name'];
+		}
+
+		return $names;
+	}
+
+	/**
+	 * Write a job for every user a change leaves holding something different.
+	 * Inside the caller's transaction.
+	 *
+	 * @param array<int, array{0: string, 1: string}> $linksBefore Every link before the change.
+	 * @param array<string, array<int, string>>       $before      Assignments before it, by extension.
+	 * @param array<int, array{0: string, 1: string}> $linksAfter  Every link after it.
+	 * @param array<string, array<int, string>>       $after       Assignments after it, by extension.
+	 * @param string                                  $service     The service the change was made to, '' for an upgrade.
+	 * @param string                                  $name        Its name.
+	 * @param string                                  $reason      Jobs::REASONS.
+	 * @param string                                  $source      Jobs::SOURCES.
+	 * @param array<string, string>                   $names       Every service's name, by slug, before and after.
+	 *
+	 * @return array<int, string> The extensions given a job.
+	 */
+	private function queue(array $linksBefore, array $before, array $linksAfter, array $after, $service, $name, $reason, $source, array $names)
+	{
+		if (!$this->jobs) {
+			return [];
+		}
+
+		$queued = [];
+
+		foreach (array_keys($before + $after) as $extension) {
+			$extension = (string) $extension;
+			$steps = ServiceEngine::changes($linksBefore, $before[$extension] ?? [], $linksAfter, $after[$extension] ?? []);
+
+			if (!$steps) {
+				continue;
+			}
+
+			foreach ($steps as &$step) {
+				$step['name'] = $names[$step['service']] ?? $step['service'];
+			}
+			unset($step);
+
+			$this->jobs->enqueue($extension, $service, $name, $reason, $source, $steps);
+			$queued[] = $extension;
+		}
+
+		return $queued;
+	}
+
+	/**
+	 * Links and assignments with one slug read as another.
+	 *
+	 * @param array<int, array{0: string, 1: string}> $links    Every link.
+	 * @param array<string, array<int, string>>       $assigned Assignments, by extension.
+	 * @param string                                  $was      The slug they hold.
+	 * @param string                                  $slug     The slug to read it as.
+	 *
+	 * @return array{0: array<int, array{0: string, 1: string}>, 1: array<string, array<int, string>>} Both.
+	 */
+	private static function renamed(array $links, array $assigned, $was, $slug)
+	{
+		$swap = function ($one) use ($was, $slug) {
+			return (string) $one === (string) $was ? (string) $slug : (string) $one;
+		};
+
+		foreach ($links as $at => $link) {
+			$links[$at] = [$swap($link[0]), $swap($link[1])];
+		}
+
+		foreach ($assigned as $extension => $slugs) {
+			$assigned[$extension] = array_map($swap, $slugs);
+		}
+
+		return [$links, $assigned];
+	}
+
+	/**
 	 * Whether an extension is a FreePBX user: what the module's users are.
 	 *
 	 * @param string $extension Digits.
 	 *
 	 * @return bool True when Core's users table has it.
 	 */
-	private function userExists($extension)
+	public function userExists($extension)
 	{
 		try {
 			$stmt = $this->db->prepare("SELECT 1 FROM `users` WHERE extension = :extension");
@@ -1024,8 +1456,8 @@ class Services extends Service
 	 * Carry a changed slug to everything that names the old one.
 	 *
 	 * **Anything that comes to store a service's slug is added here**: this is
-	 * the one place a rename is followed. Today: both ends of a link, and a
-	 * user's assignments.
+	 * the one place a rename is followed. Today: both ends of a link, a
+	 * user's assignments, and the jobs and steps naming it.
 	 *
 	 * @param string $was  The slug the references hold.
 	 * @param string $slug The slug they are to hold.
@@ -1045,6 +1477,10 @@ class Services extends Service
 			"UPDATE `{$this->serviceAssignmentsTable}` SET service = :slug WHERE service = :was"
 		);
 		$stmt->execute([':slug' => $slug, ':was' => $was]);
+
+		if ($this->jobs) {
+			$this->jobs->renameService($was, $slug);
+		}
 	}
 
 	/**

@@ -94,6 +94,10 @@ marked *included in* the pack, and stay with the user for as long as the pack
 is assigned and holds them. Renumbering a user keeps its services, deleting it
 removes them, and deleting a service takes it off every user.
 
+A change to what the user has is a [job](jobs.md), run straight away: a service
+whose job is queued, running or has failed says so beside it, with a link to
+the job.
+
 ## From Domain
 
 Each user's PJSIP endpoint gets a `from_domain`, written to

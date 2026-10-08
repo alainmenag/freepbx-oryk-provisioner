@@ -63,10 +63,13 @@ class Pages extends Service
 	/** @var Services */
 	private $services;
 
+	/** @var Jobs */
+	private $jobs;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs)
 	{
 		parent::__construct($freepbx);
 
@@ -85,12 +88,13 @@ class Pages extends Service
 		$this->fail2ban = $fail2ban;
 		$this->overview = $overview;
 		$this->services = $services;
+		$this->jobs = $jobs;
 	}
 
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list, six editors and a log entry, told apart by which key the URL carries.
+	 * A list, six editors, a log entry and a job, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
@@ -99,6 +103,8 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&tab=services&source=<all|custom|module>&kind=<all|single|pack>
 	 *                                                        the Services list,
 	 *                                                        as its filters are set
+	 *   ?display=oryk_provisioner&tab=jobs&state=&reason=&source=
+	 *                                                        the Jobs list, likewise
 	 *   ?display=oryk_provisioner&tab=overview&scope=<user|client>:<id>
 	 *                                                        everything tied to
 	 *                                                        that user or client
@@ -115,6 +121,7 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&ban=<id>                   one ban
 	 *   ?display=oryk_provisioner&ban=                       a new one
 	 *   ?display=oryk_provisioner&log=<id>                   one log entry
+	 *   ?display=oryk_provisioner&job=<id>                   one job
 	 *
 	 * A key present but empty is the same page doing the same thing, minus a row
 	 * to replace.
@@ -125,6 +132,10 @@ class Pages extends Service
 	{
 		if (isset($_REQUEST['log'])) {
 			return $this->showLog(trim((string) $_REQUEST['log']));
+		}
+
+		if (isset($_REQUEST['job'])) {
+			return $this->showJob(trim((string) $_REQUEST['job']));
 		}
 
 		if (isset($_REQUEST['ban'])) {
@@ -282,8 +293,10 @@ class Pages extends Service
 			// Blank on the form is not nothing: it is this.
 			'pbxDomain' => $this->endpoints->fromDomain(null),
 			'available' => $available,
-			// Every service, as this user has them; only that tab draws them.
+			// Every service, as this user has them, and where its jobs stand;
+			// only that tab draws them.
 			'services' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->userServices($extension) : [],
+			'serviceJobs' => ($tab === 'services' && !empty($available[$tab])) ? $this->jobs->statusFor($extension) : [],
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
 		]);
 	}
@@ -387,6 +400,31 @@ class Pages extends Service
 			'entry' => $entry,
 			'sections' => $this->navigator->sections('logs'),
 			'navigator' => $this->navigator->levels(['log' => (int) $entry['id']]),
+		]);
+	}
+
+	/**
+	 * Render one job: its steps, and Retry when it failed. There is no new
+	 * one: a change to services is the only thing that writes them.
+	 *
+	 * @param string $wanted Job id.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showJob($wanted)
+	{
+		// doConfigPageInit() has already bounced one that has gone.
+		$job = $this->jobs->jobRow($wanted);
+
+		if (!$job) {
+			return $this->showList('jobs');
+		}
+
+		return $this->view('job', [
+			'job' => $job,
+			'names' => array_column($this->services->serviceChoices(), 'name', 'slug'),
+			'sections' => $this->navigator->sections('jobs'),
+			'navigator' => $this->navigator->levels(['job' => (int) $job['id']]),
 		]);
 	}
 
@@ -587,6 +625,8 @@ class Pages extends Service
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
 			// The Services list's two filters, as the address has them.
 			'serviceFilter' => $tab === 'services' ? Services::filters($_REQUEST) : [],
+			// The Jobs list's three, likewise.
+			'jobFilter' => $tab === 'jobs' ? Jobs::filters($_REQUEST) : [],
 			// What the State column warns with before refusing your own address.
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),
@@ -649,6 +689,7 @@ class Pages extends Service
 			'log' => _('log entry %s'),
 			'ban' => _('ban %s'),
 			'service' => _('service %s'),
+			'job' => _('job %s'),
 		];
 
 		foreach ($navigator as $level) {
@@ -746,7 +787,7 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors, a log entry, the Settings tab and Overview on a row
+	 * Only the editors, a log entry, a job, the Settings tab and Overview on a row
 	 * have any: the list's other tabs carry their own controls, and a single
 	 * button in the header could not say which tab it meant.
 	 *
@@ -768,8 +809,8 @@ class Pages extends Service
 	 */
 	public function getActionBar($request)
 	{
-		// A log entry is read, not edited: Delete and Close, never Save.
-		if (isset($_REQUEST['log'])) {
+		// A log entry and a job are read, not edited: Delete and Close, never Save.
+		if (isset($_REQUEST['log']) || isset($_REQUEST['job'])) {
 			return [
 				'orykdelete' => [
 					'name' => 'orykdelete',
@@ -870,6 +911,16 @@ class Pages extends Service
 		if (isset($_REQUEST['log'])) {
 			if (!$this->requestLog->logRow(trim((string) $_REQUEST['log']))) {
 				header('Location: config.php?display=oryk_provisioner&tab=logs');
+				exit;
+			}
+
+			return;
+		}
+
+		// Nor is there a new job; a finished one purged is gone the same way.
+		if (isset($_REQUEST['job'])) {
+			if (!$this->jobs->jobRow(trim((string) $_REQUEST['job']))) {
+				header('Location: config.php?display=oryk_provisioner&tab=jobs');
 				exit;
 			}
 

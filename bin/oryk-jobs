@@ -1,0 +1,34 @@
+#!/usr/bin/env php
+<?php
+/**
+ * bin/oryk-jobs -- one run of the service job worker.
+ *
+ * `--user=<extension>` runs that user's queue: what a save starts in the
+ * background. With no argument it runs every user with a job waiting and
+ * purges finished jobs past their keep: what FreePBX's scheduler runs every
+ * minute, as the web user; install() registers it. Safe to run by hand. See
+ * ARCHITECTURE.md, "Jobs". Exits 0.
+ */
+
+if (PHP_SAPI !== 'cli') {
+	exit(1);
+}
+
+$options = getopt('', ['user:']);
+$user = isset($options['user']) && ctype_digit((string) $options['user']) ? (string) $options['user'] : null;
+
+if (isset($options['user']) && $user === null) {
+	fwrite(STDERR, "--user is an extension\n");
+	exit(1);
+}
+
+// Every module loaded, as on a page: a hooked module's handler may need its functions.inc.
+$bootstrap_settings = ['freepbx_auth' => false];
+
+require '/etc/freepbx.conf';
+
+$result = \FreePBX::Oryk_provisioner()->runJobs($user);
+
+echo implode(', ', array_map(function ($what, $count) {
+	return "$what $count";
+}, array_keys($result), $result)), "\n";

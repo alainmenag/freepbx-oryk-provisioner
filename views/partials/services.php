@@ -156,9 +156,14 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 		].join('');
 	}
 
+	// Asked with what the delete would take from users, when it takes anything.
 	$(document).on('click', '[name="service_delete"]', function () {
-		orykAsk('Delete this service? The services over and under it are kept.').done(() => {
-			orykPost('deleteService', { slug: $(this).val() }).done(function (response) {
+		const slug = $(this).val();
+
+		orykServiceImpact({ action: 'delete', slug: slug }).done((message) => orykAsk(
+			'Delete this service? The services over and under it are kept.' + (message ? ' ' + message : '')
+		).done(() => {
+			orykPost('deleteService', { slug: slug }).done(function (response) {
 				if (!response || !response.status) {
 					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
 					return;
@@ -167,7 +172,7 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 				$('#service_table').bootstrapTable('refresh');
 				notie.alert(1, 'Deleted.', 2);
 			});
-		});
+		}));
 	});
 
 </script>

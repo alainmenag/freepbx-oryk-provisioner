@@ -10,9 +10,9 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Two halves. sections() is the module's top level, drawn as the bar over
  * every page by views/partials/sections.php. levels() is the row of dropdowns
  * views/partials/navigator.php draws under it: Users, Clients, Profiles,
- * Resources, Services, Logs and Bans, always all seven, always in that order
- * -- who, which phone, what configuration, which file, what they are assigned,
- * what it asked, what refuses it.
+ * Resources, Services, Logs, Bans and Jobs, always all eight, always in that
+ * order -- who, which phone, what configuration, which file, what they are
+ * assigned, what it asked, what refuses it, what was done about their services.
  *
  * The page being viewed sets the scope; ARCHITECTURE.md, "Conventions that
  * hold everywhere", has the rules. A new row has no links yet, so it scopes
@@ -47,6 +47,9 @@ class Navigator extends Service
 	/** The most bans the Bans level lists when it is not scoped: the newest. */
 	const BAN_LIMIT = 100;
 
+	/** The most jobs the Jobs level lists: the newest, in scope. */
+	const JOB_LIMIT = 100;
+
 	/** @var Users */
 	private $users;
 
@@ -59,10 +62,13 @@ class Navigator extends Service
 	/** @var Services */
 	private $services;
 
+	/** @var Jobs|null Null where there is no Jobs level to fill: the tests. */
+	private $jobs;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, Services $services)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, Services $services, ?Jobs $jobs = null)
 	{
 		parent::__construct($freepbx);
 
@@ -73,13 +79,14 @@ class Navigator extends Service
 		$this->requestLog = $requestLog;
 		$this->bans = $bans;
 		$this->services = $services;
+		$this->jobs = $jobs;
 	}
 
 	/**
-	 * The seven dropdowns, scoped by the row a page is viewing.
+	 * The eight dropdowns, scoped by the row a page is viewing.
 	 *
 	 * `$at` names that row: `user` (an extension), `client`, `profile`,
-	 * `profile` and `resource` together, `log`, `ban` or `service` (a slug).
+	 * `profile` and `resource` together, `log`, `ban`, `service` (a slug) or `job`.
 	 * Each is an id, or 'new' on a page writing one that does not exist yet.
 	 * Empty on a page viewing no row.
 	 *
@@ -91,7 +98,7 @@ class Navigator extends Service
 	 *                                      options depend on it: 'overview'.
 	 *
 	 * @return array<int, array<string, mixed>> Users, clients, profiles,
-	 *                                           resources, services, logs, bans.
+	 *                                           resources, services, logs, bans, jobs.
 	 */
 	public function levels(array $at = [], $section = '')
 	{
@@ -104,6 +111,7 @@ class Navigator extends Service
 		$log = isset($at['log']) ? (string) $at['log'] : null;
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 		$service = isset($at['service']) ? (string) $at['service'] : null;
+		$job = isset($at['job']) ? (string) $at['job'] : null;
 
 		$clientRows = $this->clients->clientChoices();
 		$profileNames = [];
@@ -136,6 +144,7 @@ class Navigator extends Service
 			$this->serviceLevel($scope['services'], $service, $user, $from),
 			$this->logLevel($scope['logs'], $scope['ip'], $log, $scope['entry'], $client, $from),
 			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $scope['entry'], $from),
+			$this->jobLevel($scope['jobs'], $job, $from),
 		];
 	}
 
@@ -151,7 +160,9 @@ class Navigator extends Service
 	 *
 	 * @return array<string, mixed> users, clients, profiles, files, bans: ids
 	 *                              or null for unscoped; services: slugs or
-	 *                              null; logs: MACs or null;
+	 *                              null; jobs: extensions or services to narrow
+	 *                              the jobs by (Jobs::listJobs()), or null;
+	 *                              logs: MACs or null;
 	 *                              ip: address or null; entry: the viewed log
 	 *                              entry's logRow() or null; banRows: the bans
 	 *                              that apply, when bans is scoped, or null.
@@ -176,7 +187,7 @@ class Navigator extends Service
 	 */
 	public function scopeKey(array $at)
 	{
-		foreach (['client', 'user', 'profile', 'log', 'ban', 'service'] as $kind) {
+		foreach (['client', 'user', 'profile', 'log', 'ban', 'service', 'job'] as $kind) {
 			if (isset($at[$kind]) && $this->written((string) $at[$kind])) {
 				return $kind . ':' . (string) $at[$kind];
 			}
@@ -198,7 +209,7 @@ class Navigator extends Service
 	{
 		$parts = explode(':', (string) $key, 2);
 
-		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban', 'service'], true)) {
+		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban', 'service', 'job'], true)) {
 			return [];
 		}
 
@@ -243,7 +254,7 @@ class Navigator extends Service
 	/**
 	 * Whether a section's list is narrowed by a scope(), and so drawn with `&scope=`.
 	 *
-	 * @param string               $section users|clients|profiles|services|logs|bans.
+	 * @param string               $section users|clients|profiles|services|logs|bans|jobs.
 	 * @param array<string, mixed> $scope   scope().
 	 *
 	 * @return bool Narrowed.
@@ -252,6 +263,10 @@ class Navigator extends Service
 	{
 		if ($section === 'logs') {
 			return $scope['logs'] !== null || $scope['ip'] !== null;
+		}
+
+		if ($section === 'jobs') {
+			return ($scope['jobs'] ?? null) !== null;
 		}
 
 		return in_array($section, ['users', 'clients', 'profiles', 'services', 'bans'], true) && $scope[$section] !== null;
@@ -273,11 +288,21 @@ class Navigator extends Service
 		$log = isset($at['log']) ? (string) $at['log'] : null;
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 		$service = isset($at['service']) ? (string) $at['service'] : null;
+		$job = isset($at['job']) ? (string) $at['job'] : null;
+
+		// A job is scoped like its user, whose page it would be on.
+		$ofJob = false;
+
+		if ($this->written($job) && $this->jobs) {
+			$row = $this->jobs->jobRow($job);
+			$user = $row ? (string) $row['extension'] : null;
+			$ofJob = (bool) $row;
+		}
 
 		// null is "not scoped": the level lists everything. An array is the ids
 		// linked to the row being viewed, and may be empty. Logs are scoped by
 		// MAC, and by address in `ip`.
-		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'services' => null, 'logs' => null, 'bans' => null];
+		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'services' => null, 'logs' => null, 'bans' => null, 'jobs' => null];
 		$ip = null;
 		$entry = null;
 
@@ -411,6 +436,16 @@ class Navigator extends Service
 			$scope['services'] = $this->services->assignedTo($holders);
 		}
 
+		// Jobs follow Users too; a service's are the ones changes to it made,
+		// and a viewed job's own level lists all of its kind.
+		if ($ofJob) {
+			$scope['users'] = [$user];
+		} elseif ($this->written($service)) {
+			$scope['jobs'] = ['services' => [$service]];
+		} elseif ($holders !== null) {
+			$scope['jobs'] = ['extensions' => $holders];
+		}
+
 		$applying = null;
 
 		if ($requests !== null) {
@@ -444,7 +479,7 @@ class Navigator extends Service
 	 * group's first section would have stood: the active section of the group,
 	 * else its first, with every section of the group under 'items'.
 	 *
-	 * @param string               $section clients|profiles|services|users|logs|bans|overview|settings.
+	 * @param string               $section clients|profiles|services|users|logs|bans|jobs|overview|settings.
 	 * @param array<string, mixed> $at      Row being viewed, as levels() takes it.
 	 *
 	 * @return array<int, array<string, mixed>> Each: key, text, href, active;
@@ -530,6 +565,7 @@ class Navigator extends Service
 			'services' => _('Services'),
 			'logs' => _('Logs'),
 			'bans' => _('Bans'),
+			'jobs' => _('Jobs'),
 			'overview' => _('Overview'),
 			'settings' => _('Settings'),
 		];
@@ -548,7 +584,7 @@ class Navigator extends Service
 	{
 		return [
 			['users', 'clients', 'profiles', 'services'],
-			['logs', 'bans', 'overview'],
+			['logs', 'bans', 'jobs', 'overview'],
 		];
 	}
 
@@ -1048,6 +1084,61 @@ class Navigator extends Service
 			'search' => _('Search bans'),
 			'none' => _('No bans here'),
 			'add' => ['text' => _('New ban'), 'href' => $add],
+		]);
+	}
+
+	/**
+	 * Jobs: the newest JOB_LIMIT in scope, each a page of its own.
+	 *
+	 * Already narrowed when read, so the level is never filtered again. On a
+	 * job's page that job is listed even when it is older than the rest.
+	 * Nothing writes a job from here, so there is no add row.
+	 *
+	 * @param array<string, array<int, string>>|null $narrow scope()'s `jobs`.
+	 * @param string|null                            $at     Job being viewed, or null.
+	 * @param string                                 $from   scopeKey() of the viewed row, or ''.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function jobLevel($narrow, $at, $from)
+	{
+		$found = $this->jobs ? $this->jobs->jobChoices($narrow, self::JOB_LIMIT) : [];
+		$listed = array_map('strval', array_column($found, 'id'));
+
+		if ($this->jobs && $this->written($at) && !in_array((string) $at, $listed, true)) {
+			$viewed = $this->jobs->jobRow($at);
+
+			if ($viewed) {
+				$found[] = $viewed;
+			}
+		}
+
+		$labels = Jobs::labels();
+		$rows = [];
+
+		foreach ($found as $row) {
+			$rows[] = [
+				'id' => (int) $row['id'],
+				'text' => '#' . (int) $row['id'] . ' ' . Jobs::title($row),
+				'note' => implode(' · ', [
+					sprintf(_('user %s'), (string) $row['extension']),
+					$labels['reason'][(string) $row['reason']] ?? (string) $row['reason'],
+					$labels['state'][(string) $row['state']] ?? (string) $row['state'],
+					(string) $row['created_at'],
+				]),
+				'href' => '?display=oryk_provisioner&job=' . (int) $row['id'],
+			];
+		}
+
+		return $this->level($rows, null, $at, [
+			'key' => 'job',
+			'title' => ['text' => _('Jobs'), 'href' => self::listHref('jobs', $from, $narrow !== null)],
+			'mono' => false,
+			'new' => '',
+			'prompt' => ($narrow !== null && !$rows) ? _('None') : null,
+			'search' => _('Search jobs'),
+			'empty' => $narrow !== null ? _('No jobs here') : _('Nothing here yet'),
+			'add' => null,
 		]);
 	}
 

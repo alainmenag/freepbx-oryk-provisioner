@@ -7,7 +7,8 @@
  * and what Delete All takes, is Overview's business (src/Overview.php, and
  * ARCHITECTURE.md, "Overview"); this draws what inventory() found.
  *
- * It is tables all the way down -- User, Clients, Provisioning log, Bans --
+ * It is tables all the way down -- User, Clients, Provisioning log, Jobs (a
+ * user's), Bans --
  * and they are the lists' own: the same ids and formatters, so
  * views/admin.php's handlers answer their buttons, with a column or two only
  * Overview has. Every
@@ -230,6 +231,15 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	include __DIR__ . '/logs.php';
 	?>
 
+	<?php if ($oIsUser): ?>
+	<h4 class="oryk-overview-heading"><?php echo _('Jobs'); ?></h4>
+	<?php
+	$jobFilter = null;
+	$jobScope = $overview['key'];
+	include __DIR__ . '/jobs.php';
+	?>
+	<?php endif; ?>
+
 	<h4 class="oryk-overview-heading"><?php echo _('Bans'); ?></h4>
 	<table
 		id="ban_table"
@@ -420,6 +430,29 @@ $oAsk .= ' ' . _('This cannot be undone.');
 			}).fail(function () {
 				button.prop('disabled', false);
 				notie.alert(3, 'Could not clear the call history.', 4);
+			});
+		});
+	});
+
+	// The jobs alone: what they already did stays done, and a running one
+	// stops before its next step.
+	$(document).on('click', '#oryk_overview_jobs_clear', function () {
+		orykAsk('Clear this user\'s jobs? Every one is deleted, finished or not; what they already did stays done, and one that is running stops before its next step.').done(() => {
+			const button = $(this).prop('disabled', true);
+
+			orykPost('clearOverviewJobs', { scope: orykOverviewScope }).done(function (response) {
+				button.prop('disabled', false);
+
+				if (!response || !response.status) {
+					notie.alert(3, (response && response.message) || 'Could not clear the jobs.', 4);
+					return;
+				}
+
+				$('#job_table').bootstrapTable('refresh');
+				notie.alert(1, 'Cleared.', 2);
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not clear the jobs.', 4);
 			});
 		});
 	});

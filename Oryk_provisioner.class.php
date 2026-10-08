@@ -20,6 +20,7 @@ use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
+use FreePBX\Modules\Oryk_Provisioner\Jobs;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Logs;
@@ -32,9 +33,11 @@ use FreePBX\Modules\Oryk_Provisioner\Pages;
 use FreePBX\Modules\Oryk_Provisioner\Previews;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\ProvisioningLog;
+use FreePBX\Modules\Oryk_Provisioner\Reactions;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\Resources;
 use FreePBX\Modules\Oryk_Provisioner\Schema;
+use FreePBX\Modules\Oryk_Provisioner\ServiceEngine;
 use FreePBX\Modules\Oryk_Provisioner\Services;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
@@ -120,6 +123,12 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   SignupSweep      the minute job: out of the bridge once written; notices
  *   Notices          the module's dashboard notices
  *   LobbyContext     the lobby's dialplan, on Apply Config
+ *
+ * and, reacting to what a user's services become -- see ARCHITECTURE.md, "Jobs":
+ *
+ *   Jobs             the jobs and their steps
+ *   ServiceEngine    what a change means for a user, and the worker that runs it
+ *   Reactions        the module's own jobs, one class each in src/Jobs/
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
@@ -154,6 +163,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Installer */
 	private $installer;
+
+	/** @var Jobs */
+	private $jobs;
+
+	/** @var ServiceEngine */
+	private $engine;
 
 	/** @var LobbyContext */
 	private $lobby;
@@ -236,7 +251,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->tokens = new Tokens($freepbx);
 		$this->provisioningLog = new ProvisioningLog($freepbx);
 		$this->settings = new Settings($freepbx);
-		$this->services = new Services($freepbx);
+		$this->jobs = new Jobs($freepbx);
+		$this->services = new Services($freepbx, $this->jobs);
 		$this->template = new Template($freepbx, $this->pbx, $this->settings, $this->services);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
@@ -253,6 +269,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$userman = new UsermanManager($freepbx);
 		$ucp = new UcpAssignments($freepbx);
 		$extensions = new ExtensionManager($freepbx);
+		$this->engine = new ServiceEngine($freepbx, $this->jobs, $this->services, new Reactions($freepbx, $extensions));
 
 		$this->users = new Users(
 			$freepbx,
@@ -274,7 +291,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->banSync = new BanSync($freepbx, $this->fail2ban, $escalation);
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services, $this->jobs);
 		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge, $this->services);
@@ -310,7 +327,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->bans,
 			$this->fail2ban,
 			$this->overview,
-			$this->services
+			$this->services,
+			$this->jobs
 		);
 	}
 
@@ -480,6 +498,126 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
+	 * One run of the service job worker. Called by bin/oryk-jobs: in the
+	 * background for one user when a change is saved, and every minute for all.
+	 *
+	 * @param string|null $extension One user's queue, or null for every user with one.
+	 *
+	 * @return array<string, int> users, done, failed, purged.
+	 */
+	public function runJobs($extension = null)
+	{
+		return $this->engine->run($extension);
+	}
+
+	/**
+	 * Every service a user holds, packs followed: for other modules. See docs/hooks.md.
+	 *
+	 * @param string $extension The user.
+	 *
+	 * @return array<int, string> Slugs, each once, sorted.
+	 */
+	public function userServiceSlugs($extension)
+	{
+		return $this->services->userSlugs((string) $extension);
+	}
+
+	/**
+	 * Whether a user holds a service, assigned it or through a pack: for other modules.
+	 *
+	 * @param string $extension The user.
+	 * @param string $slug      The service.
+	 *
+	 * @return bool True when it does.
+	 */
+	public function hasService($extension, $slug)
+	{
+		return $this->services->hasService((string) $extension, (string) $slug);
+	}
+
+	/**
+	 * A user was granted a service: the hook point other modules declare in
+	 * their module.xml (`callingMethod="serviceGranted"`).
+	 *
+	 * The job worker calls the same handlers, one at a time, and records each;
+	 * called directly, this runs every hooked module -- this one's own jobs
+	 * included -- for one event, outside any job. See docs/hooks.md.
+	 *
+	 * @param array<string, mixed> $event extension and service at least; see docs/hooks.md.
+	 *
+	 * @return void
+	 *
+	 * @throws \FreePBX\Modules\Oryk_Provisioner\HandlerFailed The first handler that threw.
+	 */
+	public function serviceGranted(array $event)
+	{
+		$this->engine->dispatch('granted', ['event' => 'granted'] + $event);
+	}
+
+	/**
+	 * A user lost a service: serviceGranted()'s other half.
+	 *
+	 * @param array<string, mixed> $event extension and service at least; see docs/hooks.md.
+	 *
+	 * @return void
+	 *
+	 * @throws \FreePBX\Modules\Oryk_Provisioner\HandlerFailed The first handler that threw.
+	 */
+	public function serviceRevoked(array $event)
+	{
+		$this->engine->dispatch('revoked', ['event' => 'revoked'] + $event);
+	}
+
+	/**
+	 * This module's own hook on serviceGranted (module.xml): runs the job in
+	 * src/Jobs/ for the service, if there is one. Called by the job worker,
+	 * like every hooked module.
+	 *
+	 * @param array<string, mixed> $event See docs/hooks.md.
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the job cannot be done.
+	 */
+	public function runOwnJobGranted(array $event)
+	{
+		$this->engine->ownJob('granted', $event);
+	}
+
+	/**
+	 * This module's own hook on serviceRevoked: runOwnJobGranted()'s other half.
+	 *
+	 * @param array<string, mixed> $event See docs/hooks.md.
+	 *
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the job cannot be done.
+	 */
+	public function runOwnJobRevoked(array $event)
+	{
+		$this->engine->ownJob('revoked', $event);
+	}
+
+	/**
+	 * Core deleted a user, from anywhere in FreePBX: its services and jobs go.
+	 * Hooked in module.xml.
+	 *
+	 * Edit mode is a save, which Core makes by deleting and adding the user
+	 * again, and is passed over.
+	 *
+	 * @param string $extension The extension deleted.
+	 * @param bool   $editmode  True on a save.
+	 *
+	 * @return void
+	 */
+	public function coreDelUser($extension, $editmode = false)
+	{
+		if (!$editmode) {
+			$this->services->forgetUser((string) $extension);
+		}
+	}
+
+	/**
 	 * When this module's dialplan is written, among every module's: after
 	 * Core's, since the forward guard splices into ext-local.
 	 *
@@ -586,6 +724,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveService':
 			case 'deleteService':
 			case 'setUserService':
+			case 'serviceImpact':
+			case 'userServiceJobs':
+			case 'listJobs':
+			case 'retryJob':
+			case 'deleteJob':
 			case 'saveSettings':
 			case 'listBans':
 			case 'saveBan':
@@ -598,6 +741,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listOverviewBans':
 			case 'listOverviewCalls':
 			case 'clearOverviewHistory':
+			case 'clearOverviewJobs':
 			case 'listOverviewVoicemail':
 			case 'clearOverviewVoicemail':
 			case 'deleteOverviewVoicemail':
@@ -628,7 +772,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// A list opened from a navigator title is narrowed the way that title's
 		// badge was counted: `&scope=<kind>:<id>` names the row, Navigator says
 		// what it scopes. Read only by the list commands.
-		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans', 'listServices'], true)
+		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans', 'listServices', 'listJobs'], true)
 			? $this->navigator->scope(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
 			: null;
 
@@ -748,6 +892,23 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'setUserService':
 				return $this->services->setUserService($_REQUEST);
 
+			// What a save or delete on a service page would change, asked first.
+			case 'serviceImpact':
+				return $this->services->serviceImpact($_REQUEST);
+
+			// Where a user's services stand, for the Services tab's Status while jobs run.
+			case 'userServiceJobs':
+				return ['status' => true, 'jobs' => $this->jobs->statusFor((string) ($_REQUEST['extension'] ?? ''))];
+
+			case 'listJobs':
+				return $this->jobs->listJobs($scope['jobs']);
+
+			case 'retryJob':
+				return $this->jobs->retryJob($_REQUEST['id'] ?? null);
+
+			case 'deleteJob':
+				return $this->jobs->deleteJob($_REQUEST['id'] ?? null);
+
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);
 
@@ -785,6 +946,18 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'clearOverviewHistory':
 				return $this->overview->clearHistory(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+			// A user's jobs, all of them; a client has none of its own.
+			case 'clearOverviewJobs':
+				$at = Overview::target(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));
+
+				if (!isset($at['user'])) {
+					return ['status' => false, 'message' => _('Only a user has jobs to clear.')];
+				}
+
+				$this->jobs->forgetUser($at['user']);
+
+				return ['status' => true];
 
 			case 'listOverviewVoicemail':
 				return $this->overview->listVoicemail(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')));

@@ -1,7 +1,7 @@
 <?php
 /**
  * The module page: one pane per section -- Users, Clients, Profiles,
- * Services, Logs, Bans, Overview and Settings.
+ * Services, Logs, Bans, Jobs, Overview and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -29,7 +29,8 @@
  * Settings is the one tab with fields rather than a table, drawn by
  * partials/settings.php and saved by the action bar's Save.
  *
- * Services is drawn by partials/services.php.
+ * Services is drawn by partials/services.php, and Jobs -- what changes to
+ * users' services set going, see ARCHITECTURE.md, "Jobs" -- by partials/jobs.php.
  *
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
@@ -51,6 +52,7 @@
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
  * @var array<string, string>              $serviceFilter Services::filters(), on Services -- see partials/services.php
+ * @var array<string, string>              $jobFilter Jobs::filters(), on Jobs -- see partials/jobs.php
  * @var array<string, mixed>|null         $overview  Overview::inventory(), on Overview -- see partials/overview.php
  */
 
@@ -280,6 +282,15 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							<?php endif; ?>
 						</div>
 						<?php endif; ?>
+					</div>
+					<?php endif; ?>
+
+					<?php if ($tab === 'jobs'): ?>
+					<div class="tab-pane active" id="oryk_jobs">
+						<?php
+						$jobScope = $scope ? $scope['key'] : '';
+						include __DIR__ . '/partials/jobs.php';
+						?>
 					</div>
 					<?php endif; ?>
 

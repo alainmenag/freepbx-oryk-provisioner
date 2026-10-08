@@ -182,10 +182,26 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $s
 		}).get().join(',');
 	}
 
+	// A save or delete that changes what users hold says how, and asks first.
 	orykEditor({
 		save: 'saveService',
+		ask: function (values) {
+			const asked = $.Deferred();
+
+			orykServiceImpact($.extend({ action: 'save' }, values)).done(function (message) {
+				orykAsk(message ? message + ' Save?' : '', { title: 'Save service', choices: [{ label: 'Save', value: true, style: 'btn-primary' }] })
+					.done(() => asked.resolve())
+					.fail(() => asked.reject());
+			});
+
+			return asked.promise();
+		},
 		remove: 'deleteService',
-		confirm: 'Delete this service? The services over and under it are kept.',
+		confirm: function () {
+			return orykServiceImpact({ action: 'delete', slug: orykServiceSlug }).then(function (message) {
+				return 'Delete this service? The services over and under it are kept.' + (message ? ' ' + message : '');
+			});
+		},
 		key: 'slug',
 		values: function () {
 			return {

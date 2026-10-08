@@ -297,6 +297,22 @@ class Schema extends Service
 	}
 
 	/**
+	 * Bring a job steps table written before a step said which of the
+	 * module's own jobs ran for it up to date. NULL on every older step.
+	 *
+	 * @return void
+	 */
+	public function addJobStepOwnJobColumn()
+	{
+		if (!$this->schemaHas($this->jobStepsTable, 'column', 'own_job')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->jobStepsTable}`
+				ADD COLUMN `own_job` VARCHAR(64) NULL DEFAULT NULL AFTER `done_by`"
+			);
+		}
+	}
+
+	/**
 	 * Bring a services table written before services had a slug up to date.
 	 *
 	 * Nullable, because the rows already there have none until

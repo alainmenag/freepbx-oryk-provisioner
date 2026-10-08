@@ -79,8 +79,11 @@ it, from your service's page. They are written when the module is installed or
 upgraded.
 
 Services are assigned to users on each user's
-[Services tab](users.md#services). Nothing a phone is served depends on a
-service.
+[Services tab](users.md#services). Every change to what a user has is a
+[job](jobs.md): Voicemail, the two recording services and Find Me Follow set
+the matching FreePBX feature for the user, and any module that hooks the
+provisioner is told about every service. What a phone is served depends on a
+service only where a template asks for `{{extension.services}}`.
 
 A client with no device still provisions — the device-derived placeholders are
 simply empty, which is what a profile of static configuration wants. A client
