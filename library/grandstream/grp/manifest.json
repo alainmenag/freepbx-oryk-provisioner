@@ -1,0 +1,9 @@
+{
+	"name": "Grandstream GRP",
+	"vendor": "Grandstream",
+	"version": 1,
+	"skus": ["GRP2613"],
+	"resources": [
+		{"name": "cfg{{device.mac}}.xml", "type": "template", "source": "cfgmac.xml"}
+	]
+}

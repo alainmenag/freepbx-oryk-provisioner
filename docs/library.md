@@ -33,7 +33,18 @@ Until you do, a phone asking for that file is answered that it is missing.
 
 | Entry | Known to work on | Resources |
 | --- | --- | --- |
+| **AudioCodes 420HD** | 420HD | `.cfg` |
+| **Grandstream GRP** | GRP2613 | `cfg{{device.mac}}.xml` |
 | **Polycom VVX** | VVX500 | `{{device.mac}}.cfg`, `phone.cfg`, `web.cfg`, `app.log`, `boot.log`, and `sip.ld` for the firmware you upload |
+| **WebKit** | browsers (WebKit) | `{{device.mac}}.cfg`, as plain `KEY=value` lines |
+| **Cisco SPA / MPP (untested)** | untested | `spa{{device.mac}}.xml` |
+| **Fanvil X-Series (untested)** | untested | `{{device.mac}}.cfg` |
+| **Mitel 6800 (untested)** | untested | `.cfg` |
+| **Yealink T-Series (untested)** | untested | `{{device.mac}}.cfg` |
+
+An entry marked **(untested)** was written from the vendor's documented format
+and has not been run on a phone. It registers one line and nothing else; treat
+it as a starting point, and rename the profile once it works for you.
 
 `web.cfg` points the phone at the **Provisioning Server** setting — see
 [Settings](admin.md#settings). It does not set the phone's provisioning user or

@@ -346,6 +346,8 @@ never serves from here.
   after `ID_PATTERN`.
 - `skus` are the models the entry is known to work on. Nothing matches on them
   yet.
+- An entry nobody has run on a phone says so in its `name`: it ends
+  `(untested)`, and the name is the whole of the marking.
 
 ## Schema
 
@@ -1416,7 +1418,7 @@ bootstrap FreePBX on its own.
   limits trust `REMOTE_ADDR` -- behind a proxy every sign-up is one address.
 - Copying resources between profiles, and exporting or importing a profile. A
   profile is made empty or from the [library](#the-library).
-- The library has one entry, and nothing reads its `skus`: a phone's model is
+- Nothing reads an entry's `skus`: a phone's model is
   not detected, and a client with no profile is still served the profile named
   after its vendor.
 - No `fwconsole` command. Backup/restore hooks are stubs.
