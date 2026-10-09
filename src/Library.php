@@ -100,7 +100,8 @@ class Library extends Service
 	 * One entry.
 	 *
 	 * All or nothing: a manifest with one resource wrong is no entry, so a
-	 * profile is never made with part of what it was meant to serve.
+	 * profile is never made with part of what it was meant to serve. One left
+	 * out for what its manifest says is logged.
 	 *
 	 * @param mixed $id `<vendor>/<set>`, as a request may send it.
 	 *
@@ -118,9 +119,18 @@ class Library extends Service
 		}
 
 		$dir = $this->path . '/' . $id;
-		$manifest = json_decode((string) @file_get_contents($dir . '/' . self::MANIFEST), true);
+		$file = $dir . '/' . self::MANIFEST;
+
+		// Said nothing of: the id may be a request's, naming nothing.
+		if (!is_file($file)) {
+			return null;
+		}
+
+		$manifest = json_decode((string) @file_get_contents($file), true);
 
 		if (!is_array($manifest)) {
+			$this->logWarning('library entry ' . $id . ' has a manifest that cannot be read, and is left out');
+
 			return null;
 		}
 
@@ -141,6 +151,8 @@ class Library extends Service
 		}
 
 		if ($name === '' || $version < 1 || !$resources) {
+			$this->logWarning('library entry ' . $id . ' has no name, version or resources, and is left out');
+
 			return null;
 		}
 

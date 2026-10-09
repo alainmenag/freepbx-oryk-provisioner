@@ -37,7 +37,10 @@ vendor-specific values stay in your templates rather than in the module:
 
 Non-alphanumerics in a keyword fold to `_`, so `dtmf-mode` is `{{sip.dtmf_mode}}`.
 
-There are no filters, sections or escaping.
+A template that begins with `<?xml` has its values XML-escaped as they go in, so
+an extension named `R&D` is written `R&amp;D` and the file still parses. Any
+other template is given its values exactly as they are. There are no filters or
+sections.
 
 A site whose `sip` or `users` tables are missing a lookup degrades to empty
 values rather than a 500.

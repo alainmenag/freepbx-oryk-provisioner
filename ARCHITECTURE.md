@@ -1488,5 +1488,6 @@ bootstrap FreePBX on its own.
   needs Connect's driver installed.
 - Renumbering does not check ring groups, queues or other destinations for the
   old number. A PBX-wide From Domain change is not pushed to existing endpoints.
-- GraphQL API, per-client parameter overrides, template
-  filters/sections/escaping.
+- GraphQL API, per-client parameter overrides, template filters/sections.
+  Escaping is one rule: a template beginning `<?xml` has its values
+  XML-escaped (`Template::renderConfig()`); nothing else is escaped.

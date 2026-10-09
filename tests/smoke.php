@@ -2424,6 +2424,15 @@ is_eq('a template is given them as one value', $render(['mac' => '0004f282e824',
 is_eq('a user with none renders empty', $render(['mac' => '0004f282e824', 'extension' => '1001']), 'SERVICES=');
 is_eq('and so does a client with no user', $render(['mac' => '0004f282e824']), 'SERVICES=');
 
+$awkward = ['extension.name' => 'R&D "East" <1>'];
+is_eq(
+	'a template that is XML has its values escaped',
+	$template->renderConfig("<?xml version=\"1.0\"?>\n<a n=\"{{extension.name}}\"/>", $awkward),
+	"<?xml version=\"1.0\"?>\n<a n=\"R&amp;D &quot;East&quot; &lt;1&gt;\"/>"
+);
+is_eq('one that is not is given them as they are', $template->renderConfig('NAME={{extension.name}}', $awkward), 'NAME=R&D "East" <1>');
+is_eq('and so is one that only opens with a bracket', $template->renderConfig('<<VOIP>>{{extension.name}}', $awkward), '<<VOIP>>R&D "East" <1>');
+
 echo "\n  what a change to services makes a job of:\n";
 
 // gold is over fax and sms; silver over fax.

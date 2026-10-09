@@ -34,9 +34,9 @@ Until you do, a phone asking for that file is answered that it is missing.
 | Entry | Known to work on | Resources |
 | --- | --- | --- |
 | **AudioCodes 420HD** | 420HD | `.cfg` |
+| **Default** | browsers (WebKit) | `{{device.mac}}.cfg`, as plain `KEY=value` lines |
 | **Grandstream GRP** | GRP2613 | `cfg{{device.mac}}.xml` |
 | **Polycom VVX** | VVX500 | `{{device.mac}}.cfg`, `phone.cfg`, `web.cfg`, `app.log`, `boot.log`, and `sip.ld` for the firmware you upload |
-| **WebKit** | browsers (WebKit) | `{{device.mac}}.cfg`, as plain `KEY=value` lines |
 | **Cisco SPA / MPP (untested)** | untested | `spa{{device.mac}}.xml` |
 | **Fanvil X-Series (untested)** | untested | `{{device.mac}}.cfg` |
 | **Mitel 6800 (untested)** | untested | `.cfg` |

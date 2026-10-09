@@ -644,7 +644,7 @@ class Users extends Service
 		try {
 			$mac = Mac::normalize(trim((string) ($request['mac'] ?? '')));
 			$device = $this->createDevice($mac === Mac::internal((int) ($request['id'] ?? 0)) ? '' : $mac);
-		} catch (\Exception $e) {
+		} catch (\Throwable $e) {
 			return ['status' => false, 'message' => $e->getMessage()];
 		}
 
@@ -654,7 +654,7 @@ class Users extends Service
 			try {
 				\FreePBX::Core()->delDevice($device, true);
 				$this->endpoints->forget($device);
-			} catch (\Exception $e) {
+			} catch (\Throwable $e) {
 				$this->logError('unable to take back device ' . $device . ': ' . $e->getMessage());
 			}
 		}

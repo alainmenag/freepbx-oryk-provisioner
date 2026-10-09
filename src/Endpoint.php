@@ -967,7 +967,7 @@ class Endpoint extends Service
 				'kind' => 'template',
 				'type' => 'template',
 				'resource' => $name,
-				'config' => $this->template->renderTemplate((string) $resource['template'], $values),
+				'config' => $this->template->renderConfig((string) $resource['template'], $values),
 			];
 		}
 

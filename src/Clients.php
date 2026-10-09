@@ -45,6 +45,9 @@ class Clients extends Service
 	/** Whether a client's MAC is the internal one Mac::internal() gave it. */
 	const INTERNAL_EXPR = "(pc.mac = CONCAT('02', LPAD(pc.id, 10, '0')))";
 
+	/** What the editor's Device posts to have a device made: Users::saveClientWithNewDevice(). */
+	const AUTO_DEVICE = 'auto';
+
 	/** @var Freepbx */
 	private $pbx;
 
@@ -56,9 +59,6 @@ class Clients extends Service
 
 	/** @var LogRepo */
 	private $logs;
-
-	/** What the editor's Device posts to have a device made: Users::saveClientWithNewDevice(). */
-	const AUTO_DEVICE = 'auto';
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
