@@ -26,9 +26,13 @@ Config** bar, as a save in Core's Extensions page does: the change reaches
 Asterisk when you apply it. So does a delete. Settings you gave an extension
 in FreePBX that this form has no field for are kept.
 
-The list's **Context** column says where each user's calls are placed —
-*Lobby* for users open provisioning made — and **Last Seen** when any of its
-phones was last answered.
+The list's **Clients** column counts the phones provisioned for each user,
+**Secure** says whether media encryption is on, **Context** names the context
+its calls are placed in, as it is written — `lobby` for users open
+provisioning made — and **Last Seen** says when any of its phones was last
+answered. A row has two buttons: one opens the user's
+[Overview](admin.md#overview), which is also where a user is deleted from the
+list, and **Ext.** opens it in FreePBX's Extensions page.
 
 The user's **Clients** tab lists the phones provisioned for it, and its **Add
 Client** opens a new client already pointed at this user. The client editor
@@ -37,8 +41,8 @@ links back to its user.
 ## The lobby
 
 Users made by [open provisioning](endpoint.md#the-lobby) are in the lobby:
-internal calls and emergency routes only. The **Lobby** choice above the
-Users table lists them.
+internal calls and emergency routes only. Sort the Users list by **Context**
+to bring them together.
 
 A user's **Context** is shown on its page and changed in Extensions, not
 here. To let a lobby user out, set its context there (`from-internal` for an
@@ -48,11 +52,11 @@ undone by that: transfers stay off until you **Save** the user once on its
 page here, and its UCP login stays refused until you allow it in User
 Manager.
 
-With **Settings → Lobby Expiry** (`ORYK_OPEN_EXPIRE_DAYS`) above 0, a lobby
-user whose phone has not been answered for that many days — or never, and it
-signed up that long ago — is listed under **Expired**. **Delete listed**
-deletes those, as Delete would, after asking; one whose phone was seen in the
-meantime is skipped. Nothing is deleted on its own.
+Nothing deletes a lobby user on its own, and the Users list has no filter
+for the ones that have gone quiet: sort it by **Last Seen** to find them, and
+delete each from its Overview. **Settings → Lobby Expiry**
+(`ORYK_OPEN_EXPIRE_DAYS`) still says how many unseen days make a lobby user
+expired, but no page lists expired users at present.
 
 ## Renumbering
 

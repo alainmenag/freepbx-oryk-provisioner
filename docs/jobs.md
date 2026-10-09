@@ -41,8 +41,9 @@ the last job has run — none queued or running for anyone — the provisioner
 runs `fwconsole reload` once, if FreePBX says Apply Config is needed. That
 applies **everything pending**, including changes of yours not yet applied,
 as pressing Apply Config would. A reload that fails is logged, and Apply
-Config stays up. Service packs, Support, Guest User, Lobby User and your own
-services do nothing here — a guest's context is changed in Extensions — but
+Config stays up. Service packs — Guest User and Lobby User are two — Support,
+Knowledge Base and your own services do nothing here — a lobby user's context
+is changed in Extensions — but
 every step is also passed to any other module that hooks the provisioner
 ([hooks](hooks.md)): for every service, or only the ones it asks for.
 

@@ -16,12 +16,13 @@ box; click one to copy it.
 | `{{device.tech}}` | `pjsip` or `sip` |
 | `{{device.username}}` | SIP username |
 | `{{device.secret}}` | SIP secret |
+| `{{client.id}}` | the client's id — the number in its page address, and the directory its uploaded logs are stored in |
 | `{{client.private_ip}}` | where the handset is on the local network |
 | `{{client.public_ip}}` | where the site it sits behind is reached |
 | `{{extension.number}}` | the extension the device is attached to |
 | `{{extension.name}}` | display name |
 | `{{extension.voicemail}}` | voicemail setting |
-| `{{extension.services}}` | the user's services, as slugs joined by commas: `guest-user,support`. One that reaches the user through a service pack is listed like one assigned; in alphabetical order; empty when the user has none |
+| `{{extension.services}}` | the user's services, as slugs joined by commas: `guest-user,knowledge-base`. One that reaches the user through a service pack is listed like one assigned; in alphabetical order; empty when the user has none |
 | `{{profile.id}}`, `{{profile.name}}` | the profile serving the file |
 | `{{server.host}}` | the Hostname setting (`ORYK_HOSTNAME`); blank, the host the request arrived on, port stripped |
 | `{{server.port}}` | `5060` |

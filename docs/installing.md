@@ -7,11 +7,17 @@ Each tagged version is published as `oryk_provisioner-<version>.zip` on the
 repository's Releases page, ready to upload in Module Admin — see
 [Releasing](releasing.md) for how one is cut.
 
-`install()` registers the module's settings in Advanced Settings (keeping any
-value already there) and adds indexes on `devices.id`, `devices.user` and
-`userman_users.email` for the Users tab. Back up the FreePBX database before
+`install()` creates the module's tables — and on an upgrade leaves them and
+what they hold in place, adding only the columns a newer version needs —
+writes the module's own [services](concepts.md) again, registers the module's
+settings in Advanced Settings (keeping any value already there) and adds
+indexes on `devices.id`, `devices.user` and `userman_users.email` for the
+Users tab. It makes the two directories files are kept in: uploaded resources
+under Asterisk's spool directory (`repo/`), and the logs phones send under its
+log directory (`provisioner/`). Back up the FreePBX database before
 installing or upgrading. Uninstalling removes the module's settings with the
-module, as FreePBX does with every module's settings.
+module, as FreePBX does with every module's settings; the module's tables are
+left where they are.
 
 `install()` also symlinks the module's `engine/` directory into the web root:
 
@@ -35,8 +41,14 @@ http://<pbx>/provisioner/<mac>
 so the filename a phone asks for arrives as the request path. `uninstall()`
 removes the symlink — and only if it still resolves to this module's engine.
 
-Install also schedules the fail2ban sync with FreePBX's scheduler (every
-minute). Its root half — a helper, one sudo rule and the `banned` and `deny` jails — is set up
+Install also schedules three jobs with FreePBX's scheduler, each run every
+minute as the web user: the fail2ban sync, the open-provisioning sweep, and
+the worker that runs [service jobs](jobs.md) an upgrade queued. Uninstalling
+removes all three. It also sets up the Realtime bridge that lets a sign-up
+register before Apply Config, and says what that needs — see
+[Registering before Apply Config](endpoint.md#registering-before-apply-config).
+
+The fail2ban sync's root half — a helper, one sudo rule and the `banned` and `deny` jails — is set up
 by `fwconsole ma install` when run as root; from Module Admin in the GUI the
 install prints the command instead. See
 [Syncing with fail2ban](fail2ban.md#setting-it-up). Uninstalling as root
