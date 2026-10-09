@@ -72,10 +72,13 @@ class Pages extends Service
 	/** @var Notices */
 	private $notices;
 
+	/** @var Devices */
+	private $devices;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs, Library $library, Notices $notices)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs, Library $library, Notices $notices, Devices $devices)
 	{
 		parent::__construct($freepbx);
 
@@ -97,12 +100,13 @@ class Pages extends Service
 		$this->jobs = $jobs;
 		$this->library = $library;
 		$this->notices = $notices;
+		$this->devices = $devices;
 	}
 
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list, six editors, a log entry and a job, told apart by which key the URL carries.
+	 * A list, six editors, a device, a log entry and a job, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
@@ -128,6 +132,7 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&service=                   a new one
 	 *   ?display=oryk_provisioner&ban=<id>                   one ban
 	 *   ?display=oryk_provisioner&ban=                       a new one
+	 *   ?display=oryk_provisioner&device=<id>                one FreePBX device
 	 *   ?display=oryk_provisioner&log=<id>                   one log entry
 	 *   ?display=oryk_provisioner&job=<id>                   one job
 	 *
@@ -144,6 +149,10 @@ class Pages extends Service
 
 		if (isset($_REQUEST['job'])) {
 			return $this->showJob(trim((string) $_REQUEST['job']));
+		}
+
+		if (isset($_REQUEST['device'])) {
+			return $this->showDevice(trim((string) $_REQUEST['device']));
 		}
 
 		if (isset($_REQUEST['ban'])) {
@@ -391,6 +400,32 @@ class Pages extends Service
 	}
 
 	/**
+	 * Render one FreePBX device: what it is, and the user it is on to change.
+	 * There is no new one: a device is made in FreePBX, or by a client's
+	 * "Auto Create".
+	 *
+	 * @param string $wanted Device id.
+	 *
+	 * @return string Rendered page output.
+	 */
+	private function showDevice($wanted)
+	{
+		// doConfigPageInit() has already bounced one that has gone.
+		$device = $this->devices->deviceRow($wanted);
+
+		if (!$device) {
+			return $this->showList('devices');
+		}
+
+		return $this->view('device', [
+			'device' => $device,
+			'users' => $this->devices->userChoices(),
+			'sections' => $this->navigator->sections('devices'),
+			'navigator' => $this->navigator->levels(['device' => (string) $device['id']]),
+		]);
+	}
+
+	/**
 	 * Render one provisioning log entry. There is no new one: the endpoint is
 	 * the only thing that writes them.
 	 *
@@ -496,8 +531,8 @@ class Pages extends Service
 			return '';
 		}
 
-		// A ban has one tab, and so has a service.
-		if (isset($_REQUEST['ban']) || isset($_REQUEST['service'])) {
+		// A ban has one tab, and so have a service and a device.
+		if (isset($_REQUEST['ban']) || isset($_REQUEST['service']) || isset($_REQUEST['device'])) {
 			return '';
 		}
 
@@ -703,6 +738,7 @@ class Pages extends Service
 		$kind = (string) key($at);
 		$names = [
 			'user' => _('user %s'),
+			'device' => _('device %s'),
 			'client' => _('client %s'),
 			'profile' => _('profile %s'),
 			'log' => _('log entry %s'),
@@ -850,7 +886,7 @@ class Pages extends Service
 	/**
 	 * Buttons FreePBX draws in the page header.
 	 *
-	 * Only the editors, a log entry, a job, the Settings tab and Overview on a row
+	 * Only the editors, a device, a log entry, a job, the Settings tab and Overview on a row
 	 * have any: the list's other tabs carry their own controls, and a single
 	 * button in the header could not say which tab it meant.
 	 *
@@ -885,6 +921,15 @@ class Pages extends Service
 					'id' => 'orykclose',
 					'value' => _('Close'),
 				],
+			];
+		}
+
+		// A device is never new, so all three are always there.
+		if (isset($_REQUEST['device'])) {
+			return [
+				'oryksave' => ['name' => 'oryksave', 'id' => 'oryksave', 'value' => _('Save')],
+				'orykdelete' => ['name' => 'orykdelete', 'id' => 'orykdelete', 'value' => _('Delete')],
+				'orykclose' => ['name' => 'orykclose', 'id' => 'orykclose', 'value' => _('Close')],
 			];
 		}
 
@@ -989,6 +1034,16 @@ class Pages extends Service
 		if (isset($_REQUEST['log'])) {
 			if (!$this->requestLog->logRow(trim((string) $_REQUEST['log']))) {
 				header('Location: config.php?display=oryk_provisioner&tab=logs');
+				exit;
+			}
+
+			return;
+		}
+
+		// Nor a new device: it is made in FreePBX, or by a client's Auto Create.
+		if (isset($_REQUEST['device'])) {
+			if (!$this->devices->deviceRow(trim((string) $_REQUEST['device']))) {
+				header('Location: config.php?display=oryk_provisioner&tab=devices');
 				exit;
 			}
 

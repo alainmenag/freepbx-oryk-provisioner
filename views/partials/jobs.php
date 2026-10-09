@@ -30,7 +30,7 @@ $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('So
 ?>
 
 <?php if ($jobFilter === null): ?>
-<div id="job_toolbar" class="oryk-toolbar">
+<div id="job_toolbar" class="oryk-toolbar oryk-toolbar-clear">
 	<button type="button" class="btn btn-danger" id="oryk_overview_jobs_clear" title="<?php echo _('Clear Jobs'); ?>">
 		<?php echo $icon('trash'); ?>
 		<?php echo _('Clear'); ?>

@@ -523,14 +523,16 @@ class Users extends Service
 
 	/**
 	 * Delete a device by its id alone: the device a client being deleted
-	 * was using. Its extension is looked up, and deleteDevice() does the rest.
+	 * was using, or one deleted from the Devices list or its own page. Its
+	 * extension is looked up, and deleteDevice() does the rest.
 	 *
-	 * @param mixed $device Device id.
+	 * @param mixed $device      Device id.
+	 * @param bool  $withClients True to delete its clients rather than unassign them.
 	 *
 	 * @return array<string, mixed> Status and `reload`; or a message. A
 	 *                              device that has already gone is a success.
 	 */
-	public function deleteDeviceById($device)
+	public function deleteDeviceById($device, $withClients = false)
 	{
 		$device = (string) $device;
 
@@ -546,8 +548,9 @@ class Users extends Service
 			return ['status' => true];
 		}
 
-		// On no extension -- createDevice()'s -- so there is no user to look it up on.
-		if ((string) $extension === 'none' || (string) $extension === '') {
+		// On no extension -- createDevice()'s -- or on one that is no user of
+		// this module's, so there is no user to look it up on.
+		if ((string) $extension === 'none' || (string) $extension === '' || !$this->userRow($extension)) {
 			try {
 				\FreePBX::Core()->delDevice($device);
 			} catch (\Exception $e) {
@@ -557,13 +560,19 @@ class Users extends Service
 			}
 
 			$this->endpoints->forget($device);
-			$this->clients->unassignDevice($device);
+
+			if ($withClients) {
+				$this->clients->deleteForDevice($device);
+			} else {
+				$this->clients->unassignDevice($device);
+			}
+
 			self::pending();
 
 			return ['status' => true, 'reload' => true];
 		}
 
-		return $this->deleteDevice((string) $extension, $device);
+		return $this->deleteDevice((string) $extension, $device, $withClients);
 	}
 
 	/**

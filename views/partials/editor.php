@@ -232,6 +232,9 @@
 	 * editor.remove    command that deletes it
 	 * editor.confirm   what Delete asks before it does, or a function
 	 *                  returning a promise of it
+	 * editor.asking    optional; a function returning orykAsk()'s options
+	 *                  for that question, when it has more than one yes
+	 * editor.answered(a) optional; what the answer adds to what Delete posts
 	 * editor.page(id)  this editor's own URL for a row
 	 * editor.closed    where Close and a finished Delete go
 	 */
@@ -276,10 +279,14 @@
 				? editor.confirm()
 				: $.Deferred().resolve(editor.confirm).promise();
 
-			question.done((message) => orykAsk(message).done(() => {
+			question.done((message) => orykAsk(message, editor.asking ? editor.asking() : undefined).done((answer) => {
 				var key = editor.key || 'id';
 				var row = {};
 				row[key] = editor.values()[key];
+
+				if (editor.answered) {
+					$.extend(row, editor.answered(answer));
+				}
 
 				orykPost(editor.remove, row).done(function (response) {
 					if (!response || !response.status) {

@@ -1,7 +1,7 @@
 <?php
 /**
- * The module page: one pane per section -- Users, Clients, Profiles,
- * Services, Logs, Bans, Jobs, Overview and Settings.
+ * The module page: one pane per section -- Users, Devices, Clients,
+ * Profiles, Services, Logs, Jobs, Bans, Overview and Settings.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -32,6 +32,11 @@
  *
  * Services is drawn by partials/services.php, and Jobs -- what changes to
  * users' services set going, see ARCHITECTURE.md, "Jobs" -- by partials/jobs.php.
+ *
+ * Devices is every FreePBX device, with the user it is on and the client
+ * on it. Edit leads to the
+ * device's own page, views/device.php, where that user is changed; a trash
+ * can deletes it, asking whether its clients go too. Nothing is added here.
  *
  * Bans is the bans table: who the endpoint refuses, or answers in spite of a
  * ban -- see ARCHITECTURE.md, "Bans".
@@ -203,6 +208,35 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 									<th data-field="context" data-formatter="formatUserContext" data-sortable="true"><?php echo _('Context'); ?></th>
 									<th data-field="last_seen" data-formatter="formatClientSeen" data-sortable="true"><?php echo _('Last Seen'); ?></th>
 									<th data-field="actions" data-formatter="formatUserActions" data-align="right"><?php echo _('Actions'); ?></th>
+								</tr>
+							</thead>
+						</table>
+					</div>
+
+					<?php endif; ?>
+
+					<?php if ($tab === 'devices'): ?>
+					<div class="tab-pane active" id="oryk_devices">
+						<table
+							id="pbx_device_table"
+							data-toggle="table"
+							data-url="ajax.php?module=oryk_provisioner&command=listDevices<?php echo $scopeQuery; ?>"
+							class="table table-striped"
+							data-side-pagination="server"
+							data-pagination="true"
+							data-search="true"
+							data-show-refresh="true"
+							data-icons-prefix="oryk-icon"
+							data-icons='{"refresh":"oryk-icon-refresh"}'
+							data-unique-id="id"
+							data-sort-name="id"
+							data-sort-order="asc">
+							<thead>
+								<tr>
+									<th data-field="id" data-formatter="formatPbxDeviceId" data-sortable="true"><?php echo _('Device'); ?></th>
+									<th data-field="user" data-formatter="formatPbxDeviceUser" data-sortable="true"><?php echo _('User'); ?></th>
+									<th data-field="client_mac" data-formatter="formatPbxDeviceClient" data-sortable="true"><?php echo _('Client'); ?></th>
+									<th data-field="actions" data-formatter="formatPbxDeviceActions" data-align="right"><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 						</table>
@@ -711,6 +745,74 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			`</div>`
 		].join('');
 	}
+
+	function orykPbxDeviceUrl(row) {
+		return `?display=oryk_provisioner&device=${encodeURIComponent(row.id)}`;
+	}
+
+	function formatPbxDeviceId(value, row) {
+		return `<a class="oryk-name" href="${orykPbxDeviceUrl(row)}">${orykEscape(value)}</a>`;
+	}
+
+	// The extension the device is on, linked when it is one the Users list
+	// shows; 'none' is FreePBX's word for a device nobody is on.
+	function formatPbxDeviceUser(value, row) {
+		if (!value || value === 'none') {
+			return '-';
+		}
+
+		const name = row.user_name && row.user_name !== value ? ` <span class="text-muted">${orykEscape(row.user_name)}</span>` : '';
+
+		return (Number(row.is_user)
+			? `<a href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>`
+			: orykEscape(value)) + name;
+	}
+
+	// The client on the device, by its MAC; a device with several names the
+	// first and says how many more there are.
+	function formatPbxDeviceClient(value, row) {
+		if (!row.client_id) {
+			return '-';
+		}
+
+		const more = (Number(row.clients) || 0) - 1;
+
+		return `<a class="oryk-name" href="?display=oryk_provisioner&client=${encodeURIComponent(row.client_id)}">${orykEscape(value || row.client_id)}</a>` +
+			(more > 0 ? ` <span class="text-muted" title="${more} more client${more === 1 ? '' : 's'} on this device">+${more}</span>` : '');
+	}
+
+	function formatPbxDeviceActions(value, row) {
+		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+			`<a class="btn btn-default btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}" title="Open in Devices">Dev.</a>` +
+			`<button type="button" class="btn btn-danger btn-sm" name="pbx_device_delete" value="${orykEscape(row.id)}" title="Delete this device">${orykIcon('trash')}</button>` +
+			`<a class="btn btn-primary btn-sm" href="${orykPbxDeviceUrl(row)}">Edit</a>` +
+			`</div>`;
+	}
+
+	// A device with clients on it is asked which: the device alone, or them too.
+	$(document).on('click', '[name="pbx_device_delete"]', function () {
+		const button = $(this);
+		const row = $('#pbx_device_table').bootstrapTable('getRowByUniqueId', button.val()) || {};
+		const clients = Number(row.clients) || 0;
+
+		orykAsk(orykDeviceDeleteQuestion(button.val(), Number(row.own), clients), orykDeviceDeleteChoices(clients)).done((withClients) => {
+			button.prop('disabled', true);
+
+			orykPost('deleteDevice', { id: button.val(), clients: withClients ? 1 : '' }).done(function (response) {
+				if (!response || !response.status) {
+					button.prop('disabled', false);
+					notie.alert(3, (response && response.message) || 'Could not delete.', 4);
+					return;
+				}
+
+				orykPending(response);
+				$('#pbx_device_table').bootstrapTable('refresh');
+			}).fail(function () {
+				button.prop('disabled', false);
+				notie.alert(3, 'Could not delete.', 4);
+			});
+		});
+	});
 
 	// The context a user's calls are placed in, as it is named.
 	function formatUserContext(value) {
