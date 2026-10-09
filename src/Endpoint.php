@@ -359,7 +359,7 @@ class Endpoint extends Service
 	 *
 	 * Asked of the address it came from, its MAC, the client that MAC names, that
 	 * client's device and extension, and the profile it is served -- its own, or
-	 * its vendor's as resolveRequest() would pick -- or, with no client, the open
+	 * the one Profiles::profileFor() picks -- or, with no client, the open
 	 * provisioning username. See Bans::decision() for which row decides.
 	 *
 	 * @param mixed       $mac      MAC the request was made with.
@@ -374,9 +374,9 @@ class Endpoint extends Service
 		$client = $mac === '' ? null : $this->clients->clientByMac($mac);
 		$profile = $client ? ($client['profile_id'] ?? null) : null;
 
-		if ($client && $profile === null && self::vendor() !== null) {
-			$vendor = $this->profiles->profileByName(self::vendor());
-			$profile = $vendor ? $vendor['id'] : null;
+		if ($client && $profile === null) {
+			$served = $this->profiles->profileFor(self::vendor());
+			$profile = $served ? $served['id'] : null;
 		}
 
 		$row = $this->bans->decision([
@@ -577,7 +577,8 @@ class Endpoint extends Service
 	 * Three steps, and the first that answers wins:
 	 *
 	 *   1. A MAC naming a client with a profile -- its own, or, when it has
-	 *      none, the one named after $vendor: that profile's resources, matched
+	 *      none, the one named after $vendor, or failing that the one named
+	 *      Profiles::FALLBACK: that profile's resources, matched
 	 *      by name. The profile is the authority -- a name it does not serve is
 	 *      refused here rather than looked for elsewhere, or a profile could never
 	 *      withhold a file.
@@ -633,10 +634,10 @@ class Endpoint extends Service
 		}
 
 		// A client with no profile of its own is served the one named after its
-		// vendor, for this request only: nothing is stored, so assigning a
-		// profile, or renaming this one, takes effect on the next request.
-		if ($client && $client['profile_id'] === null && $vendor !== null) {
-			$profile = $this->profiles->profileByName($vendor);
+		// vendor, or the fallback, for this request only: nothing is stored, so
+		// assigning a profile, or renaming this one, takes effect on the next request.
+		if ($client && $client['profile_id'] === null) {
+			$profile = $this->profiles->profileFor($vendor);
 
 			if ($profile) {
 				$client['profile_id'] = (int) $profile['id'];

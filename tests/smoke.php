@@ -852,9 +852,15 @@ $library = new \FreePBX\Modules\Oryk_Provisioner\Library($s['app'], $profiles, $
 
 $shipped = $library->entries();
 $vvx = $shipped['polycom/vvx'] ?? ['resources' => []];
-is_eq('every entry the module ships can be read', array_keys($shipped),
+$shippedIds = array_keys($shipped);
+sort($shippedIds);
+is_eq('every entry the module ships can be read', $shippedIds,
 	array_map(function ($manifest) { return basename(dirname($manifest, 2)) . '/' . basename(dirname($manifest)); },
 		glob(dirname(__DIR__) . '/library/*/*/manifest.json')));
+is_eq('a new profile starts from the entry named Default', $library->preselected(), 'generic/default');
+$db->fetches = ['WHERE LOWER(name) = LOWER(:name)' => [['id' => '4', 'name' => 'default', 'enabled' => '1']]];
+is_eq('unless a profile already has that name', $library->preselected(), '');
+$db->fetches = [];
 is_eq('the Polycom entry is templates, logs and the firmware it cannot ship',
 	array_column($vvx['resources'], 'type', 'name'),
 	['{{device.mac}}.cfg' => 'template', 'phone.cfg' => 'template', 'web.cfg' => 'template',
@@ -926,6 +932,12 @@ is_eq('a resource that cannot be made takes the profile back with it', [
 	$own->saveProfile(['name' => 'Desks', 'library' => 'acme/desk'])['status'],
 	count(array_filter($db->params, function ($p) { return strpos($p[0], 'DELETE FROM `oryk_provisioner_profiles`') !== false; })),
 ], [false, 1]);
+
+$db->answers = ['profiles` WHERE id = :id' => 7];
+is_eq('a name left blank is the entry\'s',
+	$own->saveProfile(['name' => ' ', 'library' => 'acme/desk'])['name'] ?? null, $own->entry('acme/desk')['name']);
+is_eq('and with an empty start there is none to take',
+	$own->saveProfile(['name' => '', 'library' => '']), ['status' => false, 'message' => 'A profile needs a name.']);
 
 $db->fetches = ['SELECT library, library_version' => [['library' => 'acme/desk', 'library_version' => '2']]];
 is_eq('a profile made from the library says so', $profiles->library(7), ['library' => 'acme/desk', 'library_version' => '2']);
@@ -1484,16 +1496,36 @@ is_eq('and a disabled profile is a 403, not a 404', $disabled['code'] ?? 404, 40
 
 $db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => []];
 
-is_eq('no profile by that name, no profile',
-	$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, '0004f282e824 has no profile assigned.');
+$named = function () use ($db) {
+	$names = [];
 
-$db->fetches = ['WHERE pc.mac = :mac' => [$client]];
-$db->seen = [];
+	foreach ($db->params as $pair) {
+		if (strpos($pair[0], 'LOWER(name)') !== false) {
+			$names[] = $pair[1][':name'];
+		}
+	}
 
-is_eq('and no vendor, no lookup',
-	[$endpoint->resolveRequest('0004f282e824')['message'] ?? null,
-		(bool) array_filter($db->seen, function ($q) { return strpos($q, 'LOWER(name)') !== false; })],
-	['0004f282e824 has no profile assigned.', false]);
+	return $names;
+};
+
+$db->params = [];
+
+is_eq('no profile by that name, then the one named Default, and neither is no profile',
+	[$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, $named()],
+	['0004f282e824 has no profile assigned.', ['Polycom', 'Default']]);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => [['id' => '4', 'name' => 'Default', 'enabled' => '0']]];
+$db->params = [];
+
+is_eq('no vendor is served the one named Default',
+	[$endpoint->resolveRequest('0004f282e824')['message'] ?? null, $named()],
+	['The Default profile is disabled.', ['Default']]);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => [['id' => '3', 'name' => 'Polycom', 'enabled' => '0']]];
+$db->params = [];
+$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
+
+is_eq('and a vendor that has a profile never asks for Default', $named(), ['Polycom']);
 
 $db->fetches = ['WHERE pc.mac = :mac' => [['enabled' => '0'] + $client]];
 $disabled = $endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
@@ -2563,6 +2595,23 @@ foreach ($declared as $one) {
 	}
 }
 is_eq('and every field', $incomplete, []);
+
+$app = new StubApp();
+$whens = array_column((new Notices($app, new StubStore()))->definitions(), 'when', 'id');
+$open = $whens['open-default-profile'];
+$was = FreePBX::$config;
+FreePBX::$config[Settings::HOSTNAME] = ' ';
+is_eq('no Hostname says so', $whens['hostname'](), true);
+FreePBX::$config[Settings::HOSTNAME] = 'pbx.example.com';
+is_eq('and one that is set does not', $whens['hostname'](), false);
+FreePBX::$config[Settings::PROVISIONING] = 'OPEN';
+is_eq('open provisioning with no profile named Default says so', $open(), true);
+$app->Database->answers = ['WHERE LOWER(name) = LOWER(:name)' => 1];
+is_eq('and stops once there is one', $open(), false);
+$app->Database->answers = [];
+FreePBX::$config[Settings::PROVISIONING] = 'CLOSED';
+is_eq('closed, it has nothing to say', $open(), false);
+FreePBX::$config = $was;
 
 
 foreach ($TEMPORARY as $path) {

@@ -6,14 +6,14 @@ already written, instead of a profile set up one file at a time.
 ## Starting a profile from the library
 
 1. **Profiles**, then **Add Profile**.
-2. Choose an entry under **Start From**. The name is filled in for you; change
-   it if you like.
+2. Choose an entry under **Start From**. Leave the name blank and the profile
+   takes the entry's, shown greyed in the field; type one to name it yourself. **Default** is chosen already while no profile has that
+   name -- it is the profile a client with none of its own
+   [falls back to](endpoint.md#a-client-with-no-profile).
 3. Save. The profile opens with the entry's resources on its **Resources** tab.
 
 The resources are copies, and yours from then on. Edit, rename or delete them
-like any other; nothing a later version of the module ships changes them. The
-profile's page says which entry it was made from, and that entry's version at
-the time.
+like any other; nothing a later version of the module ships changes them.
 
 **Empty** is a profile with no resources, as before.
 

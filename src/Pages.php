@@ -203,17 +203,11 @@ class Pages extends Service
 		// a new one opens on Profile whichever tab is asked for.
 		$tabs = ['resources', 'clients'];
 
-		$from = $profile['id'] ? $this->profiles->library($profile['id']) : null;
-
 		return $this->view('profile', [
 			'profile' => $profile,
 			// What a new profile can start from; nothing once it is written.
 			'library' => $profile['id'] ? [] : $this->library->entries(),
-			// The entry's name while the module still ships it, its id after.
-			'madeFrom' => $from ? [
-				'name' => $this->library->entry($from['library'])['name'] ?? $from['library'],
-				'version' => (int) $from['library_version'],
-			] : null,
+			'libraryDefault' => $profile['id'] ? '' : $this->library->preselected(),
 			'sections' => $this->navigator->sections('profiles'),
 			// A profile that has not been written is 'new' rather than an id: it has
 			// no links yet, so nothing else is scoped by it.

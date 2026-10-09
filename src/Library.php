@@ -73,6 +73,30 @@ class Library extends Service
 	}
 
 	/**
+	 * The entry a new profile starts from unless another is chosen.
+	 *
+	 * The one named Profiles::FALLBACK, so the profile it makes is the one a
+	 * client with none of its own falls back to -- and only while no profile has
+	 * that name, since a second could not be saved under it.
+	 *
+	 * @return string Entry id, or '' for none.
+	 */
+	public function preselected()
+	{
+		if ($this->profiles->profileByName(Profiles::FALLBACK)) {
+			return '';
+		}
+
+		foreach ($this->entries() as $id => $entry) {
+			if (strcasecmp($entry['name'], Profiles::FALLBACK) === 0) {
+				return (string) $id;
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * One entry.
 	 *
 	 * All or nothing: a manifest with one resource wrong is no entry, so a
@@ -178,9 +202,9 @@ class Library extends Service
 	/**
 	 * Save a profile, making it from an entry when a new one names one.
 	 *
-	 * Everything else is Profiles::saveProfile() untouched. A profile whose
-	 * resources could not all be made is deleted again, so a refusal leaves
-	 * nothing behind.
+	 * Everything else is Profiles::saveProfile() untouched, but for the name: one
+	 * left blank is the entry's. A profile whose resources could not all be made
+	 * is deleted again, so a refusal leaves nothing behind.
 	 *
 	 * @param array<string, mixed> $request Submitted form values; `library` is an entry's id.
 	 *
@@ -198,6 +222,10 @@ class Library extends Service
 
 		if (!$entry) {
 			return ['status' => false, 'message' => _('That is not in the library.')];
+		}
+
+		if (trim((string) ($request['name'] ?? '')) === '') {
+			$request['name'] = $entry['name'];
 		}
 
 		$saved = $this->profiles->saveProfile($request);

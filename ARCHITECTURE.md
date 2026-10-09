@@ -70,8 +70,9 @@ security of the thing:**
 
 1. disabled client -> 403
 2. a client with no profile: the profile named after the vendor its
-   User-Agent names (`Vendor`), matched without regard to case, for this
-   request only -- nothing is stored
+   User-Agent names (`Vendor`), or, with no vendor or no profile by that
+   name, the one named `Default` (`Profiles::profileFor()`), matched without
+   regard to case, for this request only -- nothing is stored
 3. disabled profile -> 403
 4. match a resource of the client's profile by name
 5. no client, or still no profile: the resources declared `file`, matched by name
@@ -145,8 +146,8 @@ and retry from where it is decided to where it is logged.
 
 The request is then served or received as that client, `000000000000` in the
 filename swapped for its MAC, so the ordinary order above -- token included --
-decides the answer -- including the vendor's profile, since the client has
-none of its own. **Nothing reloads**: the sign-up raises Apply Config like any
+decides the answer -- including the vendor's profile or `Default`, since the
+client has none of its own. **Nothing reloads**: the sign-up raises Apply Config like any
 save.
 
 **The lobby** (`LobbyContext`, a dialplan hook at priority 900, after Core):
@@ -260,7 +261,7 @@ views/                       one view per page, plus views/partials/
 | `Repo` | base class for the two file directories |
 | `Logs`, `Enabled` | traits: writing to the FreePBX log; the on/off switch two tables share |
 | `Mac` | a MAC as written, and as found in a filename (static) |
-| `Vendor` | the vendor a User-Agent names, which a client with no profile is served the profile of (static) |
+| `Vendor` | the vendor a User-Agent names, which a client with no profile is served the profile of, before `Default` (static) |
 | `Freepbx` | the only file that asks FreePBX about a device |
 | `Template` | `{{name}}` and the flat map behind it |
 | `Tokens` | hashing a client's token, checking one |
@@ -860,6 +861,11 @@ applies. Nothing else is written.
 - No view names a notice: `Pages::view()` hands every view `$notices`, and
   `views/partials/sections.php`, which every view includes, draws them.
 
+The categories are `welcome` -- first profile, first user, first client --
+`settings`: a warning while Hostname is blank -- and `provisioning`: a warning
+while Provisioning is Open and no profile is named `Default`, the one
+`Profiles::profileFor()` falls back to.
+
 ## Users
 
 A user is a row in none of this module's tables. It is a FreePBX extension,
@@ -992,8 +998,8 @@ first in `serve()`, `receive()` and `openProvision()`, and hands
 `Bans::decision()` -- the deciding row, an allow included; `check()` is it
 with an allow read as nothing refusing -- every subject the request has: the address it came from
 (`REMOTE_ADDR`), its MAC, the client that MAC names, that client's device id
-and extension, and the profile it is served -- its own, or, with none, its
-vendor's, as `resolveRequest()` would pick -- or, for open provisioning, the
+and extension, and the profile it is served -- its own, or, with none, the one
+`Profiles::profileFor()` picks, as `resolveRequest()` would -- or, for open provisioning, the
 username, which is a user when it is a number. A file fetched by name with no
 client behind it has no profile, so a profile ban does not stop it. A subject the request does not have matches only rows that
 leave it empty. Open provisioning is asked before `openClient()`, so a refused
@@ -1475,7 +1481,7 @@ bootstrap FreePBX on its own.
   profile is made empty or from the [library](#the-library).
 - Nothing reads an entry's `skus`: a phone's model is
   not detected, and a client with no profile is still served the profile named
-  after its vendor.
+  after its vendor, or `Default`.
 - No `fwconsole` command. Backup/restore hooks are stubs.
 - Only Connect's Extension/User kind was ported. Handsets are clients here;
   Connect's softphone and RTSP kinds have no equivalent, and an RTSP device

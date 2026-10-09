@@ -26,7 +26,10 @@ Profiles is the whole list too). The list page opens one section at a time
 which are views of that one row.
 
 Over the section bar the module may show a **notice**: what to do next on a
-PBX that is just starting -- add a first profile, then a first user, then a first client. A
+PBX that is just starting -- add a first profile, then a first user, then a first client -- or
+a warning: no **Hostname** is set, or Provisioning is **Open** and no profile
+is named `Default`, so a sign-up whose vendor has no profile of its own would
+be answered nothing. A
 notice goes by itself once it no longer applies, and the next one takes its
 place; its button leads to where the thing is done, and its × dismisses it
 for every admin. Notices are shown on the module's pages only, never on the

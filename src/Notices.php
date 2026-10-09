@@ -89,6 +89,45 @@ class Notices extends Service
 					return $this->rowCount($this->clientsTable) === 0;
 				},
 			],
+			[
+				'id' => 'hostname',
+				'version' => 1,
+				'category' => 'settings',
+				'level' => 'warning',
+				'dismissible' => true,
+				'text' => _('No Hostname is set. It is the name phones register to: until it is, a template is given whatever host each request arrived on.'),
+				'action' => _('Settings'),
+				'target' => ['tab' => 'settings'],
+				'when' => function () {
+					return trim((string) (new Settings($this->FreePBX))->get(Settings::HOSTNAME)) === '';
+				},
+			],
+			[
+				'id' => 'open-default-profile',
+				'version' => 1,
+				'category' => 'provisioning',
+				'level' => 'warning',
+				'dismissible' => true,
+				'text' => sprintf(
+					_('Provisioning is Open, and there is no profile named %s: a sign-up whose vendor has no profile of its own is answered nothing. Add one.'),
+					Profiles::FALLBACK
+				),
+				'action' => _('Add Profile'),
+				'target' => ['profile' => ''],
+				// As Profiles::profileFor() would find it.
+				'when' => function () {
+					if ((new Settings($this->FreePBX))->get(Settings::PROVISIONING) !== 'OPEN') {
+						return false;
+					}
+
+					$stmt = $this->db->prepare(
+						"SELECT COUNT(*) FROM `{$this->profilesTable}` WHERE LOWER(name) = LOWER(:name)"
+					);
+					$stmt->execute([':name' => Profiles::FALLBACK]);
+
+					return (int) $stmt->fetchColumn() === 0;
+				},
+			],
 		];
 	}
 

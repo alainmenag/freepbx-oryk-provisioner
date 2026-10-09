@@ -38,7 +38,7 @@
  *
  * @var array<string, mixed> $profile id (0 when new), name, enabled
  * @var array<string, array<string, mixed>> $library  Library::entries(), on a new profile; empty otherwise
- * @var array<string, mixed>|null           $madeFrom name and version of the entry it was made from, if any
+ * @var string                              $libraryDefault Library::preselected(): the entry id Start From opens on, or ''
  * @var string               $tab     Tab to open on: profile|resources|clients
  * @var array<int, array<string, mixed>>  $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
@@ -47,7 +47,7 @@
 
 $profile = $profile ?? ['id' => 0, 'name' => '', 'enabled' => 1];
 $library = $library ?? [];
-$madeFrom = $madeFrom ?? null;
+$libraryDefault = $libraryDefault ?? '';
 $tab = in_array($tab ?? '', ['resources', 'clients'], true) ? $tab : 'profile';
 
 $h = function ($value) {
@@ -112,6 +112,35 @@ $tabs = [
 					<?php if ($tab === 'profile'): ?>
 					<div class="tab-pane oryk-tab-section active" id="oryk_profile">
 
+						<?php if ($isNew && $library): ?>
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="profile_library"><?php echo _('Start From'); ?></label> <i class="fpbx-help-icon" data-for="profile_library"><?php echo $icon('help'); ?></i>
+									</div>
+									<div class="col-md-8">
+										<select class="form-control" id="profile_library">
+											<option value="" data-name=""><?php echo _('Empty'); ?></option>
+											<?php foreach ($library as $entry): ?>
+											<option value="<?php echo $h($entry['id']); ?>" data-name="<?php echo $h($entry['name']); ?>"<?php echo $entry['id'] === $libraryDefault ? ' selected' : ''; ?>>
+												<?php echo $h($entry['name'] . ($entry['skus'] ? ' (' . implode(', ', $entry['skus']) . ')' : '')); ?>
+											</option>
+											<?php endforeach; ?>
+										</select>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block" id="profile_library-help">
+										<?php echo _('What the profile is made with. Empty is a profile with no resources. Anything else is a profile from the module\'s library: its resources are copied in when the profile is saved, and are yours to edit from then on -- nothing the module later ships changes them. A file the library cannot ship, such as firmware, is made with nothing uploaded and says what to upload.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+						<?php endif; ?>
+
 						<div class="element-container">
 							<div class="row">
 								<div class="form-group">
@@ -136,59 +165,6 @@ $tabs = [
 								</div>
 							</div>
 						</div>
-
-						<?php if ($isNew && $library): ?>
-						<div class="element-container">
-							<div class="row">
-								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label" for="profile_library"><?php echo _('Start From'); ?></label> <i class="fpbx-help-icon" data-for="profile_library"><?php echo $icon('help'); ?></i>
-									</div>
-									<div class="col-md-8">
-										<select class="form-control" id="profile_library">
-											<option value="" data-name=""><?php echo _('Empty'); ?></option>
-											<?php foreach ($library as $entry): ?>
-											<option value="<?php echo $h($entry['id']); ?>" data-name="<?php echo $h($entry['name']); ?>">
-												<?php echo $h($entry['name'] . ($entry['skus'] ? ' (' . implode(', ', $entry['skus']) . ')' : '')); ?>
-											</option>
-											<?php endforeach; ?>
-										</select>
-									</div>
-								</div>
-							</div>
-							<div class="row">
-								<div class="col-md-12">
-									<span class="help-block fpbx-help-block" id="profile_library-help">
-										<?php echo _('What the profile is made with. Empty is a profile with no resources. Anything else is a profile from the module\'s library: its resources are copied in when the profile is saved, and are yours to edit from then on -- nothing the module later ships changes them. A file the library cannot ship, such as firmware, is made with nothing uploaded and says what to upload.'); ?>
-									</span>
-								</div>
-							</div>
-						</div>
-						<?php endif; ?>
-
-						<?php if ($madeFrom): ?>
-						<div class="element-container">
-							<div class="row">
-								<div class="form-group">
-									<div class="col-md-4">
-										<label class="control-label" for="profile_made_from"><?php echo _('Made From'); ?></label> <i class="fpbx-help-icon" data-for="profile_made_from"><?php echo $icon('help'); ?></i>
-									</div>
-									<div class="col-md-8">
-										<p class="form-control-static" id="profile_made_from">
-											<?php echo $h(sprintf(_('%1$s, version %2$s'), $madeFrom['name'], $madeFrom['version'])); ?>
-										</p>
-									</div>
-								</div>
-							</div>
-							<div class="row">
-								<div class="col-md-12">
-									<span class="help-block fpbx-help-block" id="profile_made_from-help">
-										<?php echo _('The library entry this profile\'s resources were copied from when it was made, and the version it was then. The profile has been yours since: this is a record, not a link.'); ?>
-									</span>
-								</div>
-							</div>
-						</div>
-						<?php endif; ?>
 
 						<div class="element-container">
 							<div class="row">
@@ -387,20 +363,11 @@ $tabs = [
 		});
 	});
 
-	// Choosing a library entry names the profile after it, unless a name has
-	// been typed: the last name put there is remembered to tell the two apart.
-	let orykLibraryName = '';
-
+	// The placeholder is the name a save with none typed gives the profile --
+	// the chosen entry's, see Library::saveProfile() -- and nothing for Empty.
 	$('#profile_library').on('change', function () {
-		const name = $('#profile_name');
-		const suggested = $(this).find(':selected').data('name') || '';
-
-		if (name.val() === '' || name.val() === orykLibraryName) {
-			name.val(suggested);
-		}
-
-		orykLibraryName = suggested;
-	});
+		$('#profile_name').attr('placeholder', $(this).find(':selected').data('name') || '');
+	}).trigger('change');
 
 	orykEditor({
 		save: 'saveProfile',

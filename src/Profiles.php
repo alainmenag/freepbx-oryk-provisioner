@@ -22,6 +22,9 @@ class Profiles extends Service
 	// The switch is the same on both tables, written once -- see src/Enabled.php.
 	use Enabled;
 
+	/** Name of the profile a client with none is served when its vendor has none. */
+	const FALLBACK = 'Default';
+
 	/** @var FileRepo */
 	private $files;
 
@@ -127,6 +130,24 @@ class Profiles extends Service
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 		return $row ?: null;
+	}
+
+	/**
+	 * The profile a client with none of its own is served.
+	 *
+	 * The one named after its vendor; with no vendor, or no profile by that
+	 * name, the one named FALLBACK. A vendor's profile that is disabled is still
+	 * the answer: it refuses rather than hand its clients to FALLBACK.
+	 *
+	 * @param string|null $vendor Vendor the request's User-Agent names, or null.
+	 *
+	 * @return array<string, mixed>|null As profileByName(); null when there is neither.
+	 */
+	public function profileFor($vendor)
+	{
+		$profile = $vendor === null ? null : $this->profileByName($vendor);
+
+		return $profile ?: $this->profileByName(self::FALLBACK);
 	}
 
 	/**
