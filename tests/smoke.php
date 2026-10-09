@@ -37,6 +37,7 @@ use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
 use FreePBX\Modules\Oryk_Provisioner\Overview;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\Notices;
+use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\SecurityLog;
@@ -283,6 +284,37 @@ is_eq('the next id in the range', $uid, '9990000013');
 is_eq('the endpoint manager is run for it', FreePBX::$core->epm, ['9990000013']);
 is_eq('a blank secret leaves Core\'s generated one',
 	FreePBX::$core->added['settings']['secret']['value'], 'from-core');
+
+echo "\n  a client's Auto Create makes a device, and no user:\n";
+
+$s = build();
+$db = $s['app']->Database;
+$db->answers = ['MAX(CAST(id' => '9990000012', 'SELECT id FROM devices WHERE id = :id' => '9990000013'];
+$db->insertId = 4;
+$saved = $s['users']->saveClientWithNewDevice(['mac' => '00:04:F2:82:E8:24', 'device_id' => Clients::AUTO_DEVICE, 'token' => '']);
+$added = FreePBX::$core->added;
+is_eq('the client is saved', [$saved['status'], $saved['id']], [true, 4]);
+is_eq('on a device with the next id in the range', $added['id'], '9990000013');
+is_eq('which is on no extension', [$added['settings']['user']['value'], $added['settings']['devicetype']['value']], ['none', 'adhoc']);
+is_eq('named after the MAC', $added['settings']['description']['value'], '0004f282e824');
+is_eq('and dialled as itself', $added['settings']['dial']['value'], 'PJSIP/9990000013');
+is_eq('no extension is made for it', FreePBX::$core->users, []);
+is_eq('nor a User Manager account', FreePBX::$userman->users, []);
+$inserted = array_values(array_filter($db->params, function ($p) {
+	return strpos(ltrim($p[0]), 'INSERT INTO `oryk_provisioner_clients` (mac') === 0;
+}));
+is_eq('the client row names the device', $inserted[0][1][':device_id'] ?? null, '9990000013');
+
+$s = build();
+$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012', 'SELECT id FROM devices WHERE id = :id' => '9990000013'];
+$s['users']->saveClientWithNewDevice(['id' => '71', 'mac' => Mac::internal(71), 'device_id' => Clients::AUTO_DEVICE]);
+is_eq('a client on its internal MAC names the device by its number', FreePBX::$core->added['settings']['description']['value'], '9990000013');
+
+$s = build();
+$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012', 'SELECT id FROM devices WHERE id = :id' => '9990000013'];
+$saved = $s['users']->saveClientWithNewDevice(['mac' => '00156', 'device_id' => Clients::AUTO_DEVICE]);
+is_eq('a client that is refused', $saved['status'], false);
+is_eq('takes its device back out', FreePBX::$core->deleted, [['9990000013', true]]);
 
 echo "\n  a number already taken is refused, and nothing is written:\n";
 
@@ -2015,7 +2047,7 @@ function sweep_build($etc)
 	$s = build();
 	$s['app']->Notifications = new StubNotifications();
 	$s['bridge'] = new RealtimeBridge($s['app'], $etc);
-	$s['sweep'] = new SignupSweep($s['app'], $s['clients'], $s['bridge'], new Settings($s['app']), new Notices($s['app']), $etc);
+	$s['sweep'] = new SignupSweep($s['app'], $s['clients'], $s['bridge'], new Settings($s['app']), new DashboardNotices($s['app']), $etc);
 	FreePBX::$core->devices['9990000013'] = ['id' => '9990000013'];
 	FreePBX::$core->devices['9990000014'] = ['id' => '9990000014'];
 
@@ -2423,6 +2455,114 @@ preg_match_all('/^use\s+(?:[A-Za-z0-9_\\\\]+\\\\)?([A-Za-z0-9_]+);/m', $module, 
 preg_match_all('/\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(|\b([A-Z][A-Za-z0-9_]*)::/', $module, $named);
 $missing = array_values(array_diff(array_unique(array_filter(array_merge($named[1], $named[2]))), $imports[1], ['Oryk_provisioner']));
 is_eq('none is missing its use', $missing, []);
+
+echo "\n  notices:\n";
+
+/** Notices over whatever a test declares, so none depends on what the module does. */
+class TestNotices extends Notices
+{
+	public $declared = [];
+
+	public function definitions()
+	{
+		return $this->declared;
+	}
+}
+
+/** One declared notice, leading to `&tab=<id>`; $applies is its answer, or what gives it. */
+function notice($id, $category, $applies = true, array $more = [])
+{
+	return $more + [
+		'id' => $id,
+		'version' => 1,
+		'category' => $category,
+		'level' => 'info',
+		'dismissible' => true,
+		'text' => $id,
+		'action' => 'Go',
+		'target' => ['tab' => $id],
+		'when' => function () use ($applies) {
+			return is_callable($applies) ? $applies() : $applies;
+		},
+	];
+}
+
+/** The ids showing() answers with, for a page. */
+function shown(TestNotices $notices, array $request = [])
+{
+	return array_column($notices->showing($request), 'id');
+}
+
+$store = new StubStore();
+$notices = new TestNotices(new StubApp(), $store);
+$profiles = 0;
+$notices->declared = [
+	notice('profile', 'welcome', function () use (&$profiles) {
+		return $profiles === 0;
+	}),
+	notice('client', 'welcome'),
+	notice('helper', 'setup'),
+	notice('last', 'welcome'),
+];
+
+is_eq('one per category, the first of each', shown($notices), ['profile', 'helper']);
+is_eq('drawn with where it leads, and no check', $notices->showing([])[0], ['id' => 'profile', 'version' => 1, 'category' => 'welcome', 'level' => 'info', 'dismissible' => true, 'text' => 'profile', 'action' => 'Go', 'href' => '?display=oryk_provisioner&tab=profile']);
+$there = $notices->showing(['display' => 'oryk_provisioner', 'tab' => 'profile']);
+is_eq('on the page it leads to it is still shown', array_column($there, 'id'), ['profile', 'helper']);
+is_eq('with no action', [$there[0]['action'], $there[0]['href']], ['', '']);
+is_eq('and the others keep theirs', $there[1]['href'], '?display=oryk_provisioner&tab=helper');
+
+$profiles = 1;
+is_eq('one that no longer applies gives way to the next', shown($notices), ['client', 'helper']);
+is_eq('and nothing was stored for it', $store->writes, 0);
+$profiles = 0;
+is_eq('and is back when it applies again', shown($notices), ['profile', 'helper']);
+
+is_eq('dismissing answers with the next of its category', $notices->dismiss(['id' => 'profile', 'version' => '1'])['next']['id'] ?? null, 'client');
+is_eq('stored as the version dismissed', $store->kept, [Notices::DISMISSED => ['profile' => 1]]);
+is_eq('and it stays down', shown($notices), ['client', 'helper']);
+is_eq('the next has no action on the page it leads to', $notices->dismiss(['id' => 'profile', 'version' => '1'], ['tab' => 'client'])['next']['href'] ?? null, '');
+
+$notices->declared[0]['version'] = 2;
+is_eq('a raised version shows it again', shown($notices), ['profile', 'helper']);
+$writes = $store->writes;
+is_eq('the version that was on the page is the one dismissed', $notices->dismiss(['id' => 'profile', 'version' => '1'])['next']['id'] ?? null, 'profile');
+is_eq('so an older one stores nothing', $store->writes, $writes);
+
+is_eq('an id that is not declared is refused', $notices->dismiss(['id' => 'nope', 'version' => '1'])['status'], false);
+$notices->declared[2]['dismissible'] = false;
+is_eq('so is a notice that cannot be dismissed', $notices->dismiss(['id' => 'helper', 'version' => '1'])['status'], false);
+$store->kept[Notices::DISMISSED]['helper'] = 1;
+is_eq('which shows whatever the store says', shown($notices), ['profile', 'helper']);
+
+$notices->declared[0]['when'] = function () {
+	throw new \Exception('broken');
+};
+is_eq('a check that throws does not apply', shown($notices), ['client', 'helper']);
+
+$store->kept[Notices::DISMISSED] = ['profile' => 1, 'client' => 1, 'gone' => 1];
+$notices->prune();
+is_eq('pruning keeps only what a declared notice would read', $store->kept[Notices::DISMISSED], ['client' => 1]);
+is_eq('one dismissal to bring back', $notices->dismissedCount(), 1);
+$writes = $store->writes;
+$notices->prune();
+is_eq('pruning nothing writes nothing', $store->writes, $writes);
+is_eq('a reset', $notices->reset(), ['status' => true]);
+is_eq('removes the key', $store->kept, []);
+
+$store->broken = true;
+is_eq('a store that throws has dismissed nothing', shown($notices), ['client', 'helper']);
+is_eq('and a dismissal says it failed', $notices->dismiss(['id' => 'client', 'version' => '1'])['status'], false);
+
+$declared = (new Notices(new StubApp(), new StubStore()))->definitions();
+is_eq('the module\'s own each have an id of their own', count(array_unique(array_column($declared, 'id'))), count($declared));
+$incomplete = [];
+foreach ($declared as $one) {
+	if (array_diff(['id', 'version', 'category', 'level', 'dismissible', 'text', 'action', 'target', 'when'], array_keys($one)) || !is_callable($one['when']) || !is_int($one['version'])) {
+		$incomplete[] = $one['id'] ?? '?';
+	}
+}
+is_eq('and every field', $incomplete, []);
 
 
 foreach ($TEMPORARY as $path) {

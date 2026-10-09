@@ -25,6 +25,14 @@ Profiles is the whole list too). The list page opens one section at a time
 (`&tab=clients`, `&tab=profiles`, ...); the editors below have their own tabs,
 which are views of that one row.
 
+Over the section bar the module may show a **notice**: what to do next on a
+PBX that is just starting -- add a first profile, then a first user, then a first client. A
+notice goes by itself once it no longer applies, and the next one takes its
+place; its button leads to where the thing is done, and its × dismisses it
+for every admin. Notices are shown on the module's pages only, never on the
+dashboard. **Settings → Show Dismissed Notices Again** brings back the ones
+that were dismissed and still apply.
+
 | URL | Page | Tabs |
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
@@ -58,6 +66,13 @@ to bring the phones nothing has heard from to the top. A refused request is not
 a sighting: a client that is switched off, or one asking for a file its profile
 does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
+
+**A client with no device to pick** can have one made: choose **-- Auto
+Create --** as its Device and save. The module makes a PJSIP device on the
+next free number, with no extension and no user, and puts the client on it; it
+can register once Apply Config has run. Such a device is not on the Users
+list, and has no number to be called on until it is given an extension in
+FreePBX.
 
 **Deleting a client** deletes the logs it sent and every Logs tab entry for its
 MAC, including those from before it was added, and the bans naming it. The
@@ -152,7 +167,8 @@ on each.
 The **Settings** tab holds the module's PBX-wide settings. They are the same
 settings as **Settings → Advanced Settings → Oryk Provisioner**: change one in
 either place and the other shows it. Save checks every value before writing
-any, and stays on the tab.
+any, and stays on the tab. Under the settings, **Show Dismissed Notices Again**
+brings back the [notices](#the-admin-interface) that were dismissed.
 
 | Setting | What it is |
 | --- | --- |

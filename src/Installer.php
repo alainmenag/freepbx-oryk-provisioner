@@ -435,9 +435,9 @@ class Installer extends Service
 			$this->bridge->uninstall();
 		}
 
-		$notices = new Notices($this->FreePBX);
-		$notices->clear(Notices::OPEN_CAP);
-		$notices->clear(Notices::BRIDGE_STALE);
+		$notices = new DashboardNotices($this->FreePBX);
+		$notices->clear(DashboardNotices::OPEN_CAP);
+		$notices->clear(DashboardNotices::BRIDGE_STALE);
 
 		if ($this->runningAsRoot()) {
 			foreach ($this->fail2ban->runSetup(['--remove']) as $line) {

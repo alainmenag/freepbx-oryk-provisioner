@@ -26,7 +26,7 @@ class SignupSweep extends Service
 	/** @var Settings */
 	private $settings;
 
-	/** @var Notices */
+	/** @var DashboardNotices */
 	private $notices;
 
 	/** @var string Asterisk's config directory. */
@@ -36,7 +36,7 @@ class SignupSweep extends Service
 	 * @param object      $freepbx FreePBX application instance.
 	 * @param string|null $etc     Asterisk's config directory, if not ASTETCDIR.
 	 */
-	public function __construct($freepbx, Clients $clients, RealtimeBridge $bridge, Settings $settings, Notices $notices, $etc = null)
+	public function __construct($freepbx, Clients $clients, RealtimeBridge $bridge, Settings $settings, DashboardNotices $notices, $etc = null)
 	{
 		parent::__construct($freepbx);
 
@@ -104,7 +104,7 @@ class SignupSweep extends Service
 	 */
 	public function capReached($cap)
 	{
-		$this->notices->raise(Notices::OPEN_CAP, sprintf(
+		$this->notices->raise(DashboardNotices::OPEN_CAP, sprintf(
 			_('Open provisioning has reached its daily limit of %d sign-ups; new phones are refused until older sign-ups are a day old.'),
 			(int) $cap
 		), _('Settings -> Sign-ups per Day, PBX (ORYK_OPEN_PER_DAY_TOTAL). Existing logins are not affected.'));
@@ -164,12 +164,12 @@ class SignupSweep extends Service
 		});
 
 		if (!$stale) {
-			$this->notices->clear(Notices::BRIDGE_STALE);
+			$this->notices->clear(DashboardNotices::BRIDGE_STALE);
 
 			return;
 		}
 
-		$this->notices->raise(Notices::BRIDGE_STALE, sprintf(
+		$this->notices->raise(DashboardNotices::BRIDGE_STALE, sprintf(
 			ngettext(
 				'%d phone signed up through open provisioning has waited over a day for Apply Config.',
 				'%d phones signed up through open provisioning have waited over a day for Apply Config.',
@@ -189,7 +189,7 @@ class SignupSweep extends Service
 		$cap = (int) $this->settings->get(Settings::OPEN_PER_DAY_TOTAL);
 
 		if ($cap <= 0 || $this->clients->signupsSince(86400) < $cap) {
-			$this->notices->clear(Notices::OPEN_CAP);
+			$this->notices->clear(DashboardNotices::OPEN_CAP);
 		}
 	}
 }

@@ -57,6 +57,9 @@ class Clients extends Service
 	/** @var LogRepo */
 	private $logs;
 
+	/** What the editor's Device posts to have a device made: Users::saveClientWithNewDevice(). */
+	const AUTO_DEVICE = 'auto';
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
@@ -92,7 +95,8 @@ class Clients extends Service
 		$sortable = [
 			'mac' => 'pc.mac',
 			'device_id' => 'pc.device_id',
-			// The extension is the device's `user` column. The heading's data-field,
+			// The extension is the device's `user` column; a device on no extension
+			// holds 'none' there, read as no extension. The heading's data-field,
 			// the key in the row and the key here must be the one word, or the column
 			// falls back to sorting by MAC without saying so.
 			'extension' => 'd.user',
@@ -172,7 +176,7 @@ class Clients extends Service
 				pc.mac,
 				pc.device_id,
 				pc.profile_id,
-				d.user AS extension,
+				NULLIF(d.user, 'none') AS extension,
 				d.description AS description,
 				p.name AS profile,
 				p.enabled AS profile_enabled,
@@ -258,7 +262,7 @@ class Clients extends Service
 				pc.profile_id,
 				pc.public_ip,
 				pc.private_ip,
-				d.user AS extension,
+				NULLIF(d.user, 'none') AS extension,
 				d.description,
 				d.tech,
 				p.name AS profile_name,
@@ -684,7 +688,7 @@ class Clients extends Service
 	public function clientChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description, d.user AS extension
+			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description, NULLIF(d.user, 'none') AS extension
 				FROM `{$this->clientsTable}` pc
 				LEFT JOIN devices d ON d.id = pc.device_id
 				ORDER BY pc.mac"

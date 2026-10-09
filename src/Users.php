@@ -546,7 +546,120 @@ class Users extends Service
 			return ['status' => true];
 		}
 
+		// On no extension -- createDevice()'s -- so there is no user to look it up on.
+		if ((string) $extension === 'none' || (string) $extension === '') {
+			try {
+				\FreePBX::Core()->delDevice($device);
+			} catch (\Exception $e) {
+				$this->logError('unable to delete device ' . $device . ': ' . $e->getMessage());
+
+				return ['status' => false, 'message' => _('The device could not be deleted; see the FreePBX log.')];
+			}
+
+			$this->endpoints->forget($device);
+			$this->clients->unassignDevice($device);
+			self::pending();
+
+			return ['status' => true, 'reload' => true];
+		}
+
 		return $this->deleteDevice((string) $extension, $device);
+	}
+
+	/**
+	 * Make a device on no extension: what a client's "Auto Create" asks for.
+	 *
+	 * A `pjsip` device on the next generated number, with Core's defaults and
+	 * FORCED, and **nothing else of a user**: no extension, no User Manager
+	 * account, no mailbox. Its `user` is 'none', FreePBX's own word for a
+	 * device nobody is on, so it is on no Users list and has no number to dial.
+	 *
+	 * @param string $description Its name; blank is its number.
+	 *
+	 * @return string The device's id.
+	 *
+	 * @throws \Exception When no number is left, or Core would not write the device.
+	 */
+	public function createDevice($description = '')
+	{
+		// Under the lock, so the number generate() settles on is still free
+		// when the device is written.
+		return $this->withLock(function () use ($description) {
+			$id = $this->numbers->generate();
+			$description = trim((string) $description) !== '' ? trim((string) $description) : $id;
+
+			$settings = \FreePBX::Core()->generateDefaultDeviceSettings('pjsip', $id, $description, false);
+
+			$flags = 0;
+			$defaults = \FreePBX::Core()->getDriver('pjsip')->getDefaultDeviceSettings($id, $description, $flags);
+
+			$written = [
+				'description' => $description,
+				'account' => $id,
+				'dial' => ($defaults['dial'] ?? 'PJSIP') . '/' . $id,
+				'user' => 'none',
+				'devicetype' => 'adhoc',
+			] + self::FORCED;
+
+			foreach ($written as $keyword => $value) {
+				$settings[$keyword]['value'] = $value;
+			}
+
+			// Core expects both keys on every setting.
+			foreach ($settings as $keyword => $setting) {
+				$settings[$keyword] = ['value' => $setting['value'] ?? '', 'flag' => $setting['flag'] ?? 0];
+			}
+
+			if (!\FreePBX::Core()->addDevice($id, 'pjsip', $settings, true)) {
+				$this->logError('unable to add device ' . $id);
+
+				throw new \Exception(sprintf(_('The device %s could not be written; see the FreePBX log.'), $id));
+			}
+
+			\FreePBX::Core()->processEPM($id, 'pjsip', true);
+
+			$this->endpoints->apply($id, $this->endpointExtras((string) ($settings['context']['value'] ?? '')));
+			self::pending();
+
+			return $id;
+		});
+	}
+
+	/**
+	 * Save a client whose Device asked for one to be made
+	 * (`Clients::AUTO_DEVICE`): the device first, then the client on it.
+	 *
+	 * The device is named after the client's MAC when it has a real one, and
+	 * after its own number otherwise: a client without one posts the internal
+	 * MAC it was given, which names nothing. A client that is then refused
+	 * takes the device back out with it, so a mistyped form leaves nothing
+	 * behind.
+	 *
+	 * @param array<string, mixed> $request Submitted form values.
+	 *
+	 * @return array<string, mixed> Clients::saveClient()'s answer.
+	 */
+	public function saveClientWithNewDevice($request)
+	{
+		try {
+			$mac = Mac::normalize(trim((string) ($request['mac'] ?? '')));
+			$device = $this->createDevice($mac === Mac::internal((int) ($request['id'] ?? 0)) ? '' : $mac);
+		} catch (\Exception $e) {
+			return ['status' => false, 'message' => $e->getMessage()];
+		}
+
+		$result = $this->clients->saveClient(['device_id' => $device] + (array) $request);
+
+		if (empty($result['status'])) {
+			try {
+				\FreePBX::Core()->delDevice($device, true);
+				$this->endpoints->forget($device);
+			} catch (\Exception $e) {
+				$this->logError('unable to take back device ' . $device . ': ' . $e->getMessage());
+			}
+		}
+
+		return $result;
 	}
 
 	/**

@@ -276,6 +276,7 @@ views/                       one view per page, plus views/partials/
 | `Pages` | which URL is which page |
 | `Installer` | install, uninstall, the web-root symlink, registering the settings |
 | `Settings` | the module's PBX-wide settings: one definition each, registered, drawn on the Settings tab, saved |
+| `Notices` | the notices over every module page: one definition each, which of them a page shows, what was dismissed |
 | `AsteriskConfig` | one Asterisk config file, edited without disturbing what others wrote |
 | `EndpointSettings` | the From Domain chain, and `pjsip.endpoint_custom_post.conf` |
 | `NumberAllocator` | which numbers are free, and the next `999…` one |
@@ -287,7 +288,7 @@ views/                       one view per page, plus views/partials/
 | `BanSync` | IP bans and fail2ban in step: the minute job, and a save carried over at once |
 | `SecurityLog`, `SignupRefused` | lines in FreePBX's security log; a refused sign-up, on its way there (static; exception) |
 | `RealtimeBridge` | a sign-up's endpoint, auth and AOR, live before Apply Config |
-| `Notices` | the module's dashboard notices, raised and cleared on a change only |
+| `DashboardNotices` | the module's dashboard notices, raised and cleared on a change only |
 | `SignupSweep` | the minute job behind open provisioning: out of the bridge once applied; the notices |
 | `LobbyContext` | the lobby's dialplan, on Apply Config |
 | `Jobs` | the jobs and their steps: written, listed, and what the worker asks while it runs one |
@@ -813,6 +814,52 @@ registers it.
   written -- the From Domain on an endpoint -- reaches it on that thing's next
   save, not when the setting changes.
 
+## Notices
+
+A notice is a line over the section bar telling the admin what to do next --
+"add your first profile". They are drawn on the module's pages only, every
+one of them; FreePBX's dashboard has the module's two warnings instead
+(`DashboardNotices`), which a minute job raises and these have nothing to do
+with.
+
+**A new notice is one entry in `Notices::definitions()`**: `id`, `version`,
+`category`, `level` (`info` or `warning`), `dismissible`, `text`, the `action`
+and `target` it leads to, and `when`, a closure answering whether it still
+applies. Nothing else is written.
+
+- **One per category, the first that stands.** `Notices::showing()` walks the
+  definitions in order and, for each category, shows the first notice that is
+  neither dismissed nor past applying. The order in the array is the order an
+  admin is led through a category.
+- **`when` is asked on every page load, and nothing is stored when it says
+  no.** Make the first profile and "add your first profile" gives way to the
+  next of its category; delete every profile and it is back. So a check is one
+  cheap query at most. One that throws does not apply, and is logged: a broken
+  check costs its notice, never the page.
+- **A dismissal is the notice's id and the version dismissed**, kept in the
+  module's key-value store (FreePBX's `kvstore`, through the BMO class's
+  `getConfig()`/`setConfig()`) under `notices_dismissed`. It is PBX-wide, not
+  per admin: a check is about the PBX, so is its dismissal.
+- **Raising `version` shows a notice again** to a PBX that dismissed it. Raise
+  it when the notice now says something an admin who dismissed it should
+  read, and not for a reworded sentence.
+- **Not `dismissible`** is for a notice about something wrong: it has no
+  dismissal, the store is not read for it, and it stays until `when` says no.
+- **On the page it leads to, a notice has no action** -- the page whose query
+  has every key of `target`. The text stays; the button that would go nowhere
+  is not drawn.
+- **Dismissing does not reload.** `dismissNotice` posts the id and the version
+  that was on the page, so a notice raised since is not dismissed unread, and
+  is answered with the markup of whatever the category shows now
+  (`Pages::dismissNotice()`, `views/partials/notice.php`), which
+  `assets/oryk_notices.js` puts in its place. An editor's unsaved fields are
+  left alone.
+- The Settings tab's **Show Dismissed Notices Again** (`resetNotices`) removes
+  the key. `install()` drops the dismissals no declared notice would read --
+  an id that is gone, a version since raised -- and `uninstall()` the lot.
+- No view names a notice: `Pages::view()` hands every view `$notices`, and
+  `views/partials/sections.php`, which every view includes, draws them.
+
 ## Users
 
 A user is a row in none of this module's tables. It is a FreePBX extension,
@@ -826,6 +873,14 @@ phone, has its Overview and its delete like any other, and is given a device
 back by a save, on its own number. Only an extension whose number is held by
 a device of another kind is left out (`Users::SHAPE`). Everything about one
 lives elsewhere:
+
+**A device on no extension is not a user.** A client's Device offers "Auto
+Create" (`Clients::AUTO_DEVICE`): `Users::saveClientWithNewDevice()` makes a
+`pjsip` device on the next generated number (`createDevice()`) and saves the
+client on it, taking the device back out if the client is refused. The device's
+`user` is `none` -- no extension, no User Manager account, no mailbox -- so it
+is on no Users list, a client on it has no extension (`Clients` reads `none`
+as NULL), and deleting it is `deleteDeviceById()`'s own branch.
 
 | | where | written by |
 | --- | --- | --- |
@@ -1133,7 +1188,7 @@ nothing. Once it is down, a `created` client whose extension has a section in
 `pjsip.endpoint.conf` -- or whose user is gone -- has its rows removed and
 becomes `provisioned`. The flag alone is not enough: a sign-up during an apply
 can end with the flag down and its endpoint not yet written. It also keeps the
-dashboard notices true (`Notices`, raised or cleared on a change only):
+dashboard notices true (`DashboardNotices`, raised or cleared on a change only):
 `BRIDGE_STALE` while any sign-up has waited over a day, and `OPEN_CAP`, raised
 by `admit()` when `ORYK_OPEN_PER_DAY_TOTAL` refuses and cleared once the day's
 count is back under it.
