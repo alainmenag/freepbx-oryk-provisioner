@@ -66,10 +66,16 @@ class Pages extends Service
 	/** @var Jobs */
 	private $jobs;
 
+	/** @var Library */
+	private $library;
+
+	/** @var Notices */
+	private $notices;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs, Library $library, Notices $notices)
 	{
 		parent::__construct($freepbx);
 
@@ -89,6 +95,8 @@ class Pages extends Service
 		$this->overview = $overview;
 		$this->services = $services;
 		$this->jobs = $jobs;
+		$this->library = $library;
+		$this->notices = $notices;
 	}
 
 	/**
@@ -197,6 +205,9 @@ class Pages extends Service
 
 		return $this->view('profile', [
 			'profile' => $profile,
+			// What a new profile can start from; nothing once it is written.
+			'library' => $profile['id'] ? [] : $this->library->entries(),
+			'libraryDefault' => $profile['id'] ? '' : $this->library->preselected(),
 			'sections' => $this->navigator->sections('profiles'),
 			// A profile that has not been written is 'new' rather than an id: it has
 			// no links yet, so nothing else is scoped by it.
@@ -570,6 +581,11 @@ class Pages extends Service
 				'resource' => $resource['id'] ? (int) $resource['id'] : 'new',
 			]),
 			'profile' => $profile,
+			// What the library says to upload to a file it could not ship.
+			'fileNote' => $this->library->note(
+				$this->profiles->library($profile['id'])['library'] ?? '',
+				(string) $resource['name']
+			),
 			'placeholders' => $this->template->templatePlaceholders(),
 			// Printed rather than described: where a log lands is the whole of what an
 			// operator needs from that type, and it is read off this server's own
@@ -617,10 +633,13 @@ class Pages extends Service
 			'settings' => $tab === 'settings'
 				? $this->settings->fields([
 					Settings::FROM_DOMAIN => $this->endpoints->hostname(),
+					Settings::PROVISIONING_SERVER => $this->template->provisioningServer(),
 					Settings::BAN_DENY_AFTER => _('off'),
 					Settings::OPEN_EMERGENCY_CID => _('the extension'),
 				])
 				: [],
+			// What the tab's "Show Dismissed Notices Again" would bring back.
+			'dismissedNotices' => $tab === 'settings' ? $this->notices->dismissedCount() : 0,
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
 			// The Services list's two filters, as the address has them.
@@ -720,25 +739,69 @@ class Pages extends Service
 	 */
 	private function view($name, array $vars)
 	{
-		$icon = function ($name, $class = '') {
-			return Icons::svg($name, $class);
-		};
-
-		return $this->stylesheet() . Icons::script() . $this->dialogScript()
-			. load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + ['version' => $this->version(), 'icon' => $icon]);
+		return $this->stylesheet() . Icons::script() . $this->script('oryk_dialog') . $this->script('oryk_notices')
+			. load_view(dirname(__DIR__) . '/views/' . $name . '.php', $vars + [
+				'version' => $this->version(),
+				'icon' => $this->icon(),
+				// Drawn by partials/sections.php, which every view includes.
+				'notices' => $this->notices->showing($_REQUEST),
+			]);
 	}
 
 	/**
-	 * orykAsk(), the module's modal question, for the top of a page.
+	 * `$icon`, as every view is handed it.
 	 *
-	 * assets/oryk_dialog.js, inlined: every view asks before it deletes, and
-	 * none of them loads a script of its own.
+	 * @return callable Takes a name and more classes; answers Icons::svg().
+	 */
+	private function icon()
+	{
+		return function ($name, $class = '') {
+			return Icons::svg($name, $class);
+		};
+	}
+
+	/**
+	 * Dismiss a notice, and draw the one that takes its place.
+	 *
+	 * @param array<string, mixed> $request `id`, `version`, and `at`: the query
+	 *                                      of the page it was dismissed on.
+	 *
+	 * @return array<string, mixed> `status`, and `html`: the next notice of
+	 *                              that category, or '' when there is none.
+	 */
+	public function dismissNotice($request)
+	{
+		$at = [];
+		parse_str(ltrim((string) ($request['at'] ?? ''), '?'), $at);
+
+		$result = $this->notices->dismiss($request, $at);
+
+		if (!$result['status']) {
+			return $result;
+		}
+
+		return [
+			'status' => true,
+			'html' => $result['next']
+				? load_view(dirname(__DIR__) . '/views/partials/notice.php', ['notice' => $result['next'], 'icon' => $this->icon()])
+				: '',
+		];
+	}
+
+	/**
+	 * One of the module's scripts, inlined for the top of a page: no view
+	 * loads a script of its own.
+	 *
+	 * oryk_dialog is orykAsk(), the modal question every view asks before it
+	 * deletes; oryk_notices is a notice's dismissal.
+	 *
+	 * @param string $name File under assets/, without `.js`; never from a request.
 	 *
 	 * @return string A <script>, or '' when the file is missing.
 	 */
-	private function dialogScript()
+	private function script($name)
 	{
-		$file = dirname(__DIR__) . '/assets/oryk_dialog.js';
+		$file = dirname(__DIR__) . '/assets/' . $name . '.js';
 
 		return is_file($file) ? '<script>' . file_get_contents($file) . '</script>' : '';
 	}

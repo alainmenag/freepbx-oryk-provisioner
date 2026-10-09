@@ -25,6 +25,17 @@ Profiles is the whole list too). The list page opens one section at a time
 (`&tab=clients`, `&tab=profiles`, ...); the editors below have their own tabs,
 which are views of that one row.
 
+Over the section bar the module may show a **notice**: what to do next on a
+PBX that is just starting -- add a first profile, then a first user, then a first client -- or
+a warning: no **Hostname** is set, or Provisioning is **Open** and no profile
+is named `Default`, so a sign-up whose vendor has no profile of its own would
+be answered nothing. A
+notice goes by itself once it no longer applies, and the next one takes its
+place; its button leads to where the thing is done, and its × dismisses it
+for every admin. Notices are shown on the module's pages only, never on the
+dashboard. **Settings → Show Dismissed Notices Again** brings back the ones
+that were dismissed and still apply.
+
 | URL | Page | Tabs |
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
@@ -58,6 +69,13 @@ to bring the phones nothing has heard from to the top. A refused request is not
 a sighting: a client that is switched off, or one asking for a file its profile
 does not serve, is reaching the PBX and getting nothing, and that is what the
 Logs tab is for.
+
+**A client with no device to pick** can have one made: choose **-- Auto
+Create --** as its Device and save. The module makes a PJSIP device on the
+next free number, with no extension and no user, and puts the client on it; it
+can register once Apply Config has run. Such a device is not on the Users
+list, and has no number to be called on until it is given an extension in
+FreePBX.
 
 **Deleting a client** deletes the logs it sent and every Logs tab entry for its
 MAC, including those from before it was added, and the bans naming it. The
@@ -152,12 +170,14 @@ on each.
 The **Settings** tab holds the module's PBX-wide settings. They are the same
 settings as **Settings → Advanced Settings → Oryk Provisioner**: change one in
 either place and the other shows it. Save checks every value before writing
-any, and stays on the tab.
+any, and stays on the tab. Under the settings, **Show Dismissed Notices Again**
+brings back the [notices](#the-admin-interface) that were dismissed.
 
 | Setting | What it is |
 | --- | --- |
 | **Hostname** (`ORYK_HOSTNAME`) | What phones register to: `{{server.host}}` in a template, and the From Domain when that is blank. Blank: a template gets the host each request arrived on, and From Domain this machine's hostname. |
 | **From Domain** (`ORYK_FROM_DOMAIN`) | The domain users' endpoints put in the From header — see [From Domain](users.md#from-domain). Blank: the Hostname setting, or this machine's hostname, when that is a domain name; the field shows what blank comes to. |
+| **Provisioning Server** (`ORYK_PROVISIONING_SERVER`) | Where phones fetch their files: `{{provisioning.server}}` in a template. A host, with a port and a path if it has them, and no `http://` or `https://` — `prov.example.com`, or `pbx.example.com/provisioner`. Blank: the Hostname setting, or the host each request arrived on, followed by `/provisioner`; the field shows what blank comes to. |
 | **Provisioning** (`ORYK_PROVISIONING`) | Closed (the default): a request for MAC `000000000000` is treated like any other MAC. Open: that request is answered by its Basic credentials — see [Open provisioning](endpoint.md#open-provisioning). Disabled: every request to the endpoint is refused with a 503, unlogged. |
 | **Deny After** (`ORYK_BAN_DENY_AFTER`) | Blank (the default): off. A number from 2 to 1000: a Banned ban that comes into force that many times — the **Times** column, whether fail2ban banned the address again or it was banned again here — becomes Deny. See [Repeat bans](bans.md#repeat-bans). |
 | **Sign-up Context** (`ORYK_OPEN_CONTEXT`) | `lobby` (the default): every user open provisioning makes goes in the lobby the module writes — see [The lobby](endpoint.md#the-lobby). Another name is a context you provide; a `from-` one saves with a warning. Takes effect on Apply Config. |

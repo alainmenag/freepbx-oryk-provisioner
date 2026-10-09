@@ -25,6 +25,7 @@ box; click one to copy it.
 | `{{profile.id}}`, `{{profile.name}}` | the profile serving the file |
 | `{{server.host}}` | the Hostname setting (`ORYK_HOSTNAME`); blank, the host the request arrived on, port stripped |
 | `{{server.port}}` | `5060` |
+| `{{provisioning.server}}` | the Provisioning Server setting (`ORYK_PROVISIONING_SERVER`): a host, with a port and a path if it has them, and no scheme. Blank, `{{server.host}}` followed by `/provisioner` |
 
 Plus **everything else the device is configured with in FreePBX**, under a `sip.`
 prefix — one placeholder per row the device has in the `sip` table, so
@@ -36,7 +37,10 @@ vendor-specific values stay in your templates rather than in the module:
 
 Non-alphanumerics in a keyword fold to `_`, so `dtmf-mode` is `{{sip.dtmf_mode}}`.
 
-There are no filters, sections or escaping.
+A template that begins with `<?xml` has its values XML-escaped as they go in, so
+an extension named `R&D` is written `R&amp;D` and the file still parses. Any
+other template is given its values exactly as they are. There are no filters or
+sections.
 
 A site whose `sip` or `users` tables are missing a lookup degrades to empty
 values rather than a 500.

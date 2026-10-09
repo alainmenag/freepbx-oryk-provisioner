@@ -1,0 +1,9 @@
+{
+	"name": "AudioCodes 420HD",
+	"vendor": "AudioCodes",
+	"version": 1,
+	"skus": ["420HD"],
+	"resources": [
+		{"name": ".cfg", "type": "template", "source": "mac.cfg"}
+	]
+}

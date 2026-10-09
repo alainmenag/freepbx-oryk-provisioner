@@ -6,6 +6,7 @@
 | [Clients, profiles and resources](concepts.md) | what each one is, tokens, a phone's addresses |
 | [The provisioning endpoint](endpoint.md) | the URLs a phone asks, and how a filename finds its resource |
 | [Template placeholders](templates.md) | every `{{name}}` a template can use |
+| [The library](library.md) | starting a profile from one the module ships |
 | [The admin interface](admin.md) | the pages, tabs and previews, Overview, and the Settings tab |
 | [Users](users.md) | creating, renumbering and deleting extensions, and From Domain |
 | [Jobs](jobs.md) | what changing a user's services does, failures and Retry |

@@ -178,6 +178,7 @@ $tabs = [
 									<div class="col-md-8">
 										<select class="form-control" id="client_device_id">
 											<option value=""><?php echo _('None'); ?></option>
+											<option value="<?php echo $h(\FreePBX\Modules\Oryk_Provisioner\Clients::AUTO_DEVICE); ?>"><?php echo _('-- Auto Create --'); ?></option>
 											<?php foreach ($freepbxDevices as $choice): ?>
 												<option value="<?php echo $h($choice['id']); ?>"
 													<?php echo (string) $choice['id'] === $deviceId ? 'selected' : ''; ?>>
@@ -198,6 +199,7 @@ $tabs = [
 								<div class="col-md-12">
 									<span class="help-block fpbx-help-block" id="client_device_id-help">
 										<?php echo _('The extension this client registers as. Optional: a profile of static configuration renders without one, with the device values left empty.'); ?>
+										<?php echo _('Auto Create makes a device for this client when it is saved: a PJSIP device on the next free number, with no extension and no user. It can register once Apply Config has run.'); ?>
 										<?php
 										// Only a device that is its own extension is a user.
 										$deviceIsUser = false;

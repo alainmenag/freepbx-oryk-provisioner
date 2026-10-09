@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gs_provision version="1">
+	<mac>{{device.mac}}</mac>
+
+	<config version="1">
+
+		<!-- Account 1 Enabled -->
+		<P271>1</P271>
+
+		<!-- Account Name -->
+		<P270>Line 1</P270>
+
+		<!-- SIP Server -->
+		<P47>{{server.host}}</P47>
+
+		<!-- SIP User ID / Extension -->
+		<P35>{{device.id}}</P35>
+
+		<!-- SIP Authentication ID -->
+		<P36>{{device.id}}</P36>
+
+		<!-- SIP Password -->
+		<P34>{{device.secret}}</P34>
+
+		<!-- Caller ID / Display Name -->
+		<P3>{{extension.name}}</P3>
+
+		<!-- SIP Registration -->
+		<P31>1</P31>
+
+	</config>
+</gs_provision>

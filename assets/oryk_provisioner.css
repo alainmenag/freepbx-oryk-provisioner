@@ -125,6 +125,38 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 
 /* ----------------------------------------------------------------------
+ * Notices (views/partials/notice.php)
+ * ---------------------------------------------------------------------- */
+
+/* A Bootstrap alert, laid out as text, then where it leads, then its dismissal. */
+.oryk-notice {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 15px;
+}
+.oryk-notice .oryk-notice-text {
+	flex: 1;
+}
+.oryk-notice .oryk-notice-action {
+	flex: none;
+}
+.oryk-notice .oryk-notice-dismiss {
+	flex: none;
+	display: flex;
+	padding: 4px;
+	border: 0;
+	background: none;
+	color: inherit;
+	opacity: 0.6;
+	cursor: pointer;
+}
+.oryk-notice .oryk-notice-dismiss:hover,
+.oryk-notice .oryk-notice-dismiss:focus {
+	opacity: 1;
+}
+
+/* ----------------------------------------------------------------------
  * Section bar (views/partials/sections.php)
  * ---------------------------------------------------------------------- */
 

@@ -37,6 +37,7 @@ use FreePBX\Modules\Oryk_Provisioner\NumberAllocator;
 use FreePBX\Modules\Oryk_Provisioner\Overview;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\Notices;
+use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\SecurityLog;
@@ -283,6 +284,37 @@ is_eq('the next id in the range', $uid, '9990000013');
 is_eq('the endpoint manager is run for it', FreePBX::$core->epm, ['9990000013']);
 is_eq('a blank secret leaves Core\'s generated one',
 	FreePBX::$core->added['settings']['secret']['value'], 'from-core');
+
+echo "\n  a client's Auto Create makes a device, and no user:\n";
+
+$s = build();
+$db = $s['app']->Database;
+$db->answers = ['MAX(CAST(id' => '9990000012', 'SELECT id FROM devices WHERE id = :id' => '9990000013'];
+$db->insertId = 4;
+$saved = $s['users']->saveClientWithNewDevice(['mac' => '00:04:F2:82:E8:24', 'device_id' => Clients::AUTO_DEVICE, 'token' => '']);
+$added = FreePBX::$core->added;
+is_eq('the client is saved', [$saved['status'], $saved['id']], [true, 4]);
+is_eq('on a device with the next id in the range', $added['id'], '9990000013');
+is_eq('which is on no extension', [$added['settings']['user']['value'], $added['settings']['devicetype']['value']], ['none', 'adhoc']);
+is_eq('named after the MAC', $added['settings']['description']['value'], '0004f282e824');
+is_eq('and dialled as itself', $added['settings']['dial']['value'], 'PJSIP/9990000013');
+is_eq('no extension is made for it', FreePBX::$core->users, []);
+is_eq('nor a User Manager account', FreePBX::$userman->users, []);
+$inserted = array_values(array_filter($db->params, function ($p) {
+	return strpos(ltrim($p[0]), 'INSERT INTO `oryk_provisioner_clients` (mac') === 0;
+}));
+is_eq('the client row names the device', $inserted[0][1][':device_id'] ?? null, '9990000013');
+
+$s = build();
+$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012', 'SELECT id FROM devices WHERE id = :id' => '9990000013'];
+$s['users']->saveClientWithNewDevice(['id' => '71', 'mac' => Mac::internal(71), 'device_id' => Clients::AUTO_DEVICE]);
+is_eq('a client on its internal MAC names the device by its number', FreePBX::$core->added['settings']['description']['value'], '9990000013');
+
+$s = build();
+$s['app']->Database->answers = ['MAX(CAST(id' => '9990000012', 'SELECT id FROM devices WHERE id = :id' => '9990000013'];
+$saved = $s['users']->saveClientWithNewDevice(['mac' => '00156', 'device_id' => Clients::AUTO_DEVICE]);
+is_eq('a client that is refused', $saved['status'], false);
+is_eq('takes its device back out', FreePBX::$core->deleted, [['9990000013', true]]);
 
 echo "\n  a number already taken is refused, and nothing is written:\n";
 
@@ -773,6 +805,155 @@ FreePBX::$config[Settings::HOSTNAME] = '203.0.113.7';
 is_eq('but not when that is an address', $named->hostname() !== '203.0.113.7', true);
 
 unset(FreePBX::$config[Settings::HOSTNAME]);
+
+echo "\n  the provisioning server is a setting, and a placeholder:\n";
+
+$s = build();
+$settings = new Settings($s['app']);
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
+$_SERVER['HTTP_HOST'] = 'arrived.example.net:8443';
+
+is_eq('blank is the host the request arrived on, and the link\'s path',
+	$template->provisioningServer(), 'arrived.example.net/provisioner');
+
+FreePBX::$config[Settings::HOSTNAME] = 'pbx.example.net';
+
+is_eq('or the Hostname setting, when there is one',
+	$template->provisioningServer(), 'pbx.example.net/provisioner');
+is_eq('a host is taken', $settings->set(Settings::PROVISIONING_SERVER, 'prov.example.net'), null);
+is_eq('and is the whole answer: no path is added to it',
+	$template->provisioningServer(), 'prov.example.net');
+is_eq('a template is given it',
+	$template->provisioningValues(['mac' => '0004f282e824'])['provisioning.server'], 'prov.example.net');
+is_eq('a port and a path are taken',
+	$settings->set(Settings::PROVISIONING_SERVER, 'pbx.example.net:8443/provisioner'), null);
+is_eq('a scheme is refused',
+	$settings->set(Settings::PROVISIONING_SERVER, 'https://prov.example.net') !== null, true);
+is_eq('and so is a trailing slash, a query or a space', [
+	$settings->set(Settings::PROVISIONING_SERVER, 'prov.example.net/') !== null,
+	$settings->set(Settings::PROVISIONING_SERVER, 'prov.example.net/?mac=1') !== null,
+	$settings->set(Settings::PROVISIONING_SERVER, 'prov example.net') !== null,
+], [true, true, true]);
+is_eq('a refused value is not stored',
+	FreePBX::Config()->get(Settings::PROVISIONING_SERVER), 'pbx.example.net:8443/provisioner');
+is_eq('blank is saved as blank', [$settings->set(Settings::PROVISIONING_SERVER, ''), $template->provisioningServer()],
+	[null, 'pbx.example.net/provisioner']);
+
+unset(FreePBX::$config[Settings::HOSTNAME], $_SERVER['HTTP_HOST']);
+
+echo "\n  the library is read off the disk, and a profile made from it is a copy:\n";
+
+$s = build();
+$db = $s['app']->Database;
+$repo = new FileRepo($s['app']);
+$profiles = new Profiles($s['app'], $repo);
+$resources = new \FreePBX\Modules\Oryk_Provisioner\Resources($s['app'], $profiles, $repo);
+$library = new \FreePBX\Modules\Oryk_Provisioner\Library($s['app'], $profiles, $resources);
+
+$shipped = $library->entries();
+$vvx = $shipped['polycom/vvx'] ?? ['resources' => []];
+$shippedIds = array_keys($shipped);
+sort($shippedIds);
+is_eq('every entry the module ships can be read', $shippedIds,
+	array_map(function ($manifest) { return basename(dirname($manifest, 2)) . '/' . basename(dirname($manifest)); },
+		glob(dirname(__DIR__) . '/library/*/*/manifest.json')));
+is_eq('a new profile starts from the entry named Default', $library->preselected(), 'generic/default');
+$db->fetches = ['WHERE LOWER(name) = LOWER(:name)' => [['id' => '4', 'name' => 'default', 'enabled' => '1']]];
+is_eq('unless a profile already has that name', $library->preselected(), '');
+$db->fetches = [];
+is_eq('the Polycom entry is templates, logs and the firmware it cannot ship',
+	array_column($vvx['resources'], 'type', 'name'),
+	['{{device.mac}}.cfg' => 'template', 'phone.cfg' => 'template', 'web.cfg' => 'template',
+		'app.log' => 'log', 'boot.log' => 'log', 'sip.ld' => 'file']);
+is_eq('a resource\'s name is not its filename on disk',
+	basename((string) $vvx['resources'][0]['source']), 'mac.cfg');
+is_eq('the firmware has no file, and says what to upload',
+	[$vvx['resources'][5]['source'], $library->note('polycom/vvx', 'sip.ld') !== ''], [null, true]);
+is_eq('nothing a shipped template says is one site\'s own',
+	preg_match('/oryk\.io|5060/', implode('', array_map(function ($resource) {
+		return $resource['type'] === 'template' ? file_get_contents($resource['source']) : '';
+	}, $vvx['resources']))), 0);
+is_eq('an id is a vendor and a set, and nothing that climbs',
+	[$library->entry('../polycom/vvx'), $library->entry('polycom/../vvx'), $library->entry('polycom'), $library->entry('Polycom/VVX')],
+	[null, null, null, null]);
+
+$scratch = sys_get_temp_dir() . '/oryk-library-' . getmypid();
+mkdir($scratch . '/acme/desk', 0700, true);
+file_put_contents($scratch . '/acme/desk/a.cfg', 'HOST={{server.host}}');
+file_put_contents($scratch . '/acme/desk/ring.wav', 'RIFF');
+$manifest = function (array $list) use ($scratch) {
+	file_put_contents($scratch . '/acme/desk/manifest.json', json_encode(['name' => 'Acme Desk', 'version' => 2, 'resources' => $list]));
+};
+$own = new \FreePBX\Modules\Oryk_Provisioner\Library($s['app'], $profiles, $resources, $scratch);
+
+$manifest([['name' => '.cfg', 'type' => 'template', 'source' => '../desk/a.cfg']]);
+is_eq('a source that is a path is no entry', $own->entry('acme/desk'), null);
+$manifest([['name' => '.cfg', 'type' => 'template']]);
+is_eq('nor is a template with nothing to copy', $own->entry('acme/desk'), null);
+$manifest([['name' => 'app.log', 'type' => 'log', 'source' => 'a.cfg']]);
+is_eq('nor a log that has a file', $own->entry('acme/desk'), null);
+$manifest([['name' => '.cfg', 'type' => 'template', 'source' => 'a.cfg'], ['name' => 'x', 'type' => 'firmware']]);
+is_eq('one resource wrong and the whole entry is left out', [$own->entry('acme/desk'), $own->entries()], [null, []]);
+
+$manifest([
+	['name' => '.cfg', 'type' => 'template', 'source' => 'a.cfg'],
+	['name' => 'app.log', 'type' => 'log'],
+	['name' => 'ring.wav', 'type' => 'file', 'source' => 'ring.wav'],
+	['name' => 'sip.ld', 'type' => 'file', 'note' => 'the firmware'],
+]);
+FreePBX::$config['ASTSPOOLDIR'] = $scratch . '/spool';
+$db->insertId = 7;
+$db->answers = ['profiles` WHERE id = :id' => 7];
+$db->params = [];
+
+is_eq('a new profile naming an entry is saved',
+	$own->saveProfile(['name' => 'Desks', 'library' => 'acme/desk']), ['status' => true, 'id' => 7, 'name' => 'Desks']);
+$made = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'INSERT INTO `oryk_provisioner_resources`') !== false; }));
+is_eq('with each resource the entry has, the template\'s text and all',
+	array_map(function ($p) { return [$p[1][':profile_id'], $p[1][':name'], $p[1][':type'], $p[1][':template']]; }, $made),
+	[[7, '.cfg', 'template', 'HOST={{server.host}}'], [7, 'app.log', 'log', ''], [7, 'ring.wav', 'file', ''], [7, 'sip.ld', 'file', '']]);
+$stored = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'SET file_size') !== false; }));
+is_eq('a file it ships is stored as an upload would be, and one it does not is left with nothing',
+	[count($stored), $stored[0][1][':size'] ?? null, file_get_contents($repo->repoFile(7))], [1, 4, 'RIFF']);
+$stamped = array_values(array_filter($db->params, function ($p) { return strpos($p[0], 'SET library') !== false; }));
+is_eq('and the profile says where it came from', $stamped[0][1] ?? null, [':library' => 'acme/desk', ':version' => 2, ':id' => 7]);
+
+$db->params = [];
+is_eq('an entry that is not there is refused before anything is written',
+	[$own->saveProfile(['name' => 'Desks', 'library' => 'acme/gone'])['status'], $db->params], [false, []]);
+$own->saveProfile(['name' => 'Plain', 'library' => '']);
+$own->saveProfile(['id' => 7, 'name' => 'Desks', 'library' => 'acme/desk']);
+is_eq('an empty start, or a profile already written, copies nothing',
+	array_filter($db->params, function ($p) { return strpos($p[0], 'oryk_provisioner_resources') !== false; }), []);
+
+$db->params = [];
+$db->answers = ['profiles` WHERE id = :id' => 7, 'profile_id = :profile_id AND name = :name' => 9];
+is_eq('a resource that cannot be made takes the profile back with it', [
+	$own->saveProfile(['name' => 'Desks', 'library' => 'acme/desk'])['status'],
+	count(array_filter($db->params, function ($p) { return strpos($p[0], 'DELETE FROM `oryk_provisioner_profiles`') !== false; })),
+], [false, 1]);
+
+$db->answers = ['profiles` WHERE id = :id' => 7];
+is_eq('a name left blank is the entry\'s',
+	$own->saveProfile(['name' => ' ', 'library' => 'acme/desk'])['name'] ?? null, $own->entry('acme/desk')['name']);
+is_eq('and with an empty start there is none to take',
+	$own->saveProfile(['name' => '', 'library' => '']), ['status' => false, 'message' => 'A profile needs a name.']);
+
+$db->fetches = ['SELECT library, library_version' => [['library' => 'acme/desk', 'library_version' => '2']]];
+is_eq('a profile made from the library says so', $profiles->library(7), ['library' => 'acme/desk', 'library_version' => '2']);
+$db->fetches = ['SELECT library, library_version' => [['library' => null, 'library_version' => null]]];
+is_eq('and one written by hand does not', $profiles->library(8), null);
+
+$db->answers = [];
+$db->fetches = [];
+$db->insertId = 0;
+FreePBX::$config['ASTSPOOLDIR'] = '/var/spool/asterisk';
+foreach (['/spool/repo/7', '/acme/desk/manifest.json', '/acme/desk/a.cfg', '/acme/desk/ring.wav'] as $file) {
+	@unlink($scratch . $file);
+}
+foreach (['/spool/repo', '/spool', '/acme/desk', '/acme', ''] as $dir) {
+	@rmdir($scratch . $dir);
+}
 
 echo "\n  a setting that works out to nothing is taken off the endpoint:\n";
 
@@ -1315,16 +1496,36 @@ is_eq('and a disabled profile is a 403, not a 404', $disabled['code'] ?? 404, 40
 
 $db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => []];
 
-is_eq('no profile by that name, no profile',
-	$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, '0004f282e824 has no profile assigned.');
+$named = function () use ($db) {
+	$names = [];
 
-$db->fetches = ['WHERE pc.mac = :mac' => [$client]];
-$db->seen = [];
+	foreach ($db->params as $pair) {
+		if (strpos($pair[0], 'LOWER(name)') !== false) {
+			$names[] = $pair[1][':name'];
+		}
+	}
 
-is_eq('and no vendor, no lookup',
-	[$endpoint->resolveRequest('0004f282e824')['message'] ?? null,
-		(bool) array_filter($db->seen, function ($q) { return strpos($q, 'LOWER(name)') !== false; })],
-	['0004f282e824 has no profile assigned.', false]);
+	return $names;
+};
+
+$db->params = [];
+
+is_eq('no profile by that name, then the one named Default, and neither is no profile',
+	[$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom')['message'] ?? null, $named()],
+	['0004f282e824 has no profile assigned.', ['Polycom', 'Default']]);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => [['id' => '4', 'name' => 'Default', 'enabled' => '0']]];
+$db->params = [];
+
+is_eq('no vendor is served the one named Default',
+	[$endpoint->resolveRequest('0004f282e824')['message'] ?? null, $named()],
+	['The Default profile is disabled.', ['Default']]);
+
+$db->fetches = ['WHERE pc.mac = :mac' => [$client], 'WHERE LOWER(name) = LOWER(:name)' => [['id' => '3', 'name' => 'Polycom', 'enabled' => '0']]];
+$db->params = [];
+$endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
+
+is_eq('and a vendor that has a profile never asks for Default', $named(), ['Polycom']);
 
 $db->fetches = ['WHERE pc.mac = :mac' => [['enabled' => '0'] + $client]];
 $disabled = $endpoint->resolveRequest('0004f282e824', null, null, 'GET', 'Polycom');
@@ -1878,7 +2079,7 @@ function sweep_build($etc)
 	$s = build();
 	$s['app']->Notifications = new StubNotifications();
 	$s['bridge'] = new RealtimeBridge($s['app'], $etc);
-	$s['sweep'] = new SignupSweep($s['app'], $s['clients'], $s['bridge'], new Settings($s['app']), new Notices($s['app']), $etc);
+	$s['sweep'] = new SignupSweep($s['app'], $s['clients'], $s['bridge'], new Settings($s['app']), new DashboardNotices($s['app']), $etc);
 	FreePBX::$core->devices['9990000013'] = ['id' => '9990000013'];
 	FreePBX::$core->devices['9990000014'] = ['id' => '9990000014'];
 
@@ -2223,6 +2424,15 @@ is_eq('a template is given them as one value', $render(['mac' => '0004f282e824',
 is_eq('a user with none renders empty', $render(['mac' => '0004f282e824', 'extension' => '1001']), 'SERVICES=');
 is_eq('and so does a client with no user', $render(['mac' => '0004f282e824']), 'SERVICES=');
 
+$awkward = ['extension.name' => 'R&D "East" <1>'];
+is_eq(
+	'a template that is XML has its values escaped',
+	$template->renderConfig("<?xml version=\"1.0\"?>\n<a n=\"{{extension.name}}\"/>", $awkward),
+	"<?xml version=\"1.0\"?>\n<a n=\"R&amp;D &quot;East&quot; &lt;1&gt;\"/>"
+);
+is_eq('one that is not is given them as they are', $template->renderConfig('NAME={{extension.name}}', $awkward), 'NAME=R&D "East" <1>');
+is_eq('and so is one that only opens with a bracket', $template->renderConfig('<<VOIP>>{{extension.name}}', $awkward), '<<VOIP>>R&D "East" <1>');
+
 echo "\n  what a change to services makes a job of:\n";
 
 // gold is over fax and sms; silver over fax.
@@ -2286,6 +2496,131 @@ preg_match_all('/^use\s+(?:[A-Za-z0-9_\\\\]+\\\\)?([A-Za-z0-9_]+);/m', $module, 
 preg_match_all('/\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(|\b([A-Z][A-Za-z0-9_]*)::/', $module, $named);
 $missing = array_values(array_diff(array_unique(array_filter(array_merge($named[1], $named[2]))), $imports[1], ['Oryk_provisioner']));
 is_eq('none is missing its use', $missing, []);
+
+echo "\n  notices:\n";
+
+/** Notices over whatever a test declares, so none depends on what the module does. */
+class TestNotices extends Notices
+{
+	public $declared = [];
+
+	public function definitions()
+	{
+		return $this->declared;
+	}
+}
+
+/** One declared notice, leading to `&tab=<id>`; $applies is its answer, or what gives it. */
+function notice($id, $category, $applies = true, array $more = [])
+{
+	return $more + [
+		'id' => $id,
+		'version' => 1,
+		'category' => $category,
+		'level' => 'info',
+		'dismissible' => true,
+		'text' => $id,
+		'action' => 'Go',
+		'target' => ['tab' => $id],
+		'when' => function () use ($applies) {
+			return is_callable($applies) ? $applies() : $applies;
+		},
+	];
+}
+
+/** The ids showing() answers with, for a page. */
+function shown(TestNotices $notices, array $request = [])
+{
+	return array_column($notices->showing($request), 'id');
+}
+
+$store = new StubStore();
+$notices = new TestNotices(new StubApp(), $store);
+$profiles = 0;
+$notices->declared = [
+	notice('profile', 'welcome', function () use (&$profiles) {
+		return $profiles === 0;
+	}),
+	notice('client', 'welcome'),
+	notice('helper', 'setup'),
+	notice('last', 'welcome'),
+];
+
+is_eq('one per category, the first of each', shown($notices), ['profile', 'helper']);
+is_eq('drawn with where it leads, and no check', $notices->showing([])[0], ['id' => 'profile', 'version' => 1, 'category' => 'welcome', 'level' => 'info', 'dismissible' => true, 'text' => 'profile', 'action' => 'Go', 'href' => '?display=oryk_provisioner&tab=profile']);
+$there = $notices->showing(['display' => 'oryk_provisioner', 'tab' => 'profile']);
+is_eq('on the page it leads to it is still shown', array_column($there, 'id'), ['profile', 'helper']);
+is_eq('with no action', [$there[0]['action'], $there[0]['href']], ['', '']);
+is_eq('and the others keep theirs', $there[1]['href'], '?display=oryk_provisioner&tab=helper');
+
+$profiles = 1;
+is_eq('one that no longer applies gives way to the next', shown($notices), ['client', 'helper']);
+is_eq('and nothing was stored for it', $store->writes, 0);
+$profiles = 0;
+is_eq('and is back when it applies again', shown($notices), ['profile', 'helper']);
+
+is_eq('dismissing answers with the next of its category', $notices->dismiss(['id' => 'profile', 'version' => '1'])['next']['id'] ?? null, 'client');
+is_eq('stored as the version dismissed', $store->kept, [Notices::DISMISSED => ['profile' => 1]]);
+is_eq('and it stays down', shown($notices), ['client', 'helper']);
+is_eq('the next has no action on the page it leads to', $notices->dismiss(['id' => 'profile', 'version' => '1'], ['tab' => 'client'])['next']['href'] ?? null, '');
+
+$notices->declared[0]['version'] = 2;
+is_eq('a raised version shows it again', shown($notices), ['profile', 'helper']);
+$writes = $store->writes;
+is_eq('the version that was on the page is the one dismissed', $notices->dismiss(['id' => 'profile', 'version' => '1'])['next']['id'] ?? null, 'profile');
+is_eq('so an older one stores nothing', $store->writes, $writes);
+
+is_eq('an id that is not declared is refused', $notices->dismiss(['id' => 'nope', 'version' => '1'])['status'], false);
+$notices->declared[2]['dismissible'] = false;
+is_eq('so is a notice that cannot be dismissed', $notices->dismiss(['id' => 'helper', 'version' => '1'])['status'], false);
+$store->kept[Notices::DISMISSED]['helper'] = 1;
+is_eq('which shows whatever the store says', shown($notices), ['profile', 'helper']);
+
+$notices->declared[0]['when'] = function () {
+	throw new \Exception('broken');
+};
+is_eq('a check that throws does not apply', shown($notices), ['client', 'helper']);
+
+$store->kept[Notices::DISMISSED] = ['profile' => 1, 'client' => 1, 'gone' => 1];
+$notices->prune();
+is_eq('pruning keeps only what a declared notice would read', $store->kept[Notices::DISMISSED], ['client' => 1]);
+is_eq('one dismissal to bring back', $notices->dismissedCount(), 1);
+$writes = $store->writes;
+$notices->prune();
+is_eq('pruning nothing writes nothing', $store->writes, $writes);
+is_eq('a reset', $notices->reset(), ['status' => true]);
+is_eq('removes the key', $store->kept, []);
+
+$store->broken = true;
+is_eq('a store that throws has dismissed nothing', shown($notices), ['client', 'helper']);
+is_eq('and a dismissal says it failed', $notices->dismiss(['id' => 'client', 'version' => '1'])['status'], false);
+
+$declared = (new Notices(new StubApp(), new StubStore()))->definitions();
+is_eq('the module\'s own each have an id of their own', count(array_unique(array_column($declared, 'id'))), count($declared));
+$incomplete = [];
+foreach ($declared as $one) {
+	if (array_diff(['id', 'version', 'category', 'level', 'dismissible', 'text', 'action', 'target', 'when'], array_keys($one)) || !is_callable($one['when']) || !is_int($one['version'])) {
+		$incomplete[] = $one['id'] ?? '?';
+	}
+}
+is_eq('and every field', $incomplete, []);
+
+$app = new StubApp();
+$whens = array_column((new Notices($app, new StubStore()))->definitions(), 'when', 'id');
+$open = $whens['open-default-profile'];
+$was = FreePBX::$config;
+FreePBX::$config[Settings::HOSTNAME] = ' ';
+is_eq('no Hostname says so', $whens['hostname'](), true);
+FreePBX::$config[Settings::HOSTNAME] = 'pbx.example.com';
+is_eq('and one that is set does not', $whens['hostname'](), false);
+FreePBX::$config[Settings::PROVISIONING] = 'OPEN';
+is_eq('open provisioning with no profile named Default says so', $open(), true);
+$app->Database->answers = ['WHERE LOWER(name) = LOWER(:name)' => 1];
+is_eq('and stops once there is one', $open(), false);
+$app->Database->answers = [];
+FreePBX::$config[Settings::PROVISIONING] = 'CLOSED';
+is_eq('closed, it has nothing to say', $open(), false);
+FreePBX::$config = $was;
 
 
 foreach ($TEMPORARY as $path) {

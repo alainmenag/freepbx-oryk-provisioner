@@ -11,6 +11,7 @@ use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
+use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
 use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
@@ -21,6 +22,7 @@ use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
 use FreePBX\Modules\Oryk_Provisioner\Jobs;
+use FreePBX\Modules\Oryk_Provisioner\Library;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
 use FreePBX\Modules\Oryk_Provisioner\Logs;
@@ -88,12 +90,14 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Profiles         |  one per table
  *   Resources        |
  *   Services         |
+ *   Library          the profiles the module ships, and copying one
  *   Matcher          a filename is a MAC and a name, read both ways
  *   Previews         which filename does this phone ask this file by
  *   ProvisioningLog  one row per request the endpoint answered
  *   Endpoint         answering a provisioning request, and ending it
  *   Pages            which URL is which page
  *   Settings         the module's PBX-wide settings, and the Settings tab
+ *   Notices          the notices over every module page
  *   Installer        installing and uninstalling
  *
  * and, for the Users tab -- see ARCHITECTURE.md, "Users":
@@ -121,7 +125,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *
  *   RealtimeBridge   a sign-up live before Apply Config writes it
  *   SignupSweep      the minute job: out of the bridge once written; notices
- *   Notices          the module's dashboard notices
+ *   DashboardNotices the module's dashboard notices
  *   LobbyContext     the lobby's dialplan, on Apply Config
  *
  * and, reacting to what a user's services become -- see ARCHITECTURE.md, "Jobs":
@@ -164,6 +168,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Installer */
 	private $installer;
 
+	/** @var Notices */
+	private $notices;
+
 	/** @var Jobs */
 	private $jobs;
 
@@ -199,6 +206,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Profiles */
 	private $profiles;
+
+	/** @var Library */
+	private $library;
 
 	/** @var ProvisioningLog */
 	private $provisioningLog;
@@ -258,9 +268,12 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->profiles = new Profiles($freepbx, $this->files);
 		$this->clients = new Clients($freepbx, $this->pbx, $this->profiles, $this->tokens, $this->logs);
 		$this->resources = new Resources($freepbx, $this->profiles, $this->files);
+		$this->library = new Library($freepbx, $this->profiles, $this->resources);
+		// This class is the key-value store: FreePBX_Helpers' getConfig() and setConfig().
+		$this->notices = new Notices($freepbx, $this);
 
 		$bridge = new RealtimeBridge($freepbx);
-		$this->sweep = new SignupSweep($freepbx, $this->clients, $bridge, $this->settings, new Notices($freepbx));
+		$this->sweep = new SignupSweep($freepbx, $this->clients, $bridge, $this->settings, new DashboardNotices($freepbx));
 		$this->lobby = new LobbyContext($freepbx, $this->settings);
 
 		$this->endpointSettings = new EndpointSettings($freepbx);
@@ -328,7 +341,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->fail2ban,
 			$this->overview,
 			$this->services,
-			$this->jobs
+			$this->jobs,
+			$this->library,
+			$this->notices
 		);
 	}
 
@@ -367,23 +382,26 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Create the tables, the repo directory and the web-root symlink.
+	 * Create the tables, the repo directory and the web-root symlink, and drop
+	 * the notice dismissals this version no longer reads.
 	 *
 	 * @return void
 	 */
 	public function install()
 	{
 		$this->installer->install();
+		$this->notices->prune();
 	}
 
 	/**
-	 * Remove the web-root symlink. Nothing is dropped.
+	 * Remove the web-root symlink and the notice dismissals. No table is dropped.
 	 *
 	 * @return void
 	 */
 	public function uninstall()
 	{
 		$this->installer->uninstall();
+		$this->notices->reset();
 	}
 
 	/**
@@ -746,6 +764,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'retryJob':
 			case 'deleteJob':
 			case 'saveSettings':
+			case 'dismissNotice':
+			case 'resetNotices':
 			case 'listBans':
 			case 'saveBan':
 			case 'setBanState':
@@ -814,11 +834,14 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listProfiles':
 				return $this->profiles->listProfiles($scope['profiles']);
 
+			// A Device of "Auto Create" has the device made first; that is Users'.
 			case 'saveClient':
-				return $this->clients->saveClient($_REQUEST);
+				return (string) ($_REQUEST['device_id'] ?? '') === Clients::AUTO_DEVICE
+					? $this->users->saveClientWithNewDevice($_REQUEST)
+					: $this->clients->saveClient($_REQUEST);
 
 			case 'saveProfile':
-				return $this->profiles->saveProfile($_REQUEST);
+				return $this->library->saveProfile($_REQUEST);
 
 			// `device` is the answer "Client + Device": the device it used goes too.
 			case 'deleteClient':
@@ -935,6 +958,13 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);
+
+			// Answers with the notice that takes its place, drawn: see Pages.
+			case 'dismissNotice':
+				return $this->pages->dismissNotice($_REQUEST);
+
+			case 'resetNotices':
+				return $this->notices->reset();
 
 			case 'listBans':
 				return $this->bans->listBans($scope['bans']);

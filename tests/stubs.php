@@ -478,6 +478,38 @@ class StubNotifications
 	}
 }
 
+/** The module's key-value store, as FreePBX_Helpers gives it: false is both "not there" and "remove". */
+class StubStore
+{
+	public $kept = [];
+	public $writes = 0;
+	public $broken = false;
+
+	public function getConfig($key)
+	{
+		if ($this->broken) {
+			throw new \Exception('no store');
+		}
+
+		return array_key_exists($key, $this->kept) ? $this->kept[$key] : false;
+	}
+
+	public function setConfig($key, $value = false)
+	{
+		if ($this->broken) {
+			throw new \Exception('no store');
+		}
+
+		$this->writes++;
+
+		if ($value === false) {
+			unset($this->kept[$key]);
+		} else {
+			$this->kept[$key] = $value;
+		}
+	}
+}
+
 /** Dialplan as FreePBX's extensions class collects it: what was added, spliced and included. */
 class StubExtensions
 {

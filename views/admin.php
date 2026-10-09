@@ -27,7 +27,8 @@
  * Users, the first of them.
  *
  * Settings is the one tab with fields rather than a table, drawn by
- * partials/settings.php and saved by the action bar's Save.
+ * partials/settings.php and saved by the action bar's Save. Under them it has
+ * the button that brings dismissed notices back.
  *
  * Services is drawn by partials/services.php, and Jobs -- what changes to
  * users' services set going, see ARCHITECTURE.md, "Jobs" -- by partials/jobs.php.
@@ -48,6 +49,7 @@
  * @var array<int, array<string, mixed>>  $sections Navigator::sections() -- see partials/sections.php
  * @var string                            $version  Module version -- see partials/sections.php
  * @var array<int, array<string, mixed>>  $settings  Settings::fields(), on the Settings tab
+ * @var int                               $dismissedNotices Notices::dismissedCount(), on the Settings tab
  * @var array<string, mixed>              $sync      Fail2ban::status(), on the Bans tab
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null

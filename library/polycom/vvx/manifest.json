@@ -1,0 +1,14 @@
+{
+	"name": "Polycom VVX",
+	"vendor": "Polycom",
+	"version": 1,
+	"skus": ["VVX500"],
+	"resources": [
+		{"name": "{{device.mac}}.cfg", "type": "template", "source": "mac.cfg"},
+		{"name": "phone.cfg", "type": "template", "source": "phone.cfg"},
+		{"name": "web.cfg", "type": "template", "source": "web.cfg"},
+		{"name": "app.log", "type": "log"},
+		{"name": "boot.log", "type": "log"},
+		{"name": "sip.ld", "type": "file", "note": "Polycom UC Software for your model, from Poly's support site, uploaded under the name sip.ld. Firmware is not shipped with the module."}
+	]
+}

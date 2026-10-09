@@ -43,8 +43,9 @@ class Template extends Service
 	 * Fill in a template's {{ }} placeholders.
 	 *
 	 * The delimiters and dotted names are the ones the full engine will use, so
-	 * profiles written against this keep rendering: what is missing is filters,
-	 * sections and escaping, not the syntax.
+	 * profiles written against this keep rendering: what is missing is filters
+	 * and sections, not the syntax. Values go in as they are: a resource's name
+	 * is rendered with this, its body with renderConfig().
 	 *
 	 * A name nothing answers to renders as nothing.
 	 *
@@ -62,6 +63,30 @@ class Template extends Service
 			},
 			$template
 		);
+	}
+
+	/**
+	 * Render a resource's body: renderTemplate(), with the values XML-escaped
+	 * when the template is XML.
+	 *
+	 * XML is a template that begins with `<?xml`. A name or a secret with an
+	 * `&`, a `<` or a quote in it would otherwise be a file the phone cannot
+	 * parse. Anything else is given its values as they are.
+	 *
+	 * @param string                $template Template text.
+	 * @param array<string, string> $values   Placeholder name to value.
+	 *
+	 * @return string Rendered configuration.
+	 */
+	public function renderConfig($template, array $values)
+	{
+		if (preg_match('/^\s*<\?xml\b/i', (string) $template)) {
+			$values = array_map(function ($value) {
+				return htmlspecialchars((string) $value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+			}, $values);
+		}
+
+		return $this->renderTemplate($template, $values);
 	}
 
 	/**
@@ -110,6 +135,7 @@ class Template extends Service
 			'profile.name' => (string) ($row['profile_name'] ?? ''),
 			'server.host' => $this->serverHost(),
 			'server.port' => '5060',
+			'provisioning.server' => $this->provisioningServer(),
 		];
 
 		// Everything else the device is configured with in FreePBX, under its own
@@ -164,6 +190,28 @@ class Template extends Service
 	}
 
 	/**
+	 * Where a phone fetches its files, as it is told in a template.
+	 *
+	 * ORYK_PROVISIONING_SERVER when it is set. Otherwise serverHost() and the
+	 * path of the web-root link Installer makes, which is where the endpoint
+	 * is on a PBX nothing stands in front of.
+	 *
+	 * @return string Host, then a port and a path if it has them; no scheme.
+	 */
+	public function provisioningServer()
+	{
+		$configured = trim((string) $this->settings->get(Settings::PROVISIONING_SERVER));
+
+		if ($configured !== '') {
+			return $configured;
+		}
+
+		$host = $this->serverHost();
+
+		return $host !== '' ? $host . '/provisioner' : '';
+	}
+
+	/**
 	 * What a template can refer to, as the editor lists it.
 	 *
 	 * Written out here rather than derived from a rendering, because the resource
@@ -202,6 +250,7 @@ class Template extends Service
 				'profile.name' => _('This profile'),
 				'server.host' => _('Host the PBX is reached on'),
 				'server.port' => _('5060'),
+				'provisioning.server' => _('Where phones fetch their files'),
 			],
 		];
 	}

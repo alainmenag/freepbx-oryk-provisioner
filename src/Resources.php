@@ -496,6 +496,40 @@ class Resources extends Service
 	}
 
 	/**
+	 * Put a file already on this machine on a resource, as an upload would.
+	 *
+	 * **The path is copied from as given, so it may never come from a
+	 * request**: its one caller is Library, with a file under library/.
+	 *
+	 * @param mixed  $id        Resource id, of type File.
+	 * @param int    $profileId Profile it belongs to.
+	 * @param string $path      File to copy; left where it is.
+	 *
+	 * @return bool True when the file is stored and the row says so.
+	 */
+	public function storeResourceFile($id, $profileId, $path)
+	{
+		$id = (int) $id;
+		$target = $this->files->repoFile($id);
+
+		if (!$this->files->ensureRepo() || !@copy((string) $path, $target)) {
+			return false;
+		}
+
+		@chmod($target, 0640);
+		clearstatcache(true, $target);
+
+		$stmt = $this->db->prepare(
+			"UPDATE `{$this->resourcesTable}`
+			SET file_size = :size, file_uploaded_at = NOW()
+			WHERE id = :id AND profile_id = :profile_id"
+		);
+		$stmt->execute([':size' => (int) filesize($target), ':id' => $id, ':profile_id' => (int) $profileId]);
+
+		return true;
+	}
+
+	/**
 	 * Take the uploaded file off a resource.
 	 *
 	 * What is left is a resource of type File with nothing uploaded to it, which

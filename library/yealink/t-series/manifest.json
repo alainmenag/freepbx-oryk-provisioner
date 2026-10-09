@@ -1,0 +1,13 @@
+{
+	"name": "Yealink T-Series (untested)",
+	"vendor": "Yealink",
+	"version": 1,
+	"skus": [],
+	"resources": [
+		{
+			"name": "{{device.mac}}.cfg",
+			"type": "template",
+			"source": "mac.cfg"
+		}
+	]
+}
