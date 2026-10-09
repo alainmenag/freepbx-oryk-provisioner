@@ -1262,7 +1262,9 @@ pane, by every command and by Delete All:
 | bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
 | FreePBX side | `Users::related()`: owned account, mailbox | -- |
 
-The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
+The pane is tables -- User, Clients, Services (the Services list's own
+`listServices`, asked with the scope: what the user is assigned itself, never
+what a pack brings), Provisioning log, Bans, and on a user
 Devices, Call history, Voicemail and Jobs (the Jobs list's own `listJobs`,
 asked with the scope) -- on either kind of row: a client's Overview lists its user,
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the

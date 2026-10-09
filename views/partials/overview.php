@@ -7,8 +7,8 @@
  * and what Delete All takes, is Overview's business (src/Overview.php, and
  * ARCHITECTURE.md, "Overview"); this draws what inventory() found.
  *
- * It is tables all the way down -- User, Clients, Provisioning log, Jobs (a
- * user's), Bans --
+ * It is tables all the way down -- User, Clients, Services (the user's own
+ * assignments), Provisioning log, Jobs (a user's), Bans --
  * and they are the lists' own: the same ids and formatters, so
  * views/admin.php's handlers answer their buttons, with a column or two only
  * Overview has. Every
@@ -159,6 +159,29 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
+	<h4 class="oryk-overview-heading"><?php echo _('Services'); ?></h4>
+	<table
+		id="overview_service_table"
+		data-toggle="table"
+		data-url="ajax.php?module=oryk_provisioner&command=listServices<?php echo $oe($oScopeQuery); ?>"
+		class="table table-striped"
+		data-side-pagination="server"
+		data-pagination="true"
+		data-show-refresh="true"
+		data-icons-prefix="oryk-icon"
+		data-icons='{"refresh":"oryk-icon-refresh"}'
+		data-unique-id="slug"
+		data-sort-name="name"
+		data-sort-order="asc">
+		<thead>
+			<tr>
+				<th data-field="name" data-formatter="formatOverviewService" data-sortable="true"><?php echo _('Name'); ?></th>
+				<th data-field="pack" data-formatter="formatOverviewServiceKind"><?php echo _('Type'); ?></th>
+				<th data-field="actions" data-formatter="formatOverviewServiceActions" data-align="right"><?php echo _('Actions'); ?></th>
+			</tr>
+		</thead>
+	</table>
+
 	<h4 class="oryk-overview-heading"><?php echo _('Logs'); ?></h4>
 	<?php
 	$logMac = '';
@@ -208,7 +231,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 	<?php if ($oIsUser): ?>
 	<h4 class="oryk-overview-heading"><?php echo _('Call Detail Record'); ?></h4>
-	<div id="call_toolbar" class="oryk-toolbar">
+	<div id="call_toolbar" class="oryk-toolbar oryk-toolbar-clear">
 		<button type="button" class="btn btn-danger" id="oryk_overview_calls_clear" title="<?php echo _('Clear Call History'); ?>">
 			<?php echo $icon('trash'); ?>
 			<?php echo _('Clear'); ?>
@@ -240,7 +263,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	</table>
 
 	<h4 class="oryk-overview-heading"><?php echo _('Voicemail'); ?></h4>
-	<div id="voicemail_toolbar" class="oryk-toolbar">
+	<div id="voicemail_toolbar" class="oryk-toolbar oryk-toolbar-clear">
 		<button type="button" class="btn btn-danger" id="oryk_overview_voicemail_clear" title="<?php echo _('Clear Voicemail'); ?>">
 			<?php echo $icon('trash'); ?>
 			<?php echo _('Clear'); ?>
@@ -277,6 +300,10 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	// The one thing every command of this pane is posted: the server works
 	// out what is related, so nothing here names a row to delete.
 	const orykOverviewScope = <?php echo json_encode((string) $overview['key']); ?>;
+
+	// The user in view -- a client's is its user -- or '' with none, and its Services tab.
+	const orykOverviewUser = <?php echo json_encode((string) ($overview['user']['extension'] ?? '')); ?>;
+	const orykOverviewServicesUrl = <?php echo json_encode(!empty($overview['user']['extension']) ? '?display=oryk_provisioner&user=' . rawurlencode((string) $overview['user']['extension']) . '&tab=services' : ''); ?>;
 	const orykOverviewAsk = <?php echo json_encode($oAsk); ?>;
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
@@ -318,11 +345,13 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	}
 
 	// Delete asks whether the clients using the device go with it; on the
-	// user's own, it says what that leaves behind. Edit is its page in FreePBX.
+	// user's own, it says what that leaves behind. Dev. is its page in
+	// FreePBX, Edit its page here.
 	function formatOverviewDeviceActions(value, row) {
 		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+			`<a class="btn btn-default btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}" title="Open in Devices">Dev.</a>` +
 			`<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" data-own="${Number(row.own) ? 1 : 0}" data-clients="${Number(row.clients) || 0}" title="Delete this device">${orykIcon('trash')}</button>` +
-			`<a class="btn btn-primary btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}">Edit</a>` +
+			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>` +
 			`</div>`;
 	}
 
@@ -379,7 +408,75 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		}
 	});
 
+	// The services the user is assigned, as the Services dropdown lists
+	// them: the Services list's own `listServices`, asked with the scope.
+	// Assigning is the user's Services tab, which Edit opens; a trash can
+	// unassigns the one service, asked with what the user would lose.
+	function formatOverviewService(value, row) {
+		return `<a href="?display=oryk_provisioner&service=${encodeURIComponent(row.slug)}">${orykEscape(value)}</a>`;
+	}
+
+	function formatOverviewServiceKind(value) {
+		return value ? 'Pack' : 'Service';
+	}
+
+	function formatOverviewServiceActions(value, row) {
+		if (!orykOverviewUser) {
+			return '';
+		}
+
+		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+			`<button type="button" class="btn btn-danger btn-sm" name="overview_service_unassign" value="${orykEscape(row.slug)}" data-name="${orykEscape(row.name)}" title="Unassign this service from the user">${orykIcon('trash')}</button>` +
+			`<a class="btn btn-primary btn-sm" href="${orykEscape(orykOverviewServicesUrl)}" title="Assign and unassign this user's services">Edit</a>` +
+			`</div>`;
+	}
+
+	// setUserServices with one service named: the Services tab's own save,
+	// asked first the way that tab asks. The service itself is kept.
+	$(document).on('click', '[name="overview_service_unassign"]', function () {
+		const button = $(this).prop('disabled', true);
+		const request = { extension: orykOverviewUser, assign: '', unassign: button.val() };
+		const refused = function (message) {
+			button.prop('disabled', false);
+			notie.alert(3, message || 'Could not unassign.', 4);
+		};
+		const named = (list) => (list || []).map((service) => service.name + (service.pack ? ' (Pack)' : '') + (service.effect ? ': ' + service.effect : ''));
+
+		orykPost('userServicesImpact', request).done(function (impact) {
+			if (!impact || !impact.status) {
+				refused(impact && impact.message);
+				return;
+			}
+
+			orykAsk(`Unassign ${button.data('name')} from user ${orykOverviewUser}? The service itself is kept.`, {
+				title: 'Unassign service',
+				sections: [
+					{ title: 'Loses', items: named(impact.revoked) },
+					{ title: 'Still held', items: (impact.kept || []).map((service) => `${service.name}, through ${service.via.join(', ')}`) }
+				],
+				choices: [{ label: 'Unassign', value: true }]
+			}).done(function () {
+				orykPost('setUserServices', request).done(function (response) {
+					if (!response || !response.status) {
+						refused(response && response.message);
+						return;
+					}
+
+					// The dropdowns' counts and the Jobs table change with it.
+					window.location.reload();
+				}).fail(function () {
+					refused();
+				});
+			}).fail(function () {
+				button.prop('disabled', false);
+			});
+		}).fail(function () {
+			refused();
+		});
+	});
+
 	// The owned account, as a link to it in User Manager.
+
 	function formatOverviewAccount(value, row) {
 		if (!value) {
 			return '<span class="text-muted">None this module owns</span>';

@@ -783,6 +783,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 	function formatPbxDeviceActions(value, row) {
 		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+			`<a class="btn btn-default btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}" title="Open in Devices">Dev.</a>` +
 			`<button type="button" class="btn btn-danger btn-sm" name="pbx_device_delete" value="${orykEscape(row.id)}" title="Delete this device">${orykIcon('trash')}</button>` +
 			`<a class="btn btn-primary btn-sm" href="${orykPbxDeviceUrl(row)}">Edit</a>` +
 			`</div>`;

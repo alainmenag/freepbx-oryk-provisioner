@@ -127,6 +127,7 @@ It is tables, the same ones the lists show:
 | **User** | the user, with a link to its User Manager account | its user, which is kept |
 | **Devices** | the FreePBX devices on its extension | — |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
+| **Services** | the services it is assigned itself, not those a pack brings; a trash can unassigns one, **Edit** opens its Services tab | its user's |
 | **Call history** | the calls it made or received | — |
 | **Voicemail** | the messages in its mailbox, every folder | — |
 | **Provisioning log** | the requests from its clients' MACs | the requests from its MAC |

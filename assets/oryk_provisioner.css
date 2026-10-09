@@ -562,6 +562,41 @@ tr.oryk-disabled > td a:not(.btn) {
 	margin-left: 8px;
 }
 
+/* A toolbar whose button is Clear goes after the table's refresh, so refresh
+ * is first over every table: bootstrap-table draws the toolbar, then its own
+ * buttons, then the search box, and this reorders the three. */
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 10px;
+}
+
+/* A clearfix's pseudo-elements would be flex items, and the gap would indent
+ * the row by one. */
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear)::before,
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear)::after {
+	display: none;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > * {
+	float: none;
+	margin-left: 0;
+	margin-right: 0;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .columns {
+	order: 1;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .bs-bars {
+	order: 2;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .search {
+	order: 3;
+}
+
 /* A select narrowing a table, beside Add in its toolbar: Services' two. */
 .oryk-toolbar-filter {
 	display: inline-block;
