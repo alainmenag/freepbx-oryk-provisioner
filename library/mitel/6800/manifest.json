@@ -1,0 +1,13 @@
+{
+	"name": "Mitel 6800 (untested)",
+	"vendor": "Mitel",
+	"version": 1,
+	"skus": [],
+	"resources": [
+		{
+			"name": ".cfg",
+			"type": "template",
+			"source": "mac.cfg"
+		}
+	]
+}

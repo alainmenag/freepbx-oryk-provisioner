@@ -22,7 +22,7 @@ trait Logs
 	 *
 	 * @return void
 	 */
-	public function log(mixed $message = '', mixed $data = '', $level = 'DEBUG')
+	public function log($message = '', $data = '', $level = 'DEBUG')
 	{
 		$constant = 'FPBX_LOG_' . $level;
 		$data = is_string($data) ? $data : ($data ? json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '');

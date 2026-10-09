@@ -9,10 +9,11 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * Two halves. sections() is the module's top level, drawn as the bar over
  * every page by views/partials/sections.php. levels() is the row of dropdowns
- * views/partials/navigator.php draws under it: Users, Clients, Profiles,
- * Resources, Services, Logs, Bans and Jobs, always all eight, always in that
- * order -- who, which phone, what configuration, which file, what they are
- * assigned, what it asked, what refuses it, what was done about their services.
+ * views/partials/navigator.php draws under it: Users, Devices, Clients,
+ * Profiles, Resources, Services, Logs, Bans and Jobs, always all nine, always
+ * in that order -- who, which line, which phone, what configuration, which
+ * file, what they are assigned, what it asked, what refuses it, what was done
+ * about their services.
  *
  * The page being viewed sets the scope; ARCHITECTURE.md, "Conventions that
  * hold everywhere", has the rules. A new row has no links yet, so it scopes
@@ -65,10 +66,13 @@ class Navigator extends Service
 	/** @var Jobs|null Null where there is no Jobs level to fill: the tests. */
 	private $jobs;
 
+	/** @var Devices|null Null where there is no Devices level to fill: the tests. */
+	private $devices;
+
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, Services $services, ?Jobs $jobs = null)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, Services $services, ?Jobs $jobs = null, ?Devices $devices = null)
 	{
 		parent::__construct($freepbx);
 
@@ -80,12 +84,13 @@ class Navigator extends Service
 		$this->bans = $bans;
 		$this->services = $services;
 		$this->jobs = $jobs;
+		$this->devices = $devices;
 	}
 
 	/**
-	 * The eight dropdowns, scoped by the row a page is viewing.
+	 * The nine dropdowns, scoped by the row a page is viewing.
 	 *
-	 * `$at` names that row: `user` (an extension), `client`, `profile`,
+	 * `$at` names that row: `user` (an extension), `device`, `client`, `profile`,
 	 * `profile` and `resource` together, `log`, `ban`, `service` (a slug) or `job`.
 	 * Each is an id, or 'new' on a page writing one that does not exist yet.
 	 * Empty on a page viewing no row.
@@ -97,7 +102,7 @@ class Navigator extends Service
 	 * @param string               $section Section the page is in, when its
 	 *                                      options depend on it: 'overview'.
 	 *
-	 * @return array<int, array<string, mixed>> Users, clients, profiles,
+	 * @return array<int, array<string, mixed>> Users, devices, clients, profiles,
 	 *                                           resources, services, logs, bans, jobs.
 	 */
 	public function levels(array $at = [], $section = '')
@@ -112,6 +117,7 @@ class Navigator extends Service
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 		$service = isset($at['service']) ? (string) $at['service'] : null;
 		$job = isset($at['job']) ? (string) $at['job'] : null;
+		$device = isset($at['device']) ? (string) $at['device'] : null;
 
 		$clientRows = $this->clients->clientChoices();
 		$profileNames = [];
@@ -138,6 +144,7 @@ class Navigator extends Service
 
 		return [
 			$this->userLevel($scope['users'], $user, $from, $overview),
+			$this->deviceLevel($scope['devices'], $device, $from),
 			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile, $from, $overview),
 			$this->profileLevel($profileNames, $scope['profiles'], $profile, $from),
 			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
@@ -158,8 +165,8 @@ class Navigator extends Service
 	 *
 	 * @param array<string, mixed> $at Row being viewed, as levels() takes it.
 	 *
-	 * @return array<string, mixed> users, clients, profiles, files, bans: ids
-	 *                              or null for unscoped; services: slugs or
+	 * @return array<string, mixed> users, devices, clients, profiles, files,
+	 *                              bans: ids or null for unscoped; services: slugs or
 	 *                              null; jobs: extensions or services to narrow
 	 *                              the jobs by (Jobs::listJobs()), or null;
 	 *                              logs: MACs or null;
@@ -187,7 +194,7 @@ class Navigator extends Service
 	 */
 	public function scopeKey(array $at)
 	{
-		foreach (['client', 'user', 'profile', 'log', 'ban', 'service', 'job'] as $kind) {
+		foreach (['client', 'user', 'device', 'profile', 'log', 'ban', 'service', 'job'] as $kind) {
 			if (isset($at[$kind]) && $this->written((string) $at[$kind])) {
 				return ($kind === 'service' && !empty($at['held']) ? 'holders' : $kind) . ':' . (string) $at[$kind];
 			}
@@ -211,7 +218,7 @@ class Navigator extends Service
 	{
 		$parts = explode(':', (string) $key, 2);
 
-		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'client', 'profile', 'log', 'ban', 'service', 'holders', 'job'], true)) {
+		if (count($parts) !== 2 || !in_array($parts[0], ['user', 'device', 'client', 'profile', 'log', 'ban', 'service', 'holders', 'job'], true)) {
 			return [];
 		}
 
@@ -261,7 +268,7 @@ class Navigator extends Service
 	/**
 	 * Whether a section's list is narrowed by a scope(), and so drawn with `&scope=`.
 	 *
-	 * @param string               $section users|clients|profiles|services|logs|bans|jobs.
+	 * @param string               $section users|devices|clients|profiles|services|logs|bans|jobs.
 	 * @param array<string, mixed> $scope   scope().
 	 *
 	 * @return bool Narrowed.
@@ -276,7 +283,7 @@ class Navigator extends Service
 			return ($scope['jobs'] ?? null) !== null;
 		}
 
-		return in_array($section, ['users', 'clients', 'profiles', 'services', 'bans'], true) && $scope[$section] !== null;
+		return in_array($section, ['users', 'devices', 'clients', 'profiles', 'services', 'bans'], true) && ($scope[$section] ?? null) !== null;
 	}
 
 	/**
@@ -296,6 +303,7 @@ class Navigator extends Service
 		$ban = isset($at['ban']) ? (string) $at['ban'] : null;
 		$service = isset($at['service']) ? (string) $at['service'] : null;
 		$job = isset($at['job']) ? (string) $at['job'] : null;
+		$device = isset($at['device']) ? (string) $at['device'] : null;
 
 		// A job is scoped like its user, whose page it would be on.
 		$ofJob = false;
@@ -309,7 +317,7 @@ class Navigator extends Service
 		// null is "not scoped": the level lists everything. An array is the ids
 		// linked to the row being viewed, and may be empty. Logs are scoped by
 		// MAC, and by address in `ip`.
-		$scope = ['users' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'services' => null, 'logs' => null, 'bans' => null, 'jobs' => null];
+		$scope = ['users' => null, 'devices' => null, 'clients' => null, 'profiles' => null, 'files' => null, 'services' => null, 'logs' => null, 'bans' => null, 'jobs' => null];
 		$ip = null;
 		$entry = null;
 
@@ -341,6 +349,32 @@ class Navigator extends Service
 
 			foreach ($clientRows as $row) {
 				if ($this->owner($row) === $user) {
+					$scope['clients'][] = (int) $row['id'];
+					$linked[] = $row;
+					$requests[] = $this->subjects($row);
+
+					if ((int) $row['profile_id']) {
+						$scope['profiles'][] = (int) $row['profile_id'];
+					}
+				}
+			}
+
+			$scope['profiles'] = array_values(array_unique($scope['profiles']));
+			$scope['files'] = $scope['profiles'];
+			$scope['logs'] = $this->macs($linked);
+		} elseif ($this->written($device)) {
+			// Like a user, one line of it: the extension it is on, and the
+			// clients on this device alone.
+			$row = $this->devices ? $this->devices->deviceRow($device) : null;
+			$on = $row ? (string) $row['user'] : '';
+			$scope['users'] = ($on !== '' && $on !== Devices::NOBODY) ? [$on] : [];
+			$scope['clients'] = [];
+			$scope['profiles'] = [];
+			$linked = [];
+			$requests = [['user' => array_values(array_unique(array_merge([$device], $scope['users'])))]];
+
+			foreach ($clientRows as $row) {
+				if ((string) $row['device_id'] === $device) {
 					$scope['clients'][] = (int) $row['id'];
 					$linked[] = $row;
 					$requests[] = $this->subjects($row);
@@ -454,6 +488,28 @@ class Navigator extends Service
 			$scope['jobs'] = ['extensions' => $holders];
 		}
 
+		// Devices: a user's, or a service's users', are the ones on those
+		// extensions; anything else scopes the devices its clients are on. A
+		// viewed device's own level lists all of its kind.
+		if ($this->written($device)) {
+			$scope['devices'] = null;
+		} elseif ($this->written($user)) {
+			$scope['devices'] = $this->devices ? $this->devices->idsOn([$user]) : [];
+		} elseif ($this->written($service)) {
+			$scope['devices'] = $this->devices ? $this->devices->idsOn((array) $scope['users']) : [];
+		} elseif ($this->written($client) || $scope['clients'] !== null) {
+			$of = $this->written($client) ? [$client] : array_map('strval', $scope['clients']);
+			$scope['devices'] = [];
+
+			foreach ($clientRows as $row) {
+				if (in_array((string) $row['id'], $of, true) && (string) $row['device_id'] !== '') {
+					$scope['devices'][] = (string) $row['device_id'];
+				}
+			}
+
+			$scope['devices'] = array_values(array_unique($scope['devices']));
+		}
+
 		$applying = null;
 
 		if ($requests !== null) {
@@ -487,7 +543,7 @@ class Navigator extends Service
 	 * group's first section would have stood: the active section of the group,
 	 * else its first, with every section of the group under 'items'.
 	 *
-	 * @param string               $section clients|profiles|services|users|logs|bans|jobs|overview|settings.
+	 * @param string               $section clients|profiles|services|devices|users|logs|bans|jobs|overview|settings.
 	 * @param array<string, mixed> $at      Row being viewed, as levels() takes it.
 	 *
 	 * @return array<int, array<string, mixed>> Each: key, text, href, active;
@@ -560,7 +616,8 @@ class Navigator extends Service
 	/**
 	 * Every section there is, in the bar's order, by key.
 	 *
-	 * Users, Clients, Profiles first, in the order of the dropdowns under the bar.
+	 * A group's sections are drawn in this order, and its first is what the
+	 * bar shows when none of them is open.
 	 *
 	 * @return array<string, string> Names, by key.
 	 */
@@ -568,12 +625,13 @@ class Navigator extends Service
 	{
 		return [
 			'users' => _('Users'),
+			'devices' => _('Devices'),
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
 			'services' => _('Services'),
 			'logs' => _('Logs'),
-			'bans' => _('Bans'),
 			'jobs' => _('Jobs'),
+			'bans' => _('Bans'),
 			'overview' => _('Overview'),
 			'settings' => _('Settings'),
 		];
@@ -591,8 +649,8 @@ class Navigator extends Service
 	private function sectionGroups()
 	{
 		return [
-			['users', 'clients', 'profiles', 'services'],
-			['logs', 'bans', 'jobs', 'overview'],
+			['users', 'devices', 'clients', 'profiles', 'services'],
+			['logs', 'jobs', 'bans', 'overview'],
 		];
 	}
 
@@ -630,6 +688,43 @@ class Navigator extends Service
 			'search' => _('Search users'),
 			'none' => _('No user here'),
 			'add' => ['text' => _('New user'), 'href' => '?display=oryk_provisioner&user='],
+		]);
+	}
+
+	/**
+	 * Devices: FreePBX's, all of them, or the ones the viewed row is linked to.
+	 *
+	 * None is written here, so there is no add row.
+	 *
+	 * @param array<int, string>|null $scope Device ids linked, or null for all.
+	 * @param string|null             $at    Device being viewed, or null.
+	 * @param string                  $from  scopeKey() of the viewed row, or ''.
+	 *
+	 * @return array<string, mixed> One level.
+	 */
+	private function deviceLevel($scope, $at, $from)
+	{
+		$rows = [];
+
+		foreach ($this->devices ? $this->devices->deviceChoices() : [] as $row) {
+			$id = (string) $row['id'];
+
+			$rows[] = [
+				'id' => $id,
+				'text' => $id,
+				'note' => (string) (isset($row['description']) ? $row['description'] : ''),
+				'href' => '?display=oryk_provisioner&device=' . rawurlencode($id),
+			];
+		}
+
+		return $this->level($rows, $scope, $at, [
+			'key' => 'device',
+			'title' => ['text' => _('Devices'), 'href' => self::listHref('devices', $from, $scope !== null)],
+			'mono' => true,
+			'new' => '',
+			'search' => _('Search devices'),
+			'none' => _('No devices here'),
+			'add' => null,
 		]);
 	}
 

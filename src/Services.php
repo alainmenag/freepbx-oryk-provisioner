@@ -183,9 +183,13 @@ class Services extends Service
 		}
 
 		$rows = [];
+		$packs = array_column($links, 0);
 
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-			$rows[] = $this->marked($row) + ['holders' => $holders[(string) $row['slug']] ?? 0];
+			$rows[] = $this->marked($row) + [
+				'holders' => $holders[(string) $row['slug']] ?? 0,
+				'pack' => in_array((string) $row['slug'], $packs, true),
+			];
 		}
 
 		// By name within a count, as the query left them: usort() is stable.

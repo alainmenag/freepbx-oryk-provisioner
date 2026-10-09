@@ -141,3 +141,37 @@ function orykServiceImpact(values) {
 
 	return said.promise();
 }
+
+/*
+ * What deleting a FreePBX device asks, on the Devices list and on the
+ * device's page alike: orykDeviceDeleteQuestion() is the message,
+ * orykDeviceDeleteChoices() the options for orykAsk(). The answer is truthy
+ * when the clients on the device go with it.
+ *
+ * id       the device
+ * own      whether it is a user's own device
+ * clients  how many clients are on it
+ */
+function orykDeviceDeleteQuestion(id, own, clients) {
+	const both = clients === 1 ? 'Device + Client' : 'Device + Clients';
+	let ask = `Delete device ${id}?`;
+
+	if (own) {
+		ask += ' It is a user\'s own device: the user stays, with no device, until you save it to give it one back.';
+	}
+
+	if (clients) {
+		ask += ` ${clients} client${clients === 1 ? ' uses' : 's use'} it. Device Only keeps ${clients === 1 ? 'it' : 'them'}, with no device assigned; ${both} deletes ${clients === 1 ? 'it' : 'them'} too, with ${clients === 1 ? 'its' : 'their'} logs.`;
+	}
+
+	return ask + ' This cannot be undone.';
+}
+
+function orykDeviceDeleteChoices(clients) {
+	return {
+		title: 'Delete device',
+		choices: clients
+			? [{ label: 'Device Only', value: 0 }, { label: clients === 1 ? 'Device + Client' : 'Device + Clients', value: 1 }]
+			: [{ label: 'Delete', value: 0 }]
+	};
+}

@@ -18,11 +18,14 @@
  * No badges: how many of each there are is on the dropdowns under it, where
  * the number is of what that dropdown lists here.
  *
- * Included by every view, directly before partials/navigator.php.
+ * Included by every view, directly before partials/navigator.php. The
+ * module's notices go over it: partials/notices.php, included here so that
+ * every page has them.
  *
  * @var array<int, array<string, mixed>> $sections Navigator::sections()
  * @var string                           $version  The module's, under its name
  * @var callable                         $icon     Prints assets/icons/<name>.svg
+ * @var array<int, array<string, mixed>> $notices  Notices::showing() -- see partials/notices.php
  */
 
 $sections = isset($sections) && is_array($sections) ? $sections : [];
@@ -32,6 +35,8 @@ $sectionEscape = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 ?>
+
+<?php include __DIR__ . '/notices.php'; ?>
 
 <nav class="oryk-sections" aria-label="<?php echo $sectionEscape(_('Provisioner sections')); ?>">
 	<a class="oryk-sections-home" href="?display=oryk_provisioner">

@@ -125,6 +125,38 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 
 /* ----------------------------------------------------------------------
+ * Notices (views/partials/notice.php)
+ * ---------------------------------------------------------------------- */
+
+/* A Bootstrap alert, laid out as text, then where it leads, then its dismissal. */
+.oryk-notice {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 15px;
+}
+.oryk-notice .oryk-notice-text {
+	flex: 1;
+}
+.oryk-notice .oryk-notice-action {
+	flex: none;
+}
+.oryk-notice .oryk-notice-dismiss {
+	flex: none;
+	display: flex;
+	padding: 4px;
+	border: 0;
+	background: none;
+	color: inherit;
+	opacity: 0.6;
+	cursor: pointer;
+}
+.oryk-notice .oryk-notice-dismiss:hover,
+.oryk-notice .oryk-notice-dismiss:focus {
+	opacity: 1;
+}
+
+/* ----------------------------------------------------------------------
  * Section bar (views/partials/sections.php)
  * ---------------------------------------------------------------------- */
 
@@ -528,6 +560,41 @@ tr.oryk-disabled > td a:not(.btn) {
 
 .oryk-scope .oryk-scope-all {
 	margin-left: 8px;
+}
+
+/* A toolbar whose button is Clear goes after the table's refresh, so refresh
+ * is first over every table: bootstrap-table draws the toolbar, then its own
+ * buttons, then the search box, and this reorders the three. */
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 10px;
+}
+
+/* A clearfix's pseudo-elements would be flex items, and the gap would indent
+ * the row by one. */
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear)::before,
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear)::after {
+	display: none;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > * {
+	float: none;
+	margin-left: 0;
+	margin-right: 0;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .columns {
+	order: 1;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .bs-bars {
+	order: 2;
+}
+
+.provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .search {
+	order: 3;
 }
 
 /* A select narrowing a table, beside Add in its toolbar: Services' two. */

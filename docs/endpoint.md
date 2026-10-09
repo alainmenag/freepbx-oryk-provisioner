@@ -49,6 +49,11 @@ matched without regard to case, on every request; nothing is saved to the
 client, so assigning it a profile takes over at once. A disabled vendor
 profile refuses, as any disabled profile does.
 
+When the `User-Agent` names no vendor, or no profile is named after it, the
+client is served the profile **named `Default`**, when there is one — matched
+and refused in the same way. A vendor's profile that exists but is disabled
+does not fall through to it.
+
 | Vendor | `User-Agent` carries |
 | --- | --- |
 | Polycom | `Polycom`, or `Poly` as a word |
@@ -61,9 +66,9 @@ profile refuses, as any disabled profile does.
 They are tried in this order, and the first that matches is the vendor:
 Polycom, Yealink, Grandstream, Cisco, Snom, AudioCodes, Fanvil, Htek, Mitel,
 Avaya, Obihai, Panasonic, Gigaset, Akuvox, WebKit, PostmanRuntime. So a phone
-that also names WebKit is its own vendor. A request with no vendor, or no profile by its name,
-is served as a client with no profile — uploaded files by name, and nothing
-else.
+that also names WebKit is its own vendor. With no profile by the vendor's name
+and none named `Default`, the request is served as a client with no profile —
+uploaded files by name, and nothing else.
 
 ## Open provisioning
 
@@ -89,7 +94,7 @@ as usual.
 
 The user's client on an internal MAC (`02…`) is then found, or made — enabled,
 with no profile and the credentials as its token, so it is served its
-vendor's profile (above). The request is answered as that client: `000000000000.cfg` is its `.cfg`, and so on, with
+vendor's profile, or `Default` (above). The request is answered as that client: `000000000000.cfg` is its `.cfg`, and so on, with
 the same 404s and 401s as any other client. A client on a real phone's MAC is
 never used.
 

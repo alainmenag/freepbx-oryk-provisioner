@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flat-profile>
+	<Line_Enable_1_ ua="na">Yes</Line_Enable_1_>
+	<Proxy_1_ ua="na">{{server.host}}:{{server.port}}</Proxy_1_>
+	<Display_Name_1_ ua="na">{{extension.name}}</Display_Name_1_>
+	<User_ID_1_ ua="na">{{device.id}}</User_ID_1_>
+	<Password_1_ ua="na">{{device.secret}}</Password_1_>
+</flat-profile>

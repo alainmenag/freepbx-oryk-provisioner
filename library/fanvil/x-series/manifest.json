@@ -1,0 +1,13 @@
+{
+	"name": "Fanvil X-Series (untested)",
+	"vendor": "Fanvil",
+	"version": 1,
+	"skus": [],
+	"resources": [
+		{
+			"name": "{{device.mac}}.cfg",
+			"type": "template",
+			"source": "mac.cfg"
+		}
+	]
+}

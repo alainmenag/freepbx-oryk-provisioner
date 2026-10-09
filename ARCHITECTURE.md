@@ -73,8 +73,9 @@ security of the thing:**
 
 1. disabled client -> 403
 2. a client with no profile: the profile named after the vendor its
-   User-Agent names (`Vendor`), matched without regard to case, for this
-   request only -- nothing is stored
+   User-Agent names (`Vendor`), or, with no vendor or no profile by that
+   name, the one named `Default` (`Profiles::profileFor()`), matched without
+   regard to case, for this request only -- nothing is stored
 3. disabled profile -> 403
 4. match a resource of the client's profile by name
 5. no client, or still no profile: the resources declared `file`, matched by name
@@ -149,8 +150,8 @@ and retry from where it is decided to where it is logged.
 
 The request is then served or received as that client, `000000000000` in the
 filename swapped for its MAC, so the ordinary order above -- token included --
-decides the answer -- including the vendor's profile, since the client has
-none of its own. **Nothing reloads**: the sign-up raises Apply Config like any
+decides the answer -- including the vendor's profile or `Default`, since the
+client has none of its own. **Nothing reloads**: the sign-up raises Apply Config like any
 save.
 
 **The lobby** (`LobbyContext`, a dialplan hook at priority 900, after Core):
@@ -252,7 +253,8 @@ engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
-src/                         52 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
+src/                         55 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
+library/                     the profiles the module ships, one directory each -- see The library
 tests/                       smoke.php, the stubs it runs against and its lexical check
                              (namespacing.php); services_db.php, seed() on real tables
 views/                       one view per page, plus views/partials/
@@ -266,7 +268,7 @@ views/                       one view per page, plus views/partials/
 | `Repo` | base class for the two file directories |
 | `Logs`, `Enabled` | traits: writing to the FreePBX log; the on/off switch two tables share |
 | `Mac` | a MAC as written, and as found in a filename (static) |
-| `Vendor` | the vendor a User-Agent names, which a client with no profile is served the profile of (static) |
+| `Vendor` | the vendor a User-Agent names, which a client with no profile is served the profile of, before `Default` (static) |
 | `Freepbx` | the only file that asks FreePBX about a device |
 | `Template` | `{{name}}` and the flat map behind it |
 | `Tokens` | hashing a client's token, checking one |
@@ -274,6 +276,7 @@ views/                       one view per page, plus views/partials/
 | `FileRepo` | `ASTSPOOLDIR/repo`, one file per resource id |
 | `LogRepo` | `ASTLOGDIR/provisioner/<client id>/`, what a phone sent back |
 | `Clients`, `Profiles`, `Resources`, `Services` | one per table |
+| `Library` | the profiles the module ships, and making one of the operator's from one |
 | `Matcher` | a filename is a MAC and a name, read both ways |
 | `Previews` | which filename does this phone ask this file by |
 | `ProvisioningLog` | one row per request the endpoint answered |
@@ -281,18 +284,20 @@ views/                       one view per page, plus views/partials/
 | `Pages` | which URL is which page |
 | `Installer` | install, uninstall, the web-root symlink, registering the settings |
 | `Settings` | the module's PBX-wide settings: one definition each, registered, drawn on the Settings tab, saved |
+| `Notices` | the notices over every module page: one definition each, which of them a page shows, what was dismissed |
 | `AsteriskConfig` | one Asterisk config file, edited without disturbing what others wrote |
 | `EndpointSettings` | the From Domain chain, and `pjsip.endpoint_custom_post.conf` |
 | `NumberAllocator` | which numbers are free, and the next `999…` one |
 | `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
 | `ExtensionRenumberer` | moving a user to another number, in order |
 | `Users` | saving, deleting and listing a user |
+| `Devices` | FreePBX's devices, listed, and which user one is on |
 | `Bans` | the bans table, and the question the endpoint asks it before answering |
 | `Fail2ban` | the only file that asks fail2ban, through the sudo helper |
 | `BanSync` | IP bans and fail2ban in step: the minute job, and a save carried over at once |
 | `SecurityLog`, `SignupRefused` | lines in FreePBX's security log; a refused sign-up, on its way there (static; exception) |
 | `RealtimeBridge` | a sign-up's endpoint, auth and AOR, live before Apply Config |
-| `Notices` | the module's dashboard notices, raised and cleared on a change only |
+| `DashboardNotices` | the module's dashboard notices, raised and cleared on a change only |
 | `SignupSweep` | the minute job behind open provisioning: out of the bridge once applied; the notices |
 | `LobbyContext` | the lobby's dialplan, on Apply Config |
 | `Jobs` | the jobs and their steps: written, listed, and what the worker asks while it runs one |
@@ -307,6 +312,52 @@ Extension/User devices.
 URL phones are given. **Nothing about that link is allowed to fail the install**
 -- a module that could not write to the web root is a working module minus a
 friendly URL, and the endpoint stays reachable at its real path.
+
+## The library
+
+`library/<vendor>/<set>/` is one **entry**: a `manifest.json` and the files it
+names. `Library` reads them; nothing is seeded into a table, and the endpoint
+never serves from here.
+
+```json
+{
+	"name": "Polycom VVX",
+	"vendor": "Polycom",
+	"version": 1,
+	"skus": ["VVX500"],
+	"resources": [
+		{"name": "{{device.mac}}.cfg", "type": "template", "source": "mac.cfg"},
+		{"name": "app.log", "type": "log"},
+		{"name": "sip.ld", "type": "file", "note": "what to upload"}
+	]
+}
+```
+
+- **A profile made from an entry is a copy.** `Library::saveProfile()` writes
+  the profile, then each resource through `Resources::saveResource()`, then
+  records the entry's id and version on the profile. From there it is the
+  operator's: an upgrade that changes the entry changes no profile. This is the
+  opposite of a module-owned service, which is seeded and refused every edit --
+  nobody edits a service, and everybody edits a phone's configuration.
+- **All or nothing, twice.** A manifest with one unusable resource is no entry
+  (`entry()` answers null), and a profile whose resources could not all be made
+  is deleted again.
+- **A resource's `name` is not a filename on disk.** `{{device.mac}}.cfg` is
+  kept as `mac.cfg`; `source` says which, is one path segment
+  (`SOURCE_PATTERN`), and is the only thing read.
+- **What each type carries.** A template has a `source`. A log has none: it is
+  only the declaration that a phone may PUT that name. A file may have one --
+  its bytes are stored as an upload's would be -- or none, and is then made with
+  nothing uploaded, which the [schema](#schema) already calls an unfinished
+  resource. That is how firmware is declared without being shipped; its `note`
+  says what to upload, and the resource's page shows it for as long as the
+  resource keeps the name the manifest gave it.
+- **An entry's id is the one value a request turns into a path**, and only
+  after `ID_PATTERN`.
+- `skus` are the models the entry is known to work on. Nothing matches on them
+  yet.
+- An entry nobody has run on a phone says so in its `name`: it ends
+  `(untested)`, and the name is the whole of the marking.
 
 ## Schema
 
@@ -329,9 +380,14 @@ a dead connection on every MySQL build this runs on.
 | `state` | `provisioned` (the default, and every row older than 1.2.5) or `created`: a sign-up whose extension Apply Config has not yet been seen to write. Read by the [sweep](#the-realtime-bridge) |
 | `signup_ip` | the address open provisioning made the client for, as `Clients::signupKey()` stores it -- an IPv6 address as its /64, since that is what the limits count by. NULL on every other client. Keyed with `created_at`, which is what the limits count. Deleting a user deletes its clients and so lowers the count; only an admin can |
 
-**`oryk_provisioner_profiles`** -- `name` (unique), `enabled`. A profile has no
-template of its own; the main config is a resource named `.cfg` like any other
-file (1.0.7).
+**`oryk_provisioner_profiles`** -- `name` (unique), `enabled`, `library`,
+`library_version`. A profile has no template of its own; the main config is a
+resource named `.cfg` like any other file (1.0.7). `library` and
+`library_version` are the [library](#the-library) entry a profile was copied
+from and its version then, NULL on one written by hand. A record, not a link:
+nothing reads them to decide what is served. They are asked for on their own
+(`Profiles::library()`), so a table that has not been given them yet still has
+profiles that open.
 
 **`oryk_provisioner_resources`** -- `profile_id`, `name`, `type`, `template`,
 `file_size`, `file_uploaded_at`.
@@ -768,6 +824,57 @@ registers it.
   written -- the From Domain on an endpoint -- reaches it on that thing's next
   save, not when the setting changes.
 
+## Notices
+
+A notice is a line over the section bar telling the admin what to do next --
+"add your first profile". They are drawn on the module's pages only, every
+one of them; FreePBX's dashboard has the module's two warnings instead
+(`DashboardNotices`), which a minute job raises and these have nothing to do
+with.
+
+**A new notice is one entry in `Notices::definitions()`**: `id`, `version`,
+`category`, `level` (`info` or `warning`), `dismissible`, `text`, the `action`
+and `target` it leads to, and `when`, a closure answering whether it still
+applies. Nothing else is written.
+
+- **One per category, the first that stands.** `Notices::showing()` walks the
+  definitions in order and, for each category, shows the first notice that is
+  neither dismissed nor past applying. The order in the array is the order an
+  admin is led through a category.
+- **`when` is asked on every page load, and nothing is stored when it says
+  no.** Make the first profile and "add your first profile" gives way to the
+  next of its category; delete every profile and it is back. So a check is one
+  cheap query at most. One that throws does not apply, and is logged: a broken
+  check costs its notice, never the page.
+- **A dismissal is the notice's id and the version dismissed**, kept in the
+  module's key-value store (FreePBX's `kvstore`, through the BMO class's
+  `getConfig()`/`setConfig()`) under `notices_dismissed`. It is PBX-wide, not
+  per admin: a check is about the PBX, so is its dismissal.
+- **Raising `version` shows a notice again** to a PBX that dismissed it. Raise
+  it when the notice now says something an admin who dismissed it should
+  read, and not for a reworded sentence.
+- **Not `dismissible`** is for a notice about something wrong: it has no
+  dismissal, the store is not read for it, and it stays until `when` says no.
+- **On the page it leads to, a notice has no action** -- the page whose query
+  has every key of `target`. The text stays; the button that would go nowhere
+  is not drawn.
+- **Dismissing does not reload.** `dismissNotice` posts the id and the version
+  that was on the page, so a notice raised since is not dismissed unread, and
+  is answered with the markup of whatever the category shows now
+  (`Pages::dismissNotice()`, `views/partials/notice.php`), which
+  `assets/oryk_notices.js` puts in its place. An editor's unsaved fields are
+  left alone.
+- The Settings tab's **Show Dismissed Notices Again** (`resetNotices`) removes
+  the key. `install()` drops the dismissals no declared notice would read --
+  an id that is gone, a version since raised -- and `uninstall()` the lot.
+- No view names a notice: `Pages::view()` hands every view `$notices`, and
+  `views/partials/sections.php`, which every view includes, draws them.
+
+The categories are `welcome` -- first profile, first user, first client --
+`settings`: a warning while Hostname is blank -- and `provisioning`: a warning
+while Provisioning is Open and no profile is named `Default`, the one
+`Profiles::profileFor()` falls back to.
+
 ## Users
 
 A user is a row in none of this module's tables. It is a FreePBX extension,
@@ -781,6 +888,15 @@ phone, has its Overview and its delete like any other, and is given a device
 back by a save, on its own number. Only an extension whose number is held by
 a device of another kind is left out (`Users::SHAPE`). Everything about one
 lives elsewhere:
+
+**A device on no extension is not a user.** A client's Device offers "Auto
+Create" (`Clients::AUTO_DEVICE`): `Users::saveClientWithNewDevice()` makes a
+`pjsip` device on the next generated number (`createDevice()`) and saves the
+client on it, taking the device back out if the client is refused. The device's
+`user` is `none` -- no extension, no User Manager account, no mailbox -- so it
+is on no Users list, a client on it has no extension (`Clients` reads `none`
+as NULL), and deleting it is `deleteDeviceById()`'s own branch, as it is for
+a device on an extension that is no user.
 
 | | where | written by |
 | --- | --- | --- |
@@ -871,6 +987,40 @@ everywhere.
 `userman`, `voicemail` and `cdr` are soft dependencies: each subsystem asks
 `moduleActive()` and declines rather than throwing.
 
+## Devices
+
+`?tab=devices` lists every row of FreePBX's `devices`, whatever its
+technology and whoever it is on; `?device=<id>` is one of them, with one thing
+to change: `devices.user`. `Devices` reads them, with nothing stored in this
+module's tables. A device is a level of the navigator, after Users: it scopes
+like a user cut down to one line -- the extension it is on, the clients on it
+alone, and what follows from those -- and from the other side a user's (or a
+service's users') devices are the ones on those extensions, anything else's
+the ones its clients are on. There is no new device there -- one is made in
+FreePBX or by a client's Auto Create.
+
+**A delete is Overview's** (`deleteDevice` -> `Users::deleteDeviceById()`),
+from the list's trash can and the page's Delete alike: the device and nothing
+else of its user's, and the same question -- Device Only unassigns the clients
+on it, Device + Client deletes them. A device on a module user goes through
+`Users::deleteDevice()`; one on no extension, or on an extension that is no
+user here, is deleted by `deleteDeviceById()` itself.
+
+**A save is not Core's delete-and-add** (`ExtensionManager::assignDevice()`):
+it writes what `addDevice()` writes about a device's user and nothing else, so
+the device keeps every setting, whatever its driver. That is the row, astdb
+`DEVICE/<id>/user` and `default_user`, the id out of the old user's
+`AMPUSER/<ext>/device` and in to the new one's, and the
+`voicemail/device/<id>` link `<id>@device` is found through. Apply Config is
+raised, never run. The new user is `none` or a row of `users` -- any extension,
+not only one the Users list shows -- and the device is looked up, so neither is
+taken on a request's word. A client on the device follows it: its user is
+read off the device.
+
+**Moving a user's own device takes the user off the Users list**: its
+extension's number is then held by a device that is another's
+(`Users::SHAPE`), until the device is put back on it. The page asks first.
+
 ## Bans
 
 A ban is a row of `oryk_provisioner_bans`: up to five **subjects** -- client,
@@ -892,8 +1042,8 @@ first in `serve()`, `receive()` and `openProvision()`, and hands
 `Bans::decision()` -- the deciding row, an allow included; `check()` is it
 with an allow read as nothing refusing -- every subject the request has: the address it came from
 (`REMOTE_ADDR`), its MAC, the client that MAC names, that client's device id
-and extension, and the profile it is served -- its own, or, with none, its
-vendor's, as `resolveRequest()` would pick -- or, for open provisioning, the
+and extension, and the profile it is served -- its own, or, with none, the one
+`Profiles::profileFor()` picks, as `resolveRequest()` would -- or, for open provisioning, the
 username, which is a user when it is a number. A file fetched by name with no
 client behind it has no profile, so a profile ban does not stop it. A subject the request does not have matches only rows that
 leave it empty. Open provisioning is asked before `openClient()`, so a refused
@@ -1088,7 +1238,7 @@ nothing. Once it is down, a `created` client whose extension has a section in
 `pjsip.endpoint.conf` -- or whose user is gone -- has its rows removed and
 becomes `provisioned`. The flag alone is not enough: a sign-up during an apply
 can end with the flag down and its endpoint not yet written. It also keeps the
-dashboard notices true (`Notices`, raised or cleared on a change only):
+dashboard notices true (`DashboardNotices`, raised or cleared on a change only):
 `BRIDGE_STALE` while any sign-up has waited over a day, and `OPEN_CAP`, raised
 by `admit()` when `ORYK_OPEN_PER_DAY_TOTAL` refuses and cleared once the day's
 count is back under it.
@@ -1123,7 +1273,9 @@ pane, by every command and by Delete All:
 | bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
 | FreePBX side | `Users::related()`: owned account, mailbox | -- |
 
-The pane is tables -- User, Clients, Provisioning log, Bans, and on a user
+The pane is tables -- User, Clients, Services (the Services list's own
+`listServices`, asked with the scope: what the user is assigned itself, never
+what a pack brings), Provisioning log, Bans, and on a user
 Devices, Call history, Voicemail and Jobs (the Jobs list's own `listJobs`,
 asked with the scope) -- on either kind of row: a client's Overview lists its user,
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
@@ -1200,7 +1352,8 @@ made from one of the tables is answered by loading the page again.
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?service=`, `?ban=`, and `?log=` for one provisioning log entry and `?job=`
+  `?service=`, `?ban=`, `?device=` for one FreePBX device, whose user is all
+  that is saved and which is deleted but never created, and `?log=` for one provisioning log entry and `?job=`
   for one job, which are read and deleted but never edited or created. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
@@ -1210,12 +1363,12 @@ made from one of the tables is answered by loading the page again.
   `views/partials/sections.php` is the module's sections, a bar on every page,
   lit by the branch the page is in (a resource page is in Profiles). Sections
   listed together in `Navigator::sectionGroups()` share one entry on the bar
-  -- Users, Clients, Profiles and Services do, and Logs, Bans, Jobs and Overview. The entry is
+  -- Users, Devices, Clients, Profiles and Services do, and Logs, Jobs, Bans and Overview. The entry is
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.
-  `views/partials/navigator.php` is a row of eight searchable dropdowns under
-  it -- Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs -- scoped by the row the
+  `views/partials/navigator.php` is a row of nine searchable dropdowns under
+  it -- Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs -- scoped by the row the
   page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
   what is linked to that row, the viewed row's own level lists all of its kind
   with it selected, and nothing else is ever selected: a linked level with
@@ -1371,13 +1524,17 @@ bootstrap FreePBX on its own.
   sign-ups are limited per address and per PBX, but a wrong password for an
   existing login reaches fail2ban only through FreePBX's security log, and the
   limits trust `REMOTE_ADDR` -- behind a proxy every sign-up is one address.
-- Copying resources between profiles, or a seeded starting resource. A profile
-  is set up one file at a time from empty.
+- Copying resources between profiles, and exporting or importing a profile. A
+  profile is made empty or from the [library](#the-library).
+- Nothing reads an entry's `skus`: a phone's model is
+  not detected, and a client with no profile is still served the profile named
+  after its vendor, or `Default`.
 - No `fwconsole` command. Backup/restore hooks are stubs.
 - Only Connect's Extension/User kind was ported. Handsets are clients here;
   Connect's softphone and RTSP kinds have no equivalent, and an RTSP device
   needs Connect's driver installed.
 - Renumbering does not check ring groups, queues or other destinations for the
   old number. A PBX-wide From Domain change is not pushed to existing endpoints.
-- GraphQL API, per-client parameter overrides, a bundled vendor template
-  library, template filters/sections/escaping.
+- GraphQL API, per-client parameter overrides, template filters/sections.
+  Escaping is one rule: a template beginning `<?xml` has its values
+  XML-escaped (`Template::renderConfig()`); nothing else is escaped.

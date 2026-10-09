@@ -22,6 +22,9 @@ class Profiles extends Service
 	// The switch is the same on both tables, written once -- see src/Enabled.php.
 	use Enabled;
 
+	/** Name of the profile a client with none is served when its vendor has none. */
+	const FALLBACK = 'Default';
+
 	/** @var FileRepo */
 	private $files;
 
@@ -130,6 +133,24 @@ class Profiles extends Service
 	}
 
 	/**
+	 * The profile a client with none of its own is served.
+	 *
+	 * The one named after its vendor; with no vendor, or no profile by that
+	 * name, the one named FALLBACK. A vendor's profile that is disabled is still
+	 * the answer: it refuses rather than hand its clients to FALLBACK.
+	 *
+	 * @param string|null $vendor Vendor the request's User-Agent names, or null.
+	 *
+	 * @return array<string, mixed>|null As profileByName(); null when there is neither.
+	 */
+	public function profileFor($vendor)
+	{
+		$profile = $vendor === null ? null : $this->profileByName($vendor);
+
+		return $profile ?: $this->profileByName(self::FALLBACK);
+	}
+
+	/**
 	 * The profile with a name, matched without regard to case.
 	 *
 	 * @param string $name Name to look for.
@@ -204,6 +225,58 @@ class Profiles extends Service
 		$stmt->execute([':name' => $name, ':enabled' => $enabled]);
 
 		return ['status' => true, 'id' => (int) $this->db->lastInsertId(), 'name' => $name];
+	}
+
+	/**
+	 * Record the library entry a profile was made from.
+	 *
+	 * Never fails the save that made the profile: without the columns -- the
+	 * module's files are newer than its last install -- the profile is simply
+	 * one that does not say where it came from.
+	 *
+	 * @param mixed  $id      Profile id.
+	 * @param string $library Entry id, as Library::entry() takes it.
+	 * @param int    $version The entry's version when it was copied.
+	 *
+	 * @return void
+	 */
+	public function setLibrary($id, $library, $version)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"UPDATE `{$this->profilesTable}`
+				SET library = :library, library_version = :version
+				WHERE id = :id"
+			);
+			$stmt->execute([':library' => (string) $library, ':version' => (int) $version, ':id' => (int) $id]);
+		} catch (\Exception $e) {
+			$this->log('oryk_provisioner: could not record the library entry of profile ' . (int) $id, null, 'WARNING');
+		}
+	}
+
+	/**
+	 * The library entry a profile was made from.
+	 *
+	 * Asked on its own rather than read with profileRow(), so a table without
+	 * the columns yet still has profiles that open.
+	 *
+	 * @param mixed $id Profile id.
+	 *
+	 * @return array<string, mixed>|null library and library_version; null when it was made from none.
+	 */
+	public function library($id)
+	{
+		try {
+			$stmt = $this->db->prepare(
+				"SELECT library, library_version FROM `{$this->profilesTable}` WHERE id = :id"
+			);
+			$stmt->execute([':id' => (int) $id]);
+			$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return null;
+		}
+
+		return $row && (string) $row['library'] !== '' ? $row : null;
 	}
 
 	/**

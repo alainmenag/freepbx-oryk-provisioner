@@ -1,0 +1,13 @@
+{
+	"name": "Cisco SPA / MPP (untested)",
+	"vendor": "Cisco",
+	"version": 1,
+	"skus": [],
+	"resources": [
+		{
+			"name": "spa{{device.mac}}.xml",
+			"type": "template",
+			"source": "spamac.xml"
+		}
+	]
+}

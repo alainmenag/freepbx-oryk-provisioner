@@ -17,7 +17,7 @@ A ban names one or more of:
 | **MAC Address** | requests made with that MAC, whether or not a client has it |
 | **User** | every client whose device or extension is that number, and open provisioning with that number as its username |
 | **Client** | that one client, whatever MAC it is given later |
-| **Profile** | every client served that profile — assigned it, or given it for its vendor because it has none |
+| **Profile** | every client served that profile — assigned it, or given it for its vendor, or as `Default`, because it has none |
 
 A request matches a ban when it matches **every** field the ban fills in. A
 field left empty matches anything. So:

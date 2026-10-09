@@ -11,10 +11,15 @@
  * Save stays on this tab: the page reloads with what was written. Help is
  * FreePBX's (?) icon, the same as every editor -- see partials/editor.php.
  *
- * @var array<int, array<string, mixed>> $settings Settings::fields()
+ * Under the settings is the one thing here that is not one: the button that
+ * brings dismissed notices back -- see ARCHITECTURE.md, "Notices".
+ *
+ * @var array<int, array<string, mixed>> $settings         Settings::fields()
+ * @var int                              $dismissedNotices Notices::dismissedCount()
  */
 
 $settings = isset($settings) && is_array($settings) ? $settings : [];
+$dismissedNotices = (int) ($dismissedNotices ?? 0);
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -70,6 +75,29 @@ $h = function ($value) {
 	</div>
 <?php endforeach; ?>
 
+<div class="element-container">
+	<div class="row">
+		<div class="form-group">
+			<div class="col-md-4">
+				<label class="control-label" for="oryk_notices_reset"><?php echo _('Notices'); ?></label>
+				<i class="fpbx-help-icon" data-for="oryk_notices_reset"><?php echo $icon('help'); ?></i>
+			</div>
+			<div class="col-md-8">
+				<button type="button" class="btn btn-default" id="oryk_notices_reset"<?php echo $dismissedNotices ? '' : ' disabled'; ?>>
+					<?php echo _('Show Dismissed Notices Again'); ?>
+				</button>
+			</div>
+		</div>
+	</div>
+	<div class="row">
+		<div class="col-md-12">
+			<span class="help-block fpbx-help-block" id="oryk_notices_reset-help">
+				<?php echo $h(_('Brings back every notice that was dismissed and still applies. Nothing to bring back when none has been dismissed.')); ?>
+			</span>
+		</div>
+	</div>
+</div>
+
 <script>
 
 	// The values are read off the fields by keyword, so this knows no setting
@@ -87,6 +115,21 @@ $h = function ($value) {
 
 		return { settings: values };
 	}
+
+	$(document).on('click', '#oryk_notices_reset', function () {
+		const button = $(this).prop('disabled', true);
+
+		orykPost('resetNotices', {}).done(function (response) {
+			if (!response || !response.status) {
+				button.prop('disabled', false);
+				return;
+			}
+
+			window.location = '?display=oryk_provisioner&tab=settings';
+		}).fail(function () {
+			button.prop('disabled', false);
+		});
+	});
 
 	$(document).on('click', '#oryksave', function (event) {
 		event.preventDefault();
