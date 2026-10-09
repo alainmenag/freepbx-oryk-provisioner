@@ -1,11 +1,11 @@
 # The admin interface
 
-*Oryk → Provisioner*. A list, five editors, a log entry page and a job page, told apart by which key the URL
+*Oryk → Provisioner*. A list, five editors, a device page, a log entry page and a job page, told apart by which key the URL
 carries. Every tab is in the address too, so a reload, a bookmark or a link from
 elsewhere in the module lands where you were.
 
-Every page is topped by the same bar of sections — Users, Clients, Profiles,
-Services, Logs, Bans, Jobs, Overview, Settings — with the one you are in underlined, so any section is
+Every page is topped by the same bar of sections — Users, Devices, Clients,
+Profiles, Services, Logs, Jobs, Bans, Overview, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
 Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
@@ -49,6 +49,7 @@ that were dismissed and still apply.
 | `&user=<extension>` | one user (`&user=` for a new one) | User, Clients, Services |
 | `&service=<slug>` | one service (`&service=` for a new one) | Service |
 | `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
+| `&device=<id>` | one FreePBX [device](#devices): the user it is on | Device |
 | `&log=<id>` | one provisioning log entry, read-only | Log Entry |
 | `&job=<id>` | one [job](jobs.md): its steps, Retry when it failed, Delete | Job |
 
@@ -188,3 +189,25 @@ brings back the [notices](#the-admin-interface) that were dismissed.
 | **Lobby Emergency Caller ID** (`ORYK_OPEN_EMERGENCY_CID`) | Blank: a sign-up's emergency caller id is its extension. Set it to a number an emergency operator can call back. Given to users as they sign up. |
 | **Lobby Expiry** (`ORYK_OPEN_EXPIRE_DAYS`) | 0 (off): days a lobby user may go unseen before it is listed under **Expired** on the Users tab — see [The lobby](users.md#the-lobby). |
 | **Fail2ban Sync** (`ORYK_FAIL2BAN_SYNC`) | Yes (the default): IP bans are kept in step with fail2ban every minute and on every save — see [Syncing with fail2ban](fail2ban.md). No: paused; nothing is read from or written to fail2ban, and nothing already there is undone. |
+
+
+## Devices
+
+**Devices** lists every FreePBX device — a user's own, the handsets on an
+extension, and the ones on no extension that a client's **Auto Create** made —
+with the user it is on and the client that uses it, each a link. Nothing is added here.
+
+A trash can deletes the device, as **Delete** does on its page. When a client
+uses it you are asked whether to delete the **Device Only**, which keeps the
+client with no device assigned, or **Device + Client**. Only the device goes:
+its extension, account, voicemail and call history stay.
+
+**Edit** opens the device (`&device=<id>`), where the one thing to change is
+its **User**: any extension, or **None**. Save moves the device at once and
+raises Apply Config. A client on the device follows it, so it is counted as
+the new user's from then on.
+
+Moving a user's **own** device — the one numbered like its extension — to
+another user is asked about first: that extension is left with no device, and
+since its number is still held by a device that is now somebody else's, it is
+no longer on the Users list until the device is put back on it.

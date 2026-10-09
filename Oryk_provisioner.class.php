@@ -13,6 +13,7 @@ use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
 use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
+use FreePBX\Modules\Oryk_Provisioner\Devices;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -108,6 +109,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   ExtensionManager, UsermanManager, VoicemailManager, UcpAssignments,
  *   CdrHistory       one each of what a number is made of
  *   EndpointSettings the From Domain, and pjsip.endpoint_custom_post.conf
+ *   Devices          FreePBX's devices, and which user one is on
  *
  * and, for the Bans tab -- see ARCHITECTURE.md, "Bans":
  *
@@ -155,6 +157,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Clients */
 	private $clients;
+
+	/** @var Devices */
+	private $devices;
 
 	/** @var Endpoint */
 	private $endpoint;
@@ -282,6 +287,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$userman = new UsermanManager($freepbx);
 		$ucp = new UcpAssignments($freepbx);
 		$extensions = new ExtensionManager($freepbx);
+		$this->devices = new Devices($freepbx, $extensions);
 		$this->engine = new ServiceEngine($freepbx, $this->jobs, $this->services, new Reactions($freepbx, $extensions));
 
 		$this->users = new Users(
@@ -343,7 +349,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->services,
 			$this->jobs,
 			$this->library,
-			$this->notices
+			$this->notices,
+			$this->devices
 		);
 	}
 
@@ -714,7 +721,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	const READS = [
 		'listClients', 'listProfiles', 'listResources', 'viewResource', 'downloadResource',
-		'listLogs', 'listUsers', 'listServices', 'listJobs', 'listBans',
+		'listLogs', 'listUsers', 'listDevices', 'listServices', 'listJobs', 'listBans',
 		'userServicesImpact', 'serviceImpact', 'userServiceJobs',
 		'listOverviewUsers', 'listOverviewDevices', 'listOverviewClients',
 		'listOverviewBans', 'listOverviewCalls', 'listOverviewVoicemail',
@@ -753,6 +760,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'saveUser':
 			case 'deleteUser':
 			case 'deleteExpiredUsers':
+			case 'listDevices':
+			case 'saveDevice':
+			case 'deleteDevice':
 			case 'listServices':
 			case 'saveService':
 			case 'deleteService':
@@ -921,6 +931,17 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 			case 'deleteExpiredUsers':
 				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
+
+			case 'listDevices':
+				return $this->devices->listDevices();
+
+			// Which user the device is on, and nothing else of it.
+			case 'saveDevice':
+				return $this->devices->saveDevice($_REQUEST);
+
+			// `clients` is the answer "Device + Client": its clients go too.
+			case 'deleteDevice':
+				return $this->users->deleteDeviceById($_REQUEST['id'] ?? '', !empty($_REQUEST['clients']));
 
 			case 'listServices':
 				return $this->services->listServices($scope['services']);

@@ -23,6 +23,7 @@ use FreePBX\Modules\Oryk_Provisioner\Bans;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
+use FreePBX\Modules\Oryk_Provisioner\Devices;
 use FreePBX\Modules\Oryk_Provisioner\Endpoint;
 use FreePBX\Modules\Oryk_Provisioner\EndpointSettings;
 use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
@@ -2330,7 +2331,7 @@ is_eq('Users is still where a bare URL lands', $s['navigator']->section(''), 'us
 $bar = $s['navigator']->sections('clients');
 is_eq('a group is one bar entry: its active section, else its first', array_column($bar, 'active', 'key'), ['clients' => true, 'logs' => false, 'settings' => false]);
 is_eq('which goes where that section does', [$bar[0]['href'], $bar[1]['href']], ['?display=oryk_provisioner&tab=clients', '?display=oryk_provisioner&tab=logs']);
-is_eq('and lists the whole group in order', array_column($bar[0]['items'], 'active', 'key'), ['users' => false, 'clients' => true, 'profiles' => false, 'services' => false]);
+is_eq('and lists the whole group in order', array_column($bar[0]['items'], 'active', 'key'), ['users' => false, 'devices' => false, 'clients' => true, 'profiles' => false, 'services' => false]);
 is_eq('an ungrouped section has no menu', isset($bar[2]['items']), false);
 
 $s = overview_build([]);
@@ -2621,6 +2622,81 @@ $app->Database->answers = [];
 FreePBX::$config[Settings::PROVISIONING] = 'CLOSED';
 is_eq('closed, it has nothing to say', $open(), false);
 FreePBX::$config = $was;
+
+
+echo "\na device's user, changed from its page:\n";
+
+/** The Asterisk database, as far as a device's user reaches it. */
+class StubAstman
+{
+	public $db = [];
+
+	public function connected()
+	{
+		return true;
+	}
+
+	public function database_get($family, $key)
+	{
+		return $this->db["$family/$key"] ?? '';
+	}
+
+	public function database_put($family, $key, $value)
+	{
+		$this->db["$family/$key"] = (string) $value;
+	}
+
+	public function database_del($family, $key)
+	{
+		unset($this->db["$family/$key"]);
+	}
+}
+
+$device = function ($user) {
+	return [['id' => '2001', 'tech' => 'pjsip', 'description' => 'Lobby', 'user' => $user, 'user_name' => null, 'is_user' => 0, 'own' => 0]];
+};
+
+$app = new StubApp();
+$app->astman = new StubAstman();
+$app->astman->db = ['AMPUSER/1001/device' => '1001&2001', 'DEVICE/2001/user' => '1001'];
+$devices = new Devices($app, new ExtensionManager($app));
+
+is_eq('a device that is not there is refused', $devices->saveDevice(['id' => '2001', 'user' => '1002'])['status'], false);
+
+$app->Database->fetches = ['WHERE d.id = :id' => $device('1001')];
+is_eq('so is a user that is not an extension', $devices->saveDevice(['id' => '2001', 'user' => '1002'])['status'], false);
+is_eq('and nothing is written', $app->astman->db['DEVICE/2001/user'], '1001');
+
+$app->Database->fetches = ['WHERE d.id = :id' => $device('1001')];
+is_eq('the user it is already on changes nothing', $devices->saveDevice(['id' => '2001', 'user' => '1001']), ['status' => true, 'id' => '2001']);
+
+$app->Database->fetches = ['WHERE d.id = :id' => $device('1001')];
+$app->Database->answers = ['SELECT extension FROM users WHERE extension = ?' => '1002'];
+$app->Database->params = [];
+is_eq('another extension is saved, and Apply Config raised', $devices->saveDevice(['id' => '2001', 'user' => '1002']), ['status' => true, 'id' => '2001', 'reload' => true]);
+$written = array_values(array_filter($app->Database->params, function ($one) {
+	return strpos($one[0], 'UPDATE devices SET user') !== false;
+}));
+is_eq('the row is written', $written[0][1] ?? null, ['1002', '2001']);
+is_eq('the device names its new user', [$app->astman->db['DEVICE/2001/user'], $app->astman->db['DEVICE/2001/default_user']], ['1002', '1002']);
+is_eq('the old user gives it up', $app->astman->db['AMPUSER/1001/device'], '1001');
+is_eq('and the new one has it', $app->astman->db['AMPUSER/1002/device'], '2001');
+
+$app->Database->fetches = ['WHERE d.id = :id' => $device('1002')];
+is_eq('blank is nobody', $devices->saveDevice(['id' => '2001', 'user' => ''])['status'], true);
+is_eq('which FreePBX calls none', $app->astman->db['DEVICE/2001/user'], 'none');
+is_eq('and a user left with no device has no list', isset($app->astman->db['AMPUSER/1002/device']), false);
+
+echo "\na device deleted from the Devices list:\n";
+
+$d = build();
+$d['app']->Database->answers = ['SELECT user FROM devices WHERE id = ?' => 'none'];
+$d['app']->Database->fetchAlls = ['WHERE device_id = :id' => [['id' => '5']]];
+is_eq('one on no extension is deleted by its id', $d['users']->deleteDeviceById('2001'), ['status' => true, 'reload' => true]);
+is_eq('as a device', FreePBX::$core->deleted, [['2001', false]]);
+is_eq('its client kept', count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), 0);
+is_eq('asked for its clients too, it goes the same way', $d['users']->deleteDeviceById('2001', true)['status'], true);
+is_eq('and they are deleted', count(overview_deletes($d['app']->Database, 'oryk_provisioner_clients')), 1);
 
 
 foreach ($TEMPORARY as $path) {

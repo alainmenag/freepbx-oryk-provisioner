@@ -284,6 +284,7 @@ views/                       one view per page, plus views/partials/
 | `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
 | `ExtensionRenumberer` | moving a user to another number, in order |
 | `Users` | saving, deleting and listing a user |
+| `Devices` | FreePBX's devices, listed, and which user one is on |
 | `Bans` | the bans table, and the question the endpoint asks it before answering |
 | `Fail2ban` | the only file that asks fail2ban, through the sudo helper |
 | `BanSync` | IP bans and fail2ban in step: the minute job, and a save carried over at once |
@@ -886,7 +887,8 @@ Create" (`Clients::AUTO_DEVICE`): `Users::saveClientWithNewDevice()` makes a
 client on it, taking the device back out if the client is refused. The device's
 `user` is `none` -- no extension, no User Manager account, no mailbox -- so it
 is on no Users list, a client on it has no extension (`Clients` reads `none`
-as NULL), and deleting it is `deleteDeviceById()`'s own branch.
+as NULL), and deleting it is `deleteDeviceById()`'s own branch, as it is for
+a device on an extension that is no user.
 
 | | where | written by |
 | --- | --- | --- |
@@ -976,6 +978,37 @@ everywhere.
 `userman_users.email(191)` keys `oryk_connect` added, under the same names.
 `userman`, `voicemail` and `cdr` are soft dependencies: each subsystem asks
 `moduleActive()` and declines rather than throwing.
+
+## Devices
+
+`?tab=devices` lists every row of FreePBX's `devices`, whatever its
+technology and whoever it is on; `?device=<id>` is one of them, with one thing
+to change: `devices.user`. `Devices` reads them, with nothing stored in this
+module's tables, and is no level of the navigator: the page scopes nothing and
+the list takes no `&scope=`. There is no new device there -- one is made in
+FreePBX or by a client's Auto Create.
+
+**A delete is Overview's** (`deleteDevice` -> `Users::deleteDeviceById()`),
+from the list's trash can and the page's Delete alike: the device and nothing
+else of its user's, and the same question -- Device Only unassigns the clients
+on it, Device + Client deletes them. A device on a module user goes through
+`Users::deleteDevice()`; one on no extension, or on an extension that is no
+user here, is deleted by `deleteDeviceById()` itself.
+
+**A save is not Core's delete-and-add** (`ExtensionManager::assignDevice()`):
+it writes what `addDevice()` writes about a device's user and nothing else, so
+the device keeps every setting, whatever its driver. That is the row, astdb
+`DEVICE/<id>/user` and `default_user`, the id out of the old user's
+`AMPUSER/<ext>/device` and in to the new one's, and the
+`voicemail/device/<id>` link `<id>@device` is found through. Apply Config is
+raised, never run. The new user is `none` or a row of `users` -- any extension,
+not only one the Users list shows -- and the device is looked up, so neither is
+taken on a request's word. A client on the device follows it: its user is
+read off the device.
+
+**Moving a user's own device takes the user off the Users list**: its
+extension's number is then held by a device that is another's
+(`Users::SHAPE`), until the device is put back on it. The page asks first.
 
 ## Bans
 
@@ -1306,7 +1339,8 @@ made from one of the tables is answered by loading the page again.
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?service=`, `?ban=`, and `?log=` for one provisioning log entry and `?job=`
+  `?service=`, `?ban=`, `?device=` for one FreePBX device, whose user is all
+  that is saved and which is deleted but never created, and `?log=` for one provisioning log entry and `?job=`
   for one job, which are read and deleted but never edited or created. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
@@ -1316,7 +1350,7 @@ made from one of the tables is answered by loading the page again.
   `views/partials/sections.php` is the module's sections, a bar on every page,
   lit by the branch the page is in (a resource page is in Profiles). Sections
   listed together in `Navigator::sectionGroups()` share one entry on the bar
-  -- Users, Clients, Profiles and Services do, and Logs, Bans, Jobs and Overview. The entry is
+  -- Users, Devices, Clients, Profiles and Services do, and Logs, Jobs, Bans and Overview. The entry is
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.

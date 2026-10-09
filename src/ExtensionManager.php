@@ -181,6 +181,96 @@ class ExtensionManager extends Service
 	}
 
 	/**
+	 * Put one device on another user, or on none.
+	 *
+	 * What Core writes about a device's user when it adds one, without the
+	 * delete and add: the row, the device's own keys, both users' device
+	 * lists and the mailbox link. Neither id is checked here; the caller has
+	 * looked both up.
+	 *
+	 * @param string $device Device id.
+	 * @param string $old    User it is on now, or 'none'.
+	 * @param string $new    User to put it on, or 'none'.
+	 *
+	 * @return void
+	 */
+	public function assignDevice($device, $old, $new)
+	{
+		$device = (string) $device;
+		$old = (string) $old;
+		$new = (string) $new;
+
+		$this->db->prepare('UPDATE devices SET user = ? WHERE id = ?')->execute([$new, $device]);
+
+		if ($this->astmanReady()) {
+			if ($old !== '' && $old !== 'none') {
+				$left = array_diff(array_filter(explode('&', (string) $this->astman->database_get('AMPUSER', $old . '/device')), 'strlen'), [$device]);
+
+				if ($left) {
+					$this->astman->database_put('AMPUSER', $old . '/device', implode('&', $left));
+				} else {
+					$this->astman->database_del('AMPUSER', $old . '/device');
+				}
+			}
+
+			$this->astman->database_put('DEVICE', $device . '/user', $new);
+			$this->astman->database_put('DEVICE', $device . '/default_user', $new);
+
+			if ($new !== 'none') {
+				$linked = array_filter(explode('&', (string) $this->astman->database_get('AMPUSER', $new . '/device')), 'strlen');
+				$linked[] = $device;
+
+				$this->astman->database_put('AMPUSER', $new . '/device', implode('&', array_unique($linked)));
+			}
+		}
+
+		$this->linkMailbox($device, $new);
+	}
+
+	/**
+	 * Point a device's voicemail link at its user's mailbox, as Core does when
+	 * it adds a device: `voicemail/device/<id>` is how `<id>@device` finds it.
+	 *
+	 * @param string $device Device id.
+	 * @param string $user   Its user, or 'none': no link.
+	 *
+	 * @return void
+	 */
+	private function linkMailbox($device, $user)
+	{
+		$spool = rtrim((string) \FreePBX::Config()->get('ASTSPOOLDIR'), '/') . '/voicemail';
+
+		// Both become a path: nothing but what a number or a name is made of.
+		if (!is_dir($spool) || !preg_match('/^[A-Za-z0-9_-]+$/', $device) || !preg_match('/^(none|[0-9]+)$/', $user)) {
+			return;
+		}
+
+		$link = $spool . '/device/' . $device;
+
+		if (is_link($link)) {
+			@unlink($link);
+		}
+
+		if ($user === 'none') {
+			return;
+		}
+
+		$sth = $this->db->prepare('SELECT voicemail FROM users WHERE extension = ? LIMIT 1');
+		$sth->execute([$user]);
+		$context = $sth->fetchColumn();
+
+		if ($context === false || $context === null || $context === 'novm' || !preg_match('/^[A-Za-z0-9_-]*$/', (string) $context)) {
+			return;
+		}
+
+		if (!is_dir($spool . '/device')) {
+			@mkdir($spool . '/device', 0755);
+		}
+
+		@symlink($spool . '/' . ($context === '' ? 'default' : $context) . '/' . $user . '/', $link);
+	}
+
+	/**
 	 * Take an extension's Asterisk database entries out.
 	 *
 	 * Core skips these in the edit mode a renumbering uses to protect a

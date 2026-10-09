@@ -159,6 +159,53 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
+	<h4 class="oryk-overview-heading"><?php echo _('Logs'); ?></h4>
+	<?php
+	$logMac = '';
+	$logScope = $overview['key'];
+	$logOverview = true;
+	include __DIR__ . '/logs.php';
+	?>
+
+	<?php if ($oIsUser): ?>
+	<h4 class="oryk-overview-heading"><?php echo _('Jobs'); ?></h4>
+	<?php
+	$jobFilter = null;
+	$jobScope = $overview['key'];
+	include __DIR__ . '/jobs.php';
+	?>
+	<?php endif; ?>
+
+	<h4 class="oryk-overview-heading"><?php echo _('Bans'); ?></h4>
+	<table
+		id="ban_table"
+		data-toggle="table"
+		data-url="ajax.php?module=oryk_provisioner&command=listOverviewBans<?php echo $oe($oScopeQuery); ?>"
+		class="table table-striped"
+		data-side-pagination="server"
+		data-pagination="true"
+		data-show-refresh="true"
+		data-icons-prefix="oryk-icon"
+		data-icons='{"refresh":"oryk-icon-refresh"}'
+		data-unique-id="id"
+		data-row-style="orykBanRowClasses"
+		data-sort-name="created_at"
+		data-sort-order="desc">
+		<thead>
+			<tr>
+				<th data-field="names" data-formatter="formatOverviewBan"><?php echo _('Delete All'); ?></th>
+				<th data-field="ip" data-formatter="formatBanIp" data-sortable="true"><?php echo _('IP'); ?></th>
+				<th data-field="mac" data-formatter="formatBanMac" data-sortable="true"><?php echo _('MAC'); ?></th>
+				<th data-field="user" data-formatter="formatBanUser" data-sortable="true"><?php echo _('User'); ?></th>
+				<th data-field="client" data-formatter="formatBanClient" data-sortable="true"><?php echo _('Client'); ?></th>
+				<th data-field="profile" data-formatter="formatBanProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
+				<th data-field="state" data-formatter="formatBanState" data-sortable="true"><?php echo _('State'); ?></th>
+				<th data-field="expires_at" data-formatter="formatBanExpires" data-sortable="true"><?php echo _('Expires'); ?></th>
+				<th data-field="actions" data-formatter="formatBanActions" data-align="right"><?php echo _('Actions'); ?></th>
+			</tr>
+		</thead>
+	</table>
+
 	<?php if ($oIsUser): ?>
 	<h4 class="oryk-overview-heading"><?php echo _('Call Detail Record'); ?></h4>
 	<div id="call_toolbar" class="oryk-toolbar">
@@ -222,53 +269,6 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 	<?php endif; ?>
-
-	<h4 class="oryk-overview-heading"><?php echo _('Provisioning Logs'); ?></h4>
-	<?php
-	$logMac = '';
-	$logScope = $overview['key'];
-	$logOverview = true;
-	include __DIR__ . '/logs.php';
-	?>
-
-	<?php if ($oIsUser): ?>
-	<h4 class="oryk-overview-heading"><?php echo _('Jobs'); ?></h4>
-	<?php
-	$jobFilter = null;
-	$jobScope = $overview['key'];
-	include __DIR__ . '/jobs.php';
-	?>
-	<?php endif; ?>
-
-	<h4 class="oryk-overview-heading"><?php echo _('Bans'); ?></h4>
-	<table
-		id="ban_table"
-		data-toggle="table"
-		data-url="ajax.php?module=oryk_provisioner&command=listOverviewBans<?php echo $oe($oScopeQuery); ?>"
-		class="table table-striped"
-		data-side-pagination="server"
-		data-pagination="true"
-		data-show-refresh="true"
-		data-icons-prefix="oryk-icon"
-		data-icons='{"refresh":"oryk-icon-refresh"}'
-		data-unique-id="id"
-		data-row-style="orykBanRowClasses"
-		data-sort-name="created_at"
-		data-sort-order="desc">
-		<thead>
-			<tr>
-				<th data-field="names" data-formatter="formatOverviewBan"><?php echo _('Delete All'); ?></th>
-				<th data-field="ip" data-formatter="formatBanIp" data-sortable="true"><?php echo _('IP'); ?></th>
-				<th data-field="mac" data-formatter="formatBanMac" data-sortable="true"><?php echo _('MAC'); ?></th>
-				<th data-field="user" data-formatter="formatBanUser" data-sortable="true"><?php echo _('User'); ?></th>
-				<th data-field="client" data-formatter="formatBanClient" data-sortable="true"><?php echo _('Client'); ?></th>
-				<th data-field="profile" data-formatter="formatBanProfile" data-sortable="true"><?php echo _('Profile'); ?></th>
-				<th data-field="state" data-formatter="formatBanState" data-sortable="true"><?php echo _('State'); ?></th>
-				<th data-field="expires_at" data-formatter="formatBanExpires" data-sortable="true"><?php echo _('Expires'); ?></th>
-				<th data-field="actions" data-formatter="formatBanActions" data-align="right"><?php echo _('Actions'); ?></th>
-			</tr>
-		</thead>
-	</table>
 
 </div>
 

@@ -487,7 +487,7 @@ class Navigator extends Service
 	 * group's first section would have stood: the active section of the group,
 	 * else its first, with every section of the group under 'items'.
 	 *
-	 * @param string               $section clients|profiles|services|users|logs|bans|jobs|overview|settings.
+	 * @param string               $section clients|profiles|services|devices|users|logs|bans|jobs|overview|settings.
 	 * @param array<string, mixed> $at      Row being viewed, as levels() takes it.
 	 *
 	 * @return array<int, array<string, mixed>> Each: key, text, href, active;
@@ -560,7 +560,8 @@ class Navigator extends Service
 	/**
 	 * Every section there is, in the bar's order, by key.
 	 *
-	 * Users, Clients, Profiles first, in the order of the dropdowns under the bar.
+	 * A group's sections are drawn in this order, and its first is what the
+	 * bar shows when none of them is open.
 	 *
 	 * @return array<string, string> Names, by key.
 	 */
@@ -568,12 +569,13 @@ class Navigator extends Service
 	{
 		return [
 			'users' => _('Users'),
+			'devices' => _('Devices'),
 			'clients' => _('Clients'),
 			'profiles' => _('Profiles'),
 			'services' => _('Services'),
 			'logs' => _('Logs'),
-			'bans' => _('Bans'),
 			'jobs' => _('Jobs'),
+			'bans' => _('Bans'),
 			'overview' => _('Overview'),
 			'settings' => _('Settings'),
 		];
@@ -591,8 +593,8 @@ class Navigator extends Service
 	private function sectionGroups()
 	{
 		return [
-			['users', 'clients', 'profiles', 'services'],
-			['logs', 'bans', 'jobs', 'overview'],
+			['users', 'devices', 'clients', 'profiles', 'services'],
+			['logs', 'jobs', 'bans', 'overview'],
 		];
 	}
 
