@@ -220,7 +220,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 						<table
 							id="pbx_device_table"
 							data-toggle="table"
-							data-url="ajax.php?module=oryk_provisioner&command=listDevices"
+							data-url="ajax.php?module=oryk_provisioner&command=listDevices<?php echo $scopeQuery; ?>"
 							class="table table-striped"
 							data-side-pagination="server"
 							data-pagination="true"

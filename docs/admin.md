@@ -7,7 +7,7 @@ elsewhere in the module lands where you were.
 Every page is topped by the same bar of sections — Users, Devices, Clients,
 Profiles, Services, Logs, Jobs, Bans, Overview, Settings — with the one you are in underlined, so any section is
 one click away from anywhere. Under it is a row of searchable dropdowns —
-Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs — narrowed to whatever you are
+Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs — narrowed to whatever you are
 looking at: on a profile, Clients lists that profile's clients and Users the
 people they belong to; on a client, Users and Profiles list its user and its profile,
 Resources lists the files it is served, Logs its latest requests and Bans every
@@ -204,7 +204,10 @@ client with no device assigned, or **Device + Client**. Only the device goes:
 its extension, account, voicemail and call history stay.
 
 **Edit** opens the device (`&device=<id>`), where the one thing to change is
-its **User**: any extension, or **None**. Save moves the device at once and
+its **User**: any extension, or **None**. On that page the dropdowns are
+narrowed to the device: its user, the clients on it, and their profiles, logs
+and bans. Elsewhere the **Devices** dropdown lists the devices of whatever you
+are viewing — a user's are the ones on its extension, a client's the one it uses. Save moves the device at once and
 raises Apply Config. A client on the device follows it, so it is counted as
 the new user's from then on.
 

@@ -42,9 +42,12 @@ class Devices extends Service
 	/**
 	 * Rows for the Devices table.
 	 *
+	 * @param array<int, string>|null $ids Devices to keep, or null for all:
+	 *                                     a navigator scope.
+	 *
 	 * @return array<string, mixed> Total row count and the page of rows.
 	 */
-	public function listDevices()
+	public function listDevices($ids = null)
 	{
 		// Written into the statement, so only these; anything else sorts by id.
 		$sortable = [
@@ -62,12 +65,18 @@ class Devices extends Service
 		$search = (string) ($_REQUEST['search'] ?? '');
 
 		$params = [];
-		$where = '';
+		$clauses = [];
+
+		if ($ids !== null) {
+			$clauses[] = $this->inClause('d.id', $ids, 'device', $params);
+		}
 
 		if ($search !== '') {
-			$where = 'WHERE (d.id LIKE :search OR d.description LIKE :search OR d.user LIKE :search OR u.name LIKE :search)';
+			$clauses[] = '(d.id LIKE :search OR d.description LIKE :search OR d.user LIKE :search OR u.name LIKE :search)';
 			$params[':search'] = '%' . $search . '%';
 		}
+
+		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
 
 		try {
 			$countStmt = $this->db->prepare('SELECT COUNT(*) ' . self::FROM . " $where");
@@ -118,6 +127,48 @@ class Devices extends Service
 		}
 
 		return $row ?: null;
+	}
+
+	/**
+	 * Every device, for the navigator. Unpaged, like Users::userChoices().
+	 *
+	 * @return array<int, array<string, mixed>> Rows: id, description, user.
+	 */
+	public function deviceChoices()
+	{
+		try {
+			$stmt = $this->db->prepare('SELECT id, description, user FROM devices ORDER BY id + 0, id');
+			$stmt->execute();
+
+			return $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (\Exception $e) {
+			return [];
+		}
+	}
+
+	/**
+	 * The devices on some extensions.
+	 *
+	 * @param array<int, string> $users Extensions.
+	 *
+	 * @return array<int, string> Device ids.
+	 */
+	public function idsOn(array $users)
+	{
+		if (!$users) {
+			return [];
+		}
+
+		$params = [];
+
+		try {
+			$stmt = $this->db->prepare('SELECT id FROM devices WHERE ' . $this->inClause('user', $users, 'user', $params));
+			$stmt->execute($params);
+
+			return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+		} catch (\Exception $e) {
+			return [];
+		}
 	}
 
 	/**

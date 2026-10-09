@@ -421,8 +421,7 @@ class Pages extends Service
 			'device' => $device,
 			'users' => $this->devices->userChoices(),
 			'sections' => $this->navigator->sections('devices'),
-			// A device is no level of the navigator, so it scopes nothing.
-			'navigator' => $this->navigator->levels(),
+			'navigator' => $this->navigator->levels(['device' => (string) $device['id']]),
 		]);
 	}
 
@@ -739,6 +738,7 @@ class Pages extends Service
 		$kind = (string) key($at);
 		$names = [
 			'user' => _('user %s'),
+			'device' => _('device %s'),
 			'client' => _('client %s'),
 			'profile' => _('profile %s'),
 			'log' => _('log entry %s'),

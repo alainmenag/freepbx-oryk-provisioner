@@ -310,7 +310,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->banSync = new BanSync($freepbx, $this->fail2ban, $escalation);
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services, $this->jobs);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services, $this->jobs, $this->devices);
 		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge, $this->services);
@@ -822,7 +822,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		// A list opened from a navigator title is narrowed the way that title's
 		// badge was counted: `&scope=<kind>:<id>` names the row, Navigator says
 		// what it scopes. Read only by the list commands.
-		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listBans', 'listServices', 'listJobs'], true)
+		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listDevices', 'listBans', 'listServices', 'listJobs'], true)
 			? $this->navigator->scope(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
 			: null;
 
@@ -933,7 +933,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 				return $this->users->deleteExpired($_REQUEST['ids'] ?? []);
 
 			case 'listDevices':
-				return $this->devices->listDevices();
+				return $this->devices->listDevices($scope['devices']);
 
 			// Which user the device is on, and nothing else of it.
 			case 'saveDevice':

@@ -984,8 +984,11 @@ everywhere.
 `?tab=devices` lists every row of FreePBX's `devices`, whatever its
 technology and whoever it is on; `?device=<id>` is one of them, with one thing
 to change: `devices.user`. `Devices` reads them, with nothing stored in this
-module's tables, and is no level of the navigator: the page scopes nothing and
-the list takes no `&scope=`. There is no new device there -- one is made in
+module's tables. A device is a level of the navigator, after Users: it scopes
+like a user cut down to one line -- the extension it is on, the clients on it
+alone, and what follows from those -- and from the other side a user's (or a
+service's users') devices are the ones on those extensions, anything else's
+the ones its clients are on. There is no new device there -- one is made in
 FreePBX or by a client's Auto Create.
 
 **A delete is Overview's** (`deleteDevice` -> `Users::deleteDeviceById()`),
@@ -1356,8 +1359,8 @@ made from one of the tables is answered by loading the page again.
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.
-  `views/partials/navigator.php` is a row of eight searchable dropdowns under
-  it -- Users, Clients, Profiles, Resources, Services, Logs, Bans, Jobs -- scoped by the row the
+  `views/partials/navigator.php` is a row of nine searchable dropdowns under
+  it -- Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs -- scoped by the row the
   page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
   what is linked to that row, the viewed row's own level lists all of its kind
   with it selected, and nothing else is ever selected: a linked level with

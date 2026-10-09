@@ -2323,6 +2323,12 @@ foreach ($s['navigator']->levels(['client' => '5']) as $level) {
 	$levels[$level['key']] = $level;
 }
 is_eq('anywhere else it opens the client', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&client=5');
+is_eq('Devices is a level, after Users', array_slice(array_keys($levels), 0, 3), ['user', 'device', 'client']);
+is_eq('whose title is the Devices list, narrowed like the rest', $levels['device']['title']['href'], '?display=oryk_provisioner&tab=devices&scope=client:5');
+is_eq('a device is a row a list can be narrowed to', Navigator::scopeAt('device:2001'), ['device' => '2001']);
+is_eq('and it scopes by itself', $s['navigator']->scopeKey(['device' => '2001']), 'device:2001');
+is_eq('its own level lists all of its kind', $s['navigator']->scope(['device' => '2001'])['devices'], null);
+is_eq('the Devices list is one a scope narrows', Navigator::narrows('devices', ['devices' => ['2001']]), true);
 $bar = array_column(array_column($s['navigator']->sections('users', ['user' => '1001']), null, 'key')['logs']['items'], 'href', 'key');
 is_eq('from a user\'s page the bar\'s Overview opens on it', $bar['overview'], '?display=oryk_provisioner&tab=overview&scope=user:1001');
 $bar = array_column(array_column($s['navigator']->sections('users', ['user' => 'new']), null, 'key')['logs']['items'], 'href', 'key');
