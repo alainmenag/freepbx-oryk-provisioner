@@ -30,8 +30,8 @@
  *
  * Nothing here is a link but a crumb's name and the x after the last: the
  * kind over a crumb and a related entry's kind and count are labels, and the
- * whole entry opens its menu. The list a level is drawn from -- its title's
- * href -- is not drawn; the section bar is where lists are.
+ * whole entry opens its menu. The table a level is drawn from -- its title's
+ * href, narrowed as the menu is -- is the menu's first row, "Go to all".
  *
  * A related level with nothing to list and nothing to write is inert: dim,
  * no chevron, no menu. A chevron that opens "None" is a click wasted.
@@ -89,8 +89,8 @@ foreach ($navigator as $level) {
 }
 
 /**
- * One level's menu: the filter, the options, and the add row, the same under
- * a crumb and under a related entry.
+ * One level's menu: the filter, the way to the whole table, the options, and
+ * the add row, the same under a crumb and under a related entry.
  *
  * @param array<string, mixed> $level One of $navigator.
  * @param string               $mono  ' oryk-nav-mono' or ''.
@@ -102,6 +102,17 @@ $navMenu = function (array $level, $mono) use ($e) {
 		<li class="oryk-nav-filter">
 			<input type="text" class="form-control input-sm" placeholder="<?php echo $e($level['search']); ?>" aria-label="<?php echo $e($level['search']); ?>">
 		</li>
+
+		<?php
+		// The table of what the menu lists -- the level's title -- as its
+		// first row, out of the filter and the arrow keys like the add row.
+		$all = isset($level['title']['href']) ? (string) $level['title']['href'] : '';
+		?>
+		<?php if ($all !== ''): ?>
+			<li class="oryk-nav-all">
+				<a href="<?php echo $e($all); ?>"><?php echo $e(sprintf(_('Go to all %s'), $level['title']['text'])); ?> <span class="badge oryk-nav-badge"><?php echo (int) $level['count']; ?></span></a>
+			</li>
+		<?php endif; ?>
 
 		<?php if (!$level['options']): ?>
 			<li class="oryk-nav-empty"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
