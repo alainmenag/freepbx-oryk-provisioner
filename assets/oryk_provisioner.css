@@ -510,19 +510,6 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 15px;
 }
 
-/* The table the menu is drawn from, under the filter: a row that is not an
-   option, so it reads as a way out rather than one of the choices. */
-.oryk-nav .oryk-nav-menu > li.oryk-nav-all {
-	border-bottom: 1px solid #eee;
-}
-.oryk-nav .oryk-nav-menu > li.oryk-nav-all > a {
-	color: #555;
-	font-weight: 600;
-}
-.oryk-nav .oryk-nav-menu > li.oryk-nav-all .oryk-nav-badge {
-	font-weight: 600;
-}
-
 /* The filter stays put while the list scrolls under it: a search box that
    scrolls away is one you have to find again to fix a typo. */
 .oryk-nav .oryk-nav-filter {

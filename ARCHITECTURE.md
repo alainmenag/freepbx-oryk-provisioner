@@ -1379,8 +1379,7 @@ made from one of the tables is answered by loading the page again.
   parents in level order and the viewed row (flagged `viewed`) last, with an
   x that closes it -- to the crumb before it, else to its own list -- and the
   rest as a related line of counts under it; a page viewing nothing has only
-  the related line. The table a level's title names is the first row of its
-  menu ("Go to all"), narrowed as the menu is. A related level with nothing to
+  the related line. A related level with nothing to
   list and nothing to write is inert, with no menu.
   Services follow Users: the level lists what the users in scope -- the viewed
   user, else the Users level's -- are assigned themselves, never what reaches
