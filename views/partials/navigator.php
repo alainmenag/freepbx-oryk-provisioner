@@ -255,7 +255,8 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		menu.removeClass('oryk-nav-menu-right');
 		menu.toggleClass('oryk-nav-menu-right', menu[0].getBoundingClientRect().right > $(window).width() - 8);
 
-		menu.find('.oryk-nav-filter input').val('').trigger('input').focus({ preventScroll: true });
+		// The DOM's focus(), not jQuery's, which would read the options as a handler.
+		menu.find('.oryk-nav-filter input').val('').trigger('input')[0].focus({ preventScroll: true });
 	});
 
 	// The box is a div, so Enter and Space are what open it from the keyboard.
