@@ -28,10 +28,10 @@
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
  *
- * A related level's title -- what these are, plural -- is a link to the table
- * of what its badge counts: `Profiles 1` on a client goes to the Profiles
- * list narrowed to that client's. A trail crumb has one target, its name, and
- * the kind before it is a label; the list it came out of is a section away.
+ * Nothing here is a link but a crumb's name and the x after the last: the
+ * kind over a crumb and a related entry's kind and count are labels, and the
+ * whole entry opens its menu. The list a level is drawn from -- its title's
+ * href -- is not drawn; the section bar is where lists are.
  *
  * A related level with nothing to list and nothing to write is inert: dim,
  * no chevron, no menu. A chevron that opens "None" is a click wasted.
@@ -182,7 +182,6 @@ $navMenu = function (array $level, $mono) use ($e) {
 			$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
 			$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
 			$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : $key;
-			$titleHref = ($title && isset($title['href'])) ? (string) $title['href'] : '';
 			$inert = !$level['options'] && empty($level['add']);
 			$count = '<span class="badge oryk-nav-count">' . (int) $level['count'] . '</span>';
 			?>
@@ -195,20 +194,12 @@ $navMenu = function (array $level, $mono) use ($e) {
 			<li class="dropdown oryk-nav-level oryk-nav-entry<?php echo $inert ? ' oryk-nav-inert' : ''; ?>">
 				<?php if ($inert): ?>
 					<div class="oryk-nav-toggle">
-						<?php if ($titleHref !== ''): ?>
-							<a class="oryk-nav-link oryk-nav-kind" href="<?php echo $e($titleHref); ?>"><?php echo $e($titleText); ?></a>
-						<?php else: ?>
-							<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
-						<?php endif; ?>
+						<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
 						<?php echo $count; ?>
 					</div>
 				<?php else: ?>
 					<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-						<?php if ($titleHref !== ''): ?>
-							<a class="oryk-nav-link oryk-nav-kind" href="<?php echo $e($titleHref); ?>" title="<?php echo $e(sprintf(_('Go to %s'), $titleText)); ?>"><?php echo $e($titleText); ?></a>
-						<?php else: ?>
-							<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
-						<?php endif; ?>
+						<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
 						<?php echo $count; ?>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
