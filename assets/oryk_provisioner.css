@@ -527,6 +527,8 @@ tr.oryk-disabled > td a:not(.btn) {
 	border-bottom: 1px solid #eee;
 }
 .oryk-nav .oryk-nav-filter input {
+	-webkit-appearance: none;
+	appearance: none;
 	height: 28px;
 	padding: 3px 8px;
 	font-size: 13px;

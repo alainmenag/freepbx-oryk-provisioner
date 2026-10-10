@@ -110,7 +110,8 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 	<ul class="dropdown-menu oryk-nav-menu" data-oryk-nav-level="<?php echo $e($level['key']); ?>" data-oryk-nav-scope="<?php echo $e($level['scope']); ?>" data-oryk-nav-section="<?php echo $e($level['section']); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>" data-oryk-nav-more="<?php echo !empty($level['more']) ? '1' : '0'; ?>">
 
 		<li class="oryk-nav-filter">
-			<input type="text" class="form-control input-sm" placeholder="<?php echo $e($prompt); ?>" aria-label="<?php echo $e($prompt); ?>">
+			<?php // The browser's own address and contact suggestions would cover the list; `search` is a type Chrome leaves alone. ?>
+			<input type="search" class="form-control input-sm" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="<?php echo $e($prompt); ?>" aria-label="<?php echo $e($prompt); ?>">
 		</li>
 
 		<?php // The menu holds the last touched few; the rest are reached by typing, which asks the server. ?>
