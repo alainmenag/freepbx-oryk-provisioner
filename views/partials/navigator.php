@@ -247,7 +247,15 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 	// Opening a level puts the cursor in its filter and clears what was typed
 	// last time -- the list you are shown is the whole list, every time.
 	$(document).on('shown.bs.dropdown', '.oryk-nav-level', function () {
-		$(this).find('.oryk-nav-filter input').val('').trigger('input').focus();
+		var menu = $(this).find('.oryk-nav-menu');
+
+		// A menu hangs from its entry's left edge; one near the right of the
+		// page would run past the viewport and widen the page, so it hangs
+		// from the right edge instead. Decided when it opens, at this width.
+		menu.removeClass('oryk-nav-menu-right');
+		menu.toggleClass('oryk-nav-menu-right', menu[0].getBoundingClientRect().right > $(window).width() - 8);
+
+		menu.find('.oryk-nav-filter input').val('').trigger('input').focus({ preventScroll: true });
 	});
 
 	// The box is a div, so Enter and Space are what open it from the keyboard.
