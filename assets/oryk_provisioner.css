@@ -365,6 +365,34 @@ tr.oryk-disabled > td a:not(.btn) {
 	font-weight: 700;
 }
 
+/* Closing the viewed row, after its crumb: faint until the pointer is near. */
+.oryk-nav .oryk-nav-crumb {
+	display: inline-flex;
+	align-items: center;
+}
+.oryk-nav .oryk-nav-eject {
+	display: inline-flex;
+	align-items: center;
+	margin-left: 2px;
+	padding: 4px;
+	border-radius: 3px;
+	color: #bbb;
+	line-height: 0;
+}
+.oryk-nav .oryk-nav-crumb:hover .oryk-nav-eject,
+.oryk-nav .oryk-nav-eject:focus {
+	color: #777;
+}
+.oryk-nav .oryk-nav-eject:hover {
+	color: #333;
+	background: #f0f0f0;
+}
+.oryk-nav .oryk-nav-eject-icon {
+	width: 11px;
+	height: 11px;
+	stroke-width: 3;
+}
+
 /*
  * The related line: a kind, how many are in scope, a chevron -- one size,
  * smaller than the trail, since none of it is where you are. An inert entry

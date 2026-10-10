@@ -10,8 +10,11 @@
  * a row chosen. The ones that do are the trail -- the viewed row and its
  * parents, outermost first, read like any breadcrumb -- and the ones that do
  * not are the related line under it, each a kind, how many are in scope and
- * a chevron. A page viewing nothing has no trail, and the related line is
- * the whole navigator.
+ * a chevron. The viewed row's crumb is last, its parents before it in level
+ * order. A page viewing nothing has no trail, and the related line is
+ * the whole navigator. The last crumb closes: its x goes up to the crumb
+ * before it, or to its own list when it has no parent. Only the viewed row
+ * can be closed -- a parent is a fact of the row, not a filter on it.
  *
  * Every level is the same control either way: what it is now, and a
  * searchable list of what it could be instead. Uniform on purpose -- there is
@@ -48,7 +51,8 @@
  * that says you cannot write a new one here simply has no row.
  *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
- *                                       Each: key, one (a row of it, singular), title of text and href,
+ *                                       Each: key, one (a row of it, singular), viewed (whether its
+ *                                       row is the page's), title of text and href,
  *                                       text (the chosen row, or ''), href
  *                                       (that row's page, or ''), mono, search,
  *                                       options[] of text, note, badge, href, active,
@@ -71,10 +75,18 @@ $navTrail = [];
 $navRelated = [];
 
 foreach ($navigator as $level) {
-	if ((string) $level['text'] !== '') {
-		$navTrail[] = $level;
-	} else {
+	if ((string) $level['text'] === '') {
 		$navRelated[] = $level;
+	} elseif (empty($level['viewed'])) {
+		$navTrail[] = $level;
+	}
+}
+
+// The viewed row ends the trail, whatever order its level comes in: a
+// client's profile is listed after it, but is over it.
+foreach ($navigator as $level) {
+	if (!empty($level['viewed']) && (string) $level['text'] !== '') {
+		$navTrail[] = $level;
 	}
 }
 
@@ -127,8 +139,14 @@ $navMenu = function (array $level, $mono) use ($e) {
 <nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>">
 
 	<?php if ($navTrail): ?>
+		<?php
+		// Where closing the viewed row lands: the crumb before it, else the
+		// list its own crumb is drawn from. The trail pops one level.
+		$last = count($navTrail) - 1;
+		$navUp = $last > 0 && !empty($navTrail[$last - 1]['href']) ? (string) $navTrail[$last - 1]['href'] : (string) ($navTrail[$last]['title']['href'] ?? '');
+		?>
 		<ol class="oryk-nav-trail">
-			<?php foreach ($navTrail as $level): ?>
+			<?php foreach ($navTrail as $i => $level): ?>
 				<?php
 				$key = (string) $level['key'];
 				$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
@@ -153,6 +171,9 @@ $navMenu = function (array $level, $mono) use ($e) {
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
 					<?php $navMenu($level, $mono); ?>
+					<?php if ($i === $last && $navUp !== ''): ?>
+						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-nav-eject-icon'); ?></a>
+					<?php endif; ?>
 				</li>
 			<?php endforeach; ?>
 		</ol>

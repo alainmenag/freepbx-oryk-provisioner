@@ -90,9 +90,10 @@ class Navigator extends Service
 	/**
 	 * The nine dropdowns, scoped by the row a page is viewing.
 	 *
-	 * The viewed row is chosen on its own level, and so are its parents
-	 * (parents()) on theirs: a client's page has its user, device and profile
-	 * chosen too, which is the trail the navigator draws. Nothing else is.
+	 * The viewed row is chosen on its own level, which is flagged `viewed`,
+	 * and so are its parents (parents()) on theirs: a client's page has its
+	 * user, device and profile chosen too, which is the trail the navigator
+	 * draws. Nothing else is.
 	 *
 	 * `$at` names that row: `user` (an extension), `device`, `client`, `profile`,
 	 * `profile` and `resource` together, `log`, `ban`, `service` (a slug) or `job`.
@@ -151,7 +152,13 @@ class Navigator extends Service
 		// `$at` gave them, since the list and add links are the viewed row's.
 		$up = $this->parents($at, $clientRows, $scope['entry']);
 
-		return [
+		// The one level whose row is the page's: a resource's over its profile,
+		// else whichever key `$at` carries. Its parents are chosen, not viewed.
+		$viewed = isset($at['resource']) ? 'resource' : (string) key(array_filter($at, function ($id) {
+			return $id !== null && $id !== '';
+		}));
+
+		$levels = [
 			$this->userLevel($scope['users'], $user ?? $up['user'], $from, $overview),
 			$this->deviceLevel($scope['devices'], $device ?? $up['device'], $from),
 			$this->clientLevel($clientRows, $scope['clients'], $client ?? $up['client'], $user, $profile, $from, $overview),
@@ -162,6 +169,12 @@ class Navigator extends Service
 			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $scope['entry'], $from),
 			$this->jobLevel($scope['jobs'], $job, $from),
 		];
+
+		foreach ($levels as &$level) {
+			$level['viewed'] = $level['key'] === $viewed;
+		}
+
+		return $levels;
 	}
 
 	/**
