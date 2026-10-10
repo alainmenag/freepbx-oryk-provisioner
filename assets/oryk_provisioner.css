@@ -365,7 +365,7 @@ tr.oryk-disabled > td a:not(.btn) {
 	font-weight: 700;
 }
 
-/* Closing the viewed row, after its crumb: faint until the pointer is near. */
+/* Closing the viewed row, before its crumb: faint until the pointer is near. */
 .oryk-nav .oryk-nav-crumb {
 	display: inline-flex;
 	align-items: center;
@@ -373,7 +373,7 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-nav .oryk-nav-eject {
 	display: inline-flex;
 	align-items: center;
-	margin-left: 2px;
+	margin-right: 2px;
 	padding: 4px;
 	border-radius: 3px;
 	color: #bbb;
