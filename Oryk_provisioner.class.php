@@ -725,6 +725,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		'userServicesImpact', 'serviceImpact', 'userServiceJobs',
 		'listOverviewUsers', 'listOverviewDevices', 'listOverviewClients',
 		'listOverviewBans', 'listOverviewCalls', 'listOverviewVoicemail',
+		'navOptions',
 	];
 
 	/**
@@ -793,6 +794,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteOverviewVoicemail':
 			case 'clearOverviewLogs':
 			case 'clearOverviewStored':
+			case 'navOptions':
 			case 'purgeOverview':
 				return true;
 			default:
@@ -827,6 +829,16 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			: null;
 
 		switch ($command) {
+			// A navigator menu's search: the level's rows in the page's scope
+			// that match what was typed, the last touched first.
+			case 'navOptions':
+				return $this->navigator->options(
+					(string) ($_REQUEST['level'] ?? ''),
+					Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')),
+					(string) ($_REQUEST['q'] ?? ''),
+					(string) ($_REQUEST['section'] ?? '')
+				);
+
 			case 'listClients':
 				$result = $this->clients->listClients($scope['clients']);
 

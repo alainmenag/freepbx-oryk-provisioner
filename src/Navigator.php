@@ -42,6 +42,12 @@ class Navigator extends Service
 	/** @var Resources */
 	private $resources;
 
+	/**
+	 * The most rows a menu holds: the ones last touched, the chosen row first.
+	 * The rest are reached by typing, which asks options() for the matches.
+	 */
+	const MENU_LIMIT = 10;
+
 	/** The most log entries the Logs level lists: the newest, in scope. */
 	const LOG_LIMIT = 100;
 
@@ -127,8 +133,11 @@ class Navigator extends Service
 		$clientRows = $this->clients->clientChoices();
 		$profileNames = [];
 
+		$profileTouched = [];
+
 		foreach ($this->profiles->profileChoices() as $row) {
 			$profileNames[(int) $row['id']] = (string) $row['name'];
+			$profileTouched[(int) $row['id']] = $row['touched'] ?? null;
 		}
 
 		$scope = $this->scoped($at, $clientRows);
@@ -171,7 +180,7 @@ class Navigator extends Service
 			$this->userLevel($scope['users'], $user ?? $up['user'], $from, $overview),
 			$this->deviceLevel($scope['devices'], $device ?? $up['device'], $from),
 			$this->clientLevel($clientRows, $scope['clients'], $client ?? $up['client'], $user, $profile, $from, $overview),
-			$this->profileLevel($profileNames, $scope['profiles'], $profile ?? $up['profile'], $from),
+			$this->profileLevel($profileNames, $profileTouched, $scope['profiles'], $profile ?? $up['profile'], $from),
 			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
 			$this->serviceLevel($scope['services'], $service, $user, $from),
 			$this->logLevel($scope['logs'], $scope['ip'], $log, $scope['entry'], $client, $from),
@@ -181,9 +190,90 @@ class Navigator extends Service
 
 		foreach ($levels as &$level) {
 			$level['viewed'] = $level['key'] === $viewed;
+			// What a search in the menu sends back to options().
+			$level['scope'] = $from;
+			$level['section'] = $section;
+			$level = $this->trim($level, '');
 		}
 
 		return $levels;
+	}
+
+	/**
+	 * One level's options matching a search, for the menu's filter.
+	 *
+	 * The same rows levels() would list, so the scope is the page's; `$query`
+	 * is matched against an option's text and note, case blind, and the
+	 * MENU_LIMIT last touched of the matches are returned.
+	 *
+	 * @param string               $key     Level: user, device, client, profile,
+	 *                                      resource, service, log, ban, job.
+	 * @param array<string, mixed> $at      Row being viewed, from scopeAt().
+	 * @param string               $query   What was typed.
+	 * @param string               $section As levels() takes it.
+	 *
+	 * @return array<string, mixed> status, options (as a level's), more (whether
+	 *                              matches were left out), total.
+	 */
+	public function options($key, array $at, $query, $section = '')
+	{
+		foreach ($this->levels($at, $section) as $level) {
+			if ($level['key'] === $key) {
+				$level = $this->trim($level, $query);
+
+				return ['status' => true, 'options' => $level['options'], 'more' => $level['more'], 'total' => $level['total']];
+			}
+		}
+
+		return ['status' => false, 'message' => _('No such level.')];
+	}
+
+	/**
+	 * A level's options cut to the menu: the matches of `$query`, the last
+	 * touched first, the chosen row ahead of them all, MENU_LIMIT at most.
+	 *
+	 * Rows with no `touched` -- FreePBX's users and devices -- keep the order
+	 * they came in. `count` is left as the scope's count; `total` is the
+	 * matches, `more` whether any were cut.
+	 *
+	 * @param array<string, mixed> $level One level, with every option.
+	 * @param string               $query What was typed, or ''.
+	 *
+	 * @return array<string, mixed> The level, trimmed.
+	 */
+	private function trim(array $level, $query)
+	{
+		$needle = mb_strtolower(trim((string) $query));
+		$rows = [];
+
+		foreach ($level['options'] as $i => $option) {
+			if ($needle !== '' && mb_strpos(mb_strtolower($option['text'] . ' ' . $option['note']), $needle) === false) {
+				continue;
+			}
+
+			$rows[] = $option + ['order' => $i];
+		}
+
+		// Stable on every PHP: the original order breaks ties.
+		usort($rows, function ($a, $b) {
+			if ($a['active'] !== $b['active']) {
+				return $a['active'] ? -1 : 1;
+			}
+
+			$cmp = strcmp((string) $b['touched'], (string) $a['touched']);
+
+			return $cmp !== 0 ? $cmp : $a['order'] - $b['order'];
+		});
+
+		$level['total'] = count($rows);
+		$level['more'] = count($rows) > self::MENU_LIMIT;
+		$level['options'] = array_map(function ($row) {
+			unset($row['order'], $row['touched']);
+
+			return $row;
+		}, array_slice($rows, 0, self::MENU_LIMIT));
+
+		return $level;
 	}
 
 	/**
@@ -837,6 +927,7 @@ class Navigator extends Service
 				'note' => (string) (isset($row['description']) ? $row['description'] : ''),
 				'href' => $overview ? self::overviewHref('client', (int) $row['id']) : '?display=oryk_provisioner&client=' . (int) $row['id'],
 				'page' => '?display=oryk_provisioner&client=' . (int) $row['id'],
+				'touched' => $row['touched'] ?? null,
 			];
 		}
 
@@ -867,14 +958,15 @@ class Navigator extends Service
 	/**
 	 * Profiles: all of them, or the ones the viewed row's phones use.
 	 *
-	 * @param array<int, string>   $profileNames Every profile's name, by id.
-	 * @param array<int, int>|null $scope        Ids linked, or null for all.
+	 * @param array<int, string>      $profileNames   Every profile's name, by id.
+	 * @param array<int, string|null> $profileTouched When each was last written, by id.
+	 * @param array<int, int>|null    $scope          Ids linked, or null for all.
 	 * @param string|null          $at           Profile being viewed, 'new', or null.
 	 * @param string               $from         scopeKey() of the viewed row, or ''.
 	 *
 	 * @return array<string, mixed> One level.
 	 */
-	private function profileLevel(array $profileNames, $scope, $at, $from)
+	private function profileLevel(array $profileNames, array $profileTouched, $scope, $at, $from)
 	{
 		$rows = [];
 
@@ -884,6 +976,7 @@ class Navigator extends Service
 				'text' => $name,
 				'note' => '',
 				'href' => '?display=oryk_provisioner&profile=' . $id,
+				'touched' => $profileTouched[$id] ?? null,
 			];
 		}
 
@@ -933,6 +1026,7 @@ class Navigator extends Service
 					'text' => (string) $row['name'],
 					'note' => count($profiles) > 1 ? (isset($profileNames[$profileId]) ? $profileNames[$profileId] : '') : '',
 					'href' => '?display=oryk_provisioner&profile=' . (int) $profileId . '&resource=' . (int) $row['id'],
+					'touched' => $row['touched'] ?? null,
 				];
 			}
 		}
@@ -987,6 +1081,7 @@ class Navigator extends Service
 				'note' => '',
 				'badge' => in_array($slug, $packs, true) ? _('Pack') : '',
 				'href' => '?display=oryk_provisioner&service=' . rawurlencode($slug),
+				'touched' => $row['touched'] ?? null,
 			];
 		}
 
@@ -1166,6 +1261,7 @@ class Navigator extends Service
 				'text' => (string) $row['filename'] !== '' ? (string) $row['filename'] : _('(main config)'),
 				'note' => implode(' · ', $note),
 				'href' => '?display=oryk_provisioner&log=' . (int) $row['id'],
+				'touched' => (string) $row['created_at'],
 			];
 		}
 
@@ -1249,6 +1345,8 @@ class Navigator extends Service
 				'text' => $names ? implode(', ', $names) : '#' . (int) $row['id'],
 				'note' => implode(' · ', $note),
 				'href' => '?display=oryk_provisioner&ban=' . (int) $row['id'],
+				// Last hit, last start or creation, whichever is latest.
+				'touched' => max((string) ($row['last_hit_at'] ?? ''), (string) ($row['started_at'] ?? ''), (string) ($row['created_at'] ?? '')),
 			];
 		}
 
@@ -1317,6 +1415,7 @@ class Navigator extends Service
 					(string) $row['created_at'],
 				]),
 				'href' => '?display=oryk_provisioner&job=' . (int) $row['id'],
+				'touched' => (string) $row['created_at'],
 			];
 		}
 
@@ -1385,6 +1484,9 @@ class Navigator extends Service
 				'badge' => isset($row['badge']) ? (string) $row['badge'] : '',
 				'href' => $row['href'],
 				'active' => $active,
+				// When the row was last written or seen, for trim(); null
+				// where nothing records that.
+				'touched' => isset($row['touched']) ? (string) $row['touched'] : null,
 			];
 
 			if ($active) {

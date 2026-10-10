@@ -94,7 +94,10 @@ foreach ($navigator as $level) {
 
 /**
  * One level's menu: the filter, the options, and the add row, the same under
- * a crumb and under a related entry.
+ * a crumb and under a related entry. The options are the level's last
+ * touched few (Navigator::MENU_LIMIT); a level with more says so under the
+ * filter, and typing there asks the server (`navOptions`) rather than
+ * filtering what is loaded.
  *
  * @param array<string, mixed> $level  One of $navigator.
  * @param string               $mono   ' oryk-nav-mono' or ''.
@@ -104,11 +107,14 @@ foreach ($navigator as $level) {
  */
 $navMenu = function (array $level, $mono, $prompt) use ($e) {
 	?>
-	<ul class="dropdown-menu oryk-nav-menu">
+	<ul class="dropdown-menu oryk-nav-menu" data-oryk-nav-level="<?php echo $e($level['key']); ?>" data-oryk-nav-scope="<?php echo $e($level['scope']); ?>" data-oryk-nav-section="<?php echo $e($level['section']); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>" data-oryk-nav-more="<?php echo !empty($level['more']) ? '1' : '0'; ?>">
 
 		<li class="oryk-nav-filter">
 			<input type="text" class="form-control input-sm" placeholder="<?php echo $e($prompt); ?>" aria-label="<?php echo $e($prompt); ?>">
 		</li>
+
+		<?php // The menu holds the last touched few; the rest are reached by typing, which asks the server. ?>
+		<li class="oryk-nav-more<?php echo !empty($level['more']) ? '' : ' hidden'; ?>"><?php echo $e(sprintf(_('%1$d of %2$d, type to search'), count($level['options']), (int) $level['total'])); ?></li>
 
 		<?php if (!$level['options']): ?>
 			<li class="oryk-nav-empty"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
@@ -256,8 +262,38 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		event.stopPropagation();
 	});
 
+	/**
+	 * Draw a menu's options from what the server answered.
+	 *
+	 * @param jQuery menu    The .oryk-nav-menu.
+	 * @param Array  options As Navigator lists them: text, note, badge, href, active.
+	 */
+	function orykNavDraw(menu, options) {
+		var mono = menu.data('oryk-nav-mono') === 1 ? ' oryk-nav-mono' : '';
+
+		menu.find('.oryk-nav-option').remove();
+
+		$.each(options, function (i, option) {
+			var label = $('<span class="oryk-nav-label' + mono + '"></span>').text(option.text);
+
+			if (option.badge) {
+				label.append(' ').append($('<span class="badge oryk-nav-badge"></span>').text(option.badge));
+			}
+
+			var link = $('<a></a>').attr('href', option.href).append(label);
+
+			if (option.note) {
+				link.append($('<span class="oryk-nav-note"></span>').text(option.note));
+			}
+
+			menu.append($('<li class="oryk-nav-option"></li>').toggleClass('active', !!option.active).append(link));
+		});
+	}
+
 	// The filter reads the whole option -- a client's MAC and its description
-	// are one row, and either is a reasonable thing to have in mind.
+	// are one row, and either is a reasonable thing to have in mind. A menu
+	// holding only the last touched few asks the server for the rest; the
+	// loaded rows are filtered at once meanwhile, so typing never waits.
 	$(document).on('input', '.oryk-nav-filter input', function () {
 		var needle = $.trim($(this).val()).toLowerCase();
 		var menu = $(this).closest('.oryk-nav-menu');
@@ -274,6 +310,53 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		});
 
 		menu.find('.oryk-nav-none').toggleClass('hidden', showing > 0 || !menu.find('.oryk-nav-option').length);
+
+		if (menu.data('oryk-nav-more') !== 1) {
+			return;
+		}
+
+		// What the page loaded is the answer to an empty search, kept so
+		// clearing the box never has to ask again.
+		if (!menu.data('oryk-nav-first')) {
+			menu.data('oryk-nav-first', menu.find('.oryk-nav-option').clone().removeClass('hidden oryk-nav-here'));
+			menu.data('oryk-nav-first-more', menu.find('.oryk-nav-more').text());
+		}
+
+		clearTimeout(menu.data('oryk-nav-timer'));
+
+		if (needle === '') {
+			menu.find('.oryk-nav-option').remove();
+			menu.append(menu.data('oryk-nav-first').clone());
+			menu.find('.oryk-nav-more').text(menu.data('oryk-nav-first-more')).removeClass('hidden');
+			menu.find('.oryk-nav-none').addClass('hidden');
+
+			return;
+		}
+
+		var asked = (menu.data('oryk-nav-asked') || 0) + 1;
+		menu.data('oryk-nav-asked', asked);
+
+		menu.data('oryk-nav-timer', setTimeout(function () {
+			$.getJSON('ajax.php', {
+				module: 'oryk_provisioner',
+				command: 'navOptions',
+				level: menu.data('oryk-nav-level'),
+				scope: menu.data('oryk-nav-scope'),
+				section: menu.data('oryk-nav-section'),
+				q: needle
+			}).done(function (answer) {
+				// A slower answer to an older search must not overwrite a newer one.
+				if (menu.data('oryk-nav-asked') !== asked || !answer || !answer.status) {
+					return;
+				}
+
+				orykNavDraw(menu, answer.options);
+				menu.find('.oryk-nav-none').toggleClass('hidden', answer.options.length > 0);
+				menu.find('.oryk-nav-more')
+					.text(answer.more ? <?php echo json_encode(_('%1$d of %2$d, keep typing')); ?>.replace('%1$d', answer.options.length).replace('%2$d', answer.total) : '')
+					.toggleClass('hidden', !answer.more);
+			});
+		}, 200));
 	});
 
 	// Arrows walk what the filter left, Enter follows it. Typing a name and

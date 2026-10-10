@@ -2348,6 +2348,19 @@ is_eq('a resource is viewed over its profile', array_keys(array_filter(array_col
 is_eq('a user\'s page chooses nothing else, its one client included', $chosen(['user' => '1001']), ['user' => '1001']);
 is_eq('nor a profile\'s', $chosen(['profile' => '2']), ['profile' => 'Polycom']);
 is_eq('a list page chooses nothing', $chosen([]), []);
+$many = [];
+for ($i = 1; $i <= 12; $i++) {
+	$many[] = ['id' => (string) (10 + $i), 'mac' => sprintf('0004f2%06d', $i), 'device_id' => '', 'profile_id' => '2', 'public_ip' => '', 'description' => $i === 3 ? 'Front desk' : 'Phone ' . $i, 'extension' => '', 'touched' => sprintf('2026-10-%02d 00:00:00', $i)];
+}
+$s['app']->Database->fetchAlls['ORDER BY pc.mac'] = $many;
+$menu = array_column($s['navigator']->levels(['client' => '15']), null, 'key')['client'];
+is_eq('a menu holds the last touched ten, the chosen row first', array_map(function ($o) { return $o['text']; }, $menu['options']), ['0004f2000005', '0004f2000012', '0004f2000011', '0004f2000010', '0004f2000009', '0004f2000008', '0004f2000007', '0004f2000006', '0004f2000004', '0004f2000003']);
+is_eq('and says what it left out', [$menu['more'], $menu['total'], $menu['count']], [true, 12, 12]);
+is_eq('with nothing an option would not say', isset($menu['options'][0]['touched']), false);
+$found = $s['navigator']->options('client', ['client' => '15'], 'front');
+is_eq('a search is answered from the whole level, by text or note', [$found['status'], array_column($found['options'], 'text'), $found['more']], [true, ['0004f2000003'], false]);
+is_eq('a level that is not one is refused', $s['navigator']->options('nope', [], '')['status'], false);
+$s['app']->Database->fetchAlls['ORDER BY pc.mac'] = [['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk', 'extension' => '1001']];
 $levels = [];
 foreach ($s['navigator']->levels([]) as $level) {
 	$levels[$level['key']] = $level;

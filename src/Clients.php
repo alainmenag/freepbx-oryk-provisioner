@@ -688,7 +688,8 @@ class Clients extends Service
 	public function clientChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description, NULLIF(d.user, 'none') AS extension
+			"SELECT pc.id, pc.mac, pc.profile_id, pc.device_id, pc.public_ip, d.description, NULLIF(d.user, 'none') AS extension,
+				COALESCE(GREATEST(pc.last_seen, pc.updated_at), pc.updated_at) AS touched
 				FROM `{$this->clientsTable}` pc
 				LEFT JOIN devices d ON d.id = pc.device_id
 				ORDER BY pc.mac"

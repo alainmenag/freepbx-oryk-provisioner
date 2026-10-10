@@ -301,7 +301,7 @@ class Resources extends Service
 	public function resourceChoices($profileId)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name
+			"SELECT id, name, updated_at AS touched
 				FROM `{$this->resourcesTable}`
 				WHERE profile_id = :profile_id
 				ORDER BY name"

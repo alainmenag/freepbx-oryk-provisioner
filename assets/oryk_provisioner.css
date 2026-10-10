@@ -507,6 +507,15 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 15px;
 }
 
+/* How much of the level the menu holds, under the filter: a hint, not a row. */
+.oryk-nav .oryk-nav-menu > li.oryk-nav-more {
+	padding: 4px 14px 5px;
+	color: #999;
+	font-size: 11px;
+	line-height: 14px;
+	border-bottom: 1px solid #eee;
+}
+
 /* The filter stays put while the list scrolls under it: a search box that
    scrolls away is one you have to find again to fix a typo. */
 .oryk-nav .oryk-nav-filter {

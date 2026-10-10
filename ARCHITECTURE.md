@@ -1380,7 +1380,12 @@ made from one of the tables is answered by loading the page again.
   parents in level order and the viewed row (flagged `viewed`) last, with an
   x that closes it -- to the crumb before it, else to its own list -- and the
   rest as a related line of counts under it; a page viewing nothing has only
-  the related line. A related level with nothing to
+  the related line. A menu holds the level's `Navigator::MENU_LIMIT` last
+  touched rows -- a row's `updated_at`, a client's last request too, a ban's
+  last hit; FreePBX's users and devices record nothing and keep their order
+  -- the chosen row first; typing in its filter asks `navOptions`
+  (`Navigator::options()`) for the matches across the whole scope, the same
+  rows trimmed the same way. A related level with nothing to
   list and nothing to write is inert, with no menu.
   Services follow Users: the level lists what the users in scope -- the viewed
   user, else the Users level's -- are assigned themselves, never what reaches
