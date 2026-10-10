@@ -759,6 +759,7 @@ class Navigator extends Service
 		return $this->level($rows, $scope, $at, [
 			'key' => 'user',
 			'one' => _('User'),
+			'switch' => _('Switch user'),
 			'title' => ['text' => _('Users'), 'href' => self::listHref('users', $from, $scope !== null)],
 			'mono' => true,
 			'new' => _('New user'),
@@ -797,6 +798,7 @@ class Navigator extends Service
 		return $this->level($rows, $scope, $at, [
 			'key' => 'device',
 			'one' => _('Device'),
+			'switch' => _('Switch device'),
 			'title' => ['text' => _('Devices'), 'href' => self::listHref('devices', $from, $scope !== null)],
 			'mono' => true,
 			'new' => '',
@@ -852,6 +854,7 @@ class Navigator extends Service
 		return $this->level($rows, $scope, $at, [
 			'key' => 'client',
 			'one' => _('Client'),
+			'switch' => _('Switch client'),
 			'title' => ['text' => _('Clients'), 'href' => $list],
 			'mono' => true,
 			'new' => _('New client'),
@@ -887,6 +890,7 @@ class Navigator extends Service
 		return $this->level($rows, $scope, $at, [
 			'key' => 'profile',
 			'one' => _('Profile'),
+			'switch' => _('Switch profile'),
 			'title' => ['text' => _('Profiles'), 'href' => self::listHref('profiles', $from, $scope !== null)],
 			'mono' => false,
 			'new' => _('New profile'),
@@ -947,6 +951,7 @@ class Navigator extends Service
 		return $this->level($rows, null, $at, [
 			'key' => 'resource',
 			'one' => _('Resource'),
+			'switch' => _('Switch resource'),
 			'title' => ['text' => _('Resources'), 'href' => $list],
 			'mono' => true,
 			'new' => _('New resource'),
@@ -993,6 +998,7 @@ class Navigator extends Service
 		return $this->level($rows, $scope, $at, [
 			'key' => 'service',
 			'one' => _('Service'),
+			'switch' => _('Switch service'),
 			'title' => ['text' => _('Services'), 'href' => $list],
 			'mono' => false,
 			'new' => _('New service'),
@@ -1173,6 +1179,7 @@ class Navigator extends Service
 		return $this->level($rows, null, $at, [
 			'key' => 'log',
 			'one' => _('Log entry'),
+			'switch' => _('Switch log entry'),
 			'title' => ['text' => _('Logs'), 'href' => $list],
 			'mono' => true,
 			'new' => '',
@@ -1260,6 +1267,7 @@ class Navigator extends Service
 		return $this->level($rows, $scope, $at, [
 			'key' => 'ban',
 			'one' => _('Ban'),
+			'switch' => _('Switch ban'),
 			'title' => ['text' => _('Bans'), 'href' => self::listHref('bans', $from, $scope !== null)],
 			'mono' => false,
 			'new' => _('New ban'),
@@ -1315,6 +1323,7 @@ class Navigator extends Service
 		return $this->level($rows, null, $at, [
 			'key' => 'job',
 			'one' => _('Job'),
+			'switch' => _('Switch job'),
 			'title' => ['text' => _('Jobs'), 'href' => self::listHref('jobs', $from, $narrow !== null)],
 			'mono' => false,
 			'new' => '',
@@ -1341,7 +1350,9 @@ class Navigator extends Service
 	 *                                                parent of what is -- 'new', or null.
 	 * @param array<string, mixed>             $meta  key, one (what a row of
 	 *                                                the level is called, over
-	 *                                                its crumb), title, mono,
+	 *                                                its crumb), switch (its
+	 *                                                filter's prompt on a
+	 *                                                crumb), title, mono,
 	 *                                                new, search, add, and
 	 *                                                none (what the menu of a
 	 *                                                scope with nothing in it
@@ -1398,6 +1409,9 @@ class Navigator extends Service
 			'href' => $at === 'new' ? '' : $href,
 			'mono' => $meta['mono'],
 			'search' => $meta['search'],
+			// What a crumb's filter asks instead: its menu is where you change
+			// row, not where you look one up.
+			'switch' => $meta['switch'],
 			'options' => $options,
 			'count' => array_key_exists('count', $meta) ? $meta['count'] : count($options),
 			// What an empty menu says: nothing linked is not the same as nothing yet.

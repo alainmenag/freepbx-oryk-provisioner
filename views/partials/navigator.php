@@ -54,7 +54,7 @@
  *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
  *                                       Each: key, one (a row of it, singular), viewed (whether its
- *                                       row is the page's), title of text and href,
+ *                                       row is the page's), switch, title of text and href,
  *                                       text (the chosen row, or ''), href
  *                                       (that row's page, or ''), mono, search,
  *                                       options[] of text, note, badge, href, active,
@@ -96,15 +96,18 @@ foreach ($navigator as $level) {
  * One level's menu: the filter, the options, and the add row, the same under
  * a crumb and under a related entry.
  *
- * @param array<string, mixed> $level One of $navigator.
- * @param string               $mono  ' oryk-nav-mono' or ''.
+ * @param array<string, mixed> $level  One of $navigator.
+ * @param string               $mono   ' oryk-nav-mono' or ''.
+ * @param string               $prompt The filter's placeholder: "Switch user"
+ *                                     under a crumb, whose menu changes row,
+ *                                     "Search users" under a related entry.
  */
-$navMenu = function (array $level, $mono) use ($e) {
+$navMenu = function (array $level, $mono, $prompt) use ($e) {
 	?>
 	<ul class="dropdown-menu oryk-nav-menu">
 
 		<li class="oryk-nav-filter">
-			<input type="text" class="form-control input-sm" placeholder="<?php echo $e($level['search']); ?>" aria-label="<?php echo $e($level['search']); ?>">
+			<input type="text" class="form-control input-sm" placeholder="<?php echo $e($prompt); ?>" aria-label="<?php echo $e($prompt); ?>">
 		</li>
 
 		<?php if (!$level['options']): ?>
@@ -166,7 +169,7 @@ $navMenu = function (array $level, $mono) use ($e) {
 						?>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
-					<?php $navMenu($level, $mono); ?>
+					<?php $navMenu($level, $mono, $level['switch']); ?>
 					<?php if ($i === $last && $navUp !== ''): ?>
 						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-nav-eject-icon'); ?></a>
 					<?php endif; ?>
@@ -207,7 +210,7 @@ $navMenu = function (array $level, $mono) use ($e) {
 						<?php echo $count; ?>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
-					<?php $navMenu($level, $mono); ?>
+					<?php $navMenu($level, $mono, $level['search']); ?>
 				<?php endif; ?>
 			</li>
 		<?php endforeach; ?>
