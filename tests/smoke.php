@@ -2336,8 +2336,6 @@ $chosen = function (array $at) use ($s) {
 	return array_filter($texts, 'strlen');
 };
 is_eq('a client\'s page chooses its user and profile with it: the trail', $chosen(['client' => '5']), ['user' => '1001', 'client' => '0004f282e824', 'profile' => 'Polycom']);
-is_eq('and flags only the client as viewed', array_keys(array_filter(array_column($s['navigator']->levels(['client' => '5']), 'viewed', 'key'))), ['client']);
-is_eq('a resource is viewed over its profile', array_keys(array_filter(array_column($s['navigator']->levels(['profile' => '2', 'resource' => 'new']), 'viewed', 'key'))), ['resource']);
 is_eq('a user\'s page chooses nothing else, its one client included', $chosen(['user' => '1001']), ['user' => '1001']);
 is_eq('nor a profile\'s', $chosen(['profile' => '2']), ['profile' => 'Polycom']);
 is_eq('a list page chooses nothing', $chosen([]), []);

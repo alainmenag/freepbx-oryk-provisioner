@@ -1374,8 +1374,9 @@ made from one of the tables is answered by loading the page again.
   own level lists all of its kind with it chosen. Its parents are chosen with
   it, on their own levels (`Navigator::parents()`): a client's user, device
   and profile, a device's user, a job's user, a log entry's client and that
-  client's. Nothing else is ever chosen -- a linked level with exactly one row
-  lists that one row. The view draws the levels with a row chosen as a trail,
+  client's. A level with a row chosen lists all of its kind, so a crumb is
+  where you switch to another user or profile; nothing else is ever chosen --
+  a linked level with exactly one row lists that one row. The view draws the levels with a row chosen as a trail,
   parents in level order and the viewed row (flagged `viewed`) last, with an
   x that closes it -- to the crumb before it, else to its own list -- and the
   rest as a related line of counts under it; a page viewing nothing has only

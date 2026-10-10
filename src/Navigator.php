@@ -93,7 +93,7 @@ class Navigator extends Service
 	 * The viewed row is chosen on its own level, which is flagged `viewed`,
 	 * and so are its parents (parents()) on theirs: a client's page has its
 	 * user, device and profile chosen too, which is the trail the navigator
-	 * draws. Nothing else is.
+	 * draws. Nothing else is. A level with a row chosen lists all of its kind.
 	 *
 	 * `$at` names that row: `user` (an extension), `device`, `client`, `profile`,
 	 * `profile` and `resource` together, `log`, `ban`, `service` (a slug) or `job`.
@@ -148,9 +148,18 @@ class Navigator extends Service
 		}
 
 		// The viewed row's parents are chosen with it: they are the trail the
-		// navigator draws back to the user. Only `$user` and the rest stay as
-		// `$at` gave them, since the list and add links are the viewed row's.
+		// navigator draws back to the user. A parent's level is not narrowed
+		// -- a crumb lists all of its kind, like the viewed row's own, so the
+		// trail is where you switch user or profile. Only `$user` and the
+		// rest stay as `$at` gave them, since the list and add links are the
+		// viewed row's.
 		$up = $this->parents($at, $clientRows, $scope['entry']);
+
+		foreach ($up as $key => $parent) {
+			if ($parent !== null) {
+				$scope[$key . 's'] = null;
+			}
+		}
 
 		// The one level whose row is the page's: a resource's over its profile,
 		// else whichever key `$at` carries. Its parents are chosen, not viewed.
