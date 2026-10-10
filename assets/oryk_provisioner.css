@@ -306,8 +306,7 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 
 /*
- * A toggle is two targets: the name and the kind are links, the rest of the
- * box -- the chevron, the padding -- opens the menu. No border and no
+ * A toggle is one target: the whole box opens the menu. No border and no
  * background until hover, which is what says it can be clicked at all.
  */
 .oryk-nav .oryk-nav-toggle {
@@ -325,13 +324,6 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-nav .oryk-nav-level.show > .oryk-nav-toggle {
 	border-color: #ddd;
 	background: #f7f7f7;
-}
-.oryk-nav .oryk-nav-link {
-	text-decoration: none;
-}
-.oryk-nav .oryk-nav-link:hover,
-.oryk-nav .oryk-nav-link:focus {
-	text-decoration: underline;
 }
 
 /*

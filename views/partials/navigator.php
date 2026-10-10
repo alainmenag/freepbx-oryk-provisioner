@@ -32,10 +32,10 @@
  * by Popper, which flips a tall menu up over the strip when it decides the
  * room below is short.
  *
- * Nothing here is a link but a crumb's name and the x after the last: the
- * kind over a crumb and a related entry's kind and count are labels, and the
- * whole entry opens its menu. The list a level is drawn from -- its title's
- * href -- is not drawn; the section bar is where lists are.
+ * Nothing here is a link but the x after the last crumb: a crumb and a
+ * related entry are each one target, the box that opens the menu, and the
+ * row you are on is the menu's active row. The list a level is drawn from
+ * -- its title's href -- is not drawn; the section bar is where lists are.
  *
  * A related level with nothing to list and nothing to write is inert: dim,
  * no chevron, no menu. A chevron that opens "None" is a click wasted.
@@ -156,17 +156,11 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 				$key = (string) $level['key'];
 				$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
 				$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
-				$link = !empty($level['href']) ? (string) $level['href'] : '';
 				?>
 				<li class="dropdown oryk-nav-level oryk-nav-crumb">
 					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-						<?php // The kind, singular, before the name. A label, not a link: the name is the crumb's one target. ?>
 						<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
-						<?php
-						// One line, so the link's underline is the name and nothing either side of it.
-						$crumb = '<span class="oryk-nav-text' . $mono . '" data-oryk-nav-text="' . $e($key) . '" data-oryk-nav-mono="' . ($mono === '' ? '0' : '1') . '">' . $e($level['text']) . '</span>';
-						echo $link !== '' ? '<a class="oryk-nav-link oryk-nav-name" href="' . $e($link) . '">' . $crumb . '</a>' : '<span class="oryk-nav-name">' . $crumb . '</span>';
-						?>
+						<span class="oryk-nav-name"><span class="oryk-nav-text<?php echo $mono; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>"><?php echo $e($level['text']); ?></span></span>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
 					<?php $navMenu($level, $mono, $level['switch']); ?>
@@ -246,15 +240,6 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 	// last time -- the list you are shown is the whole list, every time.
 	$(document).on('shown.bs.dropdown', '.oryk-nav-level', function () {
 		$(this).find('.oryk-nav-filter input').val('').trigger('input').focus();
-	});
-
-	// A crumb's name and kind are links, inside the box that opens the menu:
-	// following one must not also toggle the dropdown, whose handler
-	// cancels the navigation. Bound on the link itself, not delegated --
-	// Bootstrap 4 binds its toggle handler on the box once a dropdown has
-	// opened, and only a handler below the box runs before that one.
-	$('.oryk-nav-link').on('click', function (event) {
-		event.stopPropagation();
 	});
 
 	// The box is a div, so Enter and Space are what open it from the keyboard.

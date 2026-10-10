@@ -1256,7 +1256,7 @@ lists' own (`Navigator::scopeAt()`); `Overview::target()` keeps a user or a
 client and reads anything else as no row, which is the prompt to choose one.
 Choosing is the dropdowns: on Overview the Users and Clients options re-open
 Overview on the row chosen (`Navigator::levels($at, 'overview')`), while the
-crumb's name still links to the row's own page. From a user's or client's
+level's `href` -- where closing the crumb after it lands -- is still the row's own page. From a user's or client's
 page, the section bar's Overview opens on that row. A row on the Users
 list has no delete, only an Overview button that leads here; a client is deleted in place on the
 Clients list, as a profile is on its own.

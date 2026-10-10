@@ -1405,7 +1405,7 @@ class Navigator extends Service
 			'one' => $meta['one'],
 			'title' => $meta['title'],
 			'text' => $at === 'new' ? $meta['new'] : $text,
-			// Where the chosen row is, for the crumb's own link; '' on a new one.
+			// Where the chosen row is: what closing the crumb after it lands on; '' on a new one.
 			'href' => $at === 'new' ? '' : $href,
 			'mono' => $meta['mono'],
 			'search' => $meta['search'],
