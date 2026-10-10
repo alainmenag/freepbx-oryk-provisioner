@@ -2324,7 +2324,50 @@ foreach ($s['navigator']->levels(['client' => '5']) as $level) {
 }
 is_eq('anywhere else it opens the client', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&client=5');
 is_eq('Devices is a level, after Users', array_slice(array_keys($levels), 0, 3), ['user', 'device', 'client']);
-is_eq('whose title is the Devices list, narrowed like the rest', $levels['device']['title']['href'], '?display=oryk_provisioner&tab=devices&scope=client:5');
+is_eq('whose title, on a row it is a parent of, is the whole Devices list', $levels['device']['title']['href'], '?display=oryk_provisioner&tab=devices');
+is_eq('and elsewhere the Devices list, narrowed like the rest', array_column($s['navigator']->levels(['profile' => '2']), 'title', 'key')['device']['href'], '?display=oryk_provisioner&tab=devices&scope=profile:2');
+$s['app']->Database->fetchAlls['ORDER BY pc.mac'] = [['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk', 'extension' => '1001']];
+$s['app']->Database->fetchAlls['ORDER BY u.extension + 0'] = [['extension' => '1001', 'name' => 'Desk'], ['extension' => '1002', 'name' => 'Lobby']];
+$s['app']->Database->fetchAlls['FROM `oryk_provisioner_profiles` ORDER BY name'] = [['id' => '2', 'name' => 'Polycom', 'enabled' => '1'], ['id' => '3', 'name' => 'Default', 'enabled' => '1']];
+$chosen = function (array $at) use ($s) {
+	$texts = [];
+	foreach ($s['navigator']->levels($at) as $level) {
+		$texts[$level['key']] = $level['text'];
+	}
+	return array_filter($texts, 'strlen');
+};
+is_eq('a client\'s page chooses its user and profile with it: the trail', $chosen(['client' => '5']), ['user' => '1001', 'client' => '0004f282e824', 'profile' => 'Polycom']);
+$levels = [];
+foreach ($s['navigator']->levels(['client' => '5']) as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('a parent crumb lists all of its kind, not the one in scope', [count($levels['user']['options']), count($levels['profile']['options'])], [2, 2]);
+is_eq('while a related level stays scoped', $s['navigator']->scope(['client' => '5'])['users'], ['1001']);
+is_eq('and flags only the client as viewed', array_keys(array_filter(array_column($s['navigator']->levels(['client' => '5']), 'viewed', 'key'))), ['client']);
+is_eq('a resource is viewed over its profile', array_keys(array_filter(array_column($s['navigator']->levels(['profile' => '2', 'resource' => 'new']), 'viewed', 'key'))), ['resource']);
+is_eq('a user\'s page chooses nothing else, its one client included', $chosen(['user' => '1001']), ['user' => '1001']);
+is_eq('nor a profile\'s', $chosen(['profile' => '2']), ['profile' => 'Polycom']);
+is_eq('a list page chooses nothing', $chosen([]), []);
+$many = [];
+for ($i = 1; $i <= 12; $i++) {
+	$many[] = ['id' => (string) (10 + $i), 'mac' => sprintf('0004f2%06d', $i), 'device_id' => '', 'profile_id' => '2', 'public_ip' => '', 'description' => $i === 3 ? 'Front desk' : 'Phone ' . $i, 'extension' => '', 'touched' => sprintf('2026-10-%02d 00:00:00', $i)];
+}
+$s['app']->Database->fetchAlls['ORDER BY pc.mac'] = $many;
+$menu = array_column($s['navigator']->levels(['client' => '15']), null, 'key')['client'];
+is_eq('a menu holds the last touched ten, the chosen row first', array_map(function ($o) { return $o['text']; }, $menu['options']), ['0004f2000005', '0004f2000012', '0004f2000011', '0004f2000010', '0004f2000009', '0004f2000008', '0004f2000007', '0004f2000006', '0004f2000004', '0004f2000003']);
+is_eq('and says what it left out', [$menu['more'], $menu['total'], $menu['count']], [true, 12, 12]);
+is_eq('with nothing an option would not say', isset($menu['options'][0]['touched']), false);
+$found = $s['navigator']->options('client', ['client' => '15'], 'front');
+is_eq('a search is answered from the whole level, by text or note', [$found['status'], array_column($found['options'], 'text'), $found['more']], [true, ['0004f2000003'], false]);
+$found = $s['navigator']->options('client', ['client' => '15'], '0004f2');
+is_eq('and trimmed like the menu, from every match', [count($found['options']), $found['more'], $found['total']], [10, true, 12]);
+is_eq('a level that is not one is refused', $s['navigator']->options('nope', [], '')['status'], false);
+$s['app']->Database->fetchAlls['ORDER BY pc.mac'] = [['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk', 'extension' => '1001']];
+$levels = [];
+foreach ($s['navigator']->levels([]) as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('unscoped, Resources counts every profile\'s files like any other level', $levels['resource']['count'], 0);
 is_eq('a device is a row a list can be narrowed to', Navigator::scopeAt('device:2001'), ['device' => '2001']);
 is_eq('and it scopes by itself', $s['navigator']->scopeKey(['device' => '2001']), 'device:2001');
 is_eq('its own level lists all of its kind', $s['navigator']->scope(['device' => '2001'])['devices'], null);

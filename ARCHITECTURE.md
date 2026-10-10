@@ -1256,7 +1256,7 @@ lists' own (`Navigator::scopeAt()`); `Overview::target()` keeps a user or a
 client and reads anything else as no row, which is the prompt to choose one.
 Choosing is the dropdowns: on Overview the Users and Clients options re-open
 Overview on the row chosen (`Navigator::levels($at, 'overview')`), while the
-crumb's name still links to the row's own page. From a user's or client's
+level's `href` -- where closing the crumb after it lands -- is still the row's own page. From a user's or client's
 page, the section bar's Overview opens on that row. A row on the Users
 list has no delete, only an Overview button that leads here; a client is deleted in place on the
 Clients list, as a profile is on its own.
@@ -1367,12 +1367,26 @@ made from one of the tables is answered by loading the page again.
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.
-  `views/partials/navigator.php` is a row of nine searchable dropdowns under
-  it -- Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs -- scoped by the row the
-  page is viewing (user 1-n client n-1 profile 1-n resource): each lists only
-  what is linked to that row, the viewed row's own level lists all of its kind
-  with it selected, and nothing else is ever selected: a linked level with
-  exactly one row lists that one row.
+  `views/partials/navigator.php` is nine searchable dropdowns under it --
+  Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs --
+  scoped by the row the page is viewing (user 1-n client n-1 profile 1-n
+  resource): each lists only what is linked to that row, and the viewed row's
+  own level lists all of its kind with it chosen. Its parents are chosen with
+  it, on their own levels (`Navigator::parents()`): a client's user, device
+  and profile, a device's user, a job's user, a log entry's client and that
+  client's. A level with a row chosen lists all of its kind, so a crumb is
+  where you switch to another user or profile; nothing else is ever chosen --
+  a linked level with exactly one row lists that one row. The view draws the levels with a row chosen as a trail,
+  parents in level order and the viewed row (flagged `viewed`) last, with an
+  x that closes it -- to the crumb before it, else to its own list -- and the
+  rest as a related line of counts under it; a page viewing nothing has only
+  the related line. A menu holds the level's `Navigator::MENU_LIMIT` last
+  touched rows -- a row's `updated_at`, a client's last request too, a ban's
+  last hit; FreePBX's users and devices record nothing and keep their order
+  -- the chosen row first; typing in its filter asks `navOptions`
+  (`Navigator::options()`) for the matches across the whole scope, the same
+  rows trimmed the same way. A related level with nothing to
+  list and nothing to write is inert, with no menu.
   Services follow Users: the level lists what the users in scope -- the viewed
   user, else the Users level's -- are assigned themselves, never what reaches
   them through a pack. From the other side, a service scopes the users

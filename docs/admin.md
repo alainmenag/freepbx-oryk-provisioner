@@ -9,12 +9,17 @@ underlined. Users, Devices, Clients, Profiles and Services share one entry on
 it, Logs, Jobs, Bans and Overview another, and Settings has its own. A shared entry is
 named for the section of its group you are in — or the group's first, Users
 or Logs — and clicking it goes there; hovering it opens a menu of the group's
-sections. Under the bar is a row of searchable dropdowns —
+sections. Under the bar are nine searchable dropdowns —
 Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs — narrowed to whatever you are
-looking at: on a profile, Clients lists that profile's clients and Users the
-people they belong to; on a client, Users and Profiles list its user and its profile,
-Resources lists the files it is served, Logs its latest requests and Bans every
-ban that would apply to it. On a ban, the other dropdowns list what that ban
+looking at, drawn as two lines. The trail is the thing you are on and what it
+belongs to, outermost first: on a client, its user, its device, the client
+and its profile; on a resource, its profile and the file. Each crumb is a
+dropdown of the others it could be, its small label opens the list of those,
+and its name opens the row. Under the trail, **Related** is every other kind
+with how many are in scope: on a profile, Clients lists that profile's clients
+and Users the people they belong to; on a client, Resources lists the files
+it is served, Logs its latest requests and Bans every ban that would apply to
+it. A list page has no trail, only the counts. On a ban, the other dropdowns list what that ban
 covers. Services lists the services assigned to the users in view — the ones
 ticked for them, not those that come with a pack — and on a service, Users
 lists who is assigned it and the rest follow from their phones. Jobs lists the

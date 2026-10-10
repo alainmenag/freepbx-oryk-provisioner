@@ -292,7 +292,7 @@ class Services extends Service
 	public function serviceChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT name, slug, owner FROM `{$this->servicesTable}` ORDER BY name"
+			"SELECT name, slug, owner, updated_at AS touched FROM `{$this->servicesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 

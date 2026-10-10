@@ -1,15 +1,25 @@
 <?php
 /**
- * views/partials/navigator.php -- the row of dropdowns under the section bar.
+ * views/partials/navigator.php -- the trail and the related row under the section bar.
  *
  * Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs, each scoped by the row the
  * page is viewing: on a profile, Clients lists that profile's clients. What is in
  * scope is Navigator's business (see src/Navigator.php); this only draws it.
  *
- * Every level is the same control: what it is now, and a searchable list of
- * what it could be instead. Uniform on purpose -- there is one bit of markup,
- * one filter, one set of keys to learn, and a level added later works the
- * moment Navigator returns it, with nothing written here.
+ * The nine levels are drawn as two lines, by one test: whether the level has
+ * a row chosen. The ones that do are the trail -- the viewed row and its
+ * parents, outermost first, read like any breadcrumb -- and the ones that do
+ * not are the related line under it, each a kind, how many are in scope and
+ * a chevron. The viewed row's crumb is last, its parents before it in level
+ * order. A page viewing nothing has no trail, and the related line is
+ * the whole navigator. The last crumb closes: its x goes up to the crumb
+ * before it, or to its own list when it has no parent. Only the viewed row
+ * can be closed -- a parent is a fact of the row, not a filter on it.
+ *
+ * Every level is the same control either way: what it is now, and a
+ * searchable list of what it could be instead. Uniform on purpose -- there is
+ * one menu, one filter, one set of keys to learn, and a level added later
+ * works the moment Navigator returns it, with nothing written here.
  *
  * An option is an ordinary link. Choosing one is a page load, so every level
  * is re-scoped by the page that answers rather than patched here, and a
@@ -18,11 +28,17 @@
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
  *
- * Over each crumb is the level's own title -- what these are, plural -- and it
- * is a link to the table of what its badge counts: `resources` over a filename
- * goes to that profile's Resources tab, `profiles` on a client to the Profiles
- * list narrowed to that client's. So a level names two places rather than one,
- * the row that is open and the list it came out of.
+ * A menu is placed by CSS, under its toggle (`data-display="static"`), not
+ * by Popper, which flips a tall menu up over the strip when it decides the
+ * room below is short.
+ *
+ * Nothing here is a link but the x after the last crumb: a crumb and a
+ * related entry are each one target, the box that opens the menu, and the
+ * row you are on is the menu's active row. The list a level is drawn from
+ * -- its title's href -- is not drawn; the section bar is where lists are.
+ *
+ * A related level with nothing to list and nothing to write is inert: dim,
+ * no chevron, no menu. A chevron that opens "None" is a click wasted.
  * Both the word and the URL come from Navigator, because the view knows
  * nothing about the module -- it cannot pluralise `resource` into a heading in
  * a language it was not written in, and it certainly cannot know that a
@@ -37,13 +53,14 @@
  * that says you cannot write a new one here simply has no row.
  *
  * @var array<int, array<string, mixed>> $navigator Levels, outermost first.
- *                                       Each: key, title of text and href,
- *                                       text, href (the chosen row's
- *                                       page, or ''), mono, prompt, search,
+ *                                       Each: key, one (a row of it, singular), viewed (whether its
+ *                                       row is the page's), switch, title of text and href,
+ *                                       text (the chosen row, or ''), href
+ *                                       (that row's page, or ''), mono, search,
  *                                       options[] of text, note, badge, href, active,
  *                                       empty (what a menu with no options
- *                                       says), count (the title's badge, or
- *                                       null for none), add of text, href,
+ *                                       says), count (the options the level
+ *                                       lists), add of text, href,
  *                                       active (or null).
  */
 
@@ -54,79 +71,153 @@ $e = function ($value) {
 };
 ?>
 
-<nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>" style="margin-bottom: 25px;">
-	<ol class="breadcrumb">
+<?php
+// Prefixed: this is included into every view, over whatever locals it holds.
+$navTrail = [];
+$navRelated = [];
 
-		<?php foreach ($navigator as $level): ?>
-			<?php
-			$key = (string) $level['key'];
-			$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
-			$chosen = (string) $level['text'] !== '';
+foreach ($navigator as $level) {
+	if ((string) $level['text'] === '') {
+		$navRelated[] = $level;
+	} elseif (empty($level['viewed'])) {
+		$navTrail[] = $level;
+	}
+}
 
-			// A level says what it is; whether that has a list page to point
-			// at is the level's business, and one that names none draws the
-			// word alone rather than a link that goes nowhere.
-			$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
-			$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : '';
-			$titleHref = ($title && isset($title['href'])) ? (string) $title['href'] : '';
-			$count = isset($level['count']) ? '<span class="badge">' . (int) $level['count'] . '</span>' : '';
-			?>
-			<li class="dropdown oryk-nav-level">
+// The viewed row ends the trail, whatever order its level comes in: a
+// client's profile is listed after it, but is over it.
+foreach ($navigator as $level) {
+	if (!empty($level['viewed']) && (string) $level['text'] !== '') {
+		$navTrail[] = $level;
+	}
+}
 
-				<?php if ($titleText !== '' && $titleHref !== ''): ?>
-					<a class="oryk-nav-title" href="<?php echo $e($titleHref); ?>" title="<?php echo $e(sprintf(_('Go to %s'), $titleText)); ?>"><?php echo $e($titleText); ?><?php echo $count; ?></a>
-				<?php elseif ($titleText !== ''): ?>
-					<span class="oryk-nav-title"><?php echo $e($titleText); ?><?php echo $count; ?></span>
-				<?php endif; ?>
+/**
+ * One level's menu: the filter, the options, and the add row, the same under
+ * a crumb and under a related entry. The options are the level's last
+ * touched few (Navigator::MENU_LIMIT); a level with more says so under the
+ * filter, and typing there asks the server (`navOptions`) rather than
+ * filtering what is loaded.
+ *
+ * @param array<string, mixed> $level  One of $navigator.
+ * @param string               $mono   ' oryk-nav-mono' or ''.
+ * @param string               $prompt The filter's placeholder: "Switch user"
+ *                                     under a crumb, whose menu changes row,
+ *                                     "Search users" under a related entry.
+ */
+$navMenu = function (array $level, $mono, $prompt) use ($e) {
+	?>
+	<ul class="dropdown-menu oryk-nav-menu" data-oryk-nav-level="<?php echo $e($level['key']); ?>" data-oryk-nav-scope="<?php echo $e($level['scope']); ?>" data-oryk-nav-section="<?php echo $e($level['section']); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>" data-oryk-nav-more="<?php echo !empty($level['more']) ? '1' : '0'; ?>">
 
-				<?php $link = $chosen && !empty($level['href']) ? (string) $level['href'] : ''; ?>
-				<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-					<?php
-					// One line, so the link's underline is the name and nothing either side of it.
-					$crumb = '<span class="oryk-nav-text' . ($chosen ? $mono : ' oryk-nav-prompt') . '" data-oryk-nav-text="' . $e($key) . '" data-oryk-nav-mono="' . ($mono === '' ? '0' : '1') . '">'
-						. $e($chosen ? $level['text'] : $level['prompt']) . '</span>';
-					echo $link !== '' ? '<a class="oryk-nav-link" href="' . $e($link) . '">' . $crumb . '</a>' : $crumb;
-					?>
-					<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
-				</div>
+		<li class="oryk-nav-filter">
+			<?php // The browser's own address and contact suggestions would cover the list; `search` is a type Chrome leaves alone. ?>
+			<input type="search" class="form-control input-sm" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="<?php echo $e($prompt); ?>" aria-label="<?php echo $e($prompt); ?>">
+		</li>
 
-				<ul class="dropdown-menu oryk-nav-menu">
+		<?php // The menu holds the last touched few; the rest are reached by typing, which asks the server. ?>
+		<li class="oryk-nav-more<?php echo !empty($level['more']) ? '' : ' hidden'; ?>"><?php echo $e(sprintf(_('%1$d of %2$d, type to search'), count($level['options']), (int) $level['total'])); ?></li>
 
-					<li class="oryk-nav-filter">
-						<input type="text" class="form-control input-sm" placeholder="<?php echo $e($level['search']); ?>" aria-label="<?php echo $e($level['search']); ?>">
-					</li>
+		<?php if (!$level['options']): ?>
+			<li class="oryk-nav-empty"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
+		<?php endif; ?>
 
-					<?php if (!$level['options']): ?>
-						<li class="oryk-nav-empty"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
+		<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
+		<li class="oryk-nav-empty oryk-nav-searching hidden"><?php echo $e(_('Searching...')); ?></li>
+
+		<?php if (!empty($level['add'])): ?>
+			<li class="oryk-nav-add<?php echo !empty($level['add']['active']) ? ' active' : ''; ?>">
+				<a href="<?php echo $e($level['add']['href']); ?>">
+					<span class="oryk-nav-plus" aria-hidden="true">+</span><span class="oryk-nav-label"
+						style="display: inline;"><?php echo $e($level['add']['text']); ?></span>
+				</a>
+			</li>
+		<?php endif; ?>
+
+		<?php foreach ($level['options'] as $option): ?>
+			<li class="oryk-nav-option<?php echo !empty($option['active']) ? ' active' : ''; ?>">
+				<a href="<?php echo $e($option['href']); ?>">
+					<span class="oryk-nav-label<?php echo $mono; ?>"><?php echo $e($option['text']); ?><?php if ((string) ($option['badge'] ?? '') !== ''): ?> <span class="badge oryk-nav-badge"><?php echo $e($option['badge']); ?></span><?php endif; ?></span>
+					<?php if ((string) $option['note'] !== ''): ?>
+						<span class="oryk-nav-note"><?php echo $e($option['note']); ?></span>
 					<?php endif; ?>
-
-					<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
-
-					<?php if (!empty($level['add'])): ?>
-						<li class="oryk-nav-add<?php echo !empty($level['add']['active']) ? ' active' : ''; ?>">
-							<a href="<?php echo $e($level['add']['href']); ?>">
-								<span class="oryk-nav-plus" aria-hidden="true">+</span><span class="oryk-nav-label"
-									style="display: inline;"><?php echo $e($level['add']['text']); ?></span>
-							</a>
-						</li>
-					<?php endif; ?>
-
-					<?php foreach ($level['options'] as $option): ?>
-						<li class="oryk-nav-option<?php echo !empty($option['active']) ? ' active' : ''; ?>">
-							<a href="<?php echo $e($option['href']); ?>">
-								<span class="oryk-nav-label<?php echo $mono; ?>"><?php echo $e($option['text']); ?><?php if ((string) ($option['badge'] ?? '') !== ''): ?> <span class="badge oryk-nav-badge"><?php echo $e($option['badge']); ?></span><?php endif; ?></span>
-								<?php if ((string) $option['note'] !== ''): ?>
-									<span class="oryk-nav-note"><?php echo $e($option['note']); ?></span>
-								<?php endif; ?>
-							</a>
-						</li>
-					<?php endforeach; ?>
-
-				</ul>
+				</a>
 			</li>
 		<?php endforeach; ?>
 
-	</ol>
+	</ul>
+	<?php
+};
+?>
+
+<nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>">
+
+	<?php if ($navTrail): ?>
+		<?php
+		// Where closing the viewed row lands: the crumb before it, else the
+		// list its own crumb is drawn from. The trail pops one level.
+		$last = count($navTrail) - 1;
+		$navUp = $last > 0 && !empty($navTrail[$last - 1]['href']) ? (string) $navTrail[$last - 1]['href'] : (string) ($navTrail[$last]['title']['href'] ?? '');
+		?>
+		<ol class="oryk-nav-trail">
+			<?php foreach ($navTrail as $i => $level): ?>
+				<?php
+				$key = (string) $level['key'];
+				$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
+				$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
+				?>
+				<li class="dropdown oryk-nav-level oryk-nav-crumb">
+					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+						<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
+						<span class="oryk-nav-name"><span class="oryk-nav-text<?php echo $mono; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>"><?php echo $e($level['text']); ?></span></span>
+						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
+					</div>
+					<?php $navMenu($level, $mono, $level['switch']); ?>
+					<?php if ($i === $last && $navUp !== ''): ?>
+						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-nav-eject-icon'); ?></a>
+					<?php endif; ?>
+				</li>
+			<?php endforeach; ?>
+		</ol>
+	<?php endif; ?>
+
+	<ul class="oryk-nav-related">
+		<?php if ($navTrail): ?>
+			<li class="oryk-nav-related-label"><?php echo $e(_('Related')); ?></li>
+		<?php endif; ?>
+
+		<?php foreach ($navRelated as $level): ?>
+			<?php
+			$key = (string) $level['key'];
+			$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
+			$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
+			$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : $key;
+			$inert = !$level['options'] && empty($level['add']);
+			$count = '<span class="badge oryk-nav-count">' . (int) $level['count'] . '</span>';
+			?>
+
+			<?php if ($key === 'log'): ?>
+				<?php // The section bar's two groups, marked the same way here: Logs starts the second. ?>
+				<li class="oryk-nav-gap" aria-hidden="true"></li>
+			<?php endif; ?>
+
+			<li class="dropdown oryk-nav-level oryk-nav-entry<?php echo $inert ? ' oryk-nav-inert' : ''; ?>">
+				<?php if ($inert): ?>
+					<div class="oryk-nav-toggle">
+						<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
+						<?php echo $count; ?>
+					</div>
+				<?php else: ?>
+					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+						<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
+						<?php echo $count; ?>
+						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
+					</div>
+					<?php $navMenu($level, $mono, $level['search']); ?>
+				<?php endif; ?>
+			</li>
+		<?php endforeach; ?>
+	</ul>
+
 </nav>
 
 <script>
@@ -145,7 +236,6 @@ $e = function ($value) {
 		var crumb = $('[data-oryk-nav-text="' + key + '"]');
 
 		crumb
-			.removeClass('oryk-nav-prompt')
 			.toggleClass('oryk-nav-mono', crumb.data('oryk-nav-mono') === 1)
 			.text(text);
 	}
@@ -157,16 +247,16 @@ $e = function ($value) {
 	// Opening a level puts the cursor in its filter and clears what was typed
 	// last time -- the list you are shown is the whole list, every time.
 	$(document).on('shown.bs.dropdown', '.oryk-nav-level', function () {
-		$(this).find('.oryk-nav-filter input').val('').trigger('input').focus();
-	});
+		var menu = $(this).find('.oryk-nav-menu');
 
-	// The chosen row's name is a link to it, inside the box that opens the
-	// menu: following it must not also toggle the dropdown, whose handler
-	// cancels the navigation. Bound on the link itself, not delegated --
-	// Bootstrap 4 binds its toggle handler on the box once a dropdown has
-	// opened, and only a handler below the box runs before that one.
-	$('.oryk-nav-link').on('click', function (event) {
-		event.stopPropagation();
+		// A menu hangs from its entry's left edge; one near the right of the
+		// page would run past the viewport and widen the page, so it hangs
+		// from the right edge instead. Decided when it opens, at this width.
+		menu.removeClass('oryk-nav-menu-right');
+		menu.toggleClass('oryk-nav-menu-right', menu[0].getBoundingClientRect().right > $(window).width() - 8);
+
+		// The DOM's focus(), not jQuery's, which would read the options as a handler.
+		menu.find('.oryk-nav-filter input').val('').trigger('input')[0].focus({ preventScroll: true });
 	});
 
 	// The box is a div, so Enter and Space are what open it from the keyboard.
@@ -183,8 +273,38 @@ $e = function ($value) {
 		event.stopPropagation();
 	});
 
+	/**
+	 * Draw a menu's options from what the server answered.
+	 *
+	 * @param jQuery menu    The .oryk-nav-menu.
+	 * @param Array  options As Navigator lists them: text, note, badge, href, active.
+	 */
+	function orykNavDraw(menu, options) {
+		var mono = menu.data('oryk-nav-mono') === 1 ? ' oryk-nav-mono' : '';
+
+		menu.find('.oryk-nav-option').remove();
+
+		$.each(options, function (i, option) {
+			var label = $('<span class="oryk-nav-label' + mono + '"></span>').text(option.text);
+
+			if (option.badge) {
+				label.append(' ').append($('<span class="badge oryk-nav-badge"></span>').text(option.badge));
+			}
+
+			var link = $('<a></a>').attr('href', option.href).append(label);
+
+			if (option.note) {
+				link.append($('<span class="oryk-nav-note"></span>').text(option.note));
+			}
+
+			menu.append($('<li class="oryk-nav-option"></li>').toggleClass('active', !!option.active).append(link));
+		});
+	}
+
 	// The filter reads the whole option -- a client's MAC and its description
-	// are one row, and either is a reasonable thing to have in mind.
+	// are one row, and either is a reasonable thing to have in mind. A menu
+	// holding only the last touched few asks the server for the rest; the
+	// loaded rows are filtered at once meanwhile, so typing never waits.
 	$(document).on('input', '.oryk-nav-filter input', function () {
 		var needle = $.trim($(this).val()).toLowerCase();
 		var menu = $(this).closest('.oryk-nav-menu');
@@ -201,6 +321,63 @@ $e = function ($value) {
 		});
 
 		menu.find('.oryk-nav-none').toggleClass('hidden', showing > 0 || !menu.find('.oryk-nav-option').length);
+
+		if (menu.data('oryk-nav-more') !== 1) {
+			return;
+		}
+
+		// What the page loaded is the answer to an empty search, kept so
+		// clearing the box never has to ask again.
+		if (!menu.data('oryk-nav-first')) {
+			menu.data('oryk-nav-first', menu.find('.oryk-nav-option').clone().removeClass('hidden oryk-nav-here'));
+			menu.data('oryk-nav-first-more', menu.find('.oryk-nav-more').text());
+		}
+
+		clearTimeout(menu.data('oryk-nav-timer'));
+
+		if (needle === '') {
+			menu.find('.oryk-nav-option').remove();
+			menu.append(menu.data('oryk-nav-first').clone());
+			menu.find('.oryk-nav-more').text(menu.data('oryk-nav-first-more')).removeClass('hidden');
+			menu.find('.oryk-nav-none, .oryk-nav-searching').addClass('hidden');
+
+			return;
+		}
+
+		var asked = (menu.data('oryk-nav-asked') || 0) + 1;
+		menu.data('oryk-nav-asked', asked);
+
+		// Until the server answers, what is shown is only what was loaded,
+		// and the menu says so where "No matches" would otherwise stand.
+		menu.find('.oryk-nav-none').addClass('hidden');
+		menu.find('.oryk-nav-searching').removeClass('hidden');
+
+		menu.data('oryk-nav-timer', setTimeout(function () {
+			$.getJSON('ajax.php', {
+				module: 'oryk_provisioner',
+				command: 'navOptions',
+				level: menu.data('oryk-nav-level'),
+				scope: menu.data('oryk-nav-scope'),
+				section: menu.data('oryk-nav-section'),
+				q: needle
+			}).done(function (answer) {
+				// A slower answer to an older search must not overwrite a newer one.
+				if (menu.data('oryk-nav-asked') !== asked || !answer || !answer.status) {
+					return;
+				}
+
+				menu.find('.oryk-nav-searching').addClass('hidden');
+				orykNavDraw(menu, answer.options);
+				menu.find('.oryk-nav-none').toggleClass('hidden', answer.options.length > 0);
+				menu.find('.oryk-nav-more')
+					.text(answer.more ? <?php echo json_encode(_('%1$d of %2$d, keep typing')); ?>.replace('%1$d', answer.options.length).replace('%2$d', answer.total) : '')
+					.toggleClass('hidden', !answer.more);
+			}).fail(function () {
+				if (menu.data('oryk-nav-asked') === asked) {
+					menu.find('.oryk-nav-searching').addClass('hidden');
+				}
+			});
+		}, 200));
 	});
 
 	// Arrows walk what the filter left, Enter follows it. Typing a name and

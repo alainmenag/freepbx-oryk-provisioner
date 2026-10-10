@@ -405,7 +405,7 @@ class Profiles extends Service
 	public function profileChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT id, name, enabled FROM `{$this->profilesTable}` ORDER BY name"
+			"SELECT id, name, enabled, updated_at AS touched FROM `{$this->profilesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 

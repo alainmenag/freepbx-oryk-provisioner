@@ -277,83 +277,152 @@ tr.oryk-disabled > td a:not(.btn) {
  * ---------------------------------------------------------------------- */
 
 /*
- * A crumb has to read as a crumb rather than as a form: no border, no
- * background, the page's own heading type -- and then all three on hover,
- * which is what says it can be clicked at all.
- *
- * The heading type is set on the crumb links and never on the <ol> or the
- * <li>, because a dropdown menu is a child of its crumb and inherits
- * whatever either of those carries. An 18px/28px heading inherited into a
- * list of options is what made the first cut of this look stretched.
+ * Two lines, from one row of levels (views/partials/navigator.php): the
+ * trail, which is every level with a row chosen, and the related line, which
+ * is the rest. Both are flex rows that wrap; a dropdown menu is a child of
+ * its level, so type is set on the links and toggles, never on the <ol>, the
+ * <ul> or the <li>, which the menu would inherit.
  */
-.oryk-nav .breadcrumb {
+.oryk-nav {
+	margin-bottom: 22px;
+}
+.oryk-nav .oryk-nav-trail,
+.oryk-nav .oryk-nav-related {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
 	margin: 0;
 	padding: 0;
-	background: none;
-	flex-wrap: wrap;
-	gap: 10px;
+	list-style: none;
 }
-.oryk-nav .breadcrumb > li {
-	display: flex;
-	flex-direction: column;
+.oryk-nav .oryk-nav-trail {
+	gap: 2px 0;
 }
-.oryk-nav .breadcrumb > li > a,
-.oryk-nav .breadcrumb > li > .oryk-nav-toggle {
-	display: inline-block;
-	padding: 1px 6px;
-	border: 1px solid transparent;
-	border-radius: 3px;
-	font-size: 18px;
-	line-height: 26px;
-	text-decoration: none;
+.oryk-nav .oryk-nav-related {
+	gap: 2px 8px;
+}
+.oryk-nav .oryk-nav-trail + .oryk-nav-related {
+	margin-top: 8px;
 }
 
 /*
- * The crumb is two targets: the chosen row's name is a link to that row,
- * and the rest of the box -- the chevron, the padding, a prompt -- opens
- * the menu.
+ * A toggle is one target: the whole box opens the menu. No border and no
+ * background until hover, which is what says it can be clicked at all.
  */
 .oryk-nav .oryk-nav-toggle {
+	display: inline-flex;
+	align-items: baseline;
+	border: 1px solid transparent;
+	border-radius: 3px;
 	cursor: pointer;
 	outline: none;
+	text-decoration: none;
 }
-.oryk-nav .breadcrumb > li > .oryk-nav-toggle:hover,
-.oryk-nav .breadcrumb > li > .oryk-nav-toggle:focus,
-.oryk-nav .breadcrumb > li.open > .oryk-nav-toggle,
-.oryk-nav .breadcrumb > li.show > .oryk-nav-toggle {
+.oryk-nav .oryk-nav-level > .oryk-nav-toggle[data-toggle]:hover,
+.oryk-nav .oryk-nav-level > .oryk-nav-toggle[data-toggle]:focus,
+.oryk-nav .oryk-nav-level.open > .oryk-nav-toggle,
+.oryk-nav .oryk-nav-level.show > .oryk-nav-toggle {
 	border-color: #ddd;
 	background: #f7f7f7;
 }
-.oryk-nav .oryk-nav-link:hover,
-.oryk-nav .oryk-nav-link:focus {
-	text-decoration: underline;
-}
 
 /*
- * The level's title, over the crumb: small, muted, and a link to the list
- * it names. Its own font-size rule, because the heading type above is set
- * on every direct link of a crumb and this is not the heading.
- *
- * `align-self` because the <li> is a flex column, which would otherwise
- * stretch the link -- and its underline -- the full width of the crumb
- * under it. What it points at is one word, so one word is what it is.
+ * The trail: the viewed row and its parents, each a crumb of the kind in
+ * small type and the name in heading type, a slash between crumbs. The
+ * last crumb is where you are and is drawn heavier.
  */
-.oryk-nav .breadcrumb > li > .oryk-nav-title {
-	padding: 0 7px;
-	border: 0;
+.oryk-nav .oryk-nav-crumb > .oryk-nav-toggle {
+	gap: 6px;
+	padding: 2px 7px;
+	font-size: 17px;
+	line-height: 24px;
+}
+.oryk-nav .oryk-nav-crumb + .oryk-nav-crumb::before {
+	content: "/";
+	padding: 0 4px;
+	font-size: 17px;
+	line-height: 24px;
+	color: #bbb;
+}
+.oryk-nav .oryk-nav-crumb .oryk-nav-kind {
 	font-size: 12px;
 	line-height: 17px;
 	color: #999;
 }
+.oryk-nav .oryk-nav-crumb .oryk-nav-name {
+	color: #555;
+}
+.oryk-nav .oryk-nav-crumb:last-child .oryk-nav-name {
+	color: #333;
+	font-weight: 700;
+}
 
-/* How many the level lists here -- the options in its menu, not a
-   module-wide total. Sized to the title, not to the crumb. */
-.oryk-nav .oryk-nav-title .badge {
-	margin-left: 3px;
+/* Closing the viewed row, after its crumb: faint until the pointer is near. */
+.oryk-nav .oryk-nav-crumb {
+	display: inline-flex;
+	align-items: center;
+}
+.oryk-nav .oryk-nav-eject {
+	display: inline-flex;
+	align-items: center;
+	margin-left: 2px;
+	padding: 4px;
+	border-radius: 3px;
+	color: #bbb;
+	line-height: 0;
+}
+.oryk-nav .oryk-nav-crumb:hover .oryk-nav-eject,
+.oryk-nav .oryk-nav-eject:focus {
+	color: #777;
+}
+.oryk-nav .oryk-nav-eject:hover {
+	color: #333;
+	background: #f0f0f0;
+}
+.oryk-nav .oryk-nav-eject-icon {
+	width: 11px;
+	height: 11px;
+	stroke-width: 3;
+}
+
+/*
+ * The related line: a kind, how many are in scope, a chevron -- one size,
+ * smaller than the trail, since none of it is where you are. An inert entry
+ * has nothing to list and nothing to write: dim, no chevron, no menu.
+ */
+.oryk-nav .oryk-nav-entry > .oryk-nav-toggle {
+	gap: 5px;
+	padding: 2px 6px;
+	font-size: 13px;
+	line-height: 18px;
+}
+.oryk-nav .oryk-nav-entry .oryk-nav-kind {
+	color: #555;
+}
+.oryk-nav .oryk-nav-entry .oryk-nav-count {
 	padding: 1px 5px;
 	font-size: 10px;
 	line-height: 12px;
 	vertical-align: 1px;
+}
+.oryk-nav .oryk-nav-inert > .oryk-nav-toggle {
+	cursor: default;
+	opacity: 0.5;
+}
+.oryk-nav .oryk-nav-related-label {
+	margin-right: 2px;
+	font-size: 10px;
+	line-height: 18px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #999;
+}
+/* The section bar's two groups, marked here by a gap before Logs. */
+.oryk-nav .oryk-nav-gap {
+	width: 1px;
+	height: 16px;
+	margin: 0 4px;
+	background: #ddd;
 }
 
 /* What kind of row an option is -- a service pack -- beside its name. */
@@ -372,20 +441,13 @@ tr.oryk-disabled > td a:not(.btn) {
 	font-family: monospace;
 }
 
-/* The same chevron on every crumb: what says it opens, whatever it reads. */
+/* The same chevron on every level: what says it opens, whatever it reads. */
 .oryk-nav .oryk-nav-caret {
 	width: 10px;
 	height: 10px;
-	margin-left: 6px;
-	vertical-align: 2px;
+	align-self: center;
 	color: #999;
 	stroke-width: 3;
-}
-
-/* Nothing chosen at this level yet. An invitation, not a value. */
-.oryk-nav-prompt {
-	color: #999;
-	font-style: italic;
 }
 
 /*
@@ -395,10 +457,17 @@ tr.oryk-disabled > td a:not(.btn) {
  * about a link sitting inside a page heading -- which is what the first
  * cut lost its left padding to.
  */
+.oryk-nav .oryk-nav-level {
+	position: relative;
+}
 .oryk-nav .oryk-nav-menu {
+	top: 100%;
+	left: 0;
+	right: auto;
 	min-width: 240px;
 	max-width: 380px;
 	max-height: 320px;
+	overflow-x: hidden;
 	overflow-y: auto;
 	padding: 0;
 	font-size: 13px;
@@ -440,6 +509,21 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 15px;
 }
 
+/* A menu that would run off the right of the page hangs from its entry's right edge. */
+.oryk-nav .oryk-nav-menu.oryk-nav-menu-right {
+	left: auto;
+	right: 0;
+}
+
+/* How much of the level the menu holds, under the filter: a hint, not a row. */
+.oryk-nav .oryk-nav-menu > li.oryk-nav-more {
+	padding: 4px 14px 5px;
+	color: #999;
+	font-size: 11px;
+	line-height: 14px;
+	border-bottom: 1px solid #eee;
+}
+
 /* The filter stays put while the list scrolls under it: a search box that
    scrolls away is one you have to find again to fix a typo. */
 .oryk-nav .oryk-nav-filter {
@@ -451,6 +535,12 @@ tr.oryk-disabled > td a:not(.btn) {
 	border-bottom: 1px solid #eee;
 }
 .oryk-nav .oryk-nav-filter input {
+	/* A search input is not given border-box by Bootstrap the way a text
+	   input is, and 100% plus padding scrolls the menu sideways. */
+	box-sizing: border-box;
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
 	height: 28px;
 	padding: 3px 8px;
 	font-size: 13px;
