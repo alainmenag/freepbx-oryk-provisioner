@@ -2325,6 +2325,25 @@ foreach ($s['navigator']->levels(['client' => '5']) as $level) {
 is_eq('anywhere else it opens the client', $levels['client']['options'][0]['href'], '?display=oryk_provisioner&client=5');
 is_eq('Devices is a level, after Users', array_slice(array_keys($levels), 0, 3), ['user', 'device', 'client']);
 is_eq('whose title is the Devices list, narrowed like the rest', $levels['device']['title']['href'], '?display=oryk_provisioner&tab=devices&scope=client:5');
+$s['app']->Database->fetchAlls['ORDER BY pc.mac'] = [['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk', 'extension' => '1001']];
+$s['app']->Database->fetchAlls['ORDER BY u.extension + 0'] = [['extension' => '1001', 'name' => 'Desk']];
+$s['app']->Database->fetchAlls['FROM `oryk_provisioner_profiles` ORDER BY name'] = [['id' => '2', 'name' => 'Polycom', 'enabled' => '1'], ['id' => '3', 'name' => 'Default', 'enabled' => '1']];
+$chosen = function (array $at) use ($s) {
+	$texts = [];
+	foreach ($s['navigator']->levels($at) as $level) {
+		$texts[$level['key']] = $level['text'];
+	}
+	return array_filter($texts, 'strlen');
+};
+is_eq('a client\'s page chooses its user and profile with it: the trail', $chosen(['client' => '5']), ['user' => '1001', 'client' => '0004f282e824', 'profile' => 'Polycom']);
+is_eq('a user\'s page chooses nothing else, its one client included', $chosen(['user' => '1001']), ['user' => '1001']);
+is_eq('nor a profile\'s', $chosen(['profile' => '2']), ['profile' => 'Polycom']);
+is_eq('a list page chooses nothing', $chosen([]), []);
+$levels = [];
+foreach ($s['navigator']->levels([]) as $level) {
+	$levels[$level['key']] = $level;
+}
+is_eq('unscoped, Resources counts every profile\'s files like any other level', $levels['resource']['count'], 0);
 is_eq('a device is a row a list can be narrowed to', Navigator::scopeAt('device:2001'), ['device' => '2001']);
 is_eq('and it scopes by itself', $s['navigator']->scopeKey(['device' => '2001']), 'device:2001');
 is_eq('its own level lists all of its kind', $s['navigator']->scope(['device' => '2001'])['devices'], null);

@@ -90,6 +90,10 @@ class Navigator extends Service
 	/**
 	 * The nine dropdowns, scoped by the row a page is viewing.
 	 *
+	 * The viewed row is chosen on its own level, and so are its parents
+	 * (parents()) on theirs: a client's page has its user, device and profile
+	 * chosen too, which is the trail the navigator draws. Nothing else is.
+	 *
 	 * `$at` names that row: `user` (an extension), `device`, `client`, `profile`,
 	 * `profile` and `resource` together, `log`, `ban`, `service` (a slug) or `job`.
 	 * Each is an id, or 'new' on a page writing one that does not exist yet.
@@ -142,17 +146,67 @@ class Navigator extends Service
 			}
 		}
 
+		// The viewed row's parents are chosen with it: they are the trail the
+		// navigator draws back to the user. Only `$user` and the rest stay as
+		// `$at` gave them, since the list and add links are the viewed row's.
+		$up = $this->parents($at, $clientRows, $scope['entry']);
+
 		return [
-			$this->userLevel($scope['users'], $user, $from, $overview),
-			$this->deviceLevel($scope['devices'], $device, $from),
-			$this->clientLevel($clientRows, $scope['clients'], $client, $user, $profile, $from, $overview),
-			$this->profileLevel($profileNames, $scope['profiles'], $profile, $from),
+			$this->userLevel($scope['users'], $user ?? $up['user'], $from, $overview),
+			$this->deviceLevel($scope['devices'], $device ?? $up['device'], $from),
+			$this->clientLevel($clientRows, $scope['clients'], $client ?? $up['client'], $user, $profile, $from, $overview),
+			$this->profileLevel($profileNames, $scope['profiles'], $profile ?? $up['profile'], $from),
 			$this->resourceLevel($profileNames, $scope['files'], $resource, $client),
 			$this->serviceLevel($scope['services'], $service, $user, $from),
 			$this->logLevel($scope['logs'], $scope['ip'], $log, $scope['entry'], $client, $from),
 			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $scope['entry'], $from),
 			$this->jobLevel($scope['jobs'], $job, $from),
 		];
+	}
+
+	/**
+	 * The parents of the row `$at` names: ids by level key, null where it has none.
+	 *
+	 * A parent is what a row belongs to by a column of its own -- a client's
+	 * user, device and profile; a device's user; a job's user; a log entry's
+	 * client and, through it, that client's -- and nothing else. The one row a
+	 * scope happens to hold is not a parent, and is never chosen for it. A
+	 * resource's profile is one, but `$at` already names it.
+	 *
+	 * @param array<string, mixed>             $at         Row being viewed, as levels() takes it.
+	 * @param array<int, array<string, mixed>> $clientRows clientChoices().
+	 * @param array<string, mixed>|null        $entry      The viewed log entry's row, or null.
+	 *
+	 * @return array<string, string|null> user, device, client, profile.
+	 */
+	private function parents(array $at, array $clientRows, $entry)
+	{
+		$up = ['user' => null, 'device' => null, 'client' => null, 'profile' => null];
+		$client = isset($at['client']) ? (string) $at['client'] : null;
+
+		if ($this->written(isset($at['log']) ? (string) $at['log'] : null) && $entry) {
+			$client = (string) $entry['client_id'];
+		}
+
+		if ($this->written($client)) {
+			foreach ($clientRows as $row) {
+				if ((string) $row['id'] === $client) {
+					$up['client'] = $client;
+					$up['user'] = $this->owner($row) !== '' ? $this->owner($row) : null;
+					$up['device'] = (string) $row['device_id'] !== '' ? (string) $row['device_id'] : null;
+					$up['profile'] = (int) $row['profile_id'] ? (string) (int) $row['profile_id'] : null;
+				}
+			}
+		} elseif ($this->written(isset($at['device']) ? (string) $at['device'] : null) && $this->devices) {
+			$row = $this->devices->deviceRow((string) $at['device']);
+			$on = $row ? (string) $row['user'] : '';
+			$up['user'] = ($on !== '' && $on !== Devices::NOBODY) ? $on : null;
+		} elseif ($this->written(isset($at['job']) ? (string) $at['job'] : null) && $this->jobs) {
+			$row = $this->jobs->jobRow((string) $at['job']);
+			$up['user'] = $row ? (string) $row['extension'] : null;
+		}
+
+		return $up;
 	}
 
 	/**
@@ -682,6 +736,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'user',
+			'one' => _('User'),
 			'title' => ['text' => _('Users'), 'href' => self::listHref('users', $from, $scope !== null)],
 			'mono' => true,
 			'new' => _('New user'),
@@ -719,6 +774,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'device',
+			'one' => _('Device'),
 			'title' => ['text' => _('Devices'), 'href' => self::listHref('devices', $from, $scope !== null)],
 			'mono' => true,
 			'new' => '',
@@ -773,6 +829,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'client',
+			'one' => _('Client'),
 			'title' => ['text' => _('Clients'), 'href' => $list],
 			'mono' => true,
 			'new' => _('New client'),
@@ -807,6 +864,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'profile',
+			'one' => _('Profile'),
 			'title' => ['text' => _('Profiles'), 'href' => self::listHref('profiles', $from, $scope !== null)],
 			'mono' => false,
 			'new' => _('New profile'),
@@ -824,7 +882,7 @@ class Navigator extends Service
 	 * one, each file carries its profile's name under it.
 	 *
 	 * @param array<int, string>   $profileNames Every profile's name, by id.
-	 * @param array<int, int>|null $profiles     Profiles whose files to list, or null.
+	 * @param array<int, int>|null $profiles     Profiles whose files to list, or null for every profile's.
 	 * @param string|null          $at           Resource being viewed, 'new', or null.
 	 * @param string|null          $client       Client being viewed, or null.
 	 *
@@ -833,11 +891,10 @@ class Navigator extends Service
 	private function resourceLevel(array $profileNames, $profiles, $at, $client)
 	{
 		$rows = [];
-		$unscoped = $profiles === null;
-		$empty = $unscoped ? _('Pick a profile to see its files') : _('No profile here');
-		// No profile in scope: there is nothing to pick yet, and the crumb says so.
-		$prompt = $profiles === [] ? _('None') : null;
-		$profiles = (array) $profiles;
+		$empty = _('No profile here');
+		// Unscoped is every profile's files, each noted with its profile, so
+		// the level counts on a list page like every other.
+		$profiles = $profiles === null ? array_keys($profileNames) : $profiles;
 
 		if ($profiles) {
 			$empty = _('Nothing here yet');
@@ -867,14 +924,12 @@ class Navigator extends Service
 		// Every file listed is in scope, so the level is never filtered again.
 		return $this->level($rows, null, $at, [
 			'key' => 'resource',
+			'one' => _('Resource'),
 			'title' => ['text' => _('Resources'), 'href' => $list],
 			'mono' => true,
 			'new' => _('New resource'),
-			'prompt' => $prompt,
 			'search' => _('Search resources'),
 			'empty' => $empty,
-			// No profile in scope is not zero files: there is nothing to count yet.
-			'count' => $unscoped ? null : count($rows),
 			'add' => $one ? ['text' => _('New resource'), 'href' => '?display=oryk_provisioner&profile=' . $one . '&resource='] : null,
 		]);
 	}
@@ -915,6 +970,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'service',
+			'one' => _('Service'),
 			'title' => ['text' => _('Services'), 'href' => $list],
 			'mono' => false,
 			'new' => _('New service'),
@@ -1094,10 +1150,10 @@ class Navigator extends Service
 
 		return $this->level($rows, null, $at, [
 			'key' => 'log',
+			'one' => _('Log entry'),
 			'title' => ['text' => _('Logs'), 'href' => $list],
 			'mono' => true,
 			'new' => '',
-			'prompt' => ($macs !== null && !$rows) ? _('None') : null,
 			'search' => _('Search logs'),
 			'empty' => $macs !== null ? _('No log entries here') : _('Nothing here yet'),
 			'add' => null,
@@ -1181,6 +1237,7 @@ class Navigator extends Service
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'ban',
+			'one' => _('Ban'),
 			'title' => ['text' => _('Bans'), 'href' => self::listHref('bans', $from, $scope !== null)],
 			'mono' => false,
 			'new' => _('New ban'),
@@ -1235,10 +1292,10 @@ class Navigator extends Service
 
 		return $this->level($rows, null, $at, [
 			'key' => 'job',
+			'one' => _('Job'),
 			'title' => ['text' => _('Jobs'), 'href' => self::listHref('jobs', $from, $narrow !== null)],
 			'mono' => false,
 			'new' => '',
-			'prompt' => ($narrow !== null && !$rows) ? _('None') : null,
 			'search' => _('Search jobs'),
 			'empty' => $narrow !== null ? _('No jobs here') : _('Nothing here yet'),
 			'add' => null,
@@ -1248,8 +1305,9 @@ class Navigator extends Service
 	/**
 	 * One level, from every row of its kind and the scope it is narrowed to.
 	 *
-	 * Only the row being viewed is the active one: a scope of exactly one row
-	 * is still a list of one, and is not chosen for you.
+	 * Only the row `$at` names is the active one -- the row being viewed, or a
+	 * parent of it (parents()). A scope of exactly one row is still a list of
+	 * one, and is not chosen for you.
 	 *
 	 * @param array<int, array<string, mixed>> $rows  Each: id, text, note, href,
 	 *                                                page where the row's
@@ -1257,12 +1315,12 @@ class Navigator extends Service
 	 *                                                and badge where the option
 	 *                                                carries one.
 	 * @param array<int, mixed>|null           $scope Ids to keep, or null for all.
-	 * @param string|null                      $at    Id being viewed, 'new', or null.
-	 * @param array<string, mixed>             $meta  key, title, mono, new,
-	 *                                                search, add, prompt (what
-	 *                                                the crumb says with nothing
-	 *                                                chosen, null or absent for
-	 *                                                "Select"), and
+	 * @param string|null                      $at    Id chosen -- viewed, or a
+	 *                                                parent of what is -- 'new', or null.
+	 * @param array<string, mixed>             $meta  key, one (what a row of
+	 *                                                the level is called, over
+	 *                                                its crumb), title, mono,
+	 *                                                new, search, add, and
 	 *                                                none (what the menu of a
 	 *                                                scope with nothing in it
 	 *                                                says) or
@@ -1311,14 +1369,12 @@ class Navigator extends Service
 
 		return [
 			'key' => $meta['key'],
+			'one' => $meta['one'],
 			'title' => $meta['title'],
 			'text' => $at === 'new' ? $meta['new'] : $text,
 			// Where the chosen row is, for the crumb's own link; '' on a new one.
 			'href' => $at === 'new' ? '' : $href,
 			'mono' => $meta['mono'],
-			// Every level asks the same way. A scope with nothing in it says None
-			// on the crumb; the menu under it says what is missing.
-			'prompt' => (!$options && $keep !== null) ? _('None') : (isset($meta['prompt']) ? $meta['prompt'] : _('Select')),
 			'search' => $meta['search'],
 			'options' => $options,
 			'count' => array_key_exists('count', $meta) ? $meta['count'] : count($options),
