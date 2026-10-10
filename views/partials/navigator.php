@@ -28,7 +28,7 @@
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
  *
- * Nothing here is a link but a crumb's name and the x before the last: the
+ * Nothing here is a link but a crumb's name and the x after the last: the
  * kind over a crumb and a related entry's kind and count are labels, and the
  * whole entry opens its menu. The list a level is drawn from -- its title's
  * href -- is not drawn; the section bar is where lists are.
@@ -152,9 +152,6 @@ $navMenu = function (array $level, $mono) use ($e) {
 				$link = !empty($level['href']) ? (string) $level['href'] : '';
 				?>
 				<li class="dropdown oryk-nav-level oryk-nav-crumb">
-					<?php if ($i === $last && $navUp !== ''): ?>
-						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-nav-eject-icon'); ?></a>
-					<?php endif; ?>
 					<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
 						<?php // The kind, singular, before the name. A label, not a link: the name is the crumb's one target. ?>
 						<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
@@ -166,6 +163,9 @@ $navMenu = function (array $level, $mono) use ($e) {
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
 					<?php $navMenu($level, $mono); ?>
+					<?php if ($i === $last && $navUp !== ''): ?>
+						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-nav-eject-icon'); ?></a>
+					<?php endif; ?>
 				</li>
 			<?php endforeach; ?>
 		</ol>
