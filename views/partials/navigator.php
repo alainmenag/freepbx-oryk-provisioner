@@ -28,6 +28,10 @@
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
  *
+ * A menu is placed by CSS, under its toggle (`data-display="static"`), not
+ * by Popper, which flips a tall menu up over the strip when it decides the
+ * room below is short.
+ *
  * Nothing here is a link but a crumb's name and the x after the last: the
  * kind over a crumb and a related entry's kind and count are labels, and the
  * whole entry opens its menu. The list a level is drawn from -- its title's
@@ -152,7 +156,7 @@ $navMenu = function (array $level, $mono) use ($e) {
 				$link = !empty($level['href']) ? (string) $level['href'] : '';
 				?>
 				<li class="dropdown oryk-nav-level oryk-nav-crumb">
-					<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
 						<?php // The kind, singular, before the name. A label, not a link: the name is the crumb's one target. ?>
 						<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
 						<?php
@@ -198,7 +202,7 @@ $navMenu = function (array $level, $mono) use ($e) {
 						<?php echo $count; ?>
 					</div>
 				<?php else: ?>
-					<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
 						<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
 						<?php echo $count; ?>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>

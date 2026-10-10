@@ -465,7 +465,12 @@ tr.oryk-disabled > td a:not(.btn) {
  * about a link sitting inside a page heading -- which is what the first
  * cut lost its left padding to.
  */
+.oryk-nav .oryk-nav-level {
+	position: relative;
+}
 .oryk-nav .oryk-nav-menu {
+	top: 100%;
+	left: 0;
 	min-width: 240px;
 	max-width: 380px;
 	max-height: 320px;
