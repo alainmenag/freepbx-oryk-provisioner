@@ -118,6 +118,25 @@ class Navigator extends Service
 	 */
 	public function levels(array $at = [], $section = '')
 	{
+		$levels = $this->build($at, $section);
+
+		foreach ($levels as &$level) {
+			$level = $this->trim($level, '');
+		}
+
+		return $levels;
+	}
+
+	/**
+	 * levels() before trim(): every level with every option in scope.
+	 *
+	 * @param array<string, mixed> $at      As levels() takes it.
+	 * @param string               $section As levels() takes it.
+	 *
+	 * @return array<int, array<string, mixed>> As levels() returns, untrimmed.
+	 */
+	private function build(array $at, $section)
+	{
 		$overview = $section === 'overview';
 
 		$user = isset($at['user']) ? (string) $at['user'] : null;
@@ -193,7 +212,6 @@ class Navigator extends Service
 			// What a search in the menu sends back to options().
 			$level['scope'] = $from;
 			$level['section'] = $section;
-			$level = $this->trim($level, '');
 		}
 
 		return $levels;
@@ -217,7 +235,7 @@ class Navigator extends Service
 	 */
 	public function options($key, array $at, $query, $section = '')
 	{
-		foreach ($this->levels($at, $section) as $level) {
+		foreach ($this->build($at, $section) as $level) {
 			if ($level['key'] === $key) {
 				$level = $this->trim($level, $query);
 

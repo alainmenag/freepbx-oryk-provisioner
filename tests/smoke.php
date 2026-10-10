@@ -2359,6 +2359,8 @@ is_eq('and says what it left out', [$menu['more'], $menu['total'], $menu['count'
 is_eq('with nothing an option would not say', isset($menu['options'][0]['touched']), false);
 $found = $s['navigator']->options('client', ['client' => '15'], 'front');
 is_eq('a search is answered from the whole level, by text or note', [$found['status'], array_column($found['options'], 'text'), $found['more']], [true, ['0004f2000003'], false]);
+$found = $s['navigator']->options('client', ['client' => '15'], '0004f2');
+is_eq('and trimmed like the menu, from every match', [count($found['options']), $found['more'], $found['total']], [10, true, 12]);
 is_eq('a level that is not one is refused', $s['navigator']->options('nope', [], '')['status'], false);
 $s['app']->Database->fetchAlls['ORDER BY pc.mac'] = [['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk', 'extension' => '1001']];
 $levels = [];
