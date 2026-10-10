@@ -28,12 +28,10 @@
  * It is deliberately not the tab strip's business and does not touch it. A
  * level moves between *rows*; a tab moves between views of the one row.
  *
- * A level's title -- what these are, plural -- is a link to the table of what
- * its badge counts: `resources` over a filename goes to that profile's
- * Resources tab, `Profiles 1` on a client to the Profiles list narrowed to
- * that client's. So a level names two places rather than one, the row that is
- * open and the list it came out of. On the trail the title is the small word
- * over the name; on the related line it is the whole entry, with the count.
+ * A related level's title -- what these are, plural -- is a link to the table
+ * of what its badge counts: `Profiles 1` on a client goes to the Profiles
+ * list narrowed to that client's. A trail crumb has one target, its name, and
+ * the kind before it is a label; the list it came out of is a section away.
  *
  * A related level with nothing to list and nothing to write is inert: dim,
  * no chevron, no menu. A chevron that opens "None" is a click wasted.
@@ -151,18 +149,12 @@ $navMenu = function (array $level, $mono) use ($e) {
 				$key = (string) $level['key'];
 				$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
 				$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
-				$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : '';
-				$titleHref = ($title && isset($title['href'])) ? (string) $title['href'] : '';
 				$link = !empty($level['href']) ? (string) $level['href'] : '';
 				?>
 				<li class="dropdown oryk-nav-level oryk-nav-crumb">
 					<div class="oryk-nav-toggle" data-toggle="dropdown" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-						<?php // The kind, singular, over the name; it opens the list the level is drawn from. ?>
-						<?php if ($titleHref !== ''): ?>
-							<a class="oryk-nav-link oryk-nav-kind" href="<?php echo $e($titleHref); ?>" title="<?php echo $e(sprintf(_('Go to %s'), $titleText)); ?>"><?php echo $e($level['one']); ?></a>
-						<?php else: ?>
-							<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
-						<?php endif; ?>
+						<?php // The kind, singular, before the name. A label, not a link: the name is the crumb's one target. ?>
+						<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
 						<?php
 						// One line, so the link's underline is the name and nothing either side of it.
 						$crumb = '<span class="oryk-nav-text' . $mono . '" data-oryk-nav-text="' . $e($key) . '" data-oryk-nav-mono="' . ($mono === '' ? '0' : '1') . '">' . $e($level['text']) . '</span>';
