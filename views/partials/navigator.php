@@ -122,6 +122,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		<?php endif; ?>
 
 		<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
+		<li class="oryk-nav-empty oryk-nav-searching hidden"><?php echo $e(_('Searching...')); ?></li>
 
 		<?php if (!empty($level['add'])): ?>
 			<li class="oryk-nav-add<?php echo !empty($level['add']['active']) ? ' active' : ''; ?>">
@@ -329,13 +330,18 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 			menu.find('.oryk-nav-option').remove();
 			menu.append(menu.data('oryk-nav-first').clone());
 			menu.find('.oryk-nav-more').text(menu.data('oryk-nav-first-more')).removeClass('hidden');
-			menu.find('.oryk-nav-none').addClass('hidden');
+			menu.find('.oryk-nav-none, .oryk-nav-searching').addClass('hidden');
 
 			return;
 		}
 
 		var asked = (menu.data('oryk-nav-asked') || 0) + 1;
 		menu.data('oryk-nav-asked', asked);
+
+		// Until the server answers, what is shown is only what was loaded,
+		// and the menu says so where "No matches" would otherwise stand.
+		menu.find('.oryk-nav-none').addClass('hidden');
+		menu.find('.oryk-nav-searching').removeClass('hidden');
 
 		menu.data('oryk-nav-timer', setTimeout(function () {
 			$.getJSON('ajax.php', {
@@ -351,11 +357,16 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 					return;
 				}
 
+				menu.find('.oryk-nav-searching').addClass('hidden');
 				orykNavDraw(menu, answer.options);
 				menu.find('.oryk-nav-none').toggleClass('hidden', answer.options.length > 0);
 				menu.find('.oryk-nav-more')
 					.text(answer.more ? <?php echo json_encode(_('%1$d of %2$d, keep typing')); ?>.replace('%1$d', answer.options.length).replace('%2$d', answer.total) : '')
 					.toggleClass('hidden', !answer.more);
+			}).fail(function () {
+				if (menu.data('oryk-nav-asked') === asked) {
+					menu.find('.oryk-nav-searching').addClass('hidden');
+				}
 			});
 		}, 200));
 	});
