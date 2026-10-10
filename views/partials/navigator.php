@@ -66,14 +66,15 @@ $e = function ($value) {
 ?>
 
 <?php
-$trail = [];
-$related = [];
+// Prefixed: this is included into every view, over whatever locals it holds.
+$navTrail = [];
+$navRelated = [];
 
 foreach ($navigator as $level) {
 	if ((string) $level['text'] !== '') {
-		$trail[] = $level;
+		$navTrail[] = $level;
 	} else {
-		$related[] = $level;
+		$navRelated[] = $level;
 	}
 }
 
@@ -84,7 +85,7 @@ foreach ($navigator as $level) {
  * @param array<string, mixed> $level One of $navigator.
  * @param string               $mono  ' oryk-nav-mono' or ''.
  */
-$menu = function (array $level, $mono) use ($e) {
+$navMenu = function (array $level, $mono) use ($e) {
 	?>
 	<ul class="dropdown-menu oryk-nav-menu">
 
@@ -125,9 +126,9 @@ $menu = function (array $level, $mono) use ($e) {
 
 <nav class="oryk-nav" aria-label="<?php echo $e(_('Breadcrumb')); ?>">
 
-	<?php if ($trail): ?>
+	<?php if ($navTrail): ?>
 		<ol class="oryk-nav-trail">
-			<?php foreach ($trail as $level): ?>
+			<?php foreach ($navTrail as $level): ?>
 				<?php
 				$key = (string) $level['key'];
 				$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
@@ -151,18 +152,18 @@ $menu = function (array $level, $mono) use ($e) {
 						?>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
-					<?php $menu($level, $mono); ?>
+					<?php $navMenu($level, $mono); ?>
 				</li>
 			<?php endforeach; ?>
 		</ol>
 	<?php endif; ?>
 
 	<ul class="oryk-nav-related">
-		<?php if ($trail): ?>
+		<?php if ($navTrail): ?>
 			<li class="oryk-nav-related-label"><?php echo $e(_('Related')); ?></li>
 		<?php endif; ?>
 
-		<?php foreach ($related as $level): ?>
+		<?php foreach ($navRelated as $level): ?>
 			<?php
 			$key = (string) $level['key'];
 			$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
@@ -198,7 +199,7 @@ $menu = function (array $level, $mono) use ($e) {
 						<?php echo $count; ?>
 						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
 					</div>
-					<?php $menu($level, $mono); ?>
+					<?php $navMenu($level, $mono); ?>
 				<?php endif; ?>
 			</li>
 		<?php endforeach; ?>
