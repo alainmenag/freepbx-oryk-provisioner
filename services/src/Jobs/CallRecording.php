@@ -1,8 +1,8 @@
 <?php
 
-// src/Jobs/CallRecording.php
+// services/src/Jobs/CallRecording.php
 
-namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
+namespace FreePBX\Modules\Oryk_Services\Jobs;
 
 /**
  * Call Recording: every external call, or every internal one, to and from

@@ -1,8 +1,8 @@
 <?php
 
-// src/CalendarManager.php
+// services/src/CalendarManager.php
 
-namespace FreePBX\Modules\Oryk_Provisioner;
+namespace FreePBX\Modules\Oryk_Services;
 
 /**
  * A user's own calendar: one local calendar in FreePBX's Calendar module,
@@ -19,7 +19,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * default (`calendar_match` no): it rings the list except during an event,
  * so a calendar with nothing in it yet changes nothing.
  */
-class CalendarManager extends Service
+class CalendarManager extends Component
 {
 	/** What a calendar's description starts with when it is this module's. */
 	const MARK = 'Managed by Oryk Provisioner';

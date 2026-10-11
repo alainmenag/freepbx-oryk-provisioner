@@ -753,3 +753,18 @@ spl_autoload_register(function ($class) {
 		require_once $file;
 	}
 });
+
+// And the services' own, as ServicesLink registers it.
+spl_autoload_register(function ($class) {
+	$prefix = 'FreePBX\\Modules\\Oryk_Services\\';
+
+	if (strpos($class, $prefix) !== 0) {
+		return;
+	}
+
+	$file = __DIR__ . '/../services/src/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+
+	if (is_file($file)) {
+		require_once $file;
+	}
+});

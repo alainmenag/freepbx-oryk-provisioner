@@ -1,8 +1,8 @@
 <?php
 
-// src/Jobs.php
+// services/src/Jobs.php
 
-namespace FreePBX\Modules\Oryk_Provisioner;
+namespace FreePBX\Modules\Oryk_Services;
 
 use PDO;
 
@@ -13,7 +13,7 @@ use PDO;
  * ARCHITECTURE.md, "Jobs". This is the two tables: writing a job, the list,
  * a job's page, and the questions ServiceEngine asks while it runs one.
  */
-class Jobs extends Service
+class Jobs extends Component
 {
 	/** What a job can be: waiting, being run, finished, or stopped at a step that threw. */
 	const STATES = ['queued', 'running', 'done', 'failed'];

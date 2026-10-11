@@ -18,14 +18,12 @@
  *
  * @var array<string, string>|null $jobFilter Jobs::filters(), or null for no filters (Overview)
  * @var string                     $jobScope  The `&scope=` value, or ''
+ * @var array<string, array<string, string>> $jobLabels Jobs::labels(), as every view is handed it
  * @var callable                   $icon      Prints assets/icons/<name>.svg
  */
 
-use FreePBX\Modules\Oryk_Provisioner\Jobs;
-
 $jobFilter = isset($jobFilter) && is_array($jobFilter) ? $jobFilter : null;
 $jobScope = isset($jobScope) ? (string) $jobScope : '';
-$jobLabels = Jobs::labels();
 $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('Source')];
 ?>
 

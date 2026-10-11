@@ -20,7 +20,6 @@ use FreePBX\Modules\Oryk_Provisioner\AsteriskConfig;
 use FreePBX\Modules\Oryk_Provisioner\BanEscalation;
 use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
-use FreePBX\Modules\Oryk_Provisioner\CalendarManager;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
@@ -43,9 +42,7 @@ use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\SecurityLog;
-use FreePBX\Modules\Oryk_Provisioner\Jobs;
-use FreePBX\Modules\Oryk_Provisioner\ServiceEngine;
-use FreePBX\Modules\Oryk_Provisioner\Services;
+use FreePBX\Modules\Oryk_Provisioner\ServicesLink;
 use FreePBX\Modules\Oryk_Provisioner\SignupRefused;
 use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
@@ -56,6 +53,10 @@ use FreePBX\Modules\Oryk_Provisioner\UsermanManager;
 use FreePBX\Modules\Oryk_Provisioner\Users;
 use FreePBX\Modules\Oryk_Provisioner\Vendor;
 use FreePBX\Modules\Oryk_Provisioner\VoicemailManager;
+use FreePBX\Modules\Oryk_Services\CalendarManager;
+use FreePBX\Modules\Oryk_Services\Jobs;
+use FreePBX\Modules\Oryk_Services\ServiceEngine;
+use FreePBX\Modules\Oryk_Services\Services;
 
 // What the PBX is set to, for the tests that would otherwise depend on what
 // the machine running them happens to be called
@@ -468,11 +469,11 @@ is_eq('a handset is not a user, and is not deleted as one', $s['users']->remove(
 is_eq('nothing was deleted', FreePBX::$core->deleted, []);
 
 
-echo "\nevery global class named in src/ is qualified or imported:\n";
+echo "\nevery global class named in src/ and services/src/ is qualified or imported:\n";
 
 $unqualified = [];
 
-foreach (glob(__DIR__ . '/../src/*.php') as $file) {
+foreach (array_merge(glob(__DIR__ . '/../src/*.php'), glob(__DIR__ . '/../services/src/*.php'), glob(__DIR__ . '/../services/src/Jobs/*.php')) as $file) {
 	$unqualified = array_merge($unqualified, oryk_unqualified_classes($file));
 }
 
@@ -481,6 +482,42 @@ foreach (glob(__DIR__ . '/../src/*.php') as $file) {
 // when the line runs, and the line that found this one runs when somebody
 // deletes a device with call history.
 is_eq('nothing unqualified', $unqualified, []);
+
+echo "\nthe services boundary: one door each way:\n";
+
+// What step two of the split lifts out has to be lifted out whole: nothing
+// in services/ may lean on the provisioner, and the provisioner reaches the
+// services only through ServicesLink. See ARCHITECTURE.md, "The services boundary".
+$crossing = function ($files, $needle) {
+	$found = [];
+
+	foreach ($files as $file) {
+		if (strpos(file_get_contents($file), $needle) !== false) {
+			$found[] = str_replace(dirname(__DIR__) . '/', '', realpath($file));
+		}
+	}
+
+	return $found;
+};
+$root = dirname(__DIR__);
+$outside = array_merge(
+	glob($root . '/*.php'), glob($root . '/src/*.php'), glob($root . '/views/*.php'),
+	glob($root . '/views/partials/*.php'), glob($root . '/bin/*'), glob($root . '/engine/*.php')
+);
+$inside = array_merge(glob($root . '/services/src/*.php'), glob($root . '/services/src/Jobs/*.php'));
+is_eq('only ServicesLink names the services\' namespace', $crossing($outside, 'Oryk_Services\\'), ['src/ServicesLink.php']);
+is_eq('and nothing in services/ names the provisioner\'s', $crossing($inside, 'Oryk_Provisioner\\'), []);
+
+echo "\nwithout the services, the provisioner answers as if there were none:\n";
+
+$none = new ServicesLink(build()['app'], false);
+is_eq('none are available', $none->available(), false);
+is_eq('no command is theirs', [$none->commands(), $none->reads()], [[], []]);
+is_eq('a user holds nothing', [$none->userSlugs('1001'), $none->hasService('1001', 'voicemail')], [[], false]);
+is_eq('a command asked anyway is refused', $none->ajax('listServices', [])['status'], false);
+is_eq('a user\'s delete and renumber carry nothing', [$none->userDeleting('1001'), $none->userDeleted('1001'), $none->userRenumbered('1001', '1002')], [null, null, null]);
+is_eq('no rows, no job, no filters', [$none->serviceChoices(), $none->jobRow(1), $none->serviceFilters([]), $none->jobLabels(), $none->install()], [[], null, [], [], []]);
+is_eq('with them, they are', (new ServicesLink(build()['app']))->available(), true);
 
 echo "\nwith the CDR module installed, the history is actually walked:\n";
 
@@ -812,7 +849,7 @@ echo "\n  the provisioning server is a setting, and a placeholder:\n";
 
 $s = build();
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new ServicesLink($s['app']));
 $_SERVER['HTTP_HOST'] = 'arrived.example.net:8443';
 
 is_eq('blank is the host the request arrived on, and the link\'s path',
@@ -1157,7 +1194,7 @@ is_eq('and a row storing "any" as 0 or \'\' sets nothing there',
 echo "\n  the endpoint asks before it answers:\n";
 
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new ServicesLink($s['app']));
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
@@ -1452,7 +1489,7 @@ echo "\n  what openClient() answers before a user is found:\n";
 
 $s = build();
 $settings = new Settings($s['app']);
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new ServicesLink($s['app']));
 $endpoint = new Endpoint(
 	$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
 	new FileRepo($s['app']), new LogRepo($s['app']), new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($s['app']),
@@ -1924,7 +1961,7 @@ echo "\n  what openClient() answers a sign-up:\n";
 function signup_endpoint(array $s)
 {
 	$settings = new Settings($s['app']);
-	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new Services($s['app']));
+	$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), $settings, new ServicesLink($s['app']));
 
 	return new Endpoint(
 		$s['app'], $s['clients'], new \FreePBX\Modules\Oryk_Provisioner\Matcher($s['app'], $template), $template,
@@ -2150,7 +2187,7 @@ function overview_build(array $bans)
 	$profiles = new Profiles($app, $files);
 	$requestLog = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($app);
 	$banRepo = new Bans($app);
-	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo, new \FreePBX\Modules\Oryk_Provisioner\Services($app));
+	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo, new ServicesLink($app));
 	$client = ['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk'];
 
 	$app->Database->fetches = [
@@ -2435,7 +2472,7 @@ try {
 	$refusal = $e->getMessage();
 }
 is_eq('and a grant refuses, saying why', $refusal, 'the Calendar module is not installed and enabled');
-is_eq('the Calendar job names its service and its effects', [\FreePBX\Modules\Oryk_Provisioner\Jobs\Calendar::SERVICES, array_keys(\FreePBX\Modules\Oryk_Provisioner\Jobs\Calendar::effects())], [['calendar'], ['granted', 'revoked']]);
+is_eq('the Calendar job names its service and its effects', [\FreePBX\Modules\Oryk_Services\Jobs\Calendar::SERVICES, array_keys(\FreePBX\Modules\Oryk_Services\Jobs\Calendar::effects())], [['calendar'], ['granted', 'revoked']]);
 
 echo "\n  a service and what it is under:\n";
 
@@ -2513,8 +2550,8 @@ $services = new Services($s['app']);
 is_eq('a service needs a name', $services->saveService(['name' => '  '])['status'], false);
 is_eq('and one that fits the column', $services->saveService(['name' => str_repeat('x', 192)])['status'], false);
 
-/** Services, answering for one user without a table. */
-class GuestServices extends Services
+/** The services, answering for one user without a table. */
+class GuestServices extends ServicesLink
 {
 	public function userSlugs($extension)
 	{
@@ -2577,8 +2614,8 @@ is_eq('a withhold is judged against the packs after the change', $after([], ['go
 is_eq('withholding the pack a withhold came through, nothing is withheld', $after([], [], [], ['gold']), [[], [], [], [], [], ['gold']]);
 is_eq('a save of several is titled as one', Jobs::title(['name' => '', 'reason' => 'changed']), 'Several services');
 is_eq('a renamed default goes from a slug DEFAULTS dropped to one it has', array_filter(Services::RENAMED, function ($slug, $was) { return isset(Services::DEFAULTS[$was]) || !isset(Services::DEFAULTS[$slug]); }, ARRAY_FILTER_USE_BOTH), []);
-is_eq('each of the module\'s own jobs says what it does, both ways', array_values(array_filter(array_keys(\FreePBX\Modules\Oryk_Provisioner\Reactions::jobs()), function ($slug) { return \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'granted') === '' || \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'revoked') === ''; })), []);
-is_eq('and a service with no job says nothing', \FreePBX\Modules\Oryk_Provisioner\Reactions::effect('support', 'revoked'), '');
+is_eq('each of the module\'s own jobs says what it does, both ways', array_values(array_filter(array_keys(\FreePBX\Modules\Oryk_Services\Reactions::jobs()), function ($slug) { return \FreePBX\Modules\Oryk_Services\Reactions::effect($slug, 'granted') === '' || \FreePBX\Modules\Oryk_Services\Reactions::effect($slug, 'revoked') === ''; })), []);
+is_eq('and a service with no job says nothing', \FreePBX\Modules\Oryk_Services\Reactions::effect('support', 'revoked'), '');
 preg_match('/const READS = \[(.*?)\];/s', $moduleSource = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php'), $reads);
 preg_match_all("/'([A-Za-z]+)'/", $reads[1] ?? '', $reads);
 preg_match('/function ajaxRequest.*?return true;/s', $moduleSource, $answered);
@@ -2590,7 +2627,7 @@ is_eq('every value has a label', [array_keys(Jobs::labels()['state']), array_key
 is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::title(['name' => 'Gold'])], ['Module upgrade', 'Gold']);
 is_eq('a job is a scope', Navigator::scopeAt('job:12'), ['job' => '12']);
 is_eq('the Jobs list is narrowed when its scope is', [Navigator::narrows('jobs', ['jobs' => ['extensions' => ['100']]]), Navigator::narrows('jobs', ['jobs' => null])], [true, false]);
-$ownJobs = \FreePBX\Modules\Oryk_Provisioner\Reactions::jobs();
+$ownJobs = \FreePBX\Modules\Oryk_Services\Reactions::jobs();
 is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['calendar', 'call-recording-external', 'call-recording-internal', 'find-me-follow', 'on-demand-recording', 'voicemail']);
 is_eq('and each is one of the module\'s own services', array_values(array_filter(array_keys($ownJobs), function ($slug) { return !Services::managed($slug); })), []);
 is_eq('a listener with no services is for every one', ServiceEngine::onlyFor(['module' => 'Mymodule']), null);

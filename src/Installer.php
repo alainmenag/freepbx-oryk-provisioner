@@ -34,7 +34,7 @@ class Installer extends Service
 	/** @var RealtimeBridge|null */
 	private $bridge;
 
-	/** @var Services|null */
+	/** @var ServicesLink|null */
 	private $services;
 
 	/** The FreePBX job the minute sync is registered as. */
@@ -49,7 +49,7 @@ class Installer extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null, ?Services $services = null)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null, ?ServicesLink $services = null)
 	{
 		parent::__construct($freepbx);
 
@@ -238,102 +238,6 @@ class Installer extends Service
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 		);
 
-		$this->db->exec(
-			"CREATE TABLE IF NOT EXISTS `{$this->servicesTable}` (
-				`slug` VARCHAR(64) NOT NULL,
-				`name` VARCHAR(191) NOT NULL,
-				`owner` INT UNSIGNED NOT NULL DEFAULT 0,
-				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				PRIMARY KEY (`slug`),
-				UNIQUE KEY `name` (`name`)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-		);
-
-		// Both ends are slugs, not ids. The pair is the key, so a link exists
-		// once; `child` has an index of its own for the walk upwards, which the
-		// key's left column cannot serve. `kind` '' is a pack link, 'requires'
-		// a requirement.
-		$this->db->exec(
-			"CREATE TABLE IF NOT EXISTS `{$this->serviceLinksTable}` (
-				`parent` VARCHAR(64) NOT NULL,
-				`child` VARCHAR(64) NOT NULL,
-				`kind` VARCHAR(16) NOT NULL DEFAULT '',
-				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY (`parent`, `child`),
-				KEY `child` (`child`)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-		);
-
-		// A user is its extension and a service its slug, as everywhere else.
-		// `service` has an index of its own: a renamed or deleted service is
-		// looked up by it. `status` NULL is a service given to the user; 0 is
-		// one withheld from it, that a pack it is given would give otherwise.
-		// See ARCHITECTURE.md, "Services".
-		$this->db->exec(
-			"CREATE TABLE IF NOT EXISTS `{$this->serviceAssignmentsTable}` (
-				`extension` VARCHAR(20) NOT NULL,
-				`service` VARCHAR(64) NOT NULL,
-				`status` TINYINT NULL DEFAULT NULL,
-				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY (`extension`, `service`),
-				KEY `service` (`service`)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-		);
-
-		// One change to what one user holds. `service` and `name` are the
-		// service the change was made to, the name a snapshot: a deleted
-		// service's job still says what it was. An upgrade's job names none.
-		// `admin` is who was signed in when a page made it, '' for anything else.
-		// See ARCHITECTURE.md, "Jobs".
-		$this->db->exec(
-			"CREATE TABLE IF NOT EXISTS `{$this->jobsTable}` (
-				`id` INT(11) NOT NULL AUTO_INCREMENT,
-				`extension` VARCHAR(20) NOT NULL,
-				`service` VARCHAR(64) NOT NULL DEFAULT '',
-				`name` VARCHAR(191) NOT NULL DEFAULT '',
-				`reason` VARCHAR(16) NOT NULL,
-				`source` VARCHAR(16) NOT NULL DEFAULT 'gui',
-				`admin` VARCHAR(64) NOT NULL DEFAULT '',
-				`state` VARCHAR(16) NOT NULL DEFAULT 'queued',
-				`attempts` INT(10) UNSIGNED NOT NULL DEFAULT 0,
-				`error` TEXT NULL,
-				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				`started_at` DATETIME NULL DEFAULT NULL,
-				`finished_at` DATETIME NULL DEFAULT NULL,
-				PRIMARY KEY (`id`),
-				KEY `extension_state` (`extension`, `state`, `id`),
-				KEY `state_finished` (`state`, `finished_at`),
-				KEY `service` (`service`)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-		);
-
-		// A job's services, in the order they run: revokes first. `via` is the
-		// assigned service it came or went through, NULL for the service itself;
-		// `done_by` the handlers that have finished it, comma-separated rawnames;
-		// `own_job` the src/Jobs/ class this module ran for it, NULL for none.
-		$this->db->exec(
-			"CREATE TABLE IF NOT EXISTS `{$this->jobStepsTable}` (
-				`id` INT(11) NOT NULL AUTO_INCREMENT,
-				`job_id` INT(11) NOT NULL,
-				`position` SMALLINT(5) UNSIGNED NOT NULL,
-				`service` VARCHAR(64) NOT NULL,
-				`name` VARCHAR(191) NOT NULL DEFAULT '',
-				`via` VARCHAR(64) NULL DEFAULT NULL,
-				`event` VARCHAR(8) NOT NULL,
-				`state` VARCHAR(16) NOT NULL DEFAULT 'pending',
-				`done_by` VARCHAR(255) NOT NULL DEFAULT '',
-				`own_job` VARCHAR(64) NULL DEFAULT NULL,
-				`attempts` INT(10) UNSIGNED NOT NULL DEFAULT 0,
-				`error` TEXT NULL,
-				`finished_at` DATETIME NULL DEFAULT NULL,
-				PRIMARY KEY (`id`),
-				UNIQUE KEY `job_position` (`job_id`, `position`),
-				KEY `service` (`service`),
-				KEY `via` (`via`)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-		);
-
 		// CREATE TABLE IF NOT EXISTS does nothing to a table that is already there,
 		// so every column added after a table first existed is added from here.
 		// Order matters in one place: addResourceTypeColumn() backfills from
@@ -350,27 +254,12 @@ class Installer extends Service
 		$this->schema->addCoreIndexes();
 		$this->schema->addBanSyncColumns();
 		$this->schema->addClientSignupColumns();
-		$this->schema->addServiceSlugColumn();
-		$this->schema->addServiceOwnerColumn(array_keys(Services::DEFAULTS));
-		$this->schema->addServiceLinkKindColumn();
-		$this->schema->addJobStepOwnJobColumn();
-		$this->schema->addJobAdminColumn();
-		$this->schema->addServiceAssignmentStatusColumn();
 
-		// The services the module ships -- Services::DEFAULTS -- deleted and
-		// written again to match. After the slug column, which they are found
-		// by, and the owner column, which says which rows are the module's.
-		// A regrouping that changes what users hold queues their jobs, which
-		// the minute job runs: an install may be root, and jobs run as the web user.
+		// The services' tables and the services the module ships: theirs to make.
 		if ($this->services) {
-			foreach ($this->services->seed() as $line) {
+			foreach ($this->services->install() as $line) {
 				$this->installMessage('Provisioner: ' . $line);
 			}
-		}
-
-		// After seed(), which is what gives every older row the slug this keys on.
-		if (!$this->schema->dropServiceIdColumn()) {
-			$this->installMessage('Provisioner: the services table could not be re-keyed by slug; see the FreePBX log.');
 		}
 
 		// Advanced Settings -> Oryk Provisioner. Registering again on an upgrade
@@ -401,7 +290,7 @@ class Installer extends Service
 
 		$this->registerJob(self::SYNC_JOB, 'oryk-fail2ban-sync', 'the fail2ban sync');
 		$this->registerJob(self::SWEEP_JOB, 'oryk-signup-sweep', 'the open-provisioning sweep');
-		$this->registerJob(self::JOBS_JOB, 'oryk-jobs', 'the service job worker');
+		$this->registerJob(self::JOBS_JOB, 'oryk-jobs', 'the service job worker', 'services/bin');
 		$this->setUpFail2ban();
 
 		// Like the symlink, nothing about the bridge fails the install: without
@@ -454,7 +343,7 @@ class Installer extends Service
 	}
 
 	/**
-	 * Register one of bin/'s minute jobs with FreePBX's scheduler.
+	 * Register one of bin/'s minute jobs, or services/bin/'s, with FreePBX's scheduler.
 	 *
 	 * Removed and added again on every install, so the path in it is this
 	 * install's. It runs as the web user, like every FreePBX job; the sync
@@ -463,13 +352,14 @@ class Installer extends Service
 	 * @param string $job    Job name, one of the *_JOB constants.
 	 * @param string $script File name under bin/.
 	 * @param string $what   What it is, for the message when it cannot be.
+	 * @param string $dir    Directory under the module it is in.
 	 *
 	 * @return void
 	 */
-	private function registerJob($job, $script, $what)
+	private function registerJob($job, $script, $what, $dir = 'bin')
 	{
 		$php = $this->phpBinary();
-		$path = (realpath(dirname(__DIR__) . '/bin') ?: dirname(__DIR__) . '/bin') . '/' . $script;
+		$path = (realpath(dirname(__DIR__) . '/' . $dir) ?: dirname(__DIR__) . '/' . $dir) . '/' . $script;
 
 		try {
 			$jobs = $this->FreePBX->Job;

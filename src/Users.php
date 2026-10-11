@@ -143,11 +143,8 @@ class Users extends Service
 	/** @var RealtimeBridge|null Null where nothing is bridged: the tests. */
 	private $bridge;
 
-	/** @var Services|null The services assigned to a user, which go with it. */
+	/** @var ServicesLink|null The services a user has, and what they made for it, which go with it. */
 	private $services;
-
-	/** @var CalendarManager The user's own calendar, which goes with it. */
-	private $calendar;
 
 	/** @var Settings|null Made when first asked for; see settings(). */
 	private $settings;
@@ -164,8 +161,7 @@ class Users extends Service
 	 * @param EndpointSettings    $endpoints  Custom pjsip endpoint settings.
 	 * @param Clients             $clients    Provisioner clients pointing at a user.
 	 * @param RealtimeBridge|null $bridge     Sign-ups live before Apply Config.
-	 * @param Services|null       $services   Services assigned to a user.
-	 * @param CalendarManager|null $calendar  The user's own calendar; made here when not given.
+	 * @param ServicesLink|null   $services   The services.
 	 */
 	public function __construct(
 		$freepbx,
@@ -179,8 +175,7 @@ class Users extends Service
 		EndpointSettings $endpoints,
 		Clients $clients,
 		?RealtimeBridge $bridge = null,
-		?Services $services = null,
-		?CalendarManager $calendar = null
+		?ServicesLink $services = null
 	) {
 		parent::__construct($freepbx);
 
@@ -195,7 +190,6 @@ class Users extends Service
 		$this->clients = $clients;
 		$this->bridge = $bridge;
 		$this->services = $services;
-		$this->calendar = $calendar ?: new CalendarManager($freepbx);
 	}
 
 	/**
@@ -392,8 +386,8 @@ class Users extends Service
 	 *
 	 * @return array<string, mixed> account (the owned User Manager username,
 	 *                              or ''), account_id (its id there, or 0),
-	 *                              mailbox (bool), calendar (bool: one of
-	 *                              this module's).
+	 *                              mailbox (bool), calendar (bool: one the
+	 *                              services made for it).
 	 */
 	public function related($extension)
 	{
@@ -404,7 +398,7 @@ class Users extends Service
 			'account' => $account ? (string) $account['username'] : '',
 			'account_id' => $account ? (int) $account['id'] : 0,
 			'mailbox' => $this->voicemail->hasMailbox($extension),
-			'calendar' => $this->calendar->has($extension),
+			'calendar' => $this->services ? $this->services->hasCalendar($extension) : false,
 		];
 	}
 
@@ -1428,8 +1422,10 @@ class Users extends Service
 		$this->userman->removeOwnedAccount($user);
 
 		// Before the extension goes: its Follow Me row is what points at the
-		// calendar, and no job will run for a user that no longer exists.
-		$this->calendar->remove($user);
+		// calendar the services made, and no job will run for a user that no longer exists.
+		if ($this->services) {
+			$this->services->userDeleting($user);
+		}
 
 		$deleted = true;
 
@@ -1454,7 +1450,7 @@ class Users extends Service
 
 		// Its number can be handed out again, and the next user is owed none of these.
 		if ($this->services) {
-			$this->services->forgetUser($user);
+			$this->services->userDeleted($user);
 		}
 
 		self::pending();

@@ -1,8 +1,8 @@
 <?php
 
-// src/Jobs/OnDemandRecording.php
+// services/src/Jobs/OnDemandRecording.php
 
-namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
+namespace FreePBX\Modules\Oryk_Services\Jobs;
 
 /**
  * On Demand Recording: the one-touch recording feature, enabled or disabled.

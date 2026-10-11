@@ -9,7 +9,6 @@ use FreePBX_Helpers;
 use FreePBX\Modules\Oryk_Provisioner\BanEscalation;
 use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
-use FreePBX\Modules\Oryk_Provisioner\CalendarManager;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
@@ -23,7 +22,6 @@ use FreePBX\Modules\Oryk_Provisioner\Fail2ban;
 use FreePBX\Modules\Oryk_Provisioner\FileRepo;
 use FreePBX\Modules\Oryk_Provisioner\Freepbx;
 use FreePBX\Modules\Oryk_Provisioner\Installer;
-use FreePBX\Modules\Oryk_Provisioner\Jobs;
 use FreePBX\Modules\Oryk_Provisioner\Library;
 use FreePBX\Modules\Oryk_Provisioner\LobbyContext;
 use FreePBX\Modules\Oryk_Provisioner\LogRepo;
@@ -37,12 +35,10 @@ use FreePBX\Modules\Oryk_Provisioner\Pages;
 use FreePBX\Modules\Oryk_Provisioner\Previews;
 use FreePBX\Modules\Oryk_Provisioner\Profiles;
 use FreePBX\Modules\Oryk_Provisioner\ProvisioningLog;
-use FreePBX\Modules\Oryk_Provisioner\Reactions;
 use FreePBX\Modules\Oryk_Provisioner\RealtimeBridge;
 use FreePBX\Modules\Oryk_Provisioner\Resources;
 use FreePBX\Modules\Oryk_Provisioner\Schema;
-use FreePBX\Modules\Oryk_Provisioner\ServiceEngine;
-use FreePBX\Modules\Oryk_Provisioner\Services;
+use FreePBX\Modules\Oryk_Provisioner\ServicesLink;
 use FreePBX\Modules\Oryk_Provisioner\Settings;
 use FreePBX\Modules\Oryk_Provisioner\SignupSweep;
 use FreePBX\Modules\Oryk_Provisioner\Template;
@@ -91,7 +87,6 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Clients          |
  *   Profiles         |  one per table
  *   Resources        |
- *   Services         |
  *   Library          the profiles the module ships, and copying one
  *   Matcher          a filename is a MAC and a name, read both ways
  *   Previews         which filename does this phone ask this file by
@@ -107,7 +102,7 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Users            saving, deleting and listing an Extension/User
  *   NumberAllocator  which numbers are free, and the next one
  *   ExtensionRenumberer  moving a user to another number, in order
- *   ExtensionManager, UsermanManager, VoicemailManager, CalendarManager,
+ *   ExtensionManager, UsermanManager, VoicemailManager,
  *   UcpAssignments, CdrHistory  one each of what a number is made of
  *   EndpointSettings the From Domain, and pjsip.endpoint_custom_post.conf
  *   Devices          FreePBX's devices, and which user one is on
@@ -131,11 +126,10 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   DashboardNotices the module's dashboard notices
  *   LobbyContext     the lobby's dialplan, on Apply Config
  *
- * and, reacting to what a user's services become -- see ARCHITECTURE.md, "Jobs":
+ * and the services, packs and their jobs, which live in services/ and are
+ * reached only through one class -- see ARCHITECTURE.md, "The services boundary":
  *
- *   Jobs             the jobs and their steps
- *   ServiceEngine    what a change means for a user, and the worker that runs it
- *   Reactions        the module's own jobs, one class each in src/Jobs/
+ *   ServicesLink     everything the provisioner asks of the services
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
@@ -176,12 +170,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 	/** @var Notices */
 	private $notices;
-
-	/** @var Jobs */
-	private $jobs;
-
-	/** @var ServiceEngine */
-	private $engine;
 
 	/** @var LobbyContext */
 	private $lobby;
@@ -225,7 +213,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	/** @var Schema */
 	private $schema;
 
-	/** @var Services */
+	/** @var ServicesLink */
 	private $services;
 
 	/** @var Settings */
@@ -267,8 +255,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->tokens = new Tokens($freepbx);
 		$this->provisioningLog = new ProvisioningLog($freepbx);
 		$this->settings = new Settings($freepbx);
-		$this->jobs = new Jobs($freepbx);
-		$this->services = new Services($freepbx, $this->jobs);
+		$this->services = new ServicesLink($freepbx);
 		$this->template = new Template($freepbx, $this->pbx, $this->settings, $this->services);
 		$this->matcher = new Matcher($freepbx, $this->template);
 		$this->profiles = new Profiles($freepbx, $this->files);
@@ -284,18 +271,16 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
-		$calendar = new CalendarManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
 		$userman = new UsermanManager($freepbx);
 		$ucp = new UcpAssignments($freepbx);
 		$extensions = new ExtensionManager($freepbx);
 		$this->devices = new Devices($freepbx, $extensions);
-		$this->engine = new ServiceEngine($freepbx, $this->jobs, $this->services, new Reactions($freepbx, $extensions));
 
 		$this->users = new Users(
 			$freepbx,
 			new NumberAllocator($freepbx, $userman),
-			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients, $this->services, $calendar),
+			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients, $this->services),
 			$extensions,
 			$userman,
 			$voicemail,
@@ -304,8 +289,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->endpointSettings,
 			$this->clients,
 			$bridge,
-			$this->services,
-			$calendar
+			$this->services
 		);
 
 		$this->fail2ban = new Fail2ban($freepbx, $this->settings);
@@ -313,7 +297,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->banSync = new BanSync($freepbx, $this->fail2ban, $escalation);
 		$this->bans = new Bans($freepbx, $this->banSync, $escalation);
 
-		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services, $this->jobs, $this->devices);
+		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services, $this->devices);
 		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
 		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge, $this->services);
@@ -350,7 +334,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->fail2ban,
 			$this->overview,
 			$this->services,
-			$this->jobs,
 			$this->library,
 			$this->notices,
 			$this->devices
@@ -526,7 +509,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * One run of the service job worker. Called by bin/oryk-jobs: in the
+	 * One run of the service job worker. Called by services/bin/oryk-jobs: in the
 	 * background for one user when a change is saved, and every minute for all.
 	 *
 	 * @param string|null $extension One user's queue, or null for every user with one.
@@ -535,7 +518,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function runJobs($extension = null)
 	{
-		return $this->engine->run($extension);
+		return $this->services->runJobs($extension);
 	}
 
 	/**
@@ -575,11 +558,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @return void
 	 *
-	 * @throws \FreePBX\Modules\Oryk_Provisioner\HandlerFailed The first handler that threw.
+	 * @throws \RuntimeException The first handler that threw: the services' HandlerFailed.
 	 */
 	public function serviceGranted(array $event)
 	{
-		$this->engine->dispatch('granted', ['event' => 'granted'] + $event);
+		$this->services->dispatch('granted', $event);
 	}
 
 	/**
@@ -589,11 +572,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 *
 	 * @return void
 	 *
-	 * @throws \FreePBX\Modules\Oryk_Provisioner\HandlerFailed The first handler that threw.
+	 * @throws \RuntimeException The first handler that threw: the services' HandlerFailed.
 	 */
 	public function serviceRevoked(array $event)
 	{
-		$this->engine->dispatch('revoked', ['event' => 'revoked'] + $event);
+		$this->services->dispatch('revoked', $event);
 	}
 
 	/**
@@ -609,7 +592,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function runOwnJobGranted(array $event)
 	{
-		$this->engine->ownJob('granted', $event);
+		$this->services->ownJob('granted', $event);
 	}
 
 	/**
@@ -623,7 +606,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 */
 	public function runOwnJobRevoked(array $event)
 	{
-		$this->engine->ownJob('revoked', $event);
+		$this->services->ownJob('revoked', $event);
 	}
 
 	/**
@@ -641,7 +624,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function coreDelUser($extension, $editmode = false)
 	{
 		if (!$editmode) {
-			$this->services->forgetUser((string) $extension);
+			$this->services->userDeleted((string) $extension);
 		}
 	}
 
@@ -720,12 +703,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	 * something and is answered only to a POST** (ajaxHandler()), which a
 	 * link, an image or a redirect cannot make. A new command that reads is
 	 * named here as well as in ajaxRequest() and ajaxHandler(); one left out
-	 * is taken to write.
+	 * is taken to write. The services' own are ServicesLink::reads().
 	 */
 	const READS = [
 		'listClients', 'listProfiles', 'listResources', 'viewResource', 'downloadResource',
-		'listLogs', 'listUsers', 'listDevices', 'listServices', 'listJobs', 'listBans',
-		'userServicesImpact', 'serviceImpact', 'userServiceJobs',
+		'listLogs', 'listUsers', 'listDevices', 'listBans',
 		'listOverviewUsers', 'listOverviewDevices', 'listOverviewClients',
 		'listOverviewBans', 'listOverviewCalls', 'listOverviewVoicemail',
 		'navOptions',
@@ -767,16 +749,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'listDevices':
 			case 'saveDevice':
 			case 'deleteDevice':
-			case 'listServices':
-			case 'saveService':
-			case 'deleteService':
-			case 'setUserServices':
-			case 'userServicesImpact':
-			case 'serviceImpact':
-			case 'userServiceJobs':
-			case 'listJobs':
-			case 'retryJob':
-			case 'deleteJob':
 			case 'saveSettings':
 			case 'dismissNotice':
 			case 'resetNotices':
@@ -801,7 +773,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'purgeOverview':
 				return true;
 			default:
-				return false;
+				return in_array($req, $this->services->commands(), true);
 		}
 	}
 
@@ -820,7 +792,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	{
 		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
 
-		if (!in_array($command, self::READS, true) && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') {
+		if (!in_array($command, array_merge(self::READS, $this->services->reads()), true) && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') {
 			return ['status' => false, 'message' => _('This can only be done with a POST.')];
 		}
 
@@ -830,6 +802,11 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$scope = in_array($command, ['listClients', 'listProfiles', 'listLogs', 'listUsers', 'listDevices', 'listBans', 'listServices', 'listJobs'], true)
 			? $this->navigator->scope(Navigator::scopeAt((string) ($_REQUEST['scope'] ?? '')))
 			: null;
+
+		// The services answer their own, through the one door to them.
+		if (in_array($command, $this->services->commands(), true)) {
+			return $this->services->ajax($command, $_REQUEST, $scope);
+		}
 
 		switch ($command) {
 			// A navigator menu's search: the level's rows in the page's scope
@@ -958,40 +935,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			case 'deleteDevice':
 				return $this->users->deleteDeviceById($_REQUEST['id'] ?? '', !empty($_REQUEST['clients']));
 
-			case 'listServices':
-				return $this->services->listServices($scope['services']);
-
-			case 'saveService':
-				return $this->services->saveService($_REQUEST);
-
-			case 'deleteService':
-				return $this->services->deleteService($_REQUEST['slug'] ?? null);
-
-			// What a user's Services tab has staged, saved as one change.
-			case 'setUserServices':
-				return $this->services->setUserServices($_REQUEST);
-
-			// What that save would change, asked first.
-			case 'userServicesImpact':
-				return $this->services->userServicesImpact($_REQUEST);
-
-			// What a save or delete on a service page would change, asked first.
-			case 'serviceImpact':
-				return $this->services->serviceImpact($_REQUEST);
-
-			// Where a user's services stand, for the Services tab's Status while jobs run.
-			case 'userServiceJobs':
-				return ['status' => true, 'jobs' => $this->jobs->statusFor((string) ($_REQUEST['extension'] ?? ''))];
-
-			case 'listJobs':
-				return $this->jobs->listJobs($scope['jobs']);
-
-			case 'retryJob':
-				return $this->jobs->retryJob($_REQUEST['id'] ?? null);
-
-			case 'deleteJob':
-				return $this->jobs->deleteJob($_REQUEST['id'] ?? null);
-
 			case 'saveSettings':
 				return $this->settings->saveSettings($_REQUEST);
 
@@ -1045,7 +988,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 					return ['status' => false, 'message' => _('Only a user has jobs to clear.')];
 				}
 
-				$this->jobs->forgetUser($at['user']);
+				$this->services->clearJobs($at['user']);
 
 				return ['status' => true];
 

@@ -10,10 +10,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * Two halves. sections() is the module's top level, drawn as the bar over
  * every page by views/partials/sections.php. levels() is the row of dropdowns
  * views/partials/navigator.php draws under it: Users, Devices, Clients,
- * Profiles, Resources, Services, Logs, Bans and Jobs, always all nine, always
- * in that order -- who, which line, which phone, what configuration, which
- * file, what they are assigned, what it asked, what refuses it, what was done
- * about their services.
+ * Profiles, Resources, Services, Logs, Bans and Jobs, always all nine -- seven
+ * without the services -- always in that order: who, which line, which phone,
+ * what configuration, which file, what they are assigned, what it asked, what
+ * refuses it, what was done about their services.
  *
  * The page being viewed sets the scope; ARCHITECTURE.md, "Conventions that
  * hold everywhere", has the rules. A new row has no links yet, so it scopes
@@ -66,11 +66,8 @@ class Navigator extends Service
 	/** @var Bans */
 	private $bans;
 
-	/** @var Services */
+	/** @var ServicesLink The Services and Jobs levels' rows; neither level without the services. */
 	private $services;
-
-	/** @var Jobs|null Null where there is no Jobs level to fill: the tests. */
-	private $jobs;
 
 	/** @var Devices|null Null where there is no Devices level to fill: the tests. */
 	private $devices;
@@ -78,7 +75,7 @@ class Navigator extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, Services $services, ?Jobs $jobs = null, ?Devices $devices = null)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Users $users, ProvisioningLog $requestLog, Bans $bans, ServicesLink $services, ?Devices $devices = null)
 	{
 		parent::__construct($freepbx);
 
@@ -89,7 +86,6 @@ class Navigator extends Service
 		$this->requestLog = $requestLog;
 		$this->bans = $bans;
 		$this->services = $services;
-		$this->jobs = $jobs;
 		$this->devices = $devices;
 	}
 
@@ -206,6 +202,13 @@ class Navigator extends Service
 			$this->banLevel($banRows, $scope['bans'], $ban, $user, $client, $profile, $scope['entry'], $from),
 			$this->jobLevel($scope['jobs'], $job, $from),
 		];
+
+		// No Services or Jobs level without the services.
+		if (!$this->services->available()) {
+			$levels = array_values(array_filter($levels, function ($level) {
+				return !in_array($level['key'], ['service', 'job'], true);
+			}));
+		}
 
 		foreach ($levels as &$level) {
 			$level['viewed'] = $level['key'] === $viewed;
@@ -331,8 +334,8 @@ class Navigator extends Service
 			$row = $this->devices->deviceRow((string) $at['device']);
 			$on = $row ? (string) $row['user'] : '';
 			$up['user'] = ($on !== '' && $on !== Devices::NOBODY) ? $on : null;
-		} elseif ($this->written(isset($at['job']) ? (string) $at['job'] : null) && $this->jobs) {
-			$row = $this->jobs->jobRow((string) $at['job']);
+		} elseif ($this->written(isset($at['job']) ? (string) $at['job'] : null) && $this->services->available()) {
+			$row = $this->services->jobRow((string) $at['job']);
 			$up['user'] = $row ? (string) $row['extension'] : null;
 		}
 
@@ -492,8 +495,8 @@ class Navigator extends Service
 		// A job is scoped like its user, whose page it would be on.
 		$ofJob = false;
 
-		if ($this->written($job) && $this->jobs) {
-			$row = $this->jobs->jobRow($job);
+		if ($this->written($job) && $this->services->available()) {
+			$row = $this->services->jobRow($job);
 			$user = $row ? (string) $row['extension'] : null;
 			$ofJob = (bool) $row;
 		}
@@ -801,13 +804,14 @@ class Navigator extends Service
 	 * Every section there is, in the bar's order, by key.
 	 *
 	 * A group's sections are drawn in this order, and its first is what the
-	 * bar shows when none of them is open.
+	 * bar shows when none of them is open. Services and Jobs are only there
+	 * with the services.
 	 *
 	 * @return array<string, string> Names, by key.
 	 */
 	private function sectionNames()
 	{
-		return [
+		$names = [
 			'users' => _('Users'),
 			'devices' => _('Devices'),
 			'clients' => _('Clients'),
@@ -819,6 +823,8 @@ class Navigator extends Service
 			'overview' => _('Overview'),
 			'settings' => _('Settings'),
 		];
+
+		return $this->services->available() ? $names : array_diff_key($names, ['services' => true, 'jobs' => true]);
 	}
 
 	/**
@@ -1408,24 +1414,24 @@ class Navigator extends Service
 	 */
 	private function jobLevel($narrow, $at, $from)
 	{
-		$found = $this->jobs ? $this->jobs->jobChoices($narrow, self::JOB_LIMIT) : [];
+		$found = $this->services->jobChoices($narrow, self::JOB_LIMIT);
 		$listed = array_map('strval', array_column($found, 'id'));
 
-		if ($this->jobs && $this->written($at) && !in_array((string) $at, $listed, true)) {
-			$viewed = $this->jobs->jobRow($at);
+		if ($this->written($at) && !in_array((string) $at, $listed, true)) {
+			$viewed = $this->services->jobRow($at);
 
 			if ($viewed) {
 				$found[] = $viewed;
 			}
 		}
 
-		$labels = Jobs::labels();
+		$labels = $this->services->jobLabels();
 		$rows = [];
 
 		foreach ($found as $row) {
 			$rows[] = [
 				'id' => (int) $row['id'],
-				'text' => '#' . (int) $row['id'] . ' ' . Jobs::title($row),
+				'text' => '#' . (int) $row['id'] . ' ' . $this->services->jobTitle($row),
 				'note' => implode(' · ', [
 					sprintf(_('user %s'), (string) $row['extension']),
 					$labels['reason'][(string) $row['reason']] ?? (string) $row['reason'],

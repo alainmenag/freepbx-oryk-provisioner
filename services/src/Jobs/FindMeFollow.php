@@ -1,8 +1,8 @@
 <?php
 
-// src/Jobs/FindMeFollow.php
+// services/src/Jobs/FindMeFollow.php
 
-namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
+namespace FreePBX\Modules\Oryk_Services\Jobs;
 
 /**
  * Find Me Follow: Find Me/Follow Me switched on -- made with that module's
