@@ -1,62 +1,39 @@
 <?php
 /**
- * views/partials/jobs.php -- the jobs, as a table.
+ * views/partials/jobs.php -- one user's jobs, on Overview.
  *
  * One row per job: the service it was made for, the user, why, where it
  * stands, how many of its steps are finished, and Retry on a failed one and
- * Delete on any. Its page (?job=) has the steps. See ARCHITECTURE.md, "Jobs".
+ * Delete on any; Clear deletes them all. A job and its steps are the services
+ * module's pages, which every link here opens. The rows are its own, asked
+ * through this module's listJobs (ServicesLink::ajax()) with the scope.
  *
- * On the Jobs section three selects narrow it -- state, reason and source,
- * each All by default -- and **are the address** (`&state=`, `&reason=`,
- * `&source=`, left out at All), as the Services list's are; each option says
- * how many it would list with the other two as they are. Overview draws the
- * same table for one user, with Clear in their place.
+ * Included by views/partials/overview.php, inside views/admin.php, which
+ * defines orykPost() and orykEscape().
  *
- * Narrowed by `&scope=` like every list (see views/admin.php).
- *
- * Included by views/admin.php, which defines orykPost() and orykEscape().
- *
- * @var array<string, string>|null $jobFilter Jobs::filters(), or null for no filters (Overview)
- * @var string                     $jobScope  The `&scope=` value, or ''
- * @var array<string, array<string, string>> $jobLabels Jobs::labels(), as every view is handed it
+ * @var string                     $jobScope  The `&scope=` value
+ * @var array<string, array<string, string>> $jobLabels What each job state, reason and source is called, as every view is handed it
  * @var callable                   $icon      Prints assets/icons/<name>.svg
  */
 
-$jobFilter = isset($jobFilter) && is_array($jobFilter) ? $jobFilter : null;
 $jobScope = isset($jobScope) ? (string) $jobScope : '';
-$jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('Source')];
 ?>
 
-<?php if ($jobFilter === null): ?>
 <div id="job_toolbar" class="oryk-toolbar oryk-toolbar-clear">
 	<button type="button" class="btn btn-danger" id="oryk_overview_jobs_clear" title="<?php echo _('Clear Jobs'); ?>">
 		<?php echo $icon('trash'); ?>
 		<?php echo _('Clear'); ?>
 	</button>
 </div>
-<?php else: ?>
-<div id="job_toolbar" class="oryk-toolbar">
-	<?php foreach ($jobSelects as $jobKey => $jobAria): ?>
-	<select class="form-control oryk-toolbar-filter oryk-job-filter" id="job_<?php echo $jobKey; ?>" data-filter="<?php echo $jobKey; ?>" aria-label="<?php echo htmlspecialchars($jobAria, ENT_QUOTES, 'UTF-8'); ?>">
-		<option value="all" data-label="<?php echo htmlspecialchars(sprintf(_('Any %s'), strtolower($jobAria)), ENT_QUOTES, 'UTF-8'); ?>"<?php echo $jobFilter[$jobKey] === 'all' ? ' selected' : ''; ?>><?php echo htmlspecialchars(sprintf(_('Any %s'), strtolower($jobAria)), ENT_QUOTES, 'UTF-8'); ?></option>
-		<?php foreach ($jobLabels[$jobKey] as $jobValue => $jobText): ?>
-		<option value="<?php echo $jobValue; ?>" data-label="<?php echo htmlspecialchars($jobText, ENT_QUOTES, 'UTF-8'); ?>"<?php echo $jobFilter[$jobKey] === $jobValue ? ' selected' : ''; ?>><?php echo htmlspecialchars($jobText, ENT_QUOTES, 'UTF-8'); ?></option>
-		<?php endforeach; ?>
-	</select>
-	<?php endforeach; ?>
-</div>
-<?php endif; ?>
-
 <table
 	id="job_table"
 	data-toggle="table"
 	data-url="ajax.php?module=oryk_provisioner&command=listJobs<?php echo htmlspecialchars($jobScope !== '' ? '&scope=' . rawurlencode($jobScope) : '', ENT_QUOTES, 'UTF-8'); ?>"
 	data-toolbar="#job_toolbar"
-	data-query-params="orykJobQuery"
 	class="table table-striped"
 	data-side-pagination="server"
 	data-pagination="true"
-	data-search="<?php echo $jobFilter !== null ? 'true' : 'false'; ?>"
+	data-search="false"
 	data-show-refresh="true"
 	data-icons-prefix="oryk-icon"
 	data-icons='{"refresh":"oryk-icon-refresh"}'
@@ -81,53 +58,9 @@ $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('So
 <script>
 
 	const orykJobLabelSet = <?php echo json_encode($jobLabels); ?>;
-	const orykJobScope = <?php echo json_encode($jobScope); ?>;
-
-	// The filters ride in the list's query, read off the selects the page drew
-	// from its address; the server whitelists the values.
-	function orykJobQuery(params) {
-		$('.oryk-job-filter').each(function () {
-			params[$(this).data('filter')] = $(this).val() || '';
-		});
-
-		return params;
-	}
-
-	// A filter is part of the address, so choosing one goes there.
-	$(document).on('change', '.oryk-job-filter', function () {
-		let href = '?display=oryk_provisioner&tab=jobs' + (orykJobScope !== '' ? '&scope=' + encodeURIComponent(orykJobScope) : '');
-
-		$('.oryk-job-filter').each(function () {
-			if ($(this).val() !== 'all') {
-				href += '&' + $(this).data('filter') + '=' + encodeURIComponent($(this).val());
-			}
-		});
-
-		window.location = href;
-	});
-
-	// Each option counts what choosing it would list, the other two as they are.
-	$(document).on('load-success.bs.table', '#job_table', function (event, data) {
-		const counts = data && data.counts;
-
-		if (!counts) {
-			return;
-		}
-
-		$('.oryk-job-filter').each(function () {
-			const of = counts[$(this).data('filter')] || {};
-			let all = 0;
-
-			Object.keys(of).forEach((value) => { all += of[value]; });
-
-			$(this).find('option').each(function () {
-				$(this).text(`${$(this).data('label')} (${this.value === 'all' ? all : (of[this.value] || 0)})`);
-			});
-		});
-	});
 
 	function orykJobHref(row) {
-		return '?display=oryk_provisioner&job=' + encodeURIComponent(row.id);
+		return '?display=oryk_services&job=' + encodeURIComponent(row.id);
 	}
 
 	function formatJobId(value, row) {
@@ -141,11 +74,11 @@ $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('So
 			return orykEscape(row.reason === 'changed' ? <?php echo json_encode(_('Several services')); ?> : orykJobLabelSet.source.upgrade);
 		}
 
-		return `<a href="?display=oryk_provisioner&service=${encodeURIComponent(row.service)}">${orykEscape(value || row.service)}</a>`;
+		return `<a href="?display=oryk_services&service=${encodeURIComponent(row.service)}">${orykEscape(value || row.service)}</a>`;
 	}
 
 	function formatJobUser(value) {
-		return `<a href="?display=oryk_provisioner&user=${encodeURIComponent(value)}&tab=services">${orykEscape(value)}</a>`;
+		return `<a href="?display=oryk_services&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>`;
 	}
 
 	function formatJobReason(value) {

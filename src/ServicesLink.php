@@ -4,66 +4,67 @@
 
 namespace FreePBX\Modules\Oryk_Provisioner;
 
-use FreePBX\Modules\Oryk_Services\Module as ServicesModule;
-
 /**
- * The provisioner's one way to the services: the only file outside services/
- * that names anything in it. See ARCHITECTURE.md, "The services boundary".
+ * The provisioner's one way to the services, which are a module of their own
+ * (oryk_services): the only file that asks anything of it. See
+ * ARCHITECTURE.md, "Services".
  *
- * Without the services every method answers as if there were none -- no
- * slugs, no rows, nothing to do -- so a caller asks available() only to
- * decide whether to show something, never to stay safe.
+ * It holds that module's API, `\FreePBX::Oryk_services()->api()`, while the
+ * module is installed and enabled. Without it every method answers as if
+ * there were no services -- no slugs, no rows, nothing done -- so a caller
+ * asks available() only to decide whether to show something, never to stay safe.
  */
 class ServicesLink extends Service
 {
-	/** Where the services' classes are, by the namespace prefix they are loaded by. */
-	const PREFIX = 'FreePBX\\Modules\\Oryk_Services\\';
+	/** The services module's pages: every link to a service, a job or a user's services starts here. */
+	const PAGE = '?display=oryk_services';
 
-	/** @var ServicesModule|null Null when there are no services to reach. */
+	/**
+	 * Its AJAX commands this module's own pages post (Overview's Services and
+	 * Jobs tables): only these are passed on, so one of its names that is also
+	 * one of ours -- listUsers -- stays ours.
+	 */
+	const ROUTED = ['listServices', 'listJobs', 'retryJob', 'deleteJob', 'setUserServices', 'userServicesImpact'];
+
+	/** @var object|null The services module's API, or null without it. */
 	private $module;
 
 	/**
-	 * @param object $freepbx FreePBX application instance.
-	 * @param bool   $enabled False to stand in for a PBX without the services: the tests.
+	 * @param object           $freepbx FreePBX application instance.
+	 * @param object|bool|null $api     The API to use; false for none; null to ask
+	 *                                  FreePBX for the module's. The tests pass one.
 	 */
-	public function __construct($freepbx, $enabled = true)
+	public function __construct($freepbx, $api = null)
 	{
 		parent::__construct($freepbx);
 
-		$this->module = $enabled && self::load() ? new ServicesModule($freepbx) : null;
+		if ($api === null) {
+			$api = $this->discover();
+		}
+
+		$this->module = is_object($api) ? $api : null;
 	}
 
 	/**
-	 * Register the services' class loader, once.
+	 * The services module's API, when it is installed and enabled.
 	 *
-	 * @return bool True when the services are there to load.
+	 * @return object|null The API, or null.
 	 */
-	private static function load()
+	private function discover()
 	{
-		static $loaded = null;
-
-		if ($loaded !== null) {
-			return $loaded;
+		if (!$this->moduleActive('oryk_services')) {
+			return null;
 		}
 
-		$root = dirname(__DIR__) . '/services/src/';
-		$loaded = is_file($root . 'Module.php');
+		try {
+			$services = \FreePBX::Oryk_services();
 
-		if ($loaded) {
-			spl_autoload_register(function ($class) use ($root) {
-				if (strpos($class, self::PREFIX) !== 0) {
-					return;
-				}
+			return is_object($services) && method_exists($services, 'api') ? $services->api() : null;
+		} catch (\Throwable $e) {
+			$this->logError('the services module could not be reached: ' . $e->getMessage());
 
-				$file = $root . str_replace('\\', '/', substr($class, strlen(self::PREFIX))) . '.php';
-
-				if (is_file($file)) {
-					require_once $file;
-				}
-			});
+			return null;
 		}
-
-		return $loaded;
 	}
 
 	/**
@@ -77,13 +78,14 @@ class ServicesLink extends Service
 	}
 
 	/**
-	 * The AJAX commands the services answer, none without them.
+	 * The AJAX commands this module passes on to the services: ROUTED, as far
+	 * as they answer them; none without them.
 	 *
 	 * @return array<int, string> Command names.
 	 */
 	public function commands()
 	{
-		return $this->module ? ServicesModule::COMMANDS : [];
+		return $this->module ? array_values(array_intersect(self::ROUTED, (array) constant(get_class($this->module) . '::COMMANDS'))) : [];
 	}
 
 	/**
@@ -93,7 +95,7 @@ class ServicesLink extends Service
 	 */
 	public function reads()
 	{
-		return $this->module ? ServicesModule::READS : [];
+		return $this->module ? array_values(array_intersect($this->commands(), (array) constant(get_class($this->module) . '::READS'))) : [];
 	}
 
 	/**
@@ -108,62 +110,10 @@ class ServicesLink extends Service
 	public function ajax($command, array $request, ?array $scope = null)
 	{
 		if (!$this->module) {
-			return ['status' => false, 'message' => _('Services are not installed.')];
+			return ['status' => false, 'message' => _('Oryk Services is not installed.')];
 		}
 
 		return $this->module->ajax((string) $command, $request, $scope);
-	}
-
-	/**
-	 * Make and update the services' tables and defaults.
-	 *
-	 * @return array<int, string> What an operator should be told.
-	 */
-	public function install()
-	{
-		return $this->module ? $this->module->install() : [];
-	}
-
-	/**
-	 * One run of the job worker.
-	 *
-	 * @param string|null $extension One user, or null for every user with a queue.
-	 *
-	 * @return array<string, int> users, done, failed, purged.
-	 */
-	public function runJobs($extension = null)
-	{
-		return $this->module ? $this->module->runJobs($extension) : ['users' => 0, 'done' => 0, 'failed' => 0, 'purged' => 0];
-	}
-
-	/**
-	 * Run every handler of an event, outside any job.
-	 *
-	 * @param string               $event   granted|revoked.
-	 * @param array<string, mixed> $payload extension and service at least.
-	 *
-	 * @return void
-	 */
-	public function dispatch($event, array $payload)
-	{
-		if ($this->module) {
-			$this->module->dispatch((string) $event, $payload);
-		}
-	}
-
-	/**
-	 * Run the services' own job for an event's service.
-	 *
-	 * @param string               $event   granted|revoked.
-	 * @param array<string, mixed> $payload See docs/hooks.md.
-	 *
-	 * @return void
-	 */
-	public function ownJob($event, array $payload)
-	{
-		if ($this->module) {
-			$this->module->ownJob((string) $event, $payload);
-		}
 	}
 
 	/**
@@ -261,42 +211,6 @@ class ServicesLink extends Service
 	}
 
 	/**
-	 * Every service, as one user has it.
-	 *
-	 * @param string $extension The user.
-	 *
-	 * @return array<int, array<string, mixed>> Rows.
-	 */
-	public function userServices($extension)
-	{
-		return $this->module ? $this->module->userServices((string) $extension) : [];
-	}
-
-	/**
-	 * Where a user's services stand while jobs run.
-	 *
-	 * @param string $extension The user.
-	 *
-	 * @return array<string, mixed> By service slug.
-	 */
-	public function jobStatus($extension)
-	{
-		return $this->module ? $this->module->jobStatus((string) $extension) : [];
-	}
-
-	/**
-	 * One service, by its slug.
-	 *
-	 * @param string $slug The service.
-	 *
-	 * @return array<string, mixed>|null The row, or null.
-	 */
-	public function serviceBySlug($slug)
-	{
-		return $this->module ? $this->module->serviceBySlug((string) $slug) : null;
-	}
-
-	/**
 	 * Every service, for a picker.
 	 *
 	 * @return array<int, array<string, mixed>> Rows with slug and name.
@@ -304,18 +218,6 @@ class ServicesLink extends Service
 	public function serviceChoices()
 	{
 		return $this->module ? $this->module->serviceChoices() : [];
-	}
-
-	/**
-	 * A service's parents, children and requirements, for its page.
-	 *
-	 * @param string $slug The service, or '' for a new one.
-	 *
-	 * @return array<string, mixed> See Services::related().
-	 */
-	public function related($slug)
-	{
-		return $this->module ? $this->module->related((string) $slug) : [];
 	}
 
 	/**
@@ -409,29 +311,5 @@ class ServicesLink extends Service
 	public function jobTitle(array $job)
 	{
 		return $this->module ? $this->module->jobTitle($job) : '';
-	}
-
-	/**
-	 * The Services list's filters, as a request has them.
-	 *
-	 * @param array<string, mixed> $request The request.
-	 *
-	 * @return array<string, mixed> The filters.
-	 */
-	public function serviceFilters(array $request)
-	{
-		return $this->module ? $this->module->serviceFilters($request) : [];
-	}
-
-	/**
-	 * The Jobs list's filters, as a request has them.
-	 *
-	 * @param array<string, mixed> $request The request.
-	 *
-	 * @return array<string, mixed> The filters.
-	 */
-	public function jobFilters(array $request)
-	{
-		return $this->module ? $this->module->jobFilters($request) : [];
 	}
 }

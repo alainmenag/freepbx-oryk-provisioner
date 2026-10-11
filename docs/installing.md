@@ -41,10 +41,10 @@ http://<pbx>/provisioner/<mac>
 so the filename a phone asks for arrives as the request path. `uninstall()`
 removes the symlink — and only if it still resolves to this module's engine.
 
-Install also schedules three jobs with FreePBX's scheduler, each run every
-minute as the web user: the fail2ban sync, the open-provisioning sweep, and
-the worker that runs [service jobs](jobs.md) an upgrade queued. Uninstalling
-removes all three. It also sets up the Realtime bridge that lets a sign-up
+Install also schedules two jobs with FreePBX's scheduler, each run every
+minute as the web user: the fail2ban sync and the open-provisioning sweep.
+Uninstalling removes both. (The service job worker it ran until 1.4.0 is
+removed on upgrade: services are [Oryk Services](https://github.com/alainmenag/freepbx-oryk-services) now.) It also sets up the Realtime bridge that lets a sign-up
 register before Apply Config, and says what that needs — see
 [Registering before Apply Config](endpoint.md#registering-before-apply-config).
 

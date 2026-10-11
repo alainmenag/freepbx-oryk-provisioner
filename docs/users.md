@@ -90,45 +90,11 @@ MACs, which a plain delete leaves.
 
 ## Services
 
-A user's **Services** tab lists every [service](concepts.md) in two lists,
-**Service Packs** and **Services**, each with a box: tick it to assign the
-service to the user, untick it to take it away. Nothing is saved as you tick.
-A changed row is marked *to assign* or *to unassign*, and **Save** in the
-action bar asks first, listing what will be assigned and unassigned, what the
-user gains and loses -- with what that does on the PBX, where it does
-something: losing Voicemail removes the mailbox -- and anything unassigned
-that the user keeps through another pack. **Reset** puts the boxes back. There is no Apply Config.
-
-Assigning a service pack gives the user every service under it; those are
-marked *included in* the pack, with a half-filled box, and stay with the user
-for as long as the pack is assigned and holds them. One can still be ticked on
-its own, and then stays when the pack goes. The button at the end of a pack's
-row, which counts what it gives, opens that list; click the line above the
-list to show it as a tree, pack inside pack, and again to go back. Both follow
-the boxes as they are ticked, before anything is saved.
-
-A service a pack includes can be **withheld** from this one user: the button
-beside *included in* marks it *to withhold*, and Save takes it away -- it and,
-if it is a pack itself, everything under it, struck through and marked
-*withheld with* it. The pack stays assigned and gives the rest. A withheld
-service shows *withheld from* the pack, and the button beside that gives it
-back; ticking it assigns it outright instead. Only a service included in an
-assigned pack can be withheld, never one assigned on its own, and a withhold
-goes with the pack: unassign the pack and the withhold is forgotten, so
-assigning the pack again gives all of it.
-
-A service that requires others says *also gives* them on its row, and the
-user holds them as long as it holds that service — whether it is ticked or
-comes through a pack. One held that way shows *required by* the service, and
-cannot be withheld while it is.
-
-Renumbering a user keeps its services, deleting it removes them, and deleting
-a service takes it off every user.
-
-Everything saved at once is one change: a [job](jobs.md), run straight away,
-when it changes what the user has. Swapping one pack for another in a single
-save leaves alone the services both give. A service whose job is queued,
-running or has failed says so beside it, with a link to the job.
+With [Oryk Services](https://github.com/alainmenag/freepbx-oryk-services) installed, a user's **Services** tab opens that
+module's page for the user, where its services and packs are assigned. The
+provisioner carries them along: renumbering a user moves its services, jobs
+and calendar to the new number, and deleting it removes them. Without that
+module the tab is not there.
 
 ## From Domain
 

@@ -53,10 +53,6 @@ use FreePBX\Modules\Oryk_Provisioner\UsermanManager;
 use FreePBX\Modules\Oryk_Provisioner\Users;
 use FreePBX\Modules\Oryk_Provisioner\Vendor;
 use FreePBX\Modules\Oryk_Provisioner\VoicemailManager;
-use FreePBX\Modules\Oryk_Services\CalendarManager;
-use FreePBX\Modules\Oryk_Services\Jobs;
-use FreePBX\Modules\Oryk_Services\ServiceEngine;
-use FreePBX\Modules\Oryk_Services\Services;
 
 // What the PBX is set to, for the tests that would otherwise depend on what
 // the machine running them happens to be called
@@ -78,6 +74,48 @@ function is_eq($label, $got, $want)
 		$label,
 		$ok ? '' : 'got ' . json_encode($got) . ', wanted ' . json_encode($want)
 	);
+}
+
+/**
+ * The services module's API as the provisioner sees it, answering for one
+ * service and one user without a table: what ServicesLink holds while
+ * oryk_services is installed. See ARCHITECTURE.md, "Services".
+ */
+class FakeServicesApi
+{
+	const COMMANDS = ['listServices', 'listJobs', 'setUserServices', 'listUsers', 'saveService'];
+	const READS = ['listServices', 'listJobs', 'listUsers'];
+
+	/** @var array<int, array<int, mixed>> Every call made, as [method, args...]. */
+	public $calls = [];
+
+	public function __call($method, $args)
+	{
+		$this->calls[] = array_merge([$method], $args);
+
+		switch ($method) {
+			case 'userSlugs':
+				return (string) $args[0] === '9990000001' ? ['guest-user', 'support'] : [];
+			case 'hasService':
+			case 'hasCalendar':
+				return false;
+			case 'jobRow':
+				return null;
+			case 'jobTitle':
+				return '';
+			case 'jobLabels':
+				return ['state' => [], 'reason' => [], 'source' => []];
+			case 'ajax':
+				return ['status' => true, 'command' => $args[0], 'scope' => $args[2]];
+			case 'userDeleting':
+			case 'userDeleted':
+			case 'userRenumbered':
+			case 'clearJobs':
+				return null;
+			default:
+				return [];
+		}
+	}
 }
 
 $TEMPORARY = [];
@@ -469,11 +507,11 @@ is_eq('a handset is not a user, and is not deleted as one', $s['users']->remove(
 is_eq('nothing was deleted', FreePBX::$core->deleted, []);
 
 
-echo "\nevery global class named in src/ and services/src/ is qualified or imported:\n";
+echo "\nevery global class named in src/ is qualified or imported:\n";
 
 $unqualified = [];
 
-foreach (array_merge(glob(__DIR__ . '/../src/*.php'), glob(__DIR__ . '/../services/src/*.php'), glob(__DIR__ . '/../services/src/Jobs/*.php')) as $file) {
+foreach (glob(__DIR__ . '/../src/*.php') as $file) {
 	$unqualified = array_merge($unqualified, oryk_unqualified_classes($file));
 }
 
@@ -483,41 +521,64 @@ foreach (array_merge(glob(__DIR__ . '/../src/*.php'), glob(__DIR__ . '/../servic
 // deletes a device with call history.
 is_eq('nothing unqualified', $unqualified, []);
 
-echo "\nthe services boundary: one door each way:\n";
+echo "\nthe services are another module's, reached through one door:\n";
 
-// What step two of the split lifts out has to be lifted out whole: nothing
-// in services/ may lean on the provisioner, and the provisioner reaches the
-// services only through ServicesLink. See ARCHITECTURE.md, "The services boundary".
-$crossing = function ($files, $needle) {
-	$found = [];
-
-	foreach ($files as $file) {
-		if (strpos(file_get_contents($file), $needle) !== false) {
-			$found[] = str_replace(dirname(__DIR__) . '/', '', realpath($file));
-		}
-	}
-
-	return $found;
-};
+// Only ServicesLink asks anything of oryk_services, and only through its API:
+// no file here names that module's classes. See ARCHITECTURE.md, "Services".
 $root = dirname(__DIR__);
-$outside = array_merge(
-	glob($root . '/*.php'), glob($root . '/src/*.php'), glob($root . '/views/*.php'),
-	glob($root . '/views/partials/*.php'), glob($root . '/bin/*'), glob($root . '/engine/*.php')
-);
-$inside = array_merge(glob($root . '/services/src/*.php'), glob($root . '/services/src/Jobs/*.php'));
-is_eq('only ServicesLink names the services\' namespace', $crossing($outside, 'Oryk_Services\\'), ['src/ServicesLink.php']);
-is_eq('and nothing in services/ names the provisioner\'s', $crossing($inside, 'Oryk_Provisioner\\'), []);
+$naming = [];
+
+foreach (array_merge(glob($root . '/*.php'), glob($root . '/src/*.php'), glob($root . '/views/*.php'), glob($root . '/views/partials/*.php'), glob($root . '/bin/*'), glob($root . '/engine/*.php')) as $file) {
+	if (strpos(file_get_contents($file), 'Oryk_Services\\') !== false) {
+		$naming[] = str_replace($root . '/', '', $file);
+	}
+}
+
+is_eq('no file names the services module\'s namespace', $naming, []);
+$asking = [];
+
+foreach (array_merge(glob($root . '/*.php'), glob($root . '/src/*.php'), glob($root . '/views/*.php'), glob($root . '/views/partials/*.php')) as $file) {
+	if (strpos(file_get_contents($file), 'FreePBX::Oryk_services(') !== false) {
+		$asking[] = str_replace($root . '/', '', $file);
+	}
+}
+
+is_eq('and only ServicesLink asks it', $asking, ['src/ServicesLink.php']);
 
 echo "\nwithout the services, the provisioner answers as if there were none:\n";
 
-$none = new ServicesLink(build()['app'], false);
-is_eq('none are available', $none->available(), false);
+$none = new ServicesLink(build()['app']);
+is_eq('the module not installed, none are available', $none->available(), false);
 is_eq('no command is theirs', [$none->commands(), $none->reads()], [[], []]);
 is_eq('a user holds nothing', [$none->userSlugs('1001'), $none->hasService('1001', 'voicemail')], [[], false]);
 is_eq('a command asked anyway is refused', $none->ajax('listServices', [])['status'], false);
 is_eq('a user\'s delete and renumber carry nothing', [$none->userDeleting('1001'), $none->userDeleted('1001'), $none->userRenumbered('1001', '1002')], [null, null, null]);
-is_eq('no rows, no job, no filters', [$none->serviceChoices(), $none->jobRow(1), $none->serviceFilters([]), $none->jobLabels(), $none->install()], [[], null, [], [], []]);
-is_eq('with them, they are', (new ServicesLink(build()['app']))->available(), true);
+is_eq('no rows, no job, no labels', [$none->serviceChoices(), $none->jobRow(1), $none->jobLabels()], [[], null, []]);
+
+echo "\nwith them, it asks their API:\n";
+
+$app = build()['app'];
+$app->Modules->active = ['oryk_services'];
+FreePBX::$modules['Oryk_services'] = new class {
+	public function api()
+	{
+		return new FakeServicesApi();
+	}
+};
+is_eq('installed and enabled, the module\'s own API is found', (new ServicesLink($app))->available(), true);
+$app->Modules->active = [];
+is_eq('disabled, it is not asked', (new ServicesLink($app))->available(), false);
+FreePBX::$modules = [];
+
+$api = new FakeServicesApi();
+$link = new ServicesLink(build()['app'], $api);
+is_eq('they are available', $link->available(), true);
+is_eq('the ones Overview posts are passed on, and their reads to a GET', [$link->commands(), $link->reads()], [['listServices', 'listJobs', 'setUserServices'], ['listServices', 'listJobs']]);
+is_eq('a name that is also ours stays ours', in_array('listUsers', $link->commands(), true), false);
+is_eq('a command goes to them with the scope', $link->ajax('listJobs', [], ['jobs' => ['extensions' => ['1001']]]), ['status' => true, 'command' => 'listJobs', 'scope' => ['jobs' => ['extensions' => ['1001']]]]);
+$link->userDeleting('1001');
+$link->userRenumbered('1001', '1002');
+is_eq('a user\'s life is passed on, as strings', array_slice($api->calls, -2), [['userDeleting', '1001'], ['userRenumbered', '1001', '1002']]);
 
 echo "\nwith the CDR module installed, the history is actually walked:\n";
 
@@ -2187,7 +2248,7 @@ function overview_build(array $bans)
 	$profiles = new Profiles($app, $files);
 	$requestLog = new \FreePBX\Modules\Oryk_Provisioner\ProvisioningLog($app);
 	$banRepo = new Bans($app);
-	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo, new ServicesLink($app));
+	$navigator = new Navigator($app, $s['clients'], $profiles, new \FreePBX\Modules\Oryk_Provisioner\Resources($app, $profiles, $files), $s['users'], $requestLog, $banRepo, new ServicesLink($app, new FakeServicesApi()));
 	$client = ['id' => '5', 'mac' => '0004f282e824', 'device_id' => '1001', 'profile_id' => '2', 'public_ip' => '203.0.113.7', 'description' => 'Desk'];
 
 	$app->Database->fetches = [
@@ -2438,134 +2499,18 @@ is_eq('clearing a MAC binds it', $cleared[1][1], [':mac_0' => '0004f282e824']);
 $logs = new LogRepo($s['app']);
 is_eq('a client that sent nothing has nothing stored', $logs->clientLogStats(987654321), ['files' => 0, 'bytes' => 0]);
 
-echo "\n  a user's own calendar:\n";
-
-FreePBX::$calendar = new StubCalendar();
-FreePBX::$findmefollow = new StubFindmefollow();
-$s['app']->Modules->active = ['calendar', 'findmefollow'];
-$calendars = new CalendarManager($s['app']);
-is_eq('a user with no calendar has none', $calendars->find('1001'), null);
-$id = $calendars->ensure('1001');
-is_eq('granted, a local calendar is made and named after the user', [FreePBX::$calendar->calendars[$id]['name'], FreePBX::$calendar->calendars[$id]['type'], FreePBX::$calendar->calendars[$id]['timezone']], ['1001', 'local', 'America/New_York']);
-is_eq('marked as the module\'s', CalendarManager::isOurs(FreePBX::$calendar->calendars[$id]), true);
-is_eq('a Follow Me row is made with Follow Me itself off', FreePBX::$findmefollow->added, [['1001', ['ddial' => 'CHECKED']]]);
-is_eq('and linked, matching outside events', array_intersect_key(FreePBX::$findmefollow->rows['1001'], array_flip(['calendar_enable', 'calendar_id', 'calendar_group_id', 'calendar_match'])), ['calendar_enable' => 1, 'calendar_id' => $id, 'calendar_group_id' => '', 'calendar_match' => 'no']);
-is_eq('granted again, the same calendar is kept', [$calendars->ensure('1001'), count(FreePBX::$calendar->calendars), count(FreePBX::$findmefollow->added)], [$id, 1, 1]);
-is_eq('found by the row\'s link', $calendars->find('1001')['id'], $id);
-FreePBX::$findmefollow->rows['1001']['calendar_id'] = '';
-is_eq('and by name when the row has lost it', $calendars->find('1001')['id'], $id);
-is_eq('has() says so', [$calendars->has('1001'), $calendars->has('1002')], [true, false]);
-is_eq('renumbered, the calendar follows in name', [$calendars->rename('1001', '1003'), FreePBX::$calendar->calendars[$id]['name'], CalendarManager::isOurs(FreePBX::$calendar->calendars[$id])], [true, '1003', true]);
-$calendars->rename('1003', '1001');
-FreePBX::$calendar->calendars['theirs'] = ['name' => '1002', 'description' => 'the boss', 'type' => 'local'];
-FreePBX::$findmefollow->addSettingsById('1002', ['calendar_enable' => 1, 'calendar_id' => 'theirs']);
-is_eq('a calendar an admin linked is found but not the module\'s', [$calendars->find('1002')['id'], $calendars->has('1002')], ['theirs', false]);
-is_eq('revoked, it is unlinked and kept', [$calendars->remove('1002'), FreePBX::$findmefollow->rows['1002']['calendar_enable'], FreePBX::$findmefollow->rows['1002']['calendar_id'], isset(FreePBX::$calendar->calendars['theirs'])], [false, 0, '', true]);
-is_eq('revoked, the module\'s own is unlinked and deleted', [$calendars->remove('1001'), FreePBX::$findmefollow->rows['1001']['calendar_enable'], FreePBX::$calendar->deleted], [true, 0, [$id]]);
-is_eq('and revoked again, nothing happens', [$calendars->remove('1001'), $calendars->find('1001')], [false, null]);
-$s['app']->Modules->active = [];
-is_eq('without the Calendar module there is no calendar', $calendars->find('1001'), null);
-$refusal = '';
-try {
-	$calendars->ensure('1001');
-} catch (\RuntimeException $e) {
-	$refusal = $e->getMessage();
-}
-is_eq('and a grant refuses, saying why', $refusal, 'the Calendar module is not installed and enabled');
-is_eq('the Calendar job names its service and its effects', [\FreePBX\Modules\Oryk_Services\Jobs\Calendar::SERVICES, array_keys(\FreePBX\Modules\Oryk_Services\Jobs\Calendar::effects())], [['calendar'], ['granted', 'revoked']]);
-
-echo "\n  a service and what it is under:\n";
-
-// [parent, child], by slug: basic and advanced are both over vm; vm is over greeting.
-$links = [['basic', 'vm'], ['advanced', 'vm'], ['vm', 'greeting']];
-is_eq('a service is under more than one parent', Services::ancestors($links, 'vm'), ['basic', 'advanced']);
-is_eq('and everything over those, at any depth', Services::ancestors($links, 'greeting'), ['vm', 'basic', 'advanced']);
-is_eq('everything under a service, at any depth', Services::descendants($links, 'basic'), ['vm', 'greeting']);
-is_eq('a service linked to nothing', [Services::ancestors($links, 'fax'), Services::descendants($links, 'fax')], [[], []]);
-is_eq('a second parent closes no loop', Services::loops($links, 'greeting', ['vm', 'fax'], []), false);
-is_eq('nor does a child two parents already share', Services::loops($links, 'fax', [], ['vm']), false);
-is_eq('a service under itself does', Services::loops($links, 'vm', ['vm'], []), true);
-is_eq('so does a parent that is already under it', Services::loops($links, 'basic', ['greeting'], ['vm']), true);
-is_eq('and one service on both sides', Services::loops($links, 'fax', ['basic'], ['basic']), true);
-is_eq('a new service is checked through what it is given', Services::loops($links, '', ['greeting'], ['basic']), true);
-is_eq('its own old links are not held against it', Services::loops($links, 'vm', ['greeting'], []), false);
-is_eq('a loop in the data is walked once, not for ever', Services::descendants([['a', 'b'], ['b', 'a']], 'a'), ['b']);
-is_eq('a slug of digits is still a string', Services::descendants([['100', '200']], '100'), ['200']);
-// Assignments are slug => status: null given, 0 withheld.
-$given = function (array $slugs) { return array_fill_keys($slugs, null); };
-is_eq('a user has what it is assigned and everything under it', Services::held($links, $given(['basic'])), ['basic', 'greeting', 'vm']);
-is_eq('each once, however many packs it comes through', Services::held($links, $given(['vm', 'advanced', 'basic'])), ['advanced', 'basic', 'greeting', 'vm']);
-is_eq('and a user assigned nothing has nothing', Services::held($links, []), []);
-is_eq('a withheld service is taken, with everything under it', Services::held($links, ['basic' => null, 'vm' => 0]), ['basic']);
-is_eq('but never what is assigned itself', Services::held($links, ['basic' => null, 'vm' => 0, 'greeting' => null]), ['basic', 'greeting']);
-is_eq('a withhold of nothing held takes nothing', Services::held($links, ['fax' => null, 'vm' => 0]), ['fax']);
-// A requirement is an edge of its own kind: cal requires fmfm, which basic is over.
-$edges = array_merge($links, [['basic', 'fmfm'], ['cal', 'fmfm', Services::REQUIRES]]);
-is_eq('a service holds what it requires', Services::held($edges, $given(['cal'])), ['cal', 'fmfm']);
-is_eq('and a pack over it gives that too', Services::held(array_merge($edges, [['pro', 'cal']]), $given(['pro'])), ['cal', 'fmfm', 'pro']);
-is_eq('a requirement is no pack: what it requires is not under it', Services::descendants(array_filter($edges, function ($edge) { return empty($edge[2]); }), 'cal'), []);
-is_eq('a withheld pack takes what is under it, not what something held requires', Services::held(array_merge($edges, [['vm', 'fmfm']]), ['cal' => null, 'basic' => null, 'vm' => 0]), ['basic', 'cal', 'fmfm']);
-is_eq('the required are read off what is held', Services::required($edges, ['cal', 'fax']), ['fmfm']);
-$change = Services::assignedAfter($edges, ['basic' => null, 'cal' => null], [], [], ['fmfm']);
-is_eq('a withhold of a required service is refused as required', [$change['withhold'], $change['refused'], $change['required']], [[], [], ['fmfm']]);
-$change = Services::assignedAfter($edges, ['basic' => null], [], [], ['fmfm']);
-is_eq('and allowed once nothing held requires it', [$change['withhold'], $change['required']], [['fmfm'], []]);
-is_eq('a change that requires a service grants it', array_map(function ($step) { return $step['service'] . ':' . $step['event']; }, ServiceEngine::changes($edges, [], $edges, ['cal' => null])), ['cal:granted', 'fmfm:granted']);
-is_eq('and one that drops it revokes it, unless held another way', array_map(function ($step) { return $step['service'] . ':' . $step['event']; }, ServiceEngine::changes($edges, ['cal' => null, 'basic' => null], $edges, ['basic' => null])), ['cal:revoked']);
-is_eq('given and withheld are read off the status', [Services::given(['a' => null, 'b' => 0, 'c' => null]), Services::withheld(['a' => null, 'b' => 0, 'c' => null])], [['a', 'c'], ['b']]);
-is_eq('slugs arrive as one string', Services::slugs('vm, Basic,vm,not ok,,-x,'), ['vm', 'basic']);
-is_eq('or as an array', Services::slugs(['fax', 'fax', [], 'call-recording']), ['fax', 'call-recording']);
-is_eq('and nothing is no slugs', Services::slugs(''), []);
-
-is_eq('a slug is made from a name', Services::slugify('  On-Demand  Recording! '), 'on-demand-recording');
-is_eq('and from one with nothing usable in it', Services::slugify('***'), 'service');
-is_eq('never longer than the column', strlen(Services::slugify(str_repeat('ab ', 40))) <= Services::SLUG_MAX, true);
-is_eq('a default is the module\'s', [Services::managed('voicemail'), Services::managed('my-pack'), Services::managed(null)], [true, false, false]);
-
-$defaultLinks = [];
-$unknown = [];
-foreach (Services::DEFAULTS as $slug => $default) {
-	if (!preg_match(Services::SLUG_PATTERN, (string) $slug) || strlen($slug) > Services::SLUG_MAX || trim((string) ($default['name'] ?? '')) === '') {
-		$unknown[] = $slug;
-	}
-	foreach ($default['services'] ?? [] as $child) {
-		if (!isset(Services::DEFAULTS[$child])) {
-			$unknown[] = $slug . ' > ' . $child;
-		}
-		$defaultLinks[] = [(string) $slug, (string) $child];
-	}
-}
-is_eq('every default is a slug with a name, over defaults only', $unknown, []);
-is_eq('no two defaults share a name', count(array_unique(array_column(Services::DEFAULTS, 'name'))), count(Services::DEFAULTS));
-$looped = [];
-foreach ($defaultLinks as $link) {
-	if ($link[0] === $link[1] || in_array($link[0], Services::descendants($defaultLinks, $link[1]), true)) {
-		$looped[] = $link[0] . ' > ' . $link[1];
-	}
-}
-is_eq('and the defaults close no loop', $looped, []);
+echo "\n  {{extension.services}}:\n";
 
 $s = build();
-$services = new Services($s['app']);
-is_eq('a service needs a name', $services->saveService(['name' => '  '])['status'], false);
-is_eq('and one that fits the column', $services->saveService(['name' => str_repeat('x', 192)])['status'], false);
-
-/** The services, answering for one user without a table. */
-class GuestServices extends ServicesLink
-{
-	public function userSlugs($extension)
-	{
-		return (string) $extension === '9990000001' ? ['guest-user', 'support'] : [];
-	}
-}
-
-$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), new Settings($s['app']), new GuestServices($s['app']));
+$template = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), new Settings($s['app']), new ServicesLink($s['app'], new FakeServicesApi()));
 $render = function (array $client) use ($template) {
 	return $template->renderTemplate('SERVICES={{extension.services}}', $template->provisioningValues($client));
 };
 is_eq('a template is given them as one value', $render(['mac' => '0004f282e824', 'extension' => '9990000001']), 'SERVICES=guest-user,support');
 is_eq('a user with none renders empty', $render(['mac' => '0004f282e824', 'extension' => '1001']), 'SERVICES=');
 is_eq('and so does a client with no user', $render(['mac' => '0004f282e824']), 'SERVICES=');
+$bare = new \FreePBX\Modules\Oryk_Provisioner\Template($s['app'], new PbxDevices($s['app']), new Settings($s['app']), new ServicesLink($s['app'], false));
+is_eq('without the services module, everyone renders empty', $bare->renderTemplate('SERVICES={{extension.services}}', $bare->provisioningValues(['mac' => '0004f282e824', 'extension' => '9990000001'])), 'SERVICES=');
 
 $awkward = ['extension.name' => 'R&D "East" <1>'];
 is_eq(
@@ -2576,75 +2521,18 @@ is_eq(
 is_eq('one that is not is given them as they are', $template->renderConfig('NAME={{extension.name}}', $awkward), 'NAME=R&D "East" <1>');
 is_eq('and so is one that only opens with a bracket', $template->renderConfig('<<VOIP>>{{extension.name}}', $awkward), '<<VOIP>>R&D "East" <1>');
 
-echo "\n  what a change to services makes a job of:\n";
+echo "\n  module.xml:\n";
 
-// gold is over fax and sms; silver over fax.
-$packs = [['gold', 'fax'], ['gold', 'sms'], ['silver', 'fax']];
-$change = function (array $before, array $after, ?array $linksAfter = null) use ($packs) {
-	// A list is slugs given; a map is slug => status as the class carries them.
-	$rows = function (array $one) { return $one && array_keys($one) === range(0, count($one) - 1) ? array_fill_keys($one, null) : $one; };
-
-	return array_map(function ($step) {
-		return $step['event'][0] . ':' . $step['service'] . ($step['via'] !== null ? '<' . $step['via'] : '');
-	}, ServiceEngine::changes($packs, $rows($before), $linksAfter ?? $packs, $rows($after)));
-};
-is_eq('assigning a pack grants it and all under it', $change([], ['gold']), ['g:fax<gold', 'g:gold', 'g:sms<gold']);
-is_eq('nothing already held is granted again', $change(['silver'], ['silver', 'gold']), ['g:gold', 'g:sms<gold']);
-is_eq('nothing still held another way is revoked', $change(['silver', 'gold'], ['silver']), ['r:gold', 'r:sms<gold']);
-is_eq('revokes come before grants', $change(['silver'], ['gold']), ['r:silver', 'g:gold', 'g:sms<gold']);
-is_eq('the same state again is nothing', $change(['gold'], ['gold']), []);
-is_eq('a pack losing a service revokes it', $change(['gold'], ['gold'], [['gold', 'fax'], ['silver', 'fax']]), ['r:sms<gold']);
-is_eq('one gaining a service grants it', $change(['silver'], ['silver'], [['gold', 'fax'], ['gold', 'sms'], ['silver', 'fax'], ['silver', 'sms']]), ['g:sms<silver']);
-is_eq('a deleted service goes, with what came only through it', $change(['gold', 'silver'], ['silver'], [['silver', 'fax']]), ['r:gold', 'r:sms<gold']);
-is_eq('withholding a service the user has through a pack revokes it', $change(['gold'], ['gold' => null, 'sms' => 0]), ['r:sms<gold']);
-is_eq('and giving it back grants it again', $change(['gold' => null, 'sms' => 0], ['gold']), ['g:sms<gold']);
-$after = function (array $before, array $assign, array $unassign, array $withhold = [], array $restore = []) use ($packs) {
-	$got = Services::assignedAfter($packs, $before, $assign, $unassign, $withhold, $restore);
-
-	return [$got['after'], $got['assign'], $got['unassign'], $got['withhold'], $got['restore'], $got['refused']];
-};
-is_eq('several services at once are one change', $after(['silver' => null, 'fax' => null], ['gold', 'fax'], ['silver', 'sms']), [['fax' => null, 'gold' => null], ['gold'], ['silver'], [], [], []]);
-is_eq('and a pack swapped for another never revokes what both give', $change(['silver'], $after(['silver' => null], ['gold'], ['silver'])[0]), ['r:silver', 'g:gold', 'g:sms<gold']);
-is_eq('naming what is already so changes nothing', $after(['gold' => null], ['gold'], ['sms']), [['gold' => null], [], [], [], [], []]);
-is_eq('a service included in an assigned pack can be withheld', $after(['gold' => null], [], [], ['sms']), [['gold' => null, 'sms' => 0], [], [], ['sms'], [], []]);
-is_eq('one assigned itself, or not held at all, cannot', $after(['gold' => null, 'fax' => null], [], [], ['fax', 'silver']), [['gold' => null, 'fax' => null], [], [], [], [], ['fax', 'silver']]);
-is_eq('a withheld service is restored by name', $after(['gold' => null, 'sms' => 0], [], [], [], ['sms']), [['gold' => null], [], [], [], ['sms'], []]);
-is_eq('or replaced by assigning it', $after(['gold' => null, 'sms' => 0], ['sms'], []), [['gold' => null, 'sms' => null], ['sms'], [], [], [], []]);
-is_eq('a withhold is judged against the packs after the change', $after([], ['gold'], [], ['sms']), [['gold' => null, 'sms' => 0], ['gold'], [], ['sms'], [], []]);
-is_eq('withholding the pack a withhold came through, nothing is withheld', $after([], [], [], ['gold']), [[], [], [], [], [], ['gold']]);
-is_eq('a save of several is titled as one', Jobs::title(['name' => '', 'reason' => 'changed']), 'Several services');
-is_eq('a renamed default goes from a slug DEFAULTS dropped to one it has', array_filter(Services::RENAMED, function ($slug, $was) { return isset(Services::DEFAULTS[$was]) || !isset(Services::DEFAULTS[$slug]); }, ARRAY_FILTER_USE_BOTH), []);
-is_eq('each of the module\'s own jobs says what it does, both ways', array_values(array_filter(array_keys(\FreePBX\Modules\Oryk_Services\Reactions::jobs()), function ($slug) { return \FreePBX\Modules\Oryk_Services\Reactions::effect($slug, 'granted') === '' || \FreePBX\Modules\Oryk_Services\Reactions::effect($slug, 'revoked') === ''; })), []);
-is_eq('and a service with no job says nothing', \FreePBX\Modules\Oryk_Services\Reactions::effect('support', 'revoked'), '');
+$xml = simplexml_load_file(dirname(__DIR__) . '/module.xml');
+is_eq('hooks nothing: the services module hooks Core and itself', isset($xml->hooks), false);
 preg_match('/const READS = \[(.*?)\];/s', $moduleSource = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php'), $reads);
 preg_match_all("/'([A-Za-z]+)'/", $reads[1] ?? '', $reads);
 preg_match('/function ajaxRequest.*?return true;/s', $moduleSource, $answered);
 is_eq('every command that only reads is one the module answers', array_values(array_filter($reads[1], function ($command) use ($answered) { return strpos($answered[0] ?? '', "case '$command':") === false; })), []);
 is_eq('and none of them saves, deletes, sets, clears, retries, uploads or purges', array_values(preg_grep('/^(save|delete|set|clear|retry|upload|purge)/', $reads[1])), []);
 is_eq('holders: is a service, scoped to everyone who has it', [Navigator::scopeAt('holders:voicemail'), Navigator::scopeAt('service:voicemail')], [['service' => 'voicemail', 'held' => '1'], ['service' => 'voicemail']]);
-is_eq('a filter is one of its values, or all', Jobs::filters(['state' => 'failed', 'reason' => 'x', 'source' => 'upgrade']), ['state' => 'failed', 'reason' => 'all', 'source' => 'upgrade']);
-is_eq('every value has a label', [array_keys(Jobs::labels()['state']), array_keys(Jobs::labels()['reason']), array_keys(Jobs::labels()['source'])], [Jobs::STATES, Jobs::REASONS, Jobs::SOURCES]);
-is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::title(['name' => 'Gold'])], ['Module upgrade', 'Gold']);
 is_eq('a job is a scope', Navigator::scopeAt('job:12'), ['job' => '12']);
 is_eq('the Jobs list is narrowed when its scope is', [Navigator::narrows('jobs', ['jobs' => ['extensions' => ['100']]]), Navigator::narrows('jobs', ['jobs' => null])], [true, false]);
-$ownJobs = \FreePBX\Modules\Oryk_Services\Reactions::jobs();
-is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['calendar', 'call-recording-external', 'call-recording-internal', 'find-me-follow', 'on-demand-recording', 'voicemail']);
-is_eq('and each is one of the module\'s own services', array_values(array_filter(array_keys($ownJobs), function ($slug) { return !Services::managed($slug); })), []);
-is_eq('a listener with no services is for every one', ServiceEngine::onlyFor(['module' => 'Mymodule']), null);
-is_eq('one with services is for those slugs', ServiceEngine::onlyFor(['services' => 'voicemail, Call-Recording,,bad slug']), ['voicemail', 'call-recording']);
-is_eq('the done_by list reads back', Jobs::doneBy(['done_by' => 'oryk_provisioner,testmod']), ['oryk_provisioner', 'testmod']);
-
-// The module class is not loaded here (it needs FreePBX), so its methods are read off the file.
-$hooks = simplexml_load_file(dirname(__DIR__) . '/module.xml');
-$moduleSource = file_get_contents(dirname(__DIR__) . '/Oryk_provisioner.class.php');
-$hooked = [];
-foreach ($hooks->hooks->children() as $module => $methods) {
-	foreach ($methods->method as $method) {
-		$hooked[] = $module . '::' . $method['callingMethod'] . ' -> ' . $method . (preg_match('/public function ' . preg_quote((string) $method, '/') . '\\(/', $moduleSource) ? '' : ' (missing)');
-	}
-}
-is_eq('module.xml hooks Core\'s delUser, and itself for its own jobs, to methods that exist', $hooked, ['core::delUser -> coreDelUser', 'oryk_provisioner::serviceGranted -> runOwnJobGranted', 'oryk_provisioner::serviceRevoked -> runOwnJobRevoked']);
-is_eq('its own hook goes before a module that does not say', (string) $hooks->hooks->oryk_provisioner['priority'], '100');
 
 echo "\n  the module class imports every class it builds:\n";
 

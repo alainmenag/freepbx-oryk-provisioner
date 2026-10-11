@@ -47,6 +47,29 @@ class Notices extends Service
 	{
 		return [
 			[
+				'id' => 'services-moved',
+				'version' => 1,
+				'category' => 'services',
+				'level' => 'warning',
+				'dismissible' => false,
+				'text' => _('Services, packs and jobs are a module of their own now: Oryk Services. Install it to bring this PBX\'s back -- it takes over their tables, which are kept untouched until then.'),
+				'action' => '',
+				'target' => [],
+				// Only while the provisioner's old tables are there for it to take.
+				'when' => function () {
+					if ($this->moduleActive('oryk_services')) {
+						return false;
+					}
+
+					$stmt = $this->db->prepare(
+						"SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oryk_provisioner_services'"
+					);
+					$stmt->execute();
+
+					return (int) $stmt->fetchColumn() > 0;
+				},
+			],
+			[
 				'id' => 'first-profile',
 				'version' => 1,
 				'category' => 'welcome',

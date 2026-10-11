@@ -2,7 +2,7 @@
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
 	<repo>commercial</repo>
-	<version>1.3.3</version>
+	<version>1.4.0</version>
 	<dbversion>1.0.12</dbversion>
 	<publisher>Oryk</publisher>
 	<type>setup</type>
@@ -13,6 +13,7 @@
 	<license>AGPLv3</license>
 	<licenselink>http://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<changelog>
+		*1.4.0* &lt;strong&gt;Services, packs and jobs are a module of their own: Oryk Services&lt;/strong&gt; (oryk_services, github.com/alainmenag/freepbx-oryk-services), and leave the provisioner. Install it after this upgrade: it takes over the services tables, so every service, pack, assignment and job comes across as it was. Until it is installed a notice says so, nothing about services is shown, and the tables are left untouched -- nothing is ever dropped. With it, the provisioner shows them as before: the Services and Jobs sections and a user's Services tab open that module's pages, the Services and Jobs dropdowns, Overview's Services and Jobs tables and {{extension.services}} ask it, and deleting or renumbering a user carries its services and calendar along. &lt;strong&gt;A module that hooked Oryk_provisioner's serviceGranted or serviceRevoked must hook Oryk_services instead&lt;/strong&gt; (the event is the same); \FreePBX::Oryk_provisioner()-&gt;userServiceSlugs() and hasService() still answer, through it. The provisioner's service job worker is unscheduled on upgrade
 		*1.3.2* A &lt;strong&gt;Calendar&lt;/strong&gt; service: granted, a local calendar named after the user is made in the Calendar module and the user's Find Me/Follow Me is linked to it, matching outside its events, so an empty calendar changes nothing; revoked, Follow Me is unlinked and the calendar is deleted, events included. The calendar goes with the user when it is deleted and is renamed when it is renumbered; one you picked on the Follow Me page yourself is never touched. A service can now &lt;strong&gt;require&lt;/strong&gt; others (Requires, on its page): a user given it holds those too -- Calendar requires Find Me Follow -- shown as &lt;em&gt;also gives&lt;/em&gt; on the user's Services tab, with the required one marked &lt;em&gt;required by&lt;/em&gt; and not to be withheld while it is.
 		*1.3.1* The row of dropdowns under the section bar is now a &lt;strong&gt;trail&lt;/strong&gt; and a &lt;strong&gt;Related&lt;/strong&gt; line. The trail is the row you are on and what it belongs to -- a client's user, device and profile; a resource's profile; a job's user; a log entry's client -- each a dropdown of all of its kind, so a user or profile is switched from the crumb, with an x after the last that closes the row and goes up one. Related is every other kind with how many are in scope; one with nothing to list is dimmed. Nothing on the strip is a link but that x: a crumb or an entry opens its menu, and the row you are on is the menu's active row. Each menu holds the ten last touched rows -- a client's last request counts, a ban's last hit -- the one you are on first, says how many more there are, and typing searches all of them on the server. Menus open under their entry, never flipped over the strip, and one near the right edge hangs from the right. The Resources dropdown counts on list pages like the rest.
 		*1.3.0* Getting started. A new profile can be made from the module's &lt;strong&gt;library&lt;/strong&gt; (Start From, on a new profile): Default, Polycom VVX, AudioCodes 420HD and Grandstream GRP, and entries marked (untested) for Cisco SPA, Fanvil X, Mitel 6800 and Yealink T, each copied in with its resources and yours to edit from then on; a file the library cannot ship, such as firmware, is made with nothing uploaded and says what to upload. A client with no profile of its own, whose vendor has no profile named after it, is now answered from the profile named &lt;strong&gt;Default&lt;/strong&gt; when there is one, and Start From opens on the library's Default while no profile has that name. A new setting, &lt;strong&gt;Provisioning Server&lt;/strong&gt; (ORYK_PROVISIONING_SERVER), is {{provisioning.server}} in a template; blank is the Hostname followed by /provisioner. &lt;strong&gt;Notices&lt;/strong&gt; over the section bar say what to do next on a PBX that is just starting -- add a first profile, a first user, a first client -- and warn when no Hostname is set, or Provisioning is Open with no profile named Default, on the module's pages only, never the dashboard. One goes by itself once it no longer applies, its button leads to where the thing is done, and its x dismisses it for every admin; Settings -&gt; Show Dismissed Notices Again brings them back. A client's Device offers &lt;strong&gt;-- Auto Create --&lt;/strong&gt;: saving makes a PJSIP device on the next free 999... number, with no extension and no user, and puts the client on it. A template that begins with &lt;?xml has its values XML-escaped as they go in, so a name with an ampersand or a quote in it no longer breaks the file; any other template is unchanged. The class behind the two dashboard warnings is renamed DashboardNotices.
@@ -59,15 +60,6 @@
 			]]>
 		</oryk_provisioner>
 	</menuitems>
-	<hooks>
-		<core class="Core" namespace="FreePBX\modules">
-			<method callingMethod="delUser" class="Oryk_provisioner" namespace="FreePBX\modules">coreDelUser</method>
-		</core>
-		<oryk_provisioner class="Oryk_provisioner" namespace="FreePBX\modules" priority="100">
-			<method callingMethod="serviceGranted" class="Oryk_provisioner" namespace="FreePBX\modules">runOwnJobGranted</method>
-			<method callingMethod="serviceRevoked" class="Oryk_provisioner" namespace="FreePBX\modules">runOwnJobRevoked</method>
-		</oryk_provisioner>
-	</hooks>
 	<depends>
 		<module>core</module>
 	</depends>

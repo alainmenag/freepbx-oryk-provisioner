@@ -10,15 +10,13 @@
  * Clients is the provisioner clients pointing at this user, with a way to add
  * one already pointed at it.
  *
- * Services is partials/user_services.php: every service, ticked when this
- * user is assigned it, staged and saved together.
+ * Services is a link to the user's page in the services module, where its
+ * services are assigned; it is there only while that module is.
  *
  * @var array<string, mixed>             $user       extension ('' when new), name, email, from_domain, secure, clients, context
  * @var string                           $pbxDomain  What a blank From Domain resolves to
  * @var array<string, bool>              $available  Which of the other tabs have anything on them
- * @var string                           $tab        Tab to open on: user|clients|services
- * @var array<int, array<string, mixed>> $services   Services::userServices(), on the Services tab
- * @var array<string, array<string, mixed>> $serviceJobs Jobs::statusFor(), on the Services tab
+ * @var string                           $tab        Tab to open on: user|clients
  * @var array<int, array<string, mixed>> $navigator  Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>> $sections Navigator::sections() -- see partials/sections.php
  * @var string                           $version  Module version -- see partials/sections.php
@@ -35,9 +33,7 @@ $h = function ($value) {
 
 $extension = (string) $user['extension'];
 $isNew = $extension === '';
-$tab = (in_array($tab ?? '', ['clients', 'services'], true) && !empty($available[$tab])) ? $tab : 'user';
-$services = isset($services) && is_array($services) ? $services : [];
-$serviceJobs = isset($serviceJobs) && is_array($serviceJobs) ? $serviceJobs : [];
+$tab = (($tab ?? '') === 'clients' && !empty($available['clients'])) ? 'clients' : 'user';
 $clientCount = (int) ($user['clients'] ?? 0);
 
 $userUrl = '?display=oryk_provisioner&user=' . rawurlencode($extension);
@@ -55,7 +51,7 @@ $tabs = [
 	],
 	'services' => [
 		'label' => _('Services'),
-		'href' => $userUrl . '&tab=services',
+		'href' => '?display=oryk_services&user=' . rawurlencode($extension),
 		'disabled' => empty($available['services']),
 		'title' => _('Save the user first.'),
 	],
@@ -294,10 +290,6 @@ if ($clientCount > 0) {
 						</table>
 
 					</div>
-					<?php endif; ?>
-
-					<?php if ($tab === 'services'): ?>
-					<?php include __DIR__ . '/partials/user_services.php'; ?>
 					<?php endif; ?>
 
 				</div>

@@ -648,6 +648,18 @@ class FreePBX
 	public static $core;
 	public static $config = ['ASTSPOOLDIR' => '/var/spool/asterisk'];
 
+	/** @var array<string, object> Other modules' BMO objects, by class name: what `\FreePBX::Name()` answers. */
+	public static $modules = [];
+
+	public static function __callStatic($name, $args)
+	{
+		if (isset(self::$modules[$name])) {
+			return self::$modules[$name];
+		}
+
+		throw new \Exception('Unable to locate the FreePBX BMO Class ' . $name);
+	}
+
 	public static function Core()
 	{
 		if (self::$core === null) {
@@ -748,21 +760,6 @@ spl_autoload_register(function ($class) {
 	}
 
 	$file = __DIR__ . '/../src/' . str_replace('\\', '/', $relative) . '.php';
-
-	if (is_file($file)) {
-		require_once $file;
-	}
-});
-
-// And the services' own, as ServicesLink registers it.
-spl_autoload_register(function ($class) {
-	$prefix = 'FreePBX\\Modules\\Oryk_Services\\';
-
-	if (strpos($class, $prefix) !== 0) {
-		return;
-	}
-
-	$file = __DIR__ . '/../services/src/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
 
 	if (is_file($file)) {
 		require_once $file;

@@ -126,10 +126,10 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   DashboardNotices the module's dashboard notices
  *   LobbyContext     the lobby's dialplan, on Apply Config
  *
- * and the services, packs and their jobs, which live in services/ and are
- * reached only through one class -- see ARCHITECTURE.md, "The services boundary":
+ * and the services, packs and their jobs, which are a module of their own
+ * (oryk_services), reached only through one class -- see ARCHITECTURE.md, "Services":
  *
- *   ServicesLink     everything the provisioner asks of the services
+ *   ServicesLink     everything the provisioner asks of the services module
  */
 class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 {
@@ -300,7 +300,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->navigator = new Navigator($freepbx, $this->clients, $this->profiles, $this->resources, $this->users, $this->provisioningLog, $this->bans, $this->services, $this->devices);
 		$this->overview = new Overview($freepbx, $this->navigator, $this->users, $this->clients, $this->bans, $this->provisioningLog, $this->logs, new DeviceStatus($freepbx));
 		$this->previews = new Previews($freepbx, $this->clients, $this->matcher, $this->template);
-		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge, $this->services);
+		$this->installer = new Installer($freepbx, $this->schema, $this->files, $this->logs, $this->settings, $this->fail2ban, $bridge);
 
 		$this->endpoint = new Endpoint(
 			$freepbx,
@@ -509,20 +509,9 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * One run of the service job worker. Called by services/bin/oryk-jobs: in the
-	 * background for one user when a change is saved, and every minute for all.
-	 *
-	 * @param string|null $extension One user's queue, or null for every user with one.
-	 *
-	 * @return array<string, int> users, done, failed, purged.
-	 */
-	public function runJobs($extension = null)
-	{
-		return $this->services->runJobs($extension);
-	}
-
-	/**
-	 * Every service a user holds, packs followed: for other modules. See docs/hooks.md.
+	 * Every service a user holds, packs followed: kept for modules that asked
+	 * the provisioner before the services were a module of their own, which
+	 * they should ask now (oryk_services, docs/api.md there). Empty without it.
 	 *
 	 * @param string $extension The user.
 	 *
@@ -534,7 +523,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	}
 
 	/**
-	 * Whether a user holds a service, assigned it or through a pack: for other modules.
+	 * Whether a user holds a service, assigned it or through a pack: kept like
+	 * userServiceSlugs(). False without the services.
 	 *
 	 * @param string $extension The user.
 	 * @param string $slug      The service.
@@ -544,88 +534,6 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 	public function hasService($extension, $slug)
 	{
 		return $this->services->hasService((string) $extension, (string) $slug);
-	}
-
-	/**
-	 * A user was granted a service: the hook point other modules declare in
-	 * their module.xml (`callingMethod="serviceGranted"`).
-	 *
-	 * The job worker calls the same handlers, one at a time, and records each;
-	 * called directly, this runs every hooked module -- this one's own jobs
-	 * included -- for one event, outside any job. See docs/hooks.md.
-	 *
-	 * @param array<string, mixed> $event extension and service at least; see docs/hooks.md.
-	 *
-	 * @return void
-	 *
-	 * @throws \RuntimeException The first handler that threw: the services' HandlerFailed.
-	 */
-	public function serviceGranted(array $event)
-	{
-		$this->services->dispatch('granted', $event);
-	}
-
-	/**
-	 * A user lost a service: serviceGranted()'s other half.
-	 *
-	 * @param array<string, mixed> $event extension and service at least; see docs/hooks.md.
-	 *
-	 * @return void
-	 *
-	 * @throws \RuntimeException The first handler that threw: the services' HandlerFailed.
-	 */
-	public function serviceRevoked(array $event)
-	{
-		$this->services->dispatch('revoked', $event);
-	}
-
-	/**
-	 * This module's own hook on serviceGranted (module.xml): runs the job in
-	 * src/Jobs/ for the service, if there is one. Called by the job worker,
-	 * like every hooked module.
-	 *
-	 * @param array<string, mixed> $event See docs/hooks.md.
-	 *
-	 * @return void
-	 *
-	 * @throws \RuntimeException When the job cannot be done.
-	 */
-	public function runOwnJobGranted(array $event)
-	{
-		$this->services->ownJob('granted', $event);
-	}
-
-	/**
-	 * This module's own hook on serviceRevoked: runOwnJobGranted()'s other half.
-	 *
-	 * @param array<string, mixed> $event See docs/hooks.md.
-	 *
-	 * @return void
-	 *
-	 * @throws \RuntimeException When the job cannot be done.
-	 */
-	public function runOwnJobRevoked(array $event)
-	{
-		$this->services->ownJob('revoked', $event);
-	}
-
-	/**
-	 * Core deleted a user, from anywhere in FreePBX: its services and jobs go.
-	 * Hooked in module.xml.
-	 *
-	 * Edit mode is a save, which Core makes by deleting and adding the user
-	 * again, and is passed over.
-	 *
-	 * @param string $extension The extension deleted.
-	 * @param bool   $editmode  True on a save.
-	 *
-	 * @return void
-	 */
-	public function coreDelUser($extension, $editmode = false)
-	{
-		if (!$editmode) {
-			$this->services->userDeleted((string) $extension);
-		}
 	}
 
 	/**

@@ -97,13 +97,12 @@ diffing. Never rewrite a file wholesale to reword its comments.
   argument, and `HELPER_VERSION` is bumped whenever it changes.
 - `AsteriskConfig`'s lock file stays named `oryk-connect-…` while any PBX may
   still have `oryk_connect` installed: both write the same file.
-- `services/` is the services and their jobs, namespace `Oryk_Services`, on
-  their way to a module of their own: nothing in it names
-  `Oryk_Provisioner`, and nothing outside it but `src/ServicesLink.php` names
-  `Oryk_Services` (tests/smoke.php checks both). A new need of the
-  provisioner's is a method on `Oryk_Services\Module` and on `ServicesLink`,
-  answering as if there were no services when there are none. See
-  `ARCHITECTURE.md`, "The services boundary".
+- Services, packs and jobs are a module of their own, oryk_services
+  (github.com/alainmenag/freepbx-oryk-services). Only `src/ServicesLink.php`
+  asks it anything, through its API, and no file names its classes
+  (tests/smoke.php checks both). A new need of the provisioner's is a method
+  on that module's API first, then on `ServicesLink`, answering as if there
+  were no services when the module is not installed. See `ARCHITECTURE.md`, "Services".
 - PHP and views are indented with **tabs**. Operator-facing strings go through
   `_()`.
 
@@ -111,11 +110,9 @@ diffing. Never rewrite a file wholesale to reword its comments.
 
 - `php tests/smoke.php` runs standalone checks against stubs, with nothing
   installed. It covers most of `src/` -- users, tokens, bans and the fail2ban
-  plan, open provisioning, transcoding, Overview, services and jobs -- but no
+  plan, open provisioning, transcoding, Overview, the link to the services -- but no
   view, and nothing that needs a real PBX. `php -l` is the other check. Neither is always to hand -- the sandbox Claude runs
   commands in on this machine has no PHP -- so run them wherever there is one:
   a container, or the PBX itself.
-- `php tests/services_db.php` runs `Services::seed()` against real tables and
-  needs MySQL or MariaDB (`ORYK_TEST_DSN`, `ORYK_TEST_USER`, `ORYK_TEST_PASS`);
-  without the DSN it runs nothing. The release workflow runs both.
+  The release workflow runs it.
 - Branches are named `amena-<topic>` and merged to `main` through a PR.

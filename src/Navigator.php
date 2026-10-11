@@ -355,7 +355,7 @@ class Navigator extends Service
 	 * @return array<string, mixed> users, devices, clients, profiles, files,
 	 *                              bans: ids or null for unscoped; services: slugs or
 	 *                              null; jobs: extensions or services to narrow
-	 *                              the jobs by (Jobs::listJobs()), or null;
+	 *                              the jobs by (the services module's listJobs), or null;
 	 *                              logs: MACs or null;
 	 *                              ip: address or null; entry: the viewed log
 	 *                              entry's logRow() or null; banRows: the bans
@@ -434,6 +434,27 @@ class Navigator extends Service
 
 		if ($scoped && $from !== '') {
 			$href .= '&scope=' . implode(':', array_map('rawurlencode', explode(':', $from, 2)));
+		}
+
+		return $href;
+	}
+
+	/**
+	 * The services' Jobs list, narrowed as far as its own scopes go: to one
+	 * user or one service, else all of it.
+	 *
+	 * @param array<string, array<int, string>>|null $narrow scope()'s `jobs`.
+	 *
+	 * @return string The address.
+	 */
+	private static function jobsHref($narrow)
+	{
+		$href = ServicesLink::PAGE . '&tab=jobs';
+
+		foreach (['extensions' => 'user', 'services' => 'service'] as $by => $kind) {
+			if (isset($narrow[$by]) && count($narrow[$by]) === 1) {
+				return $href . '&scope=' . $kind . ':' . rawurlencode((string) reset($narrow[$by]));
+			}
 		}
 
 		return $href;
@@ -755,7 +776,7 @@ class Navigator extends Service
 				'text' => $text,
 				'href' => ($key === 'overview' && $target && $this->written((string) current($target)))
 					? self::overviewHref((string) key($target), (string) current($target))
-					: '?display=oryk_provisioner&tab=' . $key,
+					: (in_array($key, ['services', 'jobs'], true) ? ServicesLink::PAGE : '?display=oryk_provisioner') . '&tab=' . $key,
 				'active' => $key === $section,
 			];
 
@@ -805,7 +826,7 @@ class Navigator extends Service
 	 *
 	 * A group's sections are drawn in this order, and its first is what the
 	 * bar shows when none of them is open. Services and Jobs are only there
-	 * with the services.
+	 * with the services, and are their pages.
 	 *
 	 * @return array<string, string> Names, by key.
 	 */
@@ -1104,15 +1125,16 @@ class Navigator extends Service
 				'text' => (string) $row['name'],
 				'note' => '',
 				'badge' => in_array($slug, $packs, true) ? _('Pack') : '',
-				'href' => '?display=oryk_provisioner&service=' . rawurlencode($slug),
+				'href' => ServicesLink::PAGE . '&service=' . rawurlencode($slug),
 				'touched' => $row['touched'] ?? null,
 			];
 		}
 
-		// The list this level is drawn from: the viewed user's own Services tab.
+		// The list this level is drawn from, on the services' own pages: the
+		// viewed user's services, else every service.
 		$list = $this->written($user)
-			? '?display=oryk_provisioner&user=' . rawurlencode($user) . '&tab=services'
-			: self::listHref('services', $from, $scope !== null);
+			? ServicesLink::PAGE . '&user=' . rawurlencode($user)
+			: ServicesLink::PAGE . '&tab=services';
 
 		return $this->level($rows, $scope, $at, [
 			'key' => 'service',
@@ -1123,7 +1145,7 @@ class Navigator extends Service
 			'new' => _('New service'),
 			'search' => _('Search services'),
 			'none' => _('No services here'),
-			'add' => ['text' => _('New service'), 'href' => '?display=oryk_provisioner&service='],
+			'add' => ['text' => _('New service'), 'href' => ServicesLink::PAGE . '&service='],
 		]);
 	}
 
@@ -1438,7 +1460,7 @@ class Navigator extends Service
 					$labels['state'][(string) $row['state']] ?? (string) $row['state'],
 					(string) $row['created_at'],
 				]),
-				'href' => '?display=oryk_provisioner&job=' . (int) $row['id'],
+				'href' => ServicesLink::PAGE . '&job=' . (int) $row['id'],
 				'touched' => (string) $row['created_at'],
 			];
 		}
@@ -1447,7 +1469,7 @@ class Navigator extends Service
 			'key' => 'job',
 			'one' => _('Job'),
 			'switch' => _('Switch job'),
-			'title' => ['text' => _('Jobs'), 'href' => self::listHref('jobs', $from, $narrow !== null)],
+			'title' => ['text' => _('Jobs'), 'href' => self::jobsHref($narrow)],
 			'mono' => false,
 			'new' => '',
 			'search' => _('Search jobs'),

@@ -24,14 +24,11 @@ matches `phone.cfg`, and that resource is rendered and served.
 
 Everything else is that sentence with the edge cases filled in.
 
-A **service** is a name, linked to any number of services it is under and any
-number under it, and assigned to users. The endpoint knows nothing of a
-service, but a template can ask what a user holds, and every change to what a
-user holds is a **job**: one step per service gained or lost, run at once,
-calling every module hooked to it -- this one included, whose own jobs are
-classes in `services/src/Jobs/`. Services and jobs are their own part of the
-code, on their way to a module of their own: see
-[The services boundary](#the-services-boundary), [Schema](#schema) and [Jobs](#jobs).
+**Services** -- named features and packs of them, assigned to users, with a
+job run for every change -- are a module of their own, Oryk Services
+(oryk_services). The endpoint knows nothing of a service, but a template can
+ask what a user holds, and the provisioner shows a user's services where it
+shows the user. See [Services](#services).
 
 A **user** is the other half of the module: a pjsip device that is its own
 extension, managed from the Users tab, and stored in none of this module's
@@ -255,12 +252,9 @@ engine/.htaccess             rewrites everything under engine/ to provisioner.ph
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge
 src/                         51 files, namespace FreePBX\Modules\Oryk_Provisioner
-services/                    the services and their jobs -- see The services boundary:
-  src/                       11 files and Jobs/ (6), namespace FreePBX\Modules\Oryk_Services
-  bin/                       the job worker -- see Jobs
 library/                     the profiles the module ships, one directory each -- see The library
 tests/                       smoke.php, the stubs it runs against and its lexical check
-                             (namespacing.php); services_db.php, seed() on real tables
+                             (namespacing.php)
 views/                       one view per page, plus views/partials/
 ```
 
@@ -304,77 +298,68 @@ views/                       one view per page, plus views/partials/
 | `DashboardNotices` | the module's dashboard notices, raised and cleared on a change only |
 | `SignupSweep` | the minute job behind open provisioning: out of the bridge once applied; the notices |
 | `LobbyContext` | the lobby's dialplan, on Apply Config |
-| `ServicesLink` | the provisioner's one way to the services -- see [The services boundary](#the-services-boundary) |
-
-`services/src/`:
-
-| file | what it is |
-| --- | --- |
-| `Module` | the services as one thing: everything outside `services/` reaches them through it |
-| `Component` | base class: `Service`'s, for this namespace, with the services' table names |
-| `Logs` | the provisioner's trait, for this namespace |
-| `Schema` | the services' tables: made, and the columns added after |
-| `Services` | the services table, its links, and who is assigned what |
-| `Jobs` | the jobs and their steps: written, listed, and what the worker asks while it runs one |
-| `ServiceEngine`, `HandlerFailed` | what a change means for a user (`changes()`, static), and the worker; a handler that threw (exception) |
-| `Reactions` | the module's own jobs: finds the classes in `services/src/Jobs/`, and runs the one a step's service names |
-| `Jobs\Job`, `Jobs\*` | one class per job of the module's own, each naming the services it is run for |
-| `Extensions` | the one write to an extension the jobs make that FreePBX has no call for |
-| `CalendarManager` | a user's own calendar, which the Calendar job makes |
+| `ServicesLink` | the provisioner's one way to the services module -- see [Services](#services) |
 
 `AsteriskConfig` through `Users` came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
-
-## The services boundary
-
-Services, packs and jobs manage what an extension is given, which is not
-provisioning, so they are being split into a module of their own. Until then
-they live in `services/`, laid out as that module will be, and **the boundary
-is enforced now** (tests/smoke.php, "the services boundary"):
-
-- nothing in `services/` names `FreePBX\Modules\Oryk_Provisioner`, and
-- nothing outside it names `FreePBX\Modules\Oryk_Services` but `src/ServicesLink.php`.
-
-`ServicesLink` is the provisioner's whole view of the services. It registers
-their autoloader and holds one `Oryk_Services\Module`; every other class --
-`Users`, `ExtensionRenumberer`, `Template`, `Navigator`, `Pages`, `Installer`,
-the module class -- is handed the link. **Without the services every method
-answers as if there were none**: no slugs, no rows, no commands, nothing done
-on a delete or renumber. `available()` is asked only to decide what is drawn:
-
-| without the services | where |
-| --- | --- |
-| no Services or Jobs section; `?tab=services`, `?tab=jobs` open Users | `Navigator::sectionNames()` |
-| no Services or Jobs level in the navigator | `Navigator::build()` |
-| no `?service=` or `?job=` page; either redirects to the module | `Pages::doConfigPageInit()`, `showPage()` |
-| no Services tab on a user, and no Save/Reset for it | `Pages::userTabs()`, `getActionBar()` |
-| no Services or Jobs table on Overview | `views/partials/overview.php`, `$servicesAvailable` |
-| `{{extension.services}}` renders empty | `Template` |
-| the services' AJAX commands are not this module's | `ajaxRequest()`, `ajaxHandler()` |
-
-What the link carries, by what it is for:
-
-- **the user's life**: `userDeleting()` before Core deletes a user (its
-  calendar is found by its Follow Me row), `userDeleted()` after (and from the
-  `delUser` hook), `userRenumbered()` before the old number is given up,
-  `hasCalendar()` for what Delete says;
-- **the hooks**: `dispatch()`, `ownJob()`, `runJobs()` -- `serviceGranted`,
-  `serviceRevoked`, the module's own hook on them and the worker are still
-  this module's class until the split;
-- **the commands**: `commands()`, `reads()`, `ajax()` -- the services answer
-  their own (`Module::COMMANDS`), narrowed by the navigator's scope;
-- **the pages**: the rows the Services and Jobs pages, the navigator and a
-  user's Services tab draw. Those pages and their views are still the
-  provisioner's, and go to the services module with step two.
-
-The tables keep their `oryk_provisioner_*` names until the split, which moves
-them with their rows.
-
 
 `install()` symlinks `engine/` to `<AMPWEBROOT>/provisioner`, which is the short
 URL phones are given. **Nothing about that link is allowed to fail the install**
 -- a module that could not write to the web root is a working module minus a
 friendly URL, and the endpoint stays reachable at its real path.
+
+## Services
+
+Services, packs and jobs manage what an extension is given, which is not
+provisioning, so they are a module of their own: **Oryk Services**
+(oryk_services, github.com/alainmenag/freepbx-oryk-services), which was this
+module's from 1.2.7 to 1.3.3. Its tables, pages, worker and hooks are all its
+own; its ARCHITECTURE.md says how it works. This module **asks it, and only
+through `ServicesLink`**, which holds its API (`\FreePBX::Oryk_services()->api()`)
+while it is installed and enabled. No file here names its classes
+(tests/smoke.php checks it).
+
+**Without it every method of the link answers as if there were no services**:
+no slugs, no rows, no commands, nothing done on a delete or renumber.
+`available()` is asked only to decide what is drawn:
+
+| without the services module | where |
+| --- | --- |
+| no Services or Jobs section | `Navigator::sectionNames()` |
+| no Services or Jobs level in the navigator | `Navigator::build()` |
+| no Services tab on a user | `Pages::userTabs()` |
+| no Services or Jobs table on Overview | `views/partials/overview.php`, `$servicesAvailable` |
+| `{{extension.services}}` renders empty | `Template` |
+| its AJAX commands are not this module's | `ajaxRequest()`, `ajaxHandler()` |
+| a notice says to install it, while the old tables are there | `Notices`, `services-moved` |
+
+With it, its pages are linked to, never drawn here: the Services and Jobs
+sections, a user's Services tab, a service or job chosen in a dropdown, and
+Overview's Edit all open `?display=oryk_services...` (`ServicesLink::PAGE`).
+A request for one of them on this module -- `?service=`, `?job=`,
+`&tab=services` or `&tab=jobs`, a bookmark from before the split -- is sent
+there by `Pages::doConfigPageInit()`. What the link carries:
+
+- **the user's life**: `userDeleting()` before Core deletes a user (its
+  calendar is found by its Follow Me row), `userDeleted()` after,
+  `userRenumbered()` before the old number is given up, `hasCalendar()` for
+  what Delete says. The services module also hooks Core's `delUser` itself,
+  for a user deleted anywhere else;
+- **templates**: `userSlugs()`, behind `{{extension.services}}`;
+- **Overview and the navigator**: the commands Overview posts (`ServicesLink::ROUTED`, through
+  `commands()`, `reads()`, `ajax()` -- only those, so a name both modules use,
+  `listUsers`, stays ours), answered through this module's ajax.php with the navigator's
+  scope, so Overview's Services and Jobs tables -- views/partials/jobs.php is
+  that table, and only that -- list, unassign, retry and clear as before; and
+  the rows the Services and Jobs dropdowns list.
+
+**The split.** 1.4.0 stops creating or touching the five services tables and
+**never drops them**; oryk_services takes them over on install, renamed, rows
+and all, and runs its own worker -- this module's `Installer` unschedules the
+`service-jobs` minute job it ran until then. A module
+that hooked `Oryk_provisioner`'s `serviceGranted` or `serviceRevoked` hooks
+`Oryk_services` now; `userServiceSlugs()` and `hasService()` on this module's
+class still answer, through the link.
 
 ## The library
 
@@ -424,10 +409,9 @@ never serves from here.
 
 ## Schema
 
-Ten tables, and the bridge's three (below): the five services and jobs tables
-are made and stepped by the services' own `Schema` (`services/src/Schema.php`),
-asked by `Installer` through `ServicesLink::install()`, the other five by
-`Installer` and `src/Schema.php`. Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
+Five tables, and the bridge's three (below), made by `Installer` and
+stepped by `Schema`. The services tables are the services module's (see
+[Services](#services)). Every `Schema` step is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -541,378 +525,7 @@ profiles that open.
   -- and the minute job purges it once its copy is out. Adding the same ban
   again reopens it like any other row.
 
-**`oryk_provisioner_services`** -- `slug` (the primary key), `name` (unique),
-`owner` (0, the default, is the module; a service made on the Services page
-is 1).
-There is no numeric id: a page, a save, a delete, a link and an assignment all
-name a service by its slug. Where a service sits, and what it requires, is the
-table below.
-
-- **A requirement is a links row of `kind` `requires`**, a different relation
-  from a pack link (`kind` ''): a pack *contains* what is under it, a service
-  *needs* what it requires, and a requirement makes no pack. Calendar
-  requiring Find Me Follow is the row `calendar`, `find-me-follow`,
-  `requires`. What they share is the walk:
-  `Services::links()` answers both as edges, `[parent, child]` for a link and
-  `[service, required, 'requires']` for a requirement, and `held()`,
-  `descendants()` and `ServiceEngine::changes()` take the two alike -- so a
-  user holding Calendar holds Find Me Follow, a pack giving Calendar gives
-  it too, and the engine grants and revokes it like anything else. Where the
-  pack tree is the question (`packs()`, `related()`, the form's loop checks,
-  what a withhold takes, the list's `kind` filter and counts) only the pack
-  links count: `packLinks()`, `kind = ''` in SQL, or `empty($edge[2])`.
-  **Anything new that reads the links table as the pack tree must say
-  `kind = ''`**, or a service that requires another shows as a pack. A requirement cannot be withheld while something held
-  needs it (`assignedAfter()`'s `required`), and `held()` gives one back
-  that a withheld pack would have taken. A loop through requirements is
-  refused on save, as one through links is.
-
-- **The slug is the identity anything but a person uses**: lowercase letters
-  and digits joined by hyphens (`Services::SLUG_PATTERN`). **It is never
-  typed**: a save makes it from the name (`slugify()`, then `-2`, `-3` until
-  free, stepping over the defaults') on a new service and again whenever the
-  name changes. No page shows it but in its own address.
-- **A slug that changes is carried to every reference in the same
-  transaction** (`Services::renameLinks()`): today that is both columns of the
-  links table (links and requirements alike) and a user's assignments. Anything else that comes to store a service's slug must be
-  added to that method, or a rename leaves it naming nothing. A default's
-  slug never changes -- renaming one in `DEFAULTS` renames the row only.
-- A table written before this had an `id` key, and before that no slug. An
-  install adds the slug nullable (`Schema::addServiceSlugColumn()`), `seed()`
-  fills it from each name, and `Schema::dropServiceIdColumn()` then drops the
-  id and makes the slug the key -- in that order, which `Installer` keeps. The
-  one `Schema` step that takes something away.
-- **The module's own services are `Services::DEFAULTS`**, by slug: a name,
-  the slugs under it, and the slugs it requires. **Adding, renaming or regrouping one is an edit to that
-  array and nothing else** -- `install()` runs `Services::seed()`, which
-  **deletes every row with `owner` 0 and writes the array again**, and sets
-  what is under each, and what each requires, to exactly what the array says. Like a setting, a
-  change appears once the module is installed or upgraded. Assignments and
-  links name a slug, so they stay with a default that is written again; a
-  slug taken out of the array is deleted with its links and assignments, and
-  the users who held it get a job revoking it -- install names each one
-  removed and how many assignments went with it. **A default's slug that a
-  release changes goes in `Services::RENAMED`** (old => new): `seed()` carries
-  its links, assignments and jobs to the new slug first, and no job is made.
-  An operator's row that holds a
-  default's slug becomes the module's. `created_at` on a default is its last
-  install.
-- **"Managed" is `owner` 0**, on a row. A managed service is refused every
-  save and delete and its page is drawn disabled with only Close.
-  `Services::managed()` is the other question, asked of a slug: whether
-  `DEFAULTS` has it, which is what keeps it from being given to an operator's
-  service. `Schema::addServiceOwnerColumn()` backfills the column once, making
-  every row outside `DEFAULTS` the operator's, and must run before `seed()`.
-- **`seed()` owns only the links between two defaults.** One `DEFAULTS` no
-  longer has is removed and one it has is added; a link with a service of the
-  operator's own at either end is theirs and is left. So a managed service is
-  locked on its own page, but a service of the operator's own can be put
-  under it or over it from that service's page. A default link the
-  operator's links would turn into a loop is not added, and install says so.
-- **`seed()` owns a default's requirements whole**: every `requires` row with
-  a default as its parent is written again from `DEFAULTS`' `requires`,
-  before the links, so a pair a release turns from one kind to the other is
-  free. An operator's service may require a default, and that row is theirs.
-- A service already named like a default when the slug column arrives is given
-  that slug by the backfill and so becomes the default, links kept. A
-  default whose name another slug already holds is not written, and install
-  says so.
-
-**`oryk_provisioner_service_links`** -- `parent`, `child`, `kind`: one row says
-the child is under the parent (`kind` '', the default) or that the parent
-requires the child (`kind` `requires`, `Services::REQUIRES`; see
-`oryk_provisioner_services` above). **Both ends are slugs, not ids**, so a link
-reads the same in the table, in `DEFAULTS` and to anything outside the module.
-`Schema::addServiceLinkKindColumn()` adds `kind` to a table written before it,
-every row already there a pack link.
-
-- **A table of its own rather than a `parent_id` column**, because a service
-  has many parents: "Voicemail" is under both "Basic User" and "Advanced
-  User", and each of those is over many services.
-- The pair is the primary key, so a link exists once, and a pair is a link
-  or a requirement, never both: `saveService()` refuses a service that would
-  include and require the same one. `child` has its own index for the walk
-  upwards.
-- A deleted service's links go by its slug, and a renamed one's follow it,
-  so no link names a slug with no row.
-- **No loop is ever written.** `Services::saveService()` refuses a set of
-  parents and children when a service is on both sides or a parent is already
-  somewhere under a child (`loops()`, pure, asked of the whole links table),
-  and the editor draws those choices disabled (`related()`). Every walk stops
-  at a row seen twice, so a loop put there by hand hangs nothing.
-- **A save replaces a side whole, or leaves it alone.** `parents`,
-  `children` and `requires` are each the full set of slugs; a key that is not
-  submitted leaves that side as it was, and a side's rows of the other kind
-  are never touched (`relink()`). Name and links are one transaction.
-- Deleting a service deletes its links and requirements, either end, and
-  nothing else: what was over or under it stays.
-- **A service pack is a service with at least one child**, read off the links
-  (`listServices`' `kind` filter) and stored nowhere, so it cannot disagree
-  with them. The list has no column for it. Its toolbar's two
-  selects narrow it by `source` (`all`, labelled Available and what the page
-  opens on, `custom` or `module`) and `kind` (`all`, which the page opens on, `single`,
-  labelled Services, or `pack`). The command answers unnarrowed for a filter
-  that is not one of its two values. Each option carries a count in its
-  text -- what it would list with the other select left alone, from
-  `Services::counts()` on every list answer, of every service whatever is
-  searched for. They are option text, not badges. **The filters are in the page's address**
-  (`&tab=services&source=module&kind=pack`, a default -- `all` for both -- left out;
-  `Services::filters()` reads them and the selects are drawn chosen), so a
-  change of filter is a page load, as a tab is. Both filters are asked in SQL so the page
-  count stays true.
-- A service's page is `?service=<slug>`, one tab. A save lands on
-  the slug its answer names, which is a new address after a rename; saves and
-  deletes are posted the row's slug.
-
-**`oryk_provisioner_service_assignments`** -- `extension`, `service`,
-`status`: one row is a service **given** to the user (`status` NULL) or
-**withheld** from it (`Services::STATUS_WITHHELD`, 0). A user is its
-extension and a service its slug, as everywhere else; the pair is the
-primary key, so a service is given or withheld, never both. No other
-`status` is written; the column is an integer so one can be.
-
-- **Only what was ticked is stored.** A user assigned a pack has one row, for
-  the pack; the services under it are worked out when asked
-  (`Services::userServices()`, which names the pack under `via`), so
-  regrouping a pack changes what its users have without touching this table.
-- **What a user holds** is `Services::held()`, and every reader goes through
-  it -- jobs, holder counts, `{{extension.services}}`, the Services tab: every
-  given service, everything under it and everything those require, less
-  every withheld service and everything under it -- except what is given
-  itself, which a withhold never takes, and what something held requires,
-  which it never takes either. Withholding is for one service a pack includes that this user is not
-  to have: it is refused for a service the user is given itself or does not
-  hold through a given pack (`Services::assignedAfter()`), and assigning a
-  withheld service replaces the withhold. In the class a user's assignments
-  are always the rows as `slug => status`; `given()` and `withheld()` split
-  them.
-- **A withhold outlives nothing.** After every change to assignments or
-  links (`setUserServices`, `saveService`, `deleteService`, `seed()`),
-  `pruneWithheld()` deletes every withheld row no given pack reaches any
-  more, so unassigning a pack and assigning it again months later gives all
-  of it, not what was once withheld.
-- **Staged, then one write** (`setUserServices`): the user's Services tab
-  (`views/partials/user_services.php`) is two lists, packs and single
-  services, whose ticks write nothing until its own Save -- which first asks
-  `userServicesImpact`, the same request worked out and not written, and
-  shows what would be assigned, unassigned, gained, lost and kept, and
-  beside a gain or loss what the module's own job does about it
-  (`Jobs\Job::effects()`, a phrase each for granted and revoked). The save
-  names the services to assign and to unassign: each one's state is sent, not
-  toggled, and one not named is not touched, so a page drawn before someone
-  else's change cannot undo it. Nothing of the user itself is written, so
-  there is no Apply Config.
-- **It follows both ends.** A renamed service's rows follow its slug
-  (`renameLinks()`) and a deleted one's go with it; a renumbered user's rows
-  follow its extension (`Services::moveUser()`, from `ExtensionRenumberer`)
-  and a deleted user's go with it (`forgetUser()`, from `Users::remove()`),
-  since a freed number is handed out again.
-- That tab and the navigator's
-  Services level (`Services::assignedTo()`, `usersOf()`) count a service's own
-  rows -- the users ticked for it, not those who have it through a pack. The
-  Services list's one count, **Holders**, is of both (`holdersOf()`), and opens the Users
-  list at `&scope=holders:<slug>`: a `service` scope with `held` set
-  (`Navigator::scopeAt()`), which is the one place a scope follows the packs.
-- **A template is the one reader that follows the packs.**
-  `{{extension.services}}` is `Services::userSlugs()`: what the user is
-  assigned and everything under it, each slug once, sorted, joined by commas
-  -- a phone asks whether the user has a service, not how. What a change to
-  them sets going is [Jobs](#jobs).
-
-**`oryk_provisioner_jobs`** -- one change to what one user holds: `extension`,
-`service` and `name` (the service the change was made to, the name a
-snapshot; both '' for an upgrade, and for several services saved on a user
-at once), `reason` (`assigned`, `unassigned`, `changed`,
-`service-deleted`, `pack-changed`), `admin` (who was signed in when a page
-made it, '' otherwise), `source` (`gui`, `upgrade`), `state`
-(`queued`, `running`, `done`, `failed`), `attempts`, `error`, and when it was
-made, last started and finished.
-
-**`oryk_provisioner_job_steps`** -- what one job means, service by service:
-`job_id` and `position` (revokes first, then grants, each by slug), `service`
-and `name`, `via` (the assigned service it comes or went through, NULL for
-the service itself), `event` (`granted`, `revoked`), `state` (`pending`,
-`done`, `failed`, `skipped`), `done_by`, `own_job` (the `services/src/Jobs/` class
-this module ran for it, shown beside `oryk_provisioner` on the job's page),
-`attempts`, `error`.
-
-- **Steps are rows, not a JSON column on the job**, so a renamed service is
-  an UPDATE (`renameLinks()` carries `service`, and a step's `via`, with the
-  rest) and a retry finds what is left by state.
-- **Names are snapshots.** A job for a deleted service still says what it was;
-  a page links a slug only while a service has it.
-- **`done_by` is the handlers that have finished a step**, comma-separated
-  rawnames. It is written as each returns, so a
-  retry starts at the one that threw and never calls a finished one again.
-- **A job belongs to its user.** `forgetUser()` deletes a deleted user's
-  jobs, `moveUser()` carries a renumbered one's; there is no foreign key to
-  Core.
-
-## Jobs
-
-A change to services is worked out, written and run as **jobs**: what makes
-one, what one is, and how the worker runs it. `Services` writes them,
-`Jobs` is the two tables, `ServiceEngine` runs them, `Reactions` is the
-module's own handler.
-
-**What makes a job.** Anything that changes what a user *holds* -- what it is
-given and everything under that, less what is withheld (`Services::held()`):
-
-| change | users affected | reason |
-| --- | --- | --- |
-| a save of a user's Services tab (`setUserServices`): assign, unassign, withhold, restore | that user | assigned / unassigned for one service (a restore is assigned, a withhold unassigned), changed for several |
-| delete a service (`deleteService`) | everyone holding it, assigned or through a pack | service-deleted |
-| a service's Parents or Services changed (`saveService`) | everyone holding the pack it changes, at any depth | pack-changed |
-| an install or upgrade regrouping the defaults (`seed()`) | likewise | pack-changed, source `upgrade` |
-
-Each takes every user's assignments and the links before and after the
-change, in the change's own transaction and under one named lock across
-every change to services (`Services::lockChanges()` -- two at once would each
-read what the other was about to change, and owe a revoke neither made), and `ServiceEngine::changes()` makes
-the steps: a grant for what a user holds after and did not before, a revoke
-for the reverse. So **a service still held another way is never revoked**
-(Voicemail under both Basic and Advanced User), one already held is never
-granted again, the same state saved again is no job, and a user a change
-does not touch gets none. Several services saved on a user at once are one
-change and at most one job, so swapping Basic User for Advanced User never
-revokes the Voicemail both give. A rename is not a change: the before is read as if
-it had always had the new slug. A renumbered user changes nobody's holdings
-and gets no job; its jobs move with it.
-
-**The service page asks first.** `serviceImpact` works out the same steps
-without writing anything, so Save and Delete on a service say how many users
-it changes, and how, before they do it.
-
-**Running.** A change from a page starts `services/bin/oryk-jobs` in the background
-(`Jobs::start()`, `nohup`), `--user=<ext>` for one user and with no argument
-for many, and the request returns. A user's queue is run **one job at a time,
-oldest first** (`ServiceEngine::drain()`), under a MySQL named lock per user
-(`GET_LOCK`), which the server frees if the worker dies; a second worker for
-the same user finds it held and leaves it to the first, which looks again
-after letting go. Different users run side by side. Per job:
-
-- the **claim** (`queued` or `failed` to `running`, `attempts` + 1) must
-  change one row: a deleted job is not run;
-- a **user not found** fails the job, and nothing is run. It is not deleted:
-  Core saves an extension by deleting and adding it again, and a job claimed
-  in between would take the whole queue with it. A user really deleted loses
-  its jobs to the hook on Core's `delUser`;
-- each step not yet `done` or `skipped` checks the **job is still there and
-  still this user's** -- deleting one is how it is stopped, and a renumber
-  moves it to the new number's queue, whose worker takes it from there -- and
-  then that **it is still current**:
-  a grant runs only while the user holds the service, a revoke only while it
-  does not, else it is `skipped`. That is what makes running a failed job
-  after a later one safe: a grant that failed and was then unassigned is never
-  granted back;
-- the step's **handlers** run one at a time: every module hooked to
-  `serviceGranted` or `serviceRevoked`, in FreePBX's hook order -- **this
-  one included**, through its own module.xml at priority 100, so first unless
-  another asks for less. Its hook (`runOwnJobGranted()` / `runOwnJobRevoked()`
-  → `ServiceEngine::ownJob()`) runs the `services/src/Jobs/` class for the service,
-  under one lock across every worker (`Jobs::lockReactions()`): users' queues
-  run side by side, and Voicemail's rewrites all of voicemail.conf. A service
-  with a job of its own while FreePBX has not yet read that hook fails the
-  step and says to reinstall, rather than passing with nothing run;
-- **the first handler that throws stops the job there** -- its later steps
-  stay `pending` -- with "<module>: <message>" on the step and the job, which
-  is `failed`.
-
-**A failure stops that job, for that user, and nothing else.** After each job
-the worker runs the user's failed jobs older than it again (the automatic
-retry), so a failure never holds up the jobs behind it and each later job
-gives it another try; with nothing queued it stops, and a failed job waits
-for **Retry** (back to `queued`, the worker started). Other users never wait on
-it. A job left `running` by a worker that died is failed by the next holder of
-its user's lock -- only a lock holder runs jobs -- and retried like any other.
-
-**When the jobs are done, it reloads.** A run that ran at least one job, and
-leaves none queued or running for any user, runs `fwconsole reload` if
-FreePBX has Apply Config raised (`admin.need_reload`) -- once, after all of
-them, under one lock across workers (`ServiceEngine::reloadIfIdle()`). A job
-and a hooked module raise Apply Config and never reload themselves; the
-worker that finishes last does it for all. **It applies everything pending**,
-an admin's unapplied changes included, as Apply Config would; a minute run
-that ran no job never reloads. A failed reload is logged and leaves Apply
-Config raised.
-
-**The minute job** (`services/bin/oryk-jobs`, registered by `install()`) runs every
-user with a job queued or left running -- an upgrade's jobs, and anything whose
-background start was lost -- and purges `done` jobs finished more than
-`Jobs::KEEP_DAYS` (30) ago. It never retries a failed job on its own.
-**`seed()` only queues**: an install may run as root, and handlers run as the
-web user.
-
-**Hooks out.** A module reacts by hooking ours in its own module.xml, the way
-it would hook Core:
-
-```xml
-<hooks>
-  <oryk_provisioner class="Oryk_provisioner" namespace="FreePBX\modules">
-    <method callingMethod="serviceGranted" class="Mymodule" namespace="FreePBX\modules">onServiceGranted</method>
-    <method callingMethod="serviceRevoked" class="Mymodule" namespace="FreePBX\modules">onServiceRevoked</method>
-  </oryk_provisioner>
-</hooks>
-```
-
-FreePBX files that under `FreePBX\modules\Oryk_provisioner` when the module
-is installed or enabled. **A listener can be for some services only**:
-`<method ... services="voicemail,call-recording">` -- FreePBX keeps every
-attribute a method is declared with, and the worker skips the listener for any
-other service (`ServiceEngine::onlyFor()`). A module may have several of these
-for one event, each recorded in `done_by` as `rawname:method`; a catch-all is
-recorded as the rawname, one per module. **The worker does not call `processHooks()`**: that
-loops the listeners with no catch, so the first throw stops the rest with
-nothing saying which, and leaves the thrower's text domain pushed. It reads the
-same list (`Hooks::returnHooksByClassMethod()`, public in framework 16 and 17:
-enabled modules, by priority) and calls each entry as FreePBX's own
-`executeCall()` would, inside its own catch. `Oryk_provisioner::serviceGranted()`
-and `serviceRevoked()` exist so the hook's `callingMethod` is a real method,
-and run the same handlers for one event outside any job. What a handler is
-given and owes is docs/hooks.md.
-
-**Hooks in.** module.xml hooks Core's `delUser`: a user deleted anywhere in
-FreePBX loses its assignments and jobs (`coreDelUser()` → `forgetUser()`).
-Edit mode is a save -- Core deletes and re-adds the user -- and is passed
-over. `ExtensionRenumberer` moves a user's services and jobs **before** it
-deletes the old number, which this hook would otherwise take them with.
-
-**The module's own reactions** are the classes in `services/src/Jobs/`, reached through
-its own hook like any other module's: each extends
-`Jobs\Job`, names the service slugs it is run for in `SERVICES`, and has
-`granted()` and `revoked()`. **Adding one is adding a file** -- `Reactions`
-finds them -- and they are written for `Services::DEFAULTS`, the module's own
-services:
-Voicemail makes a mailbox in `default` with a random PIN where there is none,
-or takes it out of voicemail.conf and sets the extension `novm` -- **the
-messages on disk are kept**; Call Recording External and Internal each set
-their two recording keys to `yes`, or to `no`; On Demand Recording `enabled` / `disabled`;
-Find Me Follow switches Find Me/Follow Me on (made with its own defaults where
-there is none) or off, its list kept; Calendar makes a local calendar named
-after the user and links Find Me/Follow Me to it, or unlinks it and deletes
-the calendar, events included -- all of it `CalendarManager`'s, which is
-also what deletes the calendar with the user and renames it with the number,
-since no job runs for a user that is gone. Calendar requires Find Me Follow
-(`DEFAULTS`' `requires`), so a user given it is given both, in whichever
-order: Find Me Follow owns `ddial` and Calendar the `calendar_*` columns,
-each sets its own and makes the Follow Me row if missing, and a calendar
-held without Follow Me is simply inert until it is. Each sets a state, so a second run is the
-first; none reloads, and one that changes what Apply Config writes raises it
-for the reload after the last job. A
-missing module fails the step and says so. Packs -- Guest User and Lobby User
-are two -- Support and Knowledge Base have none: a context is changed in
-Extensions.
-
-**Where it shows.** The Jobs section (`?tab=jobs`, filtered by state, reason and
-source in the address, as Services is); a job's page (`?job=<id>`), its steps
-and Retry; the Jobs dropdown; a user's Services tab, where each service whose
-newest step is queued, running or failed says so (`Jobs::statusFor()`), asked
-again while anything is running, with Retry beside a failed one; and a user's
-Overview.
-
-### Migrations deliberately not written
-
-Renamed tables and dropped columns (1.0.7's profile `template`, 1.0.8's
+**Migrations deliberately not written.** Renamed tables and dropped columns (1.0.7's profile `template`, 1.0.8's
 `devices` -> `clients`) have no migration. Stage 1 has no installed base, a
 migration written for nobody is a migration nobody has run, and a silent one
 would leave every existing profile with a resource nobody wrote. The changelog
@@ -1028,12 +641,12 @@ a device on an extension that is no user.
 | extension | `users`, astdb `AMPUSER/` | `ExtensionManager` |
 | User Manager account | `userman_users` | `UsermanManager` |
 | mailbox | `voicemail.conf`, the spool | `VoicemailManager` |
-| own calendar | the Calendar module's store, `findmefollow.calendar_id` | `CalendarManager` |
+| own calendar | the Calendar module's store, `findmefollow.calendar_id` | the services module, through `ServicesLink` |
 | UCP access | `userman_*_settings`, `webrtc_clients` | `UcpAssignments` |
 | call history | `asteriskcdrdb` | `CdrHistory` |
 | From Domain | `pjsip.endpoint_custom_post.conf` | `EndpointSettings` |
 | provisioner clients | `oryk_provisioner_clients.device_id` | `Clients` |
-| assigned services | `oryk_provisioner_service_assignments.extension` | `Services` |
+| assigned services, jobs | the services module's tables, by extension | the services module, through `ServicesLink` |
 
 **A save** (`Users::store()`) deletes the device and adds it again -- Core has
 no edit -- so it starts from the device's stored settings, not driver defaults:
@@ -1398,11 +1011,11 @@ pane, by every command and by Delete All:
 | bans that only **apply** | the rest of `Navigator::scope()`'s `bans` | same |
 | FreePBX side | `Users::related()`: owned account, mailbox | -- |
 
-The pane is tables -- User, Clients, Services (the Services list's own
-`listServices`, asked with the scope: what the user is assigned itself, never
-what a pack brings), Provisioning log, Bans, and on a user
-Devices, Call history, Voicemail and Jobs (the Jobs list's own `listJobs`,
-asked with the scope) -- on either kind of row: a client's Overview lists its user,
+The pane is tables -- User, Clients, Services (the services module's
+`listServices`, asked through `ServicesLink` with the scope: what the user is
+assigned itself, never what a pack brings), Provisioning log, Bans, and on a user
+Devices, Call history, Voicemail and Jobs (its `listJobs`, likewise; Services
+and Jobs only while that module is installed) -- on either kind of row: a client's Overview lists its user,
 which is kept, and itself. Call history is `CdrHistory::listCalls()`: the
 records naming the extension in `src` or `dst`, which is where `purge()`
 starts, not every leg it removes. Devices are the FreePBX devices on the
@@ -1477,9 +1090,10 @@ made from one of the tables is answered by loading the page again.
 
 - **Everything the module edits is a page**, told apart by which key the URL
   carries: `?client=`, `?profile=`, `?profile=<id>&resource=`, `?user=`,
-  `?service=`, `?ban=`, `?device=` for one FreePBX device, whose user is all
-  that is saved and which is deleted but never created, and `?log=` for one provisioning log entry and `?job=`
-  for one job, which are read and deleted but never edited or created. The
+  `?ban=`, `?device=` for one FreePBX device, whose user is all
+  that is saved and which is deleted but never created, and `?log=` for one
+  provisioning log entry, which is read and deleted but never edited or
+  created. A service and a job are the services module's pages. The
   key present and empty is the "new one" editor. `Pages::doConfigPageInit()`
   bounces an id that names no row *before any markup* -- a redirect out of
   `showPage()` would be too late to set a header. A user's key is its
@@ -1488,12 +1102,15 @@ made from one of the tables is answered by loading the page again.
   `views/partials/sections.php` is the module's sections, a bar on every page,
   lit by the branch the page is in (a resource page is in Profiles). Sections
   listed together in `Navigator::sectionGroups()` share one entry on the bar
-  -- Users, Devices, Clients, Profiles and Services do, and Logs, Jobs, Bans and Overview. The entry is
+  -- Users, Devices, Clients, Profiles and Services do, and Logs, Jobs, Bans and Overview
+  (Services and Jobs link to the services module's own pages, and are there only
+  with it). The entry is
   a link to the group's active section, else its first, and hovering or
   focusing it opens a menu of the group's sections; grouping more is a line in
   that one array.
   `views/partials/navigator.php` is nine searchable dropdowns under it --
-  Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs --
+  Users, Devices, Clients, Profiles, Resources, Services, Logs, Bans, Jobs; the
+  two of the services module's only with it, their rows opening its pages --
   scoped by the row the page is viewing (user 1-n client n-1 profile 1-n
   resource): each lists only what is linked to that row, and the viewed row's
   own level lists all of its kind with it chosen. Its parents are chosen with
@@ -1531,7 +1148,8 @@ made from one of the tables is answered by loading the page again.
   address); a log entry scopes like the client with its MAC, and its Bans are
   those that apply to that request. A page viewing nothing (lists, Settings)
   scopes nothing. A level's title links to the table of what it counts: the
-  viewed row's own tab where it has one (a user's Clients or Services, a client's Logs),
+  viewed row's own tab where it has one (a user's Clients, a client's Logs; a
+  user's Services is the services module's page of that user),
   else the section's list with `&scope=<kind>:<id>` naming the viewed row; an
   unscoped level's title is the whole list. `Navigator::scope()` is the one
   computation behind both the dropdowns and every list command asked with
@@ -1599,7 +1217,7 @@ made from one of the tables is answered by loading the page again.
 - **The only badges are in the navigator.** A dropdown's title carries the number of
   options that dropdown lists, from `Navigator`, so it always matches its menu
   and is scoped like it; an option may carry one saying what kind of row it
-  is -- a service pack is "Pack", read off the links (`Services::packs()`). Neither the section bar nor a tab strip carries one,
+  is -- a service pack is "Pack", read off the links (`ServicesLink::packs()`). Neither the section bar nor a tab strip carries one,
   and none is ever read off a table: a table with something in its search box
   answers with the total of what matched. They are drawn with the page and not
   refreshed in place.
