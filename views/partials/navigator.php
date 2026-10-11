@@ -100,35 +100,34 @@ foreach ($navigator as $level) {
  * filtering what is loaded.
  *
  * @param array<string, mixed> $level  One of $navigator.
- * @param string               $mono   ' oryk-nav-mono' or ''.
+ * @param string               $mono   ' oryk-mono' or ''.
  * @param string               $prompt The filter's placeholder: "Switch user"
  *                                     under a crumb, whose menu changes row,
  *                                     "Search users" under a related entry.
  */
 $navMenu = function (array $level, $mono, $prompt) use ($e) {
 	?>
-	<ul class="dropdown-menu oryk-nav-menu" data-oryk-nav-level="<?php echo $e($level['key']); ?>" data-oryk-nav-scope="<?php echo $e($level['scope']); ?>" data-oryk-nav-section="<?php echo $e($level['section']); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>" data-oryk-nav-more="<?php echo !empty($level['more']) ? '1' : '0'; ?>">
+	<ul class="dropdown-menu oryk-menu oryk-nav-menu" data-oryk-nav-level="<?php echo $e($level['key']); ?>" data-oryk-nav-scope="<?php echo $e($level['scope']); ?>" data-oryk-nav-section="<?php echo $e($level['section']); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>" data-oryk-nav-more="<?php echo !empty($level['more']) ? '1' : '0'; ?>">
 
-		<li class="oryk-nav-filter">
+		<li class="oryk-nav-filter oryk-pin-top">
 			<?php // The browser's own address and contact suggestions would cover the list; `search` is a type Chrome leaves alone. ?>
 			<input type="search" class="form-control input-sm" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="<?php echo $e($prompt); ?>" aria-label="<?php echo $e($prompt); ?>">
 		</li>
 
 		<?php // The menu holds the last touched few; the rest are reached by typing, which asks the server. ?>
-		<li class="oryk-nav-more<?php echo !empty($level['more']) ? '' : ' hidden'; ?>"><?php echo $e(sprintf(_('%1$d of %2$d, type to search'), count($level['options']), (int) $level['total'])); ?></li>
+		<li class="oryk-nav-more oryk-faint oryk-tiny<?php echo !empty($level['more']) ? '' : ' hidden'; ?>"><?php echo $e(sprintf(_('%1$d of %2$d, type to search'), count($level['options']), (int) $level['total'])); ?></li>
 
 		<?php if (!$level['options']): ?>
-			<li class="oryk-nav-empty"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
+			<li class="oryk-nav-empty oryk-faint"><?php echo $e(isset($level['empty']) ? $level['empty'] : _('Nothing here yet')); ?></li>
 		<?php endif; ?>
 
-		<li class="oryk-nav-empty oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
-		<li class="oryk-nav-empty oryk-nav-searching hidden"><?php echo $e(_('Searching...')); ?></li>
+		<li class="oryk-nav-empty oryk-faint oryk-nav-none hidden"><?php echo $e(_('No matches')); ?></li>
+		<li class="oryk-nav-empty oryk-faint oryk-nav-searching hidden"><?php echo $e(_('Searching...')); ?></li>
 
 		<?php if (!empty($level['add'])): ?>
-			<li class="oryk-nav-add<?php echo !empty($level['add']['active']) ? ' active' : ''; ?>">
+			<li class="oryk-nav-add oryk-pin-bottom<?php echo !empty($level['add']['active']) ? ' active' : ''; ?>">
 				<a href="<?php echo $e($level['add']['href']); ?>">
-					<span class="oryk-nav-plus" aria-hidden="true">+</span><span class="oryk-nav-label"
-						style="display: inline;"><?php echo $e($level['add']['text']); ?></span>
+					<span class="oryk-nav-plus" aria-hidden="true">+</span><span><?php echo $e($level['add']['text']); ?></span>
 				</a>
 			</li>
 		<?php endif; ?>
@@ -136,9 +135,9 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		<?php foreach ($level['options'] as $option): ?>
 			<li class="oryk-nav-option<?php echo !empty($option['active']) ? ' active' : ''; ?>">
 				<a href="<?php echo $e($option['href']); ?>">
-					<span class="oryk-nav-label<?php echo $mono; ?>"><?php echo $e($option['text']); ?><?php if ((string) ($option['badge'] ?? '') !== ''): ?> <span class="badge oryk-nav-badge"><?php echo $e($option['badge']); ?></span><?php endif; ?></span>
+					<span class="oryk-nav-label<?php echo $mono; ?>"><?php echo $e($option['text']); ?><?php if ((string) ($option['badge'] ?? '') !== ''): ?> <span class="badge oryk-pill"><?php echo $e($option['badge']); ?></span><?php endif; ?></span>
 					<?php if ((string) $option['note'] !== ''): ?>
-						<span class="oryk-nav-note"><?php echo $e($option['note']); ?></span>
+						<span class="oryk-nav-note oryk-block oryk-small oryk-faint"><?php echo $e($option['note']); ?></span>
 					<?php endif; ?>
 				</a>
 			</li>
@@ -158,29 +157,29 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		$last = count($navTrail) - 1;
 		$navUp = $last > 0 && !empty($navTrail[$last - 1]['href']) ? (string) $navTrail[$last - 1]['href'] : (string) ($navTrail[$last]['title']['href'] ?? '');
 		?>
-		<ol class="oryk-nav-trail">
+		<ol class="oryk-list oryk-flex oryk-wrap oryk-center oryk-nav-trail">
 			<?php foreach ($navTrail as $i => $level): ?>
 				<?php
 				$key = (string) $level['key'];
-				$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
+				$mono = !empty($level['mono']) ? ' oryk-mono' : '';
 				$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
 				?>
 				<li class="dropdown oryk-nav-level oryk-nav-crumb">
 					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
 						<span class="oryk-nav-kind"><?php echo $e($level['one']); ?></span>
 						<span class="oryk-nav-name"><span class="oryk-nav-text<?php echo $mono; ?>" data-oryk-nav-text="<?php echo $e($key); ?>" data-oryk-nav-mono="<?php echo $mono === '' ? '0' : '1'; ?>"><?php echo $e($level['text']); ?></span></span>
-						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
+						<?php echo $icon('chevron-down', 'oryk-icon-xs oryk-nav-caret'); ?>
 					</div>
 					<?php $navMenu($level, $mono, $level['switch']); ?>
 					<?php if ($i === $last && $navUp !== ''): ?>
-						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-nav-eject-icon'); ?></a>
+						<a class="oryk-nav-eject" href="<?php echo $e($navUp); ?>" title="<?php echo $e(sprintf(_('Close %s'), $level['one'])); ?>"><?php echo $icon('close', 'oryk-icon-xs'); ?></a>
 					<?php endif; ?>
 				</li>
 			<?php endforeach; ?>
 		</ol>
 	<?php endif; ?>
 
-	<ul class="oryk-nav-related">
+	<ul class="oryk-list oryk-flex oryk-wrap oryk-center oryk-nav-related">
 		<?php if ($navTrail): ?>
 			<li class="oryk-nav-related-label"><?php echo $e(_('Related')); ?></li>
 		<?php endif; ?>
@@ -188,11 +187,11 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		<?php foreach ($navRelated as $level): ?>
 			<?php
 			$key = (string) $level['key'];
-			$mono = !empty($level['mono']) ? ' oryk-nav-mono' : '';
+			$mono = !empty($level['mono']) ? ' oryk-mono' : '';
 			$title = isset($level['title']) && is_array($level['title']) ? $level['title'] : null;
 			$titleText = ($title && isset($title['text'])) ? (string) $title['text'] : $key;
 			$inert = !$level['options'] && empty($level['add']);
-			$count = '<span class="badge oryk-nav-count">' . (int) $level['count'] . '</span>';
+			$count = '<span class="badge oryk-pill">' . (int) $level['count'] . '</span>';
 			?>
 
 			<?php if ($key === 'log'): ?>
@@ -210,7 +209,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 					<div class="oryk-nav-toggle" data-toggle="dropdown" data-display="static" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
 						<span class="oryk-nav-kind"><?php echo $e($titleText); ?></span>
 						<?php echo $count; ?>
-						<?php echo $icon('chevron-down', 'oryk-nav-caret'); ?>
+						<?php echo $icon('chevron-down', 'oryk-icon-xs oryk-nav-caret'); ?>
 					</div>
 					<?php $navMenu($level, $mono, $level['search']); ?>
 				<?php endif; ?>
@@ -236,7 +235,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		var crumb = $('[data-oryk-nav-text="' + key + '"]');
 
 		crumb
-			.toggleClass('oryk-nav-mono', crumb.data('oryk-nav-mono') === 1)
+			.toggleClass('oryk-mono', crumb.data('oryk-nav-mono') === 1)
 			.text(text);
 	}
 
@@ -252,8 +251,8 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		// A menu hangs from its entry's left edge; one near the right of the
 		// page would run past the viewport and widen the page, so it hangs
 		// from the right edge instead. Decided when it opens, at this width.
-		menu.removeClass('oryk-nav-menu-right');
-		menu.toggleClass('oryk-nav-menu-right', menu[0].getBoundingClientRect().right > $(window).width() - 8);
+		menu.removeClass('dropdown-menu-right');
+		menu.toggleClass('dropdown-menu-right', menu[0].getBoundingClientRect().right > $(window).width() - 8);
 
 		// The DOM's focus(), not jQuery's, which would read the options as a handler.
 		menu.find('.oryk-nav-filter input').val('').trigger('input')[0].focus({ preventScroll: true });
@@ -280,7 +279,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 	 * @param Array  options As Navigator lists them: text, note, badge, href, active.
 	 */
 	function orykNavDraw(menu, options) {
-		var mono = menu.data('oryk-nav-mono') === 1 ? ' oryk-nav-mono' : '';
+		var mono = menu.data('oryk-nav-mono') === 1 ? ' oryk-mono' : '';
 
 		menu.find('.oryk-nav-option').remove();
 
@@ -288,13 +287,13 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 			var label = $('<span class="oryk-nav-label' + mono + '"></span>').text(option.text);
 
 			if (option.badge) {
-				label.append(' ').append($('<span class="badge oryk-nav-badge"></span>').text(option.badge));
+				label.append(' ').append($('<span class="badge oryk-pill"></span>').text(option.badge));
 			}
 
 			var link = $('<a></a>').attr('href', option.href).append(label);
 
 			if (option.note) {
-				link.append($('<span class="oryk-nav-note"></span>').text(option.note));
+				link.append($('<span class="oryk-nav-note oryk-block oryk-small oryk-faint"></span>').text(option.note));
 			}
 
 			menu.append($('<li class="oryk-nav-option"></li>').toggleClass('active', !!option.active).append(link));
@@ -313,7 +312,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		menu.find('.oryk-nav-option').each(function () {
 			var match = needle === '' || $(this).text().toLowerCase().indexOf(needle) !== -1;
 
-			$(this).toggleClass('hidden', !match).removeClass('oryk-nav-here');
+			$(this).toggleClass('hidden', !match).removeClass('oryk-here');
 
 			if (match) {
 				showing++;
@@ -329,7 +328,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		// What the page loaded is the answer to an empty search, kept so
 		// clearing the box never has to ask again.
 		if (!menu.data('oryk-nav-first')) {
-			menu.data('oryk-nav-first', menu.find('.oryk-nav-option').clone().removeClass('hidden oryk-nav-here'));
+			menu.data('oryk-nav-first', menu.find('.oryk-nav-option').clone().removeClass('hidden oryk-here'));
 			menu.data('oryk-nav-first-more', menu.find('.oryk-nav-more').text());
 		}
 
@@ -393,7 +392,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 		// Enter with nothing walked to takes the first match, which is what
 		// the list is showing you and what you were typing towards.
 		if (event.which === 13) {
-			var here = visible.filter('.oryk-nav-here');
+			var here = visible.filter('.oryk-here');
 			var href = (here.length ? here : visible.first()).find('a').attr('href');
 
 			event.preventDefault();
@@ -411,7 +410,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 
 		event.preventDefault();
 
-		var at = visible.index(visible.filter('.oryk-nav-here'));
+		var at = visible.index(visible.filter('.oryk-here'));
 		at = event.which === 40 ? at + 1 : at - 1;
 
 		// Round, rather than stop: a list you have walked off the end of is a
@@ -424,7 +423,7 @@ $navMenu = function (array $level, $mono, $prompt) use ($e) {
 			at = 0;
 		}
 
-		var landed = visible.removeClass('oryk-nav-here').eq(at).addClass('oryk-nav-here');
+		var landed = visible.removeClass('oryk-here').eq(at).addClass('oryk-here');
 
 		if (landed[0] && landed[0].scrollIntoView) {
 			landed[0].scrollIntoView({ block: 'nearest' });

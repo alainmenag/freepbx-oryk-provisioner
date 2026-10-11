@@ -37,7 +37,7 @@ $tabs = [
 $fact = function ($label, $html) use ($h) {
 	echo '<div class="element-container"><div class="row"><div class="form-group">';
 	echo '<div class="col-md-4"><label class="control-label">' . $h($label) . '</label></div>';
-	echo '<div class="col-md-8"><p class="form-control-static flex" style="gap: 5px;">' . $html . '</p></div>';
+	echo '<div class="col-md-8"><p class="form-control-static oryk-flex oryk-gap-2">' . $html . '</p></div>';
 	echo '</div></div></div>';
 };
 
@@ -63,7 +63,7 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -92,11 +92,11 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 						$fact(_('Finished'), $job['finished_at'] ? $h($job['finished_at']) : '-');
 
 						if ((string) ($job['error'] ?? '') !== '') {
-							$fact(_('Error'), '<span class="text-danger oryk-job-error">' . $h($job['error']) . '</span>');
+							$fact(_('Error'), '<span class="text-danger oryk-prewrap">' . $h($job['error']) . '</span>');
 						}
 						?>
 
-						<table class="table table-striped oryk-job-steps">
+						<table class="table table-striped oryk-mt-2">
 							<thead>
 								<tr>
 									<th><?php echo _('Service'); ?></th>
@@ -117,7 +117,7 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 									<td>
 										<span class="label <?php echo $stepClass[$stepState] ?? 'label-default'; ?>"><?php echo $h($labels['step'][$stepState] ?? $stepState); ?></span>
 										<?php if ((string) ($step['error'] ?? '') !== ''): ?>
-										<p class="text-danger oryk-job-error"><?php echo $h($step['error']); ?></p>
+										<p class="text-danger oryk-prewrap"><?php echo $h($step['error']); ?></p>
 										<?php endif; ?>
 									</td>
 									<td><?php

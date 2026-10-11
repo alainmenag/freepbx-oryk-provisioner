@@ -2,72 +2,305 @@
  * assets/oryk_provisioner.css -- every style the module's pages use.
  *
  * Linked on every page by Pages::stylesheet(), with the file's mtime as its
- * version so an edit is never served stale. Grouped by what draws it; a rule
- * more than one view uses goes under Shared.
+ * version so an edit is never served stale.
+ *
+ * Three layers, each written once and composed in the markup:
+ *
+ *   tokens      the palette, as custom properties on :root, so one colour is
+ *               one line and a modal outside .provisioner sees it too;
+ *   utilities   one property or two under a name that says what it does, not
+ *               where it is used (`.oryk-flex`, `.oryk-mono`, `.oryk-small`).
+ *               A view that wants "monospace, grey, small" writes three
+ *               classes, not a rule. Nothing in this layer names a view;
+ *   components  what a utility cannot say: a state (`.active`, `.oryk-disabled`),
+ *               a relation between two elements (a crumb's slash, a filter
+ *               pinned over the list it filters), or a fight with Bootstrap or
+ *               the admin theme. Named for the partial that draws them.
+ *
+ * Bootstrap's own `text-muted`, `text-danger`, `hidden`, `badge` and
+ * `dropdown-menu-right` are used where they fit rather than redrawn. A class a
+ * script reads (`.oryk-notice-dismiss`, `.oryk-nav-option`) may have no rule
+ * here at all: it is a hook, not a style.
  */
 
-.provisioner .element-container, 
-.provisioner .display .element-container {
-    margin: 5px 0;
-    padding: 10px;
+/* ----------------------------------------------------------------------
+ * Tokens
+ * ---------------------------------------------------------------------- */
+
+:root {
+	--oryk-accent: #0f5a59;
+	--oryk-text: #333;
+	--oryk-text-soft: #555;
+	--oryk-faint: #999;
+	--oryk-line: #ddd;
+	--oryk-line-soft: #eee;
+	--oryk-hover: #f5f5f5;
+	--oryk-active: #eef2f0;
+	--oryk-staged: #f0ad4e;
 }
 
+/* ----------------------------------------------------------------------
+ * Base: FreePBX's own classes, inside the module's pages only
+ * ---------------------------------------------------------------------- */
+
+.provisioner .element-container,
+.provisioner .display .element-container {
+	margin: 5px 0;
+	padding: 10px;
+}
 .provisioner .label {
 	display: inline-flex;
 	align-items: center;
 }
-
 .provisioner .bootstrap-table {
 	margin: 0;
 }
-
+/* Text and an icon side by side, in a button of any size. */
 .provisioner .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-		gap: 8px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
 }
 
 /* ----------------------------------------------------------------------
- * Shared: utilities, list rows, editors (views/partials/editor.php)
+ * Utilities: layout
  * ---------------------------------------------------------------------- */
 
-.flex {
+.oryk-flex {
 	display: flex;
 }
-.gap-3 {
+.oryk-wrap {
+	flex-wrap: wrap;
+}
+.oryk-center {
+	align-items: center;
+}
+.oryk-end {
+	justify-content: flex-end;
+}
+.oryk-between {
+	justify-content: space-between;
+}
+/* Grow from its own width; grow from nothing (equal shares); never shrink; take the rest of the row. */
+.oryk-grow {
+	flex: 1 1 auto;
+}
+.oryk-fill {
+	flex: 1 1 0;
+}
+.oryk-fixed {
+	flex: none;
+}
+.oryk-push {
+	margin-left: auto;
+}
+.oryk-gap-1 {
 	gap: 3px;
 }
-/*
- * A disabled row stays on the list -- a client or a profile that has been
- * switched off is still one, and the whole point of the switch is that
- * nothing about the row is lost -- so it says what it is by being greyed
- * rather than by being somewhere else. The buttons keep their own
- * colours: they are what is done to the row, not what the row says.
- */
-tr.oryk-disabled > td,
-tr.oryk-disabled > td a:not(.btn) {
-	color: #999;
+.oryk-gap-2 {
+	gap: 5px;
+}
+.oryk-gap-3 {
+	gap: 8px;
+}
+.oryk-gap-4 {
+	gap: 12px;
+}
+.oryk-block {
+	display: block;
+}
+.oryk-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.oryk-clear {
+	clear: both;
 }
 
-.oryk-template {
+/* ----------------------------------------------------------------------
+ * Utilities: spacing (a 5px step)
+ * ---------------------------------------------------------------------- */
+
+.oryk-m-0 {
+	margin: 0;
+}
+.oryk-p-0 {
+	padding: 0;
+}
+.oryk-p-3 {
+	padding: 15px;
+}
+.oryk-mt-1 {
+	margin-top: 5px;
+}
+.oryk-mt-2 {
+	margin-top: 10px;
+}
+.oryk-mb-3 {
+	margin-bottom: 15px;
+}
+/* A heading over a table, under the table before it. */
+.oryk-heading {
+	margin: 30px 0 10px;
+}
+.oryk-heading:first-child {
+	margin-top: 0;
+}
+
+/* ----------------------------------------------------------------------
+ * Utilities: text
+ * ---------------------------------------------------------------------- */
+
+/* A name that is typed exactly -- a filename, twelve hex digits -- is shown as it is spelled. */
+.oryk-mono {
 	font-family: monospace;
+}
+.oryk-pre {
 	white-space: pre;
 }
-.oryk-name {
-	font-family: monospace;
+/* A message as it was written, wrapped only where it must be: a modal's body, a job's error. */
+.oryk-prewrap {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
-.oryk-placeholders {
-	padding-top: 6px;
+.oryk-nowrap {
+	white-space: nowrap;
+}
+.oryk-ellipsis {
+	display: block;
+	max-width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.oryk-small {
+	font-size: 12px;
+	line-height: 15px;
+}
+.oryk-tiny {
+	font-size: 11px;
+	line-height: 14px;
+}
+/* Quieter than Bootstrap's text-muted: a kind label, a version, a hint. */
+.oryk-faint {
+	color: var(--oryk-faint);
+}
+.oryk-select-all {
+	user-select: all;
+}
+
+/* ----------------------------------------------------------------------
+ * Utilities: boxes and controls
+ * ---------------------------------------------------------------------- */
+
+.oryk-box {
+	border: 1px solid var(--oryk-line);
+	border-radius: 4px;
+}
+.oryk-pad {
+	padding: 8px 12px;
+}
+/* A .badge small enough to sit in running text: a count, "Pack". */
+.oryk-pill {
+	padding: 1px 5px;
+	font-size: 10px;
+	line-height: 12px;
+	vertical-align: 1px;
+}
+/* A <button> drawn as nothing but its content: a dismiss x, a line that toggles. */
+.oryk-bare {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+/* Faint until the pointer is on it. */
+.oryk-dim {
+	opacity: 0.6;
+}
+.oryk-dim:hover,
+.oryk-dim:focus {
+	opacity: 1;
+}
+/* Stays put while the list around it scrolls. */
+.oryk-pin-top,
+.oryk-pin-bottom {
+	position: sticky;
+	z-index: 1;
+	background: #fff;
+}
+.oryk-pin-top {
+	top: 0;
+}
+.oryk-pin-bottom {
+	bottom: 0;
+}
+/* A list with nothing in it, said in the middle of where the list would be. */
+.oryk-empty {
+	padding: 30px 10px;
+	text-align: center;
+}
+/*
+ * Greyed, not gone: a switched-off client or profile stays on its list, and a
+ * tick that would close a loop stays on its form. On a row the buttons keep
+ * their own colours -- they are what is done to the row, not what it says.
+ */
+.oryk-disabled,
+tr.oryk-disabled > td,
+tr.oryk-disabled > td a:not(.btn) {
+	color: var(--oryk-faint);
+}
+label.oryk-disabled {
+	cursor: not-allowed;
+}
+
+/* An assets/icons/ SVG (see src/Icons.php), in the colour of the text around it. */
+.oryk-icon {
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	vertical-align: -2px;
+}
+/* A chevron, an x: small and drawn heavier so it stays legible. */
+.oryk-icon-xs {
+	width: 10px;
+	height: 10px;
+	stroke-width: 3;
+}
+/* A row button's whole label: as tall as a line of its text, so it lines up with Edit beside it. */
+.btn-sm > .oryk-icon,
+.btn-xs > .oryk-icon {
+	display: block;
+	margin: 2px 0;
+}
+
+/* ----------------------------------------------------------------------
+ * Editors (views/partials/editor.php, placeholders.php, help text)
+ * ---------------------------------------------------------------------- */
+
+.oryk-tab-section {
+	padding-top: 15px;
+}
+/*
+ * A field's help is one block, because FreePBX's (?) icon shows exactly
+ * one: the element with id "<field>-help". A field with more to say puts
+ * each paragraph in one of these inside it.
+ */
+.oryk-help-part {
+	display: block;
+}
+.oryk-help-part + .oryk-help-part {
+	margin-top: 6px;
 }
 .oryk-placeholder-group {
 	margin-bottom: 4px;
 }
-.oryk-placeholder-group strong {
-	display: block;
-	font-weight: normal;
-	color: #777;
-}
+/* A chip is copied on click, and says so over itself until the attribute is cleared. */
 .oryk-placeholder-group code {
 	display: inline-block;
 	position: relative;
@@ -83,7 +316,7 @@ tr.oryk-disabled > td a:not(.btn) {
 	margin-bottom: 2px;
 	padding: 0 4px;
 	border-radius: 2px;
-	background: #333;
+	background: var(--oryk-text);
 	color: #fff;
 	font-family: sans-serif;
 	font-size: 11px;
@@ -91,69 +324,47 @@ tr.oryk-disabled > td a:not(.btn) {
 	white-space: nowrap;
 	pointer-events: none;
 }
-.oryk-tab-section {
-	padding-top: 15px;
-}
-/* An assets/icons/ SVG (see src/Icons.php), in the colour of the text around it. */
-.oryk-icon {
-	display: inline-block;
-	width: 14px;
-	height: 14px;
-	vertical-align: -2px;
-}
-/* A row button's whole label: as tall as a line of its text, so it lines up with Edit beside it. */
-.btn-sm > .oryk-icon {
-	display: block;
-	margin: 2px 0;
-}
-/*
- * A field's help is one block, because FreePBX's (?) icon shows exactly
- * one: the element with id "<field>-help". A field with more to say puts
- * each paragraph in one of these inside it.
- */
-.oryk-help-part {
-	display: block;
-}
-.oryk-help-part + .oryk-help-part {
-	margin-top: 6px;
-}
-.oryk-tab-section .btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 5px;
-}
 
 /* ----------------------------------------------------------------------
  * Notices (views/partials/notice.php)
  * ---------------------------------------------------------------------- */
 
-/* A Bootstrap alert, laid out as text, then where it leads, then its dismissal. */
 .oryk-notice {
-	display: flex;
-	align-items: center;
-	gap: 12px;
 	margin-bottom: 15px;
 }
-.oryk-notice .oryk-notice-text {
-	flex: 1;
-}
-.oryk-notice .oryk-notice-action {
-	flex: none;
-}
-.oryk-notice .oryk-notice-dismiss {
-	flex: none;
+.oryk-notice-dismiss {
 	display: flex;
 	padding: 4px;
-	border: 0;
-	background: none;
-	color: inherit;
-	opacity: 0.6;
-	cursor: pointer;
 }
-.oryk-notice .oryk-notice-dismiss:hover,
-.oryk-notice .oryk-notice-dismiss:focus {
-	opacity: 1;
+
+/* ----------------------------------------------------------------------
+ * Menus (the section bar's groups and the navigator's levels)
+ * ---------------------------------------------------------------------- */
+
+/*
+ * A Bootstrap .dropdown-menu whose rows are plain links: grey under the
+ * pointer or the keyboard (`.oryk-here`), tinted on the row you are already
+ * on. Stated in full because Bootstrap draws .active white-on-blue, and one
+ * class heavier than Bootstrap's own `.dropdown-menu > li > a`, so it wins by
+ * weight and not by load order. Type and padding are each menu's own.
+ */
+.oryk-menu {
+	margin: 0;
+	list-style: none;
+}
+.dropdown-menu.oryk-menu > li > a {
+	display: block;
+	text-decoration: none;
+}
+.dropdown-menu.oryk-menu > li > a:hover,
+.dropdown-menu.oryk-menu > li > a:focus,
+.dropdown-menu.oryk-menu > li.oryk-here > a {
+	background: var(--oryk-hover);
+	text-decoration: none;
+}
+.dropdown-menu.oryk-menu > li.active > a {
+	background: var(--oryk-active);
+	color: var(--oryk-text);
 }
 
 /* ----------------------------------------------------------------------
@@ -163,7 +374,9 @@ tr.oryk-disabled > td a:not(.btn) {
 /*
  * A flat band with an underline under the active section, so it never
  * reads as the row's `nav-tabs` strip further down the page. Wraps rather
- * than scrolls on a narrow screen.
+ * than scrolls on a narrow screen. Every rule is a child selector because a
+ * group's menu is a <ul> inside the bar, and would otherwise be laid out as
+ * a second bar.
  */
 .oryk-sections {
 	display: flex;
@@ -171,7 +384,7 @@ tr.oryk-disabled > td a:not(.btn) {
 	align-items: flex-end;
 	gap: 4px 24px;
 	margin-bottom: 20px;
-	border-bottom: 3px solid #ddd;
+	border-bottom: 3px solid var(--oryk-line);
 }
 .oryk-sections .oryk-sections-home {
 	padding: 8px 0;
@@ -181,18 +394,9 @@ tr.oryk-disabled > td a:not(.btn) {
 	text-decoration: none;
 }
 .oryk-sections .oryk-sections-version {
-	display: block;
-	font-size: 11px;
-	line-height: 14px;
 	font-weight: 400;
-	color: #999;
 }
 .oryk-sections > ul {
-	display: flex;
-	flex-wrap: wrap;
-	margin: 0;
-	padding: 0;
-	list-style: none;
 	margin-bottom: -2px;
 }
 .oryk-sections > ul > li > a {
@@ -204,13 +408,13 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 22px;
 	text-decoration: none;
 	font-weight: 700;
-	color: #0f5a59;
+	color: var(--oryk-accent);
 }
 .oryk-sections > ul > li > a:hover,
 .oryk-sections > ul > li > a:focus,
 .oryk-sections > ul > li.oryk-sections-group:hover > a {
 	border-bottom-color: #ccc;
-	background: #f7f7f7;
+	background: var(--oryk-hover);
 }
 .oryk-sections > ul > li.active > a {
 	border-bottom-color: currentColor;
@@ -218,13 +422,10 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 
 /*
- * A group of sections: a bar entry with a menu under it. Every bar rule
- * above is a child selector for this menu's sake -- it is a <ul> inside the
- * bar, and would otherwise be laid out as a second bar.
- *
- * The entry is a link like any other, so nothing toggles the menu: it is
- * open while the pointer or the focus is in the group. It has no top margin
- * so the pointer never crosses a gap on its way down.
+ * A group of sections: a bar entry with a menu under it. The entry is a link
+ * like any other, so nothing toggles the menu: it is open while the pointer
+ * or the focus is in the group, with no top margin so the pointer never
+ * crosses a gap on its way down.
  */
 .oryk-sections .oryk-sections-group {
 	position: relative;
@@ -239,37 +440,20 @@ tr.oryk-disabled > td a:not(.btn) {
 	display: block;
 }
 .oryk-sections .oryk-sections-caret {
-	width: 10px;
-	height: 10px;
 	margin-left: 6px;
 	vertical-align: 1px;
-	stroke-width: 3;
-	opacity: 0.6;
 }
 .oryk-sections .oryk-sections-menu {
 	min-width: 160px;
-	margin: 0;
 	padding: 4px 0;
-	list-style: none;
 }
 .oryk-sections .oryk-sections-menu > li > a {
-	display: block;
 	padding: 7px 16px;
 	font-size: 14px;
 	line-height: 20px;
 	font-weight: 600;
-	text-decoration: none;
 	white-space: nowrap;
-	color: #0f5a59;
-}
-.oryk-sections .oryk-sections-menu > li > a:hover,
-.oryk-sections .oryk-sections-menu > li > a:focus {
-	background: #f5f5f5;
-}
-/* Stated in full, as the navigator's is: Bootstrap draws this white-on-blue. */
-.oryk-sections .oryk-sections-menu > li.active > a {
-	background: #eef2f0;
-	color: #333;
+	color: var(--oryk-accent);
 }
 
 /* ----------------------------------------------------------------------
@@ -277,23 +461,16 @@ tr.oryk-disabled > td a:not(.btn) {
  * ---------------------------------------------------------------------- */
 
 /*
- * Two lines, from one row of levels (views/partials/navigator.php): the
- * trail, which is every level with a row chosen, and the related line, which
- * is the rest. Both are flex rows that wrap; a dropdown menu is a child of
- * its level, so type is set on the links and toggles, never on the <ol>, the
- * <ul> or the <li>, which the menu would inherit.
+ * Two lines, from one row of levels: the trail, which is every level with a
+ * row chosen, and the related line, which is the rest. A dropdown menu is a
+ * child of its level, so type is set on the links and toggles, never on the
+ * <ol>, the <ul> or the <li>, which the menu would inherit. Every rule is
+ * scoped under .oryk-nav: the extra class is what beats Bootstrap's own
+ * `.dropdown-menu > li > a` and what the admin theme says about a link in a
+ * page heading -- which is what the first cut lost its left padding to.
  */
 .oryk-nav {
 	margin-bottom: 22px;
-}
-.oryk-nav .oryk-nav-trail,
-.oryk-nav .oryk-nav-related {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	margin: 0;
-	padding: 0;
-	list-style: none;
 }
 .oryk-nav .oryk-nav-trail {
 	gap: 2px 0;
@@ -303,6 +480,9 @@ tr.oryk-disabled > td a:not(.btn) {
 }
 .oryk-nav .oryk-nav-trail + .oryk-nav-related {
 	margin-top: 8px;
+}
+.oryk-nav .oryk-nav-level {
+	position: relative;
 }
 
 /*
@@ -322,8 +502,13 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-nav .oryk-nav-level > .oryk-nav-toggle[data-toggle]:focus,
 .oryk-nav .oryk-nav-level.open > .oryk-nav-toggle,
 .oryk-nav .oryk-nav-level.show > .oryk-nav-toggle {
-	border-color: #ddd;
-	background: #f7f7f7;
+	border-color: var(--oryk-line);
+	background: var(--oryk-hover);
+}
+/* The same chevron on every level: what says it opens, whatever it reads. */
+.oryk-nav .oryk-nav-caret {
+	align-self: center;
+	color: var(--oryk-faint);
 }
 
 /*
@@ -331,6 +516,10 @@ tr.oryk-disabled > td a:not(.btn) {
  * small type and the name in heading type, a slash between crumbs. The
  * last crumb is where you are and is drawn heavier.
  */
+.oryk-nav .oryk-nav-crumb {
+	display: inline-flex;
+	align-items: center;
+}
 .oryk-nav .oryk-nav-crumb > .oryk-nav-toggle {
 	gap: 6px;
 	padding: 2px 7px;
@@ -347,21 +536,17 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-nav .oryk-nav-crumb .oryk-nav-kind {
 	font-size: 12px;
 	line-height: 17px;
-	color: #999;
+	color: var(--oryk-faint);
 }
 .oryk-nav .oryk-nav-crumb .oryk-nav-name {
-	color: #555;
+	color: var(--oryk-text-soft);
 }
 .oryk-nav .oryk-nav-crumb:last-child .oryk-nav-name {
-	color: #333;
+	color: var(--oryk-text);
 	font-weight: 700;
 }
 
 /* Closing the viewed row, after its crumb: faint until the pointer is near. */
-.oryk-nav .oryk-nav-crumb {
-	display: inline-flex;
-	align-items: center;
-}
 .oryk-nav .oryk-nav-eject {
 	display: inline-flex;
 	align-items: center;
@@ -376,13 +561,8 @@ tr.oryk-disabled > td a:not(.btn) {
 	color: #777;
 }
 .oryk-nav .oryk-nav-eject:hover {
-	color: #333;
-	background: #f0f0f0;
-}
-.oryk-nav .oryk-nav-eject-icon {
-	width: 11px;
-	height: 11px;
-	stroke-width: 3;
+	color: var(--oryk-text);
+	background: var(--oryk-hover);
 }
 
 /*
@@ -397,13 +577,7 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 18px;
 }
 .oryk-nav .oryk-nav-entry .oryk-nav-kind {
-	color: #555;
-}
-.oryk-nav .oryk-nav-entry .oryk-nav-count {
-	padding: 1px 5px;
-	font-size: 10px;
-	line-height: 12px;
-	vertical-align: 1px;
+	color: var(--oryk-text-soft);
 }
 .oryk-nav .oryk-nav-inert > .oryk-nav-toggle {
 	cursor: default;
@@ -415,51 +589,22 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 18px;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
-	color: #999;
+	color: var(--oryk-faint);
 }
 /* The section bar's two groups, marked here by a gap before Logs. */
 .oryk-nav .oryk-nav-gap {
 	width: 1px;
 	height: 16px;
 	margin: 0 4px;
-	background: #ddd;
-}
-
-/* What kind of row an option is -- a service pack -- beside its name. */
-.oryk-nav .oryk-nav-menu .oryk-nav-badge {
-	margin-left: 4px;
-	padding: 1px 5px;
-	font-size: 10px;
-	font-weight: 600;
-	line-height: 12px;
-	vertical-align: 1px;
-}
-
-/* A name that is typed exactly -- a filename, twelve hex digits -- is
-   shown as it is spelled, here as everywhere else in the module. */
-.oryk-nav-mono {
-	font-family: monospace;
-}
-
-/* The same chevron on every level: what says it opens, whatever it reads. */
-.oryk-nav .oryk-nav-caret {
-	width: 10px;
-	height: 10px;
-	align-self: center;
-	color: #999;
-	stroke-width: 3;
+	background: var(--oryk-line);
 }
 
 /*
- * The menu states all of its own type, padding and spacing rather than
- * taking any of it from somewhere else. Every rule is specific enough to
- * beat both Bootstrap's defaults and whatever the admin theme has to say
- * about a link sitting inside a page heading -- which is what the first
- * cut lost its left padding to.
+ * The menu: placed by CSS under its level, not by Popper. No padding of its
+ * own, so the filter pinned at its head and the add row pinned at its foot
+ * sit flush. One that would run off the right of the page carries
+ * Bootstrap's `dropdown-menu-right`, which the script sets.
  */
-.oryk-nav .oryk-nav-level {
-	position: relative;
-}
 .oryk-nav .oryk-nav-menu {
 	top: 100%;
 	left: 0;
@@ -473,66 +618,40 @@ tr.oryk-disabled > td a:not(.btn) {
 	font-size: 13px;
 	line-height: 1.4;
 }
+.oryk-nav .oryk-nav-menu.dropdown-menu-right {
+	left: auto;
+	right: 0;
+}
 .oryk-nav .oryk-nav-menu > li > a {
-	display: block;
 	padding: 5px 14px;
 	font-size: 13px;
 	line-height: 17px;
 	white-space: normal;
 }
-.oryk-nav .oryk-nav-menu > li > a:hover,
-.oryk-nav .oryk-nav-menu > li > a:focus,
-.oryk-nav .oryk-nav-menu > li.oryk-nav-here > a {
-	background: #f5f5f5;
-	text-decoration: none;
-}
-
-/* The one you are already on. Bootstrap draws this white-on-blue, which
-   its own background rule here would leave white-on-grey, so the colour
-   is stated too. */
 .oryk-nav .oryk-nav-menu > li.active > a {
-	background: #eef2f0;
-	color: #333;
 	font-weight: 600;
 }
-.oryk-nav .oryk-nav-menu .oryk-nav-label {
+.oryk-nav .oryk-nav-label {
 	display: block;
 }
-
 /* The second line of an option -- a client's device description under its
    MAC. Tight to the line above it, so the pair reads as one row. */
-.oryk-nav .oryk-nav-menu .oryk-nav-note {
-	display: block;
+.oryk-nav .oryk-nav-note {
 	margin-top: 1px;
-	color: #999;
-	font-size: 12px;
-	line-height: 15px;
 }
-
-/* A menu that would run off the right of the page hangs from its entry's right edge. */
-.oryk-nav .oryk-nav-menu.oryk-nav-menu-right {
-	left: auto;
-	right: 0;
-}
-
-/* How much of the level the menu holds, under the filter: a hint, not a row. */
-.oryk-nav .oryk-nav-menu > li.oryk-nav-more {
+/* The hint under the filter and the row that says the list is empty: text where a link would be. */
+.oryk-nav .oryk-nav-more {
 	padding: 4px 14px 5px;
-	color: #999;
-	font-size: 11px;
-	line-height: 14px;
-	border-bottom: 1px solid #eee;
+	border-bottom: 1px solid var(--oryk-line-soft);
 }
-
+.oryk-nav .oryk-nav-empty {
+	padding: 6px 14px;
+}
 /* The filter stays put while the list scrolls under it: a search box that
    scrolls away is one you have to find again to fix a typo. */
 .oryk-nav .oryk-nav-filter {
-	position: sticky;
-	top: 0;
-	z-index: 1;
 	padding: 6px 8px;
-	background: #fff;
-	border-bottom: 1px solid #eee;
+	border-bottom: 1px solid var(--oryk-line-soft);
 }
 .oryk-nav .oryk-nav-filter input {
 	/* A search input is not given border-box by Bootstrap the way a text
@@ -547,214 +666,125 @@ tr.oryk-disabled > td a:not(.btn) {
 	line-height: 20px;
 	box-shadow: none;
 }
-.oryk-nav .oryk-nav-menu > li.oryk-nav-empty {
-	padding: 6px 14px;
-	color: #999;
-	font-size: 13px;
-	line-height: 17px;
-}
-
 /*
- * Where a new one is written. Pinned to the foot of the menu the way the
- * filter is pinned to its head -- a list long enough to scroll is exactly
- * the list where you may give up on finding one and write it instead, and
- * having to scroll to the end to do that is the wrong way round.
- *
- * The rule above it is the whole distinction being drawn: everything over
- * the line is somewhere that exists.
+ * Where a new one is written: pinned to the foot of the menu the way the
+ * filter is pinned to its head, past a rule, so everything over the line is
+ * somewhere that exists.
  */
-.oryk-nav .oryk-nav-menu > li.oryk-nav-add {
-	position: sticky;
-	bottom: 0;
-	z-index: 1;
-	background: #fff;
-	border-bottom: 1px solid #eee;
+.oryk-nav .oryk-nav-add {
+	border-bottom: 1px solid var(--oryk-line-soft);
 }
-.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a {
-	color: #555;
+.oryk-nav .oryk-nav-add > a {
+	color: var(--oryk-text-soft);
 }
-.oryk-nav .oryk-nav-menu > li.oryk-nav-add .oryk-nav-plus {
+.oryk-nav .oryk-nav-plus {
 	display: inline-block;
 	width: 12px;
 	margin-right: 4px;
 	font-weight: 700;
-	color: #999;
+	color: var(--oryk-faint);
 }
-.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a:hover .oryk-nav-plus,
-.oryk-nav .oryk-nav-menu > li.oryk-nav-add > a:focus .oryk-nav-plus,
-.oryk-nav .oryk-nav-menu > li.oryk-nav-add.active .oryk-nav-plus {
+.oryk-nav .oryk-nav-add > a:hover .oryk-nav-plus,
+.oryk-nav .oryk-nav-add > a:focus .oryk-nav-plus,
+.oryk-nav .oryk-nav-add.active .oryk-nav-plus {
 	color: inherit;
 }
 
 /* ----------------------------------------------------------------------
- * Bans list (views/admin.php)
+ * Tables (views/admin.php, partials/logs.php, overview.php, services.php)
  * ---------------------------------------------------------------------- */
-
-/* The State column's label is the toggle of its menu. */
-.oryk-ban-state > [data-toggle="dropdown"],
-.oryk-ban-state > [data-toggle="dropdown"]:hover,
-.oryk-ban-state > [data-toggle="dropdown"]:focus {
-	text-decoration: none;
-}
-.oryk-ban-state .oryk-icon {
-	width: 9px;
-	height: 9px;
-	margin: 0 0 0 2px;
-	vertical-align: 0;
-	stroke-width: 3;
-}
-/* bootstrap-table's empty clearfix after the Bans table: the sync line under it clears the floats itself. */
-#oryk_bans > .bootstrap-table + .clearfix {
-	display: none;
-}
-
-/* ----------------------------------------------------------------------
- * Settings tab (views/partials/settings.php)
- * ---------------------------------------------------------------------- */
-
-.oryk-setting-keyword {
-	font-family: monospace;
-	color: #777;
-}
-
-/* ----------------------------------------------------------------------
- * Provisioning log (views/partials/logs.php)
- * ---------------------------------------------------------------------- */
-
-.oryk-log-detail {
-	display: block;
-	color: #a94442;
-	font-size: 11px;
-	line-height: 15px;
-}
-.oryk-log-agent {
-	display: block;
-	max-width: 260px;
-	overflow: hidden;
-	color: #777;
-	font-size: 11px;
-	line-height: 15px;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-.oryk-log-time {
-	white-space: nowrap;
-}
-
-/* Over a list opened from a navigator title: what it is narrowed to, and the
-   way back to all of it. */
-.oryk-scope {
-	margin: 0 0 10px;
-	color: #777;
-}
-
-.oryk-scope .oryk-scope-all {
-	margin-left: 8px;
-}
 
 /* A toolbar whose button is Clear goes after the table's refresh, so refresh
  * is first over every table: bootstrap-table draws the toolbar, then its own
- * buttons, then the search box, and this reorders the three. */
+ * buttons, then the search box, and this reorders the three. The clearfix's
+ * pseudo-elements would be flex items, and the gap would indent the row by one. */
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 0 10px;
 }
-
-/* A clearfix's pseudo-elements would be flex items, and the gap would indent
- * the row by one. */
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear)::before,
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear)::after {
 	display: none;
 }
-
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > * {
 	float: none;
 	margin-left: 0;
 	margin-right: 0;
 }
-
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .columns {
 	order: 1;
 }
-
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .bs-bars {
 	order: 2;
 }
-
 .provisioner .fixed-table-toolbar:has(.oryk-toolbar-clear) > .search {
 	order: 3;
 }
-
-/* A select narrowing a table, beside Add in its toolbar: Services' two. */
+/* A select narrowing a table, beside Add in its toolbar. */
 .oryk-toolbar-filter {
 	display: inline-block;
 	width: auto;
 	margin-left: 6px;
 	vertical-align: middle;
 }
-
-/* ----------------------------------------------------------------------
- * Overview -- views/partials/overview.php
- * ---------------------------------------------------------------------- */
-
-.oryk-overview-empty {
-	padding: 30px 10px;
-	text-align: center;
+/* The Bans State column's label is the toggle of its menu. */
+.oryk-ban-state > [data-toggle="dropdown"],
+.oryk-ban-state > [data-toggle="dropdown"]:hover,
+.oryk-ban-state > [data-toggle="dropdown"]:focus {
+	text-decoration: none;
 }
-
-.oryk-overview-heading {
-	margin: 30px 0 10px;
+.oryk-ban-state .oryk-icon {
+	margin-left: 2px;
+	vertical-align: 0;
 }
-.oryk-overview > .oryk-overview-heading:first-child {
-	margin-top: 0;
+/* bootstrap-table's empty clearfix after the Bans table: the sync line under it clears the floats itself. */
+#oryk_bans > .bootstrap-table + .clearfix {
+	display: none;
 }
-.oryk-overview td > .btn-sm {
-	margin-left: 8px;
+/* A User-Agent, cut to the column rather than wrapping the row. */
+.oryk-log-agent {
+	max-width: 260px;
 }
 
 /* ----------------------------------------------------------------------
  * orykAsk() -- assets/oryk_dialog.js
  * ---------------------------------------------------------------------- */
 
-.oryk-ask .oryk-ask-message {
-	margin: 0;
-	white-space: pre-wrap;
-	word-break: break-word;
-}
 .oryk-ask .modal-footer .btn + .btn {
 	margin-left: 8px;
 }
-/* A service's Parents and Services: every other service, to tick. */
+/* A question's sections: what a save would do, listed above the sentence. */
+.oryk-ask-section {
+	margin: 0 0 4px;
+	font-weight: bold;
+}
+.oryk-ask-list {
+	margin: 0 0 12px;
+	padding-left: 20px;
+}
+
+/* ----------------------------------------------------------------------
+ * Services (views/service.php, partials/user_services.php)
+ * ---------------------------------------------------------------------- */
+
+/* A service's Parents and Services: every other service, to tick, in a box that scrolls. */
 .oryk-checks {
 	max-height: 220px;
 	overflow-y: auto;
 	padding: 6px 10px;
-	border: 1px solid #ddd;
-	border-radius: 4px;
 }
 .oryk-check {
-	display: block;
-	margin: 0;
-	padding: 2px 0;
-	font-weight: normal;
 	display: flex;
 	align-items: center;
 	gap: 5px;
+	margin: 0;
+	padding: 2px 0;
+	font-weight: normal;
 }
-.oryk-check.disabled {
-	color: #999;
-	cursor: not-allowed;
-}
-/* A question's sections: what a save would do, listed above the sentence. */
-.oryk-ask .oryk-ask-section {
-	margin: 0 0 4px;
-	font-weight: bold;
-}
-.oryk-ask .oryk-ask-list {
-	margin: 0 0 12px;
-	padding-left: 20px;
+.oryk-check input {
+	margin: 0;
 }
 /*
  * A user's Services tab: packs and single services, a list each, side by
@@ -768,16 +798,8 @@ tr.oryk-disabled > td a:not(.btn) {
 	align-items: start;
 	width: 100%;
 }
-.oryk-service-list {
-	margin-bottom: 15px;
-	border: 1px solid #ddd;
-	border-radius: 4px;
-}
 .oryk-service-list-title {
-	display: flex;
-	justify-content: space-between;
-	padding: 8px 12px;
-	border-bottom: 1px solid #ddd;
+	border-bottom: 1px solid var(--oryk-line);
 	font-weight: bold;
 }
 .oryk-service-row {
@@ -786,84 +808,37 @@ tr.oryk-disabled > td a:not(.btn) {
 .oryk-service-row + .oryk-service-row {
 	border-top: 1px solid rgba(128, 128, 128, 0.25);
 }
-/* A box that differs from what is saved. */
+/* A row that differs from what is saved. */
 .oryk-service-staged {
-	border-left-color: #f0ad4e;
+	border-left-color: var(--oryk-staged);
 	background: rgba(240, 173, 78, 0.08);
 }
 .oryk-service-head {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
 	padding: 6px 12px;
 }
 .oryk-service-head .oryk-check {
 	cursor: pointer;
 }
-.oryk-service-head .oryk-check input {
-	margin: 0;
-}
-/* Which staged pack a service comes with, whether it is staged, and where its newest job step stands. */
-.oryk-service-via,
-.oryk-service-change,
-.oryk-service-job {
-	font-size: 12px;
-}
-/* The button that opens a pack, pushed right: how many services it gives. */
-.oryk-service-open {
-	margin-left: auto;
-}
-.oryk-service-job .btn-xs > .oryk-icon {
-	display: block;
-	margin: 2px 0;
-}
-.oryk-service-count {
-	font-size: 12px;
-}
+/* What a pack gives, under its row, indented past the tick. */
 .oryk-service-gives {
 	padding: 0 12px 10px 38px;
 	font-size: 13px;
-}
-/* The line over what a pack gives: pressed, it is drawn as a tree, or flat again. */
-.oryk-service-tree {
-	display: block;
-	padding: 0;
-	border: 0;
-	background: none;
-	cursor: pointer;
 }
 .oryk-service-tree:hover,
 .oryk-service-tree:focus {
 	text-decoration: underline;
 }
-.oryk-service-gives ul {
+/* A nested list drawn as a tree: each level a rule down its left. */
+.oryk-tree {
 	margin: 2px 0 0;
 	padding: 0;
 	list-style: none;
 }
-.oryk-service-gives ul ul {
+.oryk-tree .oryk-tree {
 	margin-left: 5px;
 	padding-left: 14px;
 	border-left: 1px solid rgba(128, 128, 128, 0.35);
 }
-.oryk-service-gives li {
+.oryk-tree li {
 	padding: 1px 0;
-}
-.oryk-service-has {
-	margin-left: 4px;
-	font-size: 12px;
-}
-.oryk-service-none {
-	margin: 0;
-	padding: 8px 12px;
-}
-/* A job's steps, on its page: the error under the step that threw. */
-.oryk-job-steps {
-	margin-top: 10px;
-}
-.oryk-job-error {
-	white-space: pre-wrap;
-	word-break: break-word;
-	margin: 0;
 }

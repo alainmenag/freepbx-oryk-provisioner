@@ -97,7 +97,7 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 	function formatLogTime(value, row) {
 		const time = value ? orykEscape(value) : '-';
 
-		return `<a class="oryk-log-time" href="?display=oryk_provisioner&log=${encodeURIComponent(row.id)}">${time}</a>`;
+		return `<a class="oryk-nowrap" href="?display=oryk_provisioner&log=${encodeURIComponent(row.id)}">${time}</a>`;
 	}
 
 	// The MAC links to the client it belongs to *now*. One that belongs to
@@ -133,7 +133,7 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 			: `<span class="text-muted">${orykEscape(orykLogMainConfig)}</span>`;
 
 		return row.message
-			? `${name}<span class="oryk-log-detail">${orykEscape(row.message)}</span>`
+			? `${name}<span class="oryk-block oryk-tiny text-danger">${orykEscape(row.message)}</span>`
 			: name;
 	}
 
@@ -164,7 +164,7 @@ $logUrl = 'ajax.php?module=oryk_provisioner&command=listLogs'
 
 		const agent = orykEscape(row.user_agent);
 
-		return `${ip}<span class="oryk-log-agent" title="${agent}">${agent}</span>`;
+		return `${ip}<span class="oryk-log-agent oryk-ellipsis oryk-tiny text-muted" title="${agent}">${agent}</span>`;
 	}
 
 	$(document).on('click', '[name="log_clear"]', function () {

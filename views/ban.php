@@ -134,7 +134,7 @@ foreach ($profiles as $profile) {
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -145,13 +145,13 @@ foreach ($profiles as $profile) {
 
 						<?php
 						$field('ban_ip', _('IP Address'),
-							'<input type="text" class="form-control oryk-name" id="ban_ip" maxlength="45" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any address')) . '" value="' . $h($ban['ip'] ?? '') . '">',
+							'<input type="text" class="form-control oryk-mono" id="ban_ip" maxlength="45" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any address')) . '" value="' . $h($ban['ip'] ?? '') . '">',
 							'<span class="oryk-help-part">' . $h(_('One IPv4 or IPv6 address, as the request arrives from it. Ranges are not accepted. On its own it matches every phone behind that address; with a user or client, it is where that user or client is allowed or refused from. Loopback cannot be banned.')) . '</span>'
 							. '<span class="oryk-help-part">' . $h(_('With Fail2ban Sync on, a ban naming an address and nothing else also reaches fail2ban: Banned is banned in the banned jail until it expires, Deny in the deny jail until it is deleted -- both on every port -- and Allow goes on the ignore lists of the PBX jails setup chose, never sshd\'s: an allowed address is still watched there.')) . '</span>'
 						);
 
 						$field('ban_mac', _('MAC Address'),
-							'<input type="text" class="form-control oryk-name" id="ban_mac" maxlength="17" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any MAC')) . '" value="' . $h($ban['mac'] ?? '') . '">',
+							'<input type="text" class="form-control oryk-mono" id="ban_mac" maxlength="17" autocomplete="off" spellcheck="false" placeholder="' . $h(_('Any MAC')) . '" value="' . $h($ban['mac'] ?? '') . '">',
 							$h(_('Twelve hexadecimal digits, with or without separators. It need not belong to a client: a MAC nobody has added yet can be refused too.'))
 						);
 
@@ -192,12 +192,12 @@ foreach ($profiles as $profile) {
 						);
 
 						$field('ban_source', _('Source'),
-							'<input type="text" class="form-control oryk-name" id="ban_source" maxlength="32" autocomplete="off" spellcheck="false" placeholder="' . $h(\FreePBX\Modules\Oryk_Provisioner\Bans::SOURCE_MANUAL) . '" value="' . $h($ban['source'] ?? \FreePBX\Modules\Oryk_Provisioner\Bans::SOURCE_MANUAL) . '">',
+							'<input type="text" class="form-control oryk-mono" id="ban_source" maxlength="32" autocomplete="off" spellcheck="false" placeholder="' . $h(\FreePBX\Modules\Oryk_Provisioner\Bans::SOURCE_MANUAL) . '" value="' . $h($ban['source'] ?? \FreePBX\Modules\Oryk_Provisioner\Bans::SOURCE_MANUAL) . '">',
 							$h(_('What created this ban: manual for one added here, or the name of whatever adds bans on its own, such as fail2ban. Up to 32 letters, digits, dashes and underscores; blank is manual. Adding the same ban again keeps the source it already has.'))
 						);
 
 						$field('ban_jail', _('Jail'),
-							'<input type="text" class="form-control oryk-name" id="ban_jail" maxlength="64" autocomplete="off" spellcheck="false" placeholder="' . $h(_('None')) . '" value="' . $h($ban['jail'] ?? '') . '">',
+							'<input type="text" class="form-control oryk-mono" id="ban_jail" maxlength="64" autocomplete="off" spellcheck="false" placeholder="' . $h(_('None')) . '" value="' . $h($ban['jail'] ?? '') . '">',
 							$h(_('The fail2ban jail, or other rule, that fired, when there is one -- asterisk, for instance. Up to 64 letters, digits, dots, dashes and underscores. Adding the same ban again keeps the jail it already has.'))
 						);
 

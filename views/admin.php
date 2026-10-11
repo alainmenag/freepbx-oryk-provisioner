@@ -77,17 +77,17 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
 				<?php if ($scope): ?>
-				<p class="oryk-scope">
-					<?php echo sprintf(
+				<p class="text-muted oryk-flex oryk-gap-3">
+					<span><?php echo sprintf(
 						htmlspecialchars(_('Only what is linked to %s.'), ENT_QUOTES, 'UTF-8'),
 						'<a href="' . htmlspecialchars($scope['href'], ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($scope['text'], ENT_QUOTES, 'UTF-8') . '</a>'
-					); ?>
-					<a class="oryk-scope-all" href="<?php echo htmlspecialchars($scope['all'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo _('Show all'); ?></a>
+					); ?></span>
+					<a href="<?php echo htmlspecialchars($scope['all'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo _('Show all'); ?></a>
 				</p>
 				<?php endif; ?>
 
@@ -302,7 +302,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 						$syncClass = ['ok' => 'success', 'disabled' => 'info'][$syncState] ?? 'warning';
 						?>
 						<?php if ($syncState !== ''): ?>
-						<div class="alert alert-<?php echo $syncClass; ?>" style="margin: 0; clear: both;">
+						<div class="alert alert-<?php echo $syncClass; ?> oryk-m-0 oryk-clear">
 							<?php echo $icon('shield'); ?>
 							<?php if ($syncState === 'ok'): ?>
 								<?php echo htmlspecialchars(sprintf(_('IP bans sync with fail2ban every minute (fail2ban %s): Banned into the banned jail, Deny into deny (both every port), Allow onto the ignore lists of %s only.'), (string) ($sync['fail2ban'] ?? ''), implode(', ', (array) ($sync['jails'] ?? []))), ENT_QUOTES, 'UTF-8'); ?>
@@ -313,7 +313,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 								<?php endif; ?>
 								<?php if (in_array($syncState, ['missing', 'sudo', 'stale', 'nojail'], true)): ?>
 								<br><?php echo _('Run this once on the PBX, as root:'); ?>
-								<code style="user-select: all;"><?php echo htmlspecialchars((string) ($sync['command'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></code>
+								<code class="oryk-select-all"><?php echo htmlspecialchars((string) ($sync['command'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></code>
 								<?php endif; ?>
 							<?php endif; ?>
 						</div>
@@ -618,7 +618,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		actions.push(`<button type="button" class="btn btn-danger btn-sm" name="client_delete" value="${row.id}" title="Delete">${orykIcon('trash')}</button>`);
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 
-		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">${actions.join('')}</div>`;
 	}
 
 	// Editing a profile is a page too, and for the same reason. Its switch is
@@ -628,7 +628,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 	// column beside it.
 	function formatProfileActions(value, row) {
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			orykSwitch(row, 'setProfileEnabled', '#profile_table', 'profile', 'every client assigned to it is refused'),
 			`<button type="button" class="btn btn-danger btn-sm" name="profile_delete" value="${row.id}">${orykIcon('trash')}</button>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${encodeURIComponent(row.id)}">Edit</a>`,
@@ -717,7 +717,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			return '-';
 		}
 
-		const link = `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>`;
+		const link = `<a class="oryk-mono" href="?display=oryk_provisioner&user=${encodeURIComponent(value)}">${orykEscape(value)}</a>`;
 
 		return row && row.device !== undefined && !Number(row.device)
 			? `${link} <span class="label label-default" title="This extension has no device, so no phone can register as it. Saving it on its page gives it one.">no device</span>`
@@ -735,7 +735,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		const here = orykOnOverview && typeof orykOverviewScope !== 'undefined' && orykOverviewScope === `user:${row.extension}`;
 
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			// The way to the user's Overview, first; not drawn on that Overview itself.
 			here ? '' : `<a class="btn btn-default btn-sm" href="${orykOverviewUrl('user', row.extension)}" title="Overview: everything tied to this user, and deleting it">${orykIcon('overview')}</a>`,
 			`<a class="btn btn-default btn-sm" href="?display=extensions&extdisplay=${extension}" title="Open in Extensions">Ext.</a>`,
@@ -751,7 +751,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 	}
 
 	function formatPbxDeviceId(value, row) {
-		return `<a class="oryk-name" href="${orykPbxDeviceUrl(row)}">${orykEscape(value)}</a>`;
+		return `<a class="oryk-mono" href="${orykPbxDeviceUrl(row)}">${orykEscape(value)}</a>`;
 	}
 
 	// The extension the device is on, linked when it is one the Users list
@@ -777,12 +777,12 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 		const more = (Number(row.clients) || 0) - 1;
 
-		return `<a class="oryk-name" href="?display=oryk_provisioner&client=${encodeURIComponent(row.client_id)}">${orykEscape(value || row.client_id)}</a>` +
+		return `<a class="oryk-mono" href="?display=oryk_provisioner&client=${encodeURIComponent(row.client_id)}">${orykEscape(value || row.client_id)}</a>` +
 			(more > 0 ? ` <span class="text-muted" title="${more} more client${more === 1 ? '' : 's'} on this device">+${more}</span>` : '');
 	}
 
 	function formatPbxDeviceActions(value, row) {
-		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">` +
 			`<a class="btn btn-default btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}" title="Open in Devices">Dev.</a>` +
 			`<button type="button" class="btn btn-danger btn-sm" name="pbx_device_delete" value="${orykEscape(row.id)}" title="Delete this device">${orykIcon('trash')}</button>` +
 			`<a class="btn btn-primary btn-sm" href="${orykPbxDeviceUrl(row)}">Edit</a>` +
@@ -844,7 +844,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 
 		const title = row.ip_client ? ` title="Public IP of ${orykEscape(row.ip_client)}"` : '';
 
-		return `<a class="oryk-name" href="${orykBanUrl(row)}"${title}>${orykEscape(row.ip)}</a>`;
+		return `<a class="oryk-mono" href="${orykBanUrl(row)}"${title}>${orykEscape(row.ip)}</a>`;
 	}
 
 	function formatBanMac(value, row) {
@@ -853,8 +853,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		}
 
 		return row.mac_client_id
-			? `<a class="oryk-name" href="?display=oryk_provisioner&client=${encodeURIComponent(row.mac_client_id)}">${orykEscape(row.mac)}</a>`
-			: `<span class="oryk-name">${orykEscape(row.mac)}</span>`;
+			? `<a class="oryk-mono" href="?display=oryk_provisioner&client=${encodeURIComponent(row.mac_client_id)}">${orykEscape(row.mac)}</a>`
+			: `<span class="oryk-mono">${orykEscape(row.mac)}</span>`;
 	}
 
 	function formatBanUser(value, row) {
@@ -865,8 +865,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		const name = row.user_name ? ` <span class="text-muted">${orykEscape(row.user_name)}</span>` : '';
 
 		return row.user_device
-			? `<a class="oryk-name" href="?display=oryk_provisioner&user=${encodeURIComponent(row.extension)}">${orykEscape(row.extension)}</a>${name}`
-			: `<span class="oryk-name">${orykEscape(row.extension)}</span>`;
+			? `<a class="oryk-mono" href="?display=oryk_provisioner&user=${encodeURIComponent(row.extension)}">${orykEscape(row.extension)}</a>${name}`
+			: `<span class="oryk-mono">${orykEscape(row.extension)}</span>`;
 	}
 
 	function formatBanClient(value, row) {
@@ -897,8 +897,8 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 		const labels = { banned: 'label-warning', deny: 'label-danger', allow: 'label-success' };
 		const active = Number(row.active);
 		const label = active
-			? `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)} ${orykIcon('chevron-down')}</span>`
-			: `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired ${orykIcon('chevron-down')}</span>`;
+			? `<span class="label ${labels[value] || 'label-default'}">${orykEscape(value)} ${orykIcon('chevron-down', 'oryk-icon-xs')}</span>`
+			: `<span class="label label-default" title="Was ${orykEscape(value)}; no longer in force">expired ${orykIcon('chevron-down', 'oryk-icon-xs')}</span>`;
 		const items = orykBanStates
 			.filter(function (choice) {
 				// What it already is, in force, is not a change -- but a Banned
@@ -974,7 +974,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 			: `<button type="button" class="btn btn-default btn-sm" disabled title="No note">`;
 
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			note,
 			`${orykIcon('note')}</button>`,
 			`<button type="button" class="btn btn-danger btn-sm" name="ban_delete" value="${orykEscape(row.id)}" title="Delete">`,
@@ -1001,7 +1001,7 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 					'<div class="modal-dialog" role="document">' +
 						'<div class="modal-content">' +
 							'<div class="modal-header"><h4 class="modal-title"></h4></div>' +
-							'<div class="modal-body"><p class="oryk-ban-note" style="white-space: pre-wrap; word-break: break-word; margin: 0;"></p></div>' +
+							'<div class="modal-body"><p class="oryk-ban-note oryk-prewrap"></p></div>' +
 							'<div class="modal-footer">' +
 								'<a class="btn btn-default oryk-ban-note-edit">Edit</a>' +
 								'<button type="button" class="btn btn-primary" data-dismiss="modal">Close</button>' +

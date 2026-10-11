@@ -158,7 +158,7 @@ $serviceChosen = function ($filter, $value) use ($serviceFilter) {
 		const href = orykServiceHref(row);
 
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			row.managed ? '' : `<button type="button" class="btn btn-danger btn-sm" name="service_delete" value="${orykEscape(row.slug)}" title="Delete" aria-label="Delete">${orykIcon('trash')}</button>`,
 			row.managed
 				? `<a class="btn btn-primary btn-sm" href="${href}" title="View" aria-label="View">${orykIcon('eye')}</a>`

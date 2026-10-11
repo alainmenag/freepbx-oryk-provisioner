@@ -128,16 +128,16 @@ $tabs = [
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
 				<?php include __DIR__ . '/partials/tabs.php'; ?>
 
-				<div class="tab-content" style="display: flex; flex-direction: row; flex-wrap: wrap;">
+				<div class="tab-content oryk-flex oryk-wrap">
 
 					<?php if ($tab === 'resource'): ?>
-					<div class="tab-pane oryk-tab-section active" id="oryk_resource" style="flex: auto; padding: 15px;">
+					<div class="tab-pane oryk-tab-section oryk-grow oryk-p-3 active" id="oryk_resource">
 
 						<div class="element-container">
 							<div class="row">
@@ -149,7 +149,7 @@ $tabs = [
 										</label> <i class="fpbx-help-icon" data-for="resource_name"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
-										<input type="text" class="form-control oryk-name" id="resource_name"
+										<input type="text" class="form-control oryk-mono" id="resource_name"
 											autocomplete="off" placeholder="{{device.mac}}-phone.cfg"
 											value="<?php echo $h($isNew && $resource['name'] === '' ? '{{device.mac}}.cfg' : $resource['name']); ?>">
 									</div>
@@ -236,7 +236,7 @@ $tabs = [
 											<p class="form-control-static"><?php echo $h($fileNote); ?></p>
 											<?php endif; ?>
 											<input type="file" id="resource_file">
-											<div class="progress hidden" id="resource_file_progress" style="margin-top: 8px;">
+											<div class="progress hidden oryk-mt-2" id="resource_file_progress">
 												<div class="progress-bar" role="progressbar" style="width: 0%;"></div>
 											</div>
 										</div>
@@ -301,7 +301,7 @@ $tabs = [
 										<label class="control-label" for="resource_template"><?php echo _('Template'); ?></label> <i class="fpbx-help-icon" data-for="resource_template"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
-										<textarea class="form-control oryk-template" id="resource_template"
+										<textarea class="form-control oryk-mono oryk-pre" id="resource_template"
 											rows="24" spellcheck="false" wrap="off">
 <?php echo $h($resource['template']); ?></textarea>
 									</div>
@@ -320,7 +320,7 @@ $tabs = [
 
 					</div>
 
-					<div style="flex: 1 1;">
+					<div class="oryk-fill">
 						<div class="element-container">
 							<div class="row">
 								<div class="form-group">
@@ -336,7 +336,7 @@ $tabs = [
 					<?php endif; ?>
 
 					<?php if ($tab === 'clients'): ?>
-						<div class="tab-pane oryk-tab-section active" id="oryk_clients" style="flex: 1;">
+						<div class="tab-pane oryk-tab-section oryk-fill active" id="oryk_clients">
 
 							<table
 								id="client_table"
@@ -419,7 +419,7 @@ $tabs = [
 
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`);
 
-		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">${actions.join('')}</div>`;
 	}
 
 	// Uploading and removing the file are requests of their own rather than

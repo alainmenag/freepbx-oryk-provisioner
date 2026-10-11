@@ -15,10 +15,10 @@
 
 $placeholders = $placeholders ?? [];
 ?>
-<div class="oryk-placeholders">
+<div class="oryk-mt-1">
 	<?php foreach ($placeholders as $group => $names): ?>
 		<div class="oryk-placeholder-group">
-			<strong><?php echo htmlspecialchars((string) $group, ENT_QUOTES, 'UTF-8'); ?></strong>
+			<span class="oryk-block text-muted"><?php echo htmlspecialchars((string) $group, ENT_QUOTES, 'UTF-8'); ?></span>
 			<?php foreach ($names as $name => $note): ?>
 				<code title="<?php echo htmlspecialchars((string) $note, ENT_QUOTES, 'UTF-8'); ?>"><?php
 					echo '{{' . htmlspecialchars((string) $name, ENT_QUOTES, 'UTF-8') . '}}';
@@ -27,7 +27,7 @@ $placeholders = $placeholders ?? [];
 		</div>
 	<?php endforeach; ?>
 	<div class="oryk-placeholder-group">
-		<strong><?php echo _('Anything else the device is configured with in FreePBX'); ?></strong>
+		<span class="oryk-block text-muted"><?php echo _('Anything else the device is configured with in FreePBX'); ?></span>
 		<code>{{sip.transport}}</code>
 		<code>{{sip.callerid}}</code>
 		<code>{{sip.dtmfmode}}</code>

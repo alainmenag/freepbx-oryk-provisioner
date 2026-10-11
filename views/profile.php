@@ -101,7 +101,7 @@ $tabs = [
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -288,7 +288,7 @@ $tabs = [
 	// reads the resource back itself rather than being handed one.
 	function formatResourceActions(value, row) {
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			`<button type="button" class="btn btn-danger btn-sm" name="resource_delete" value="${row.id}">${orykIcon('trash')}</button>`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
@@ -342,7 +342,7 @@ $tabs = [
 	// Resources tab, where a resource and a client meet.
 	function formatClientActions(value, row) {
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&client=${encodeURIComponent(row.id)}">Edit</a>`,
 			`</div>`
 		].join('');

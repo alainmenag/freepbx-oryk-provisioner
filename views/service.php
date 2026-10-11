@@ -61,14 +61,14 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $s
 		}
 
 		$off = $said !== '';
-		$html .= '<label class="oryk-check' . ($off ? ' disabled' : '') . '"' . ($off ? ' title="' . $h($said) . '"' : '') . '>'
+		$html .= '<label class="oryk-check' . ($off ? ' oryk-disabled' : '') . '"' . ($off ? ' title="' . $h($said) . '"' : '') . '>'
 			. '<input type="checkbox" name="' . $h($name) . '" value="' . $h($other) . '"'
 			. (in_array($other, $ticked, true) ? ' checked' : '') . ($off ? ' disabled' : '') . '> '
 			. $h($choice['name']) . '</label>';
 	}
 
 	return $html !== ''
-		? '<div class="oryk-checks">' . $html . '</div>'
+		? '<div class="oryk-box oryk-checks">' . $html . '</div>'
 		: '<p class="form-control-static text-muted">' . $h(_('There are no other services yet.')) . '</p>';
 };
 ?>
@@ -81,7 +81,7 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $s
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 

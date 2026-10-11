@@ -16,13 +16,13 @@ $noticeEscape = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 };
 ?>
-<div class="alert alert-<?php echo $notice['level'] === 'warning' ? 'warning' : 'info'; ?> oryk-notice" role="status"
+<div class="alert alert-<?php echo $notice['level'] === 'warning' ? 'warning' : 'info'; ?> oryk-notice oryk-flex oryk-center oryk-gap-4" role="status"
 	data-id="<?php echo $noticeEscape($notice['id']); ?>" data-version="<?php echo (int) $notice['version']; ?>">
-	<span class="oryk-notice-text"><?php echo $noticeEscape($notice['text']); ?></span>
+	<span class="oryk-grow"><?php echo $noticeEscape($notice['text']); ?></span>
 	<?php if ($notice['href'] !== ''): ?>
-		<a class="btn btn-default oryk-notice-action" href="<?php echo $noticeEscape($notice['href']); ?>"><?php echo $noticeEscape($notice['action']); ?></a>
+		<a class="btn btn-default oryk-fixed" href="<?php echo $noticeEscape($notice['href']); ?>"><?php echo $noticeEscape($notice['action']); ?></a>
 	<?php endif; ?>
 	<?php if ($notice['dismissible']): ?>
-		<button type="button" class="oryk-notice-dismiss" title="<?php echo $noticeEscape(_('Dismiss')); ?>" aria-label="<?php echo $noticeEscape(_('Dismiss')); ?>"><?php echo $icon('close'); ?></button>
+		<button type="button" class="oryk-bare oryk-dim oryk-notice-dismiss" title="<?php echo $noticeEscape(_('Dismiss')); ?>" aria-label="<?php echo $noticeEscape(_('Dismiss')); ?>"><?php echo $icon('close'); ?></button>
 	<?php endif; ?>
 </div>

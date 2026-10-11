@@ -69,7 +69,7 @@ final class Icons
 	}
 
 	/**
-	 * The page's half: orykIcon(name), and the fill for the buttons bootstrap-table draws itself.
+	 * The page's half: orykIcon(name, class) -- the twin of icon() -- and the fill for the buttons bootstrap-table draws itself.
 	 *
 	 * bootstrap-table writes its own toolbar buttons as an empty
 	 * `<i class="<iconsPrefix> <icon>">`. The tables name ours
@@ -84,7 +84,7 @@ final class Icons
 
 		return '<script>'
 			. 'var orykIcons = ' . ($json ?: '{}') . ';'
-			. 'function orykIcon(name) { return orykIcons[name] || \'\'; }'
+			. 'function orykIcon(name, cls) { var svg = orykIcons[name] || \'\'; return cls ? svg.replace(\'class="oryk-icon \', \'class="oryk-icon \' + cls + \' \') : svg; }'
 			. 'function orykFillIcons() {'
 			. ' $(\'i[class*="oryk-icon-"]:empty\').each(function () {'
 			. ' var name = /\boryk-icon-([a-z0-9-]+)/.exec(this.className);'
