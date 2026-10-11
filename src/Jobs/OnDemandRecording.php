@@ -14,7 +14,7 @@ class OnDemandRecording extends Job
 	/**
 	 * @return array<string, string> granted, revoked: a phrase each.
 	 */
-	public static function effects()
+	public static function effects($slug = '')
 	{
 		return ['granted' => _('one-touch recording is enabled'), 'revoked' => _('one-touch recording is disabled')];
 	}

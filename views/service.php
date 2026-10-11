@@ -3,10 +3,10 @@
  * views/service.php -- one service, or a new one.
  *
  * Reached at ?display=oryk_provisioner&service=<slug>, or &service= (present,
- * empty) for a new one. A name, and its links both ways: the services
- * it is under and the services under it, each a list of every other service
- * to tick. One that would close a loop is drawn disabled, and says why. The
- * slug is in the address and on no field.
+ * empty) for a new one. A name, its links both ways -- the services it is
+ * under and the services under it -- and the services it requires, each a
+ * list of every other service to tick. One that would close a loop is drawn
+ * disabled, and says why. The slug is in the address and on no field.
  *
  * One of the module's own (Services::DEFAULTS) is drawn with every field
  * disabled, and Pages::getActionBar() gives it Close and nothing else.
@@ -22,7 +22,7 @@
 $service = ($service ?? []) + ['name' => '', 'slug' => ''];
 $choices = isset($choices) && is_array($choices) ? $choices : [];
 $related = (isset($related) && is_array($related) ? $related : [])
-	+ ['parents' => [], 'children' => [], 'barredParents' => [], 'barredChildren' => []];
+	+ ['parents' => [], 'children' => [], 'requires' => [], 'barredParents' => [], 'barredChildren' => [], 'barredRequires' => []];
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -161,6 +161,26 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $s
 							</div>
 						</div>
 
+						<div class="element-container">
+							<div class="row">
+								<div class="form-group">
+									<div class="col-md-4">
+										<label class="control-label" for="service_requires"><?php echo _('Requires'); ?></label> <i class="fpbx-help-icon" data-for="service_requires"><?php echo $icon('help'); ?></i>
+									</div>
+									<div class="col-md-8" id="service_requires">
+										<?php echo $checks('service_require', $related['requires'], $related['barredRequires'], _('Already requires this service, so it cannot also be required by it.')); ?>
+									</div>
+								</div>
+							</div>
+							<div class="row">
+								<div class="col-md-12">
+									<span class="help-block fpbx-help-block" id="service_requires-help">
+										<?php echo _('The services this one cannot work without. A user given this service holds those too, and is told so; this service is no pack for it.'); ?>
+									</span>
+								</div>
+							</div>
+						</div>
+
 					</div>
 				</div>
 
@@ -208,7 +228,8 @@ $checks = function ($name, array $ticked, array $barred, $why) use ($choices, $s
 				slug: orykServiceSlug,
 				name: $('#service_name').val(),
 				parents: orykServiceTicked('service_parent'),
-				children: orykServiceTicked('service_child')
+				children: orykServiceTicked('service_child'),
+				requires: orykServiceTicked('service_require')
 			};
 		},
 		// The address is the slug, which a save makes, and changes with the

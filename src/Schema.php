@@ -365,6 +365,22 @@ class Schema extends Service
 	}
 
 	/**
+	 * Give a services table written before it its `requires`: the slugs a
+	 * service brings with it, comma-separated, '' for none.
+	 *
+	 * @return void
+	 */
+	public function addServiceRequiresColumn()
+	{
+		if (!$this->schemaHas($this->servicesTable, 'column', 'requires')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->servicesTable}`
+				ADD COLUMN `requires` VARCHAR(1000) NOT NULL DEFAULT '' AFTER `owner`"
+			);
+		}
+	}
+
+	/**
 	 * Give a services table written before it its `owner`: 0 is the module,
 	 * and the column's default.
 	 *

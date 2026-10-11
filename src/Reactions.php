@@ -91,7 +91,7 @@ class Reactions extends Service
 	{
 		$class = self::jobs()[(string) $slug] ?? null;
 
-		return $class ? (string) ($class::effects()[(string) $event] ?? '') : '';
+		return $class ? (string) ($class::effects((string) $slug)[(string) $event] ?? '') : '';
 	}
 
 	/**

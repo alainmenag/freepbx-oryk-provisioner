@@ -42,9 +42,11 @@ abstract class Job extends Service
 	 * What granted() and revoked() do to the user, in a few words: said
 	 * beside the service where a save asks first.
 	 *
+	 * @param string $slug Which of SERVICES, for a job that names several.
+	 *
 	 * @return array<string, string> granted, revoked: a phrase each.
 	 */
-	public static function effects()
+	public static function effects($slug = '')
 	{
 		return [];
 	}

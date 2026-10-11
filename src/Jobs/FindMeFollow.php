@@ -15,7 +15,7 @@ class FindMeFollow extends Job
 	/**
 	 * @return array<string, string> granted, revoked: a phrase each.
 	 */
-	public static function effects()
+	public static function effects($slug = '')
 	{
 		return ['granted' => _('Find Me/Follow Me is switched on'), 'revoked' => _('Find Me/Follow Me is switched off; its list is kept')];
 	}

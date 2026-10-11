@@ -117,6 +117,11 @@ assigned pack can be withheld, never one assigned on its own, and a withhold
 goes with the pack: unassign the pack and the withhold is forgotten, so
 assigning the pack again gives all of it.
 
+A service that requires others says *also gives* them on its row, and the
+user holds them as long as it holds that service — whether it is ticked or
+comes through a pack. One held that way shows *required by* the service, and
+cannot be withheld while it is.
+
 Renumbering a user keeps its services, deleting it removes them, and deleting
 a service takes it off every user.
 

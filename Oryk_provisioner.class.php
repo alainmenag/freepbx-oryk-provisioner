@@ -9,6 +9,7 @@ use FreePBX_Helpers;
 use FreePBX\Modules\Oryk_Provisioner\BanEscalation;
 use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
+use FreePBX\Modules\Oryk_Provisioner\CalendarManager;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\DashboardNotices;
@@ -106,8 +107,8 @@ if (!defined('ORYK_PROVISIONER_AUTOLOADER')) {
  *   Users            saving, deleting and listing an Extension/User
  *   NumberAllocator  which numbers are free, and the next one
  *   ExtensionRenumberer  moving a user to another number, in order
- *   ExtensionManager, UsermanManager, VoicemailManager, UcpAssignments,
- *   CdrHistory       one each of what a number is made of
+ *   ExtensionManager, UsermanManager, VoicemailManager, CalendarManager,
+ *   UcpAssignments, CdrHistory  one each of what a number is made of
  *   EndpointSettings the From Domain, and pjsip.endpoint_custom_post.conf
  *   Devices          FreePBX's devices, and which user one is on
  *
@@ -283,6 +284,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 
 		$this->endpointSettings = new EndpointSettings($freepbx);
 		$voicemail = new VoicemailManager($freepbx);
+		$calendar = new CalendarManager($freepbx);
 		$cdr = new CdrHistory($freepbx, $voicemail);
 		$userman = new UsermanManager($freepbx);
 		$ucp = new UcpAssignments($freepbx);
@@ -293,7 +295,7 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 		$this->users = new Users(
 			$freepbx,
 			new NumberAllocator($freepbx, $userman),
-			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients, $this->services),
+			new ExtensionRenumberer($freepbx, $extensions, $voicemail, $userman, $ucp, $cdr, $this->endpointSettings, $this->clients, $this->services, $calendar),
 			$extensions,
 			$userman,
 			$voicemail,
@@ -302,7 +304,8 @@ class Oryk_provisioner extends FreePBX_Helpers implements \BMO
 			$this->endpointSettings,
 			$this->clients,
 			$bridge,
-			$this->services
+			$this->services,
+			$calendar
 		);
 
 		$this->fail2ban = new Fail2ban($freepbx, $this->settings);

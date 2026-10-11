@@ -169,6 +169,8 @@ namespace FreePBX\Modules\Oryk_Provisioner {
 	// `dropped` was the module's on this PBX: a default of the release before.
 	$schema->addServiceOwnerColumn(array_merge(array_keys(Services::DEFAULTS), ['dropped', 'old-support']));
 	$schema->addJobAdminColumn();
+	$schema->addServiceAssignmentStatusColumn();
+	$schema->addServiceRequiresColumn();
 	$is('only a service of the operator\'s own is made theirs', $column('SELECT slug FROM oryk_provisioner_services WHERE owner != 0 ORDER BY slug'), ['my-own']);
 
 	echo "\n  seed():\n";
@@ -194,6 +196,7 @@ namespace FreePBX\Modules\Oryk_Provisioner {
 
 	sort($want, SORT_STRING);
 	$is('the links between defaults are DEFAULTS\'', $column("SELECT CONCAT(parent, '>', child) FROM oryk_provisioner_service_links WHERE child != 'my-own' ORDER BY 1"), $want);
+	$is('what a default requires is written with it', $column("SELECT CONCAT(slug, ':', requires) FROM oryk_provisioner_services WHERE requires != '' ORDER BY 1"), ['calendar:find-me-follow']);
 	$is('install names the default it removed', count(array_filter($notes, function ($note) { return strpos($note, '"Dropped Default" (dropped)') !== false && strpos($note, '1 assignments') !== false; })), 1);
 	$is('everyone who held it is revoked it, and nothing else is touched', $column("SELECT CONCAT(j.extension, ' ', j.reason, '/', j.source, ' ', s.event, ':', s.service) FROM oryk_provisioner_jobs j JOIN oryk_provisioner_job_steps s ON s.job_id = j.id ORDER BY j.extension, s.position"), ['1002 pack-changed/upgrade revoked:dropped', '1003 pack-changed/upgrade revoked:dropped']);
 	$is('an upgrade\'s job has no admin', $column('SELECT DISTINCT admin FROM oryk_provisioner_jobs'), ['']);
@@ -204,6 +207,19 @@ namespace FreePBX\Modules\Oryk_Provisioner {
 	$is('says nothing', $services->seed(), []);
 	$is('makes no job', $column('SELECT COUNT(*) FROM oryk_provisioner_jobs'), ['2']);
 	$is('keeps every assignment', $column('SELECT COUNT(*) FROM oryk_provisioner_service_assignments'), ['4']);
+
+	echo "\n  a requirement follows a rename and a delete:\n";
+
+	$db->exec("INSERT INTO oryk_provisioner_services (slug, name, owner, requires) VALUES ('other', 'Other', 1, 'my-own,voicemail')");
+	$is('a user given the requiring service holds what it requires, and that\'s', $services->userSlugs('1002'), ['my-own']);
+	$db->exec("INSERT INTO oryk_provisioner_service_assignments (extension, service) VALUES ('1002', 'other')");
+	$is('once assigned, everything it requires', $services->userSlugs('1002'), ['my-own', 'other', 'voicemail']);
+	$is('a requirement that would loop is refused', $services->saveService(['slug' => 'my-own', 'name' => 'My Own', 'requires' => 'other'])['status'], false);
+	$services->saveService(['slug' => 'my-own', 'name' => 'My New']);
+	$is('renamed, the slug in every requires follows', $column("SELECT requires FROM oryk_provisioner_services WHERE slug = 'other'"), ['my-new,voicemail']);
+	$services->deleteService('my-new');
+	$is('deleted, it is taken out of every requires', $column("SELECT requires FROM oryk_provisioner_services WHERE slug = 'other'"), ['voicemail']);
+	$is('and the user holds what is left', $services->userSlugs('1002'), ['other', 'voicemail']);
 
 	$db->exec('DROP TABLE IF EXISTS oryk_provisioner_services, oryk_provisioner_service_links, oryk_provisioner_service_assignments, oryk_provisioner_jobs, oryk_provisioner_job_steps');
 

@@ -243,6 +243,7 @@ class Installer extends Service
 				`slug` VARCHAR(64) NOT NULL,
 				`name` VARCHAR(191) NOT NULL,
 				`owner` INT UNSIGNED NOT NULL DEFAULT 0,
+				`requires` VARCHAR(1000) NOT NULL DEFAULT '',
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`slug`),
@@ -350,6 +351,7 @@ class Installer extends Service
 		$this->schema->addClientSignupColumns();
 		$this->schema->addServiceSlugColumn();
 		$this->schema->addServiceOwnerColumn(array_keys(Services::DEFAULTS));
+		$this->schema->addServiceRequiresColumn();
 		$this->schema->addJobStepOwnJobColumn();
 		$this->schema->addJobAdminColumn();
 		$this->schema->addServiceAssignmentStatusColumn();

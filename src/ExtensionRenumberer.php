@@ -70,6 +70,9 @@ class ExtensionRenumberer extends Service
 	/** @var Services|null The services assigned to a user, by its extension. */
 	private $services;
 
+	/** @var CalendarManager The user's own calendar, named after its number. */
+	private $calendar;
+
 	/**
 	 * @param object            $freepbx    FreePBX application instance.
 	 * @param ExtensionManager  $extensions Core extensions.
@@ -80,6 +83,7 @@ class ExtensionRenumberer extends Service
 	 * @param EndpointSettings  $endpoints  Custom pjsip endpoint settings.
 	 * @param Clients|null      $clients    Provisioner clients to repoint.
 	 * @param Services|null     $services   Assigned services to carry over.
+	 * @param CalendarManager|null $calendar The user's own calendar; made here when not given.
 	 */
 	public function __construct(
 		$freepbx,
@@ -90,7 +94,8 @@ class ExtensionRenumberer extends Service
 		CdrHistory $cdr,
 		EndpointSettings $endpoints,
 		?Clients $clients = null,
-		?Services $services = null
+		?Services $services = null,
+		?CalendarManager $calendar = null
 	) {
 		parent::__construct($freepbx);
 
@@ -102,6 +107,7 @@ class ExtensionRenumberer extends Service
 		$this->endpoints = $endpoints;
 		$this->clients = $clients;
 		$this->services = $services;
+		$this->calendar = $calendar ?: new CalendarManager($freepbx);
 	}
 
 	/**
@@ -179,6 +185,9 @@ class ExtensionRenumberer extends Service
 		if ($context) {
 			$this->extensions->setVoicemailContext($new, $context);
 		}
+
+		// Its calendar is found by the old number's Follow Me row, still here.
+		$this->calendar->rename($old, $new);
 
 		// The services it was assigned, and its jobs, name it by its extension.
 		// Before Core::delUser($old): this module's hook on it forgets a deleted
