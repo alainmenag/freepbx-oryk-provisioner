@@ -63,6 +63,10 @@ itself or under anything beneath it — those choices are greyed out. Deleting a
 service removes its links and leaves the services over and under it in place.
 A service with at least one service under it is a **service pack**; nothing
 is set to make it one.
+A service can also **require** others — Calendar requires Find Me Follow —
+ticked on its page under Requires: a user given the service is given those
+too, and told so, but the service is no pack for it. A service cannot require
+itself or anything that requires it.
 Two filters beside Add Service narrow the list: Available (every
 service), Custom (the ones you made) or Module — it opens on Available — and All, Services or
 Packs. There, Services means the ones with nothing under them; the

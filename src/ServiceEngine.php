@@ -52,9 +52,9 @@ class ServiceEngine extends Service
 	 * A service still held another way is never revoked, and one already held
 	 * is never granted again. Revokes come first, then grants, each by slug.
 	 *
-	 * @param array<int, array{0: string, 1: string}> $linksBefore Every link before the change.
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $linksBefore Every edge before the change, as Services::held() takes them.
 	 * @param array<string, int|null>                 $before      The user's assignments before, slug => status.
-	 * @param array<int, array{0: string, 1: string}> $linksAfter  Every link after it.
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $linksAfter  Every edge after it.
 	 * @param array<string, int|null>                 $after       The user's assignments after.
 	 *
 	 * @return array<int, array<string, mixed>> Each: service, event (granted|revoked),

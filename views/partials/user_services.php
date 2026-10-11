@@ -16,7 +16,10 @@
  * shows what it means before it is saved. A service included through a pack
  * has a button beside that line to withhold it from this user -- it and
  * everything under it, as Services::held() reads a withheld row -- and a
- * withheld one a button to give it back; both staged like a tick.
+ * withheld one a button to give it back; both staged like a tick. A
+ * service that requires others says what else it gives, and a service held
+ * only because another requires it says which, with no button to withhold
+ * it -- Services::held() would give it straight back.
  *
  * A change to what the user holds is a job (ARCHITECTURE.md, "Jobs"): each
  * service whose newest step is waiting, running or failed says so, kept
@@ -50,6 +53,9 @@ $serviceLabels = [
 	'asTree' => _('Show as a tree'),
 	'asFlat' => _('Show as a flat list'),
 	'pack' => _('pack'),
+	'required' => _('required'),
+	'alsoGives' => _('also gives %s'),
+	'requiredBy' => _('required by %s'),
 	'has' => _('has it'),
 	'staged' => _('Unsaved changes: %s'),
 	'unsaved' => _('There are unsaved changes to this user\'s services.'),
@@ -137,42 +143,59 @@ $serviceLabels = [
 		const name = (slug) => (bySlug[slug] ? bySlug[slug].name : slug);
 		const byName = (a, b) => name(a).localeCompare(name(b), undefined, { sensitivity: 'base' });
 		const kids = (slug) => (bySlug[slug] ? bySlug[slug].children.filter((kid) => bySlug[kid]) : []).sort(byName);
+		const needs = (slug) => (bySlug[slug] ? (bySlug[slug].requires || []).filter((one) => bySlug[one]) : []).sort(byName);
 
-		// Everything under a service, at any depth; a loop is walked once.
-		function under(slug, into) {
+		// Everything a service gives, at any depth: what is under it and, unless
+		// only the pack tree is asked for, what it requires. A loop is walked once.
+		function under(slug, into, packsOnly) {
 			into = into || new Set();
 
-			kids(slug).forEach(function (kid) {
+			kids(slug).concat(packsOnly ? [] : needs(slug)).forEach(function (kid) {
 				if (!into.has(kid)) {
 					into.add(kid);
-					under(kid, into);
+					under(kid, into, packsOnly);
 				}
 			});
 
 			return into;
 		}
 
-		// Everything some services reach: themselves and all under them.
-		function reached(from) {
+		// Everything some services reach: themselves and all they give.
+		function reached(from, packsOnly) {
 			const all = new Set(from);
 
-			from.forEach((slug) => under(slug, all));
+			from.forEach((slug) => under(slug, all, packsOnly));
 
 			return all;
 		}
 
 		// What the staged boxes amount to, as Services::held() reads them: a
-		// withhold takes a service and everything under it, never one ticked itself.
+		// withhold takes a service and everything under it in the pack tree,
+		// never one ticked itself, and never one that something held requires.
 		function held(assigned, withheld) {
 			const all = reached(assigned);
 
-			reached(withheld).forEach(function (slug) {
+			reached(withheld, true).forEach(function (slug) {
 				if (!assigned.has(slug)) {
 					all.delete(slug);
 				}
 			});
 
+			[...all].forEach(function (slug) {
+				needs(slug).forEach(function (one) {
+					if (!all.has(one)) {
+						all.add(one);
+						under(one, all);
+					}
+				});
+			});
+
 			return all;
+		}
+
+		// The staged services that require one, at any remove, by name.
+		function requiredBy(slug, has) {
+			return [...has].filter((other) => other !== slug && (bySlug[other].requires || []).length && reached(needs(other)).has(slug)).sort(byName).map(name);
 		}
 
 		// The staged withholds that still mean something: of services a
@@ -214,10 +237,13 @@ $serviceLabels = [
 		function given(slug, has, nested) {
 			const list = nested ? kids(slug) : [...under(slug)].sort(byName);
 
-			return '<ul class="oryk-tree">' + list.map((kid) => [
+			const required = nested ? needs(slug) : [];
+
+			return '<ul class="oryk-tree">' + list.concat(required).map((kid) => [
 				'<li>',
 				orykEscape(name(kid)),
 				bySlug[kid].pack ? ` <span class="text-muted">(${orykEscape(L.pack)})</span>` : '',
+				required.includes(kid) ? ` <span class="text-muted">(${orykEscape(L.required)})</span>` : '',
 				has.has(kid) ? ` <span class="oryk-small text-success">${orykIcon('check')} ${orykEscape(L.has)}</span>` : '',
 				nested && bySlug[kid].pack ? given(kid, has, true) : '',
 				'</li>'
@@ -232,6 +258,8 @@ $serviceLabels = [
 			const taken = withheld.has(slug);
 			const wasTaken = savedWithheld.has(slug);
 			const takenBy = !on && !taken ? takenWith(slug) : [];
+			const needed = !on && !taken ? requiredBy(slug, has) : [];
+			const gives = needs(slug).length ? [...reached(needs(slug))].sort(byName).map(name) : [];
 			const mode = open[slug];
 			const tree = mode === 'tree';
 			const stagedTag = on !== was ? (on ? L.toAssign : L.toUnassign) : (taken !== wasTaken ? (taken ? L.toWithhold : L.toRestore) : '');
@@ -240,7 +268,10 @@ $serviceLabels = [
 				`<div class="oryk-service-row${stagedTag ? ' oryk-service-staged' : ''}">`,
 				'<div class="oryk-flex oryk-wrap oryk-center oryk-gap-3 oryk-service-head">',
 				`<label class="oryk-check${taken || takenBy.length ? ' oryk-struck' : ''}"><input type="checkbox" name="user_service" value="${orykEscape(slug)}"${on ? ' checked' : ''}${!on && through.length && has.has(slug) ? ' data-held="1"' : ''}> ${orykEscape(service.name)}</label>`,
-				taken
+				gives.length ? `<span class="oryk-small text-muted">${orykEscape(say(L.alsoGives, gives.join(', ')))}</span>` : '',
+				needed.length
+					? `<span class="oryk-small text-muted">${orykEscape(say(L.requiredBy, needed.join(', ')))}</span>`
+					: taken
 					? `<span class="oryk-small text-danger">${orykEscape(say(L.withheldFrom, through.join(', ')))}</span> <button type="button" class="oryk-bare oryk-dim" name="user_service_restore" value="${orykEscape(slug)}" title="${orykEscape(L.restoreIt)}" aria-label="${orykEscape(L.restoreIt)}">${orykIcon('check')}</button>`
 					: (takenBy.length
 						? `<span class="oryk-small text-danger">${orykEscape(say(L.withheldWith, takenBy.join(', ')))}</span>`

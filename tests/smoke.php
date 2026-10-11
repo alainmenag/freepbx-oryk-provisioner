@@ -20,6 +20,7 @@ use FreePBX\Modules\Oryk_Provisioner\AsteriskConfig;
 use FreePBX\Modules\Oryk_Provisioner\BanEscalation;
 use FreePBX\Modules\Oryk_Provisioner\BanSync;
 use FreePBX\Modules\Oryk_Provisioner\Bans;
+use FreePBX\Modules\Oryk_Provisioner\CalendarManager;
 use FreePBX\Modules\Oryk_Provisioner\CdrHistory;
 use FreePBX\Modules\Oryk_Provisioner\Clients;
 use FreePBX\Modules\Oryk_Provisioner\DeviceStatus;
@@ -2400,6 +2401,42 @@ is_eq('clearing a MAC binds it', $cleared[1][1], [':mac_0' => '0004f282e824']);
 $logs = new LogRepo($s['app']);
 is_eq('a client that sent nothing has nothing stored', $logs->clientLogStats(987654321), ['files' => 0, 'bytes' => 0]);
 
+echo "\n  a user's own calendar:\n";
+
+FreePBX::$calendar = new StubCalendar();
+FreePBX::$findmefollow = new StubFindmefollow();
+$s['app']->Modules->active = ['calendar', 'findmefollow'];
+$calendars = new CalendarManager($s['app']);
+is_eq('a user with no calendar has none', $calendars->find('1001'), null);
+$id = $calendars->ensure('1001');
+is_eq('granted, a local calendar is made and named after the user', [FreePBX::$calendar->calendars[$id]['name'], FreePBX::$calendar->calendars[$id]['type'], FreePBX::$calendar->calendars[$id]['timezone']], ['1001', 'local', 'America/New_York']);
+is_eq('marked as the module\'s', CalendarManager::isOurs(FreePBX::$calendar->calendars[$id]), true);
+is_eq('a Follow Me row is made with Follow Me itself off', FreePBX::$findmefollow->added, [['1001', ['ddial' => 'CHECKED']]]);
+is_eq('and linked, matching outside events', array_intersect_key(FreePBX::$findmefollow->rows['1001'], array_flip(['calendar_enable', 'calendar_id', 'calendar_group_id', 'calendar_match'])), ['calendar_enable' => 1, 'calendar_id' => $id, 'calendar_group_id' => '', 'calendar_match' => 'no']);
+is_eq('granted again, the same calendar is kept', [$calendars->ensure('1001'), count(FreePBX::$calendar->calendars), count(FreePBX::$findmefollow->added)], [$id, 1, 1]);
+is_eq('found by the row\'s link', $calendars->find('1001')['id'], $id);
+FreePBX::$findmefollow->rows['1001']['calendar_id'] = '';
+is_eq('and by name when the row has lost it', $calendars->find('1001')['id'], $id);
+is_eq('has() says so', [$calendars->has('1001'), $calendars->has('1002')], [true, false]);
+is_eq('renumbered, the calendar follows in name', [$calendars->rename('1001', '1003'), FreePBX::$calendar->calendars[$id]['name'], CalendarManager::isOurs(FreePBX::$calendar->calendars[$id])], [true, '1003', true]);
+$calendars->rename('1003', '1001');
+FreePBX::$calendar->calendars['theirs'] = ['name' => '1002', 'description' => 'the boss', 'type' => 'local'];
+FreePBX::$findmefollow->addSettingsById('1002', ['calendar_enable' => 1, 'calendar_id' => 'theirs']);
+is_eq('a calendar an admin linked is found but not the module\'s', [$calendars->find('1002')['id'], $calendars->has('1002')], ['theirs', false]);
+is_eq('revoked, it is unlinked and kept', [$calendars->remove('1002'), FreePBX::$findmefollow->rows['1002']['calendar_enable'], FreePBX::$findmefollow->rows['1002']['calendar_id'], isset(FreePBX::$calendar->calendars['theirs'])], [false, 0, '', true]);
+is_eq('revoked, the module\'s own is unlinked and deleted', [$calendars->remove('1001'), FreePBX::$findmefollow->rows['1001']['calendar_enable'], FreePBX::$calendar->deleted], [true, 0, [$id]]);
+is_eq('and revoked again, nothing happens', [$calendars->remove('1001'), $calendars->find('1001')], [false, null]);
+$s['app']->Modules->active = [];
+is_eq('without the Calendar module there is no calendar', $calendars->find('1001'), null);
+$failed = '';
+try {
+	$calendars->ensure('1001');
+} catch (\RuntimeException $e) {
+	$failed = $e->getMessage();
+}
+is_eq('and a grant refuses, saying why', $failed, 'the Calendar module is not installed and enabled');
+is_eq('the Calendar job names its service and its effects', [\FreePBX\Modules\Oryk_Provisioner\Jobs\Calendar::SERVICES, array_keys(\FreePBX\Modules\Oryk_Provisioner\Jobs\Calendar::effects())], [['calendar'], ['granted', 'revoked']]);
+
 echo "\n  a service and what it is under:\n";
 
 // [parent, child], by slug: basic and advanced are both over vm; vm is over greeting.
@@ -2425,6 +2462,19 @@ is_eq('and a user assigned nothing has nothing', Services::held($links, []), [])
 is_eq('a withheld service is taken, with everything under it', Services::held($links, ['basic' => null, 'vm' => 0]), ['basic']);
 is_eq('but never what is assigned itself', Services::held($links, ['basic' => null, 'vm' => 0, 'greeting' => null]), ['basic', 'greeting']);
 is_eq('a withhold of nothing held takes nothing', Services::held($links, ['fax' => null, 'vm' => 0]), ['fax']);
+// A requirement is an edge of its own kind: cal requires fmfm, which basic is over.
+$edges = array_merge($links, [['basic', 'fmfm'], ['cal', 'fmfm', Services::REQUIRES]]);
+is_eq('a service holds what it requires', Services::held($edges, $given(['cal'])), ['cal', 'fmfm']);
+is_eq('and a pack over it gives that too', Services::held(array_merge($edges, [['pro', 'cal']]), $given(['pro'])), ['cal', 'fmfm', 'pro']);
+is_eq('a requirement is no pack: what it requires is not under it', Services::descendants(array_filter($edges, function ($edge) { return empty($edge[2]); }), 'cal'), []);
+is_eq('a withheld pack takes what is under it, not what something held requires', Services::held(array_merge($edges, [['vm', 'fmfm']]), ['cal' => null, 'basic' => null, 'vm' => 0]), ['basic', 'cal', 'fmfm']);
+is_eq('the required are read off what is held', Services::required($edges, ['cal', 'fax']), ['fmfm']);
+$change = Services::assignedAfter($edges, ['basic' => null, 'cal' => null], [], [], ['fmfm']);
+is_eq('a withhold of a required service is refused as required', [$change['withhold'], $change['refused'], $change['required']], [[], [], ['fmfm']]);
+$change = Services::assignedAfter($edges, ['basic' => null], [], [], ['fmfm']);
+is_eq('and allowed once nothing held requires it', [$change['withhold'], $change['required']], [['fmfm'], []]);
+is_eq('a change that requires a service grants it', array_map(function ($step) { return $step['service'] . ':' . $step['event']; }, ServiceEngine::changes($edges, [], $edges, ['cal' => null])), ['cal:granted', 'fmfm:granted']);
+is_eq('and one that drops it revokes it, unless held another way', array_map(function ($step) { return $step['service'] . ':' . $step['event']; }, ServiceEngine::changes($edges, ['cal' => null, 'basic' => null], $edges, ['basic' => null])), ['cal:revoked']);
 is_eq('given and withheld are read off the status', [Services::given(['a' => null, 'b' => 0, 'c' => null]), Services::withheld(['a' => null, 'b' => 0, 'c' => null])], [['a', 'c'], ['b']]);
 is_eq('slugs arrive as one string', Services::slugs('vm, Basic,vm,not ok,,-x,'), ['vm', 'basic']);
 is_eq('or as an array', Services::slugs(['fax', 'fax', [], 'call-recording']), ['fax', 'call-recording']);
@@ -2541,7 +2591,7 @@ is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::
 is_eq('a job is a scope', Navigator::scopeAt('job:12'), ['job' => '12']);
 is_eq('the Jobs list is narrowed when its scope is', [Navigator::narrows('jobs', ['jobs' => ['extensions' => ['100']]]), Navigator::narrows('jobs', ['jobs' => null])], [true, false]);
 $ownJobs = \FreePBX\Modules\Oryk_Provisioner\Reactions::jobs();
-is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['call-recording-external', 'call-recording-internal', 'find-me-follow', 'on-demand-recording', 'voicemail']);
+is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['calendar', 'call-recording-external', 'call-recording-internal', 'find-me-follow', 'on-demand-recording', 'voicemail']);
 is_eq('and each is one of the module\'s own services', array_values(array_filter(array_keys($ownJobs), function ($slug) { return !Services::managed($slug); })), []);
 is_eq('a listener with no services is for every one', ServiceEngine::onlyFor(['module' => 'Mymodule']), null);
 is_eq('one with services is for those slugs', ServiceEngine::onlyFor(['services' => 'voicemail, Call-Recording,,bad slug']), ['voicemail', 'call-recording']);

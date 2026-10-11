@@ -146,6 +146,9 @@ class Users extends Service
 	/** @var Services|null The services assigned to a user, which go with it. */
 	private $services;
 
+	/** @var CalendarManager The user's own calendar, which goes with it. */
+	private $calendar;
+
 	/** @var Settings|null Made when first asked for; see settings(). */
 	private $settings;
 
@@ -162,6 +165,7 @@ class Users extends Service
 	 * @param Clients             $clients    Provisioner clients pointing at a user.
 	 * @param RealtimeBridge|null $bridge     Sign-ups live before Apply Config.
 	 * @param Services|null       $services   Services assigned to a user.
+	 * @param CalendarManager|null $calendar  The user's own calendar; made here when not given.
 	 */
 	public function __construct(
 		$freepbx,
@@ -175,7 +179,8 @@ class Users extends Service
 		EndpointSettings $endpoints,
 		Clients $clients,
 		?RealtimeBridge $bridge = null,
-		?Services $services = null
+		?Services $services = null,
+		?CalendarManager $calendar = null
 	) {
 		parent::__construct($freepbx);
 
@@ -190,6 +195,7 @@ class Users extends Service
 		$this->clients = $clients;
 		$this->bridge = $bridge;
 		$this->services = $services;
+		$this->calendar = $calendar ?: new CalendarManager($freepbx);
 	}
 
 	/**
@@ -386,7 +392,8 @@ class Users extends Service
 	 *
 	 * @return array<string, mixed> account (the owned User Manager username,
 	 *                              or ''), account_id (its id there, or 0),
-	 *                              mailbox (bool).
+	 *                              mailbox (bool), calendar (bool: one of
+	 *                              this module's).
 	 */
 	public function related($extension)
 	{
@@ -397,6 +404,7 @@ class Users extends Service
 			'account' => $account ? (string) $account['username'] : '',
 			'account_id' => $account ? (int) $account['id'] : 0,
 			'mailbox' => $this->voicemail->hasMailbox($extension),
+			'calendar' => $this->calendar->has($extension),
 		];
 	}
 
@@ -1366,8 +1374,8 @@ class Users extends Service
 
 	/**
 	 * Delete a user: every device on its extension, the extension, its owned
-	 * User Manager account, its UCP assignments and its call history and
-	 * recordings.
+	 * User Manager account, its own calendar, its UCP assignments and its
+	 * call history and recordings.
 	 *
 	 * An extension whose device has already gone is a user still, and the
 	 * rest of it goes the same way.
@@ -1418,6 +1426,10 @@ class Users extends Service
 		}
 
 		$this->userman->removeOwnedAccount($user);
+
+		// Before the extension goes: its Follow Me row is what points at the
+		// calendar, and no job will run for a user that no longer exists.
+		$this->calendar->remove($user);
 
 		$deleted = true;
 

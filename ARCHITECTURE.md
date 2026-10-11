@@ -253,7 +253,7 @@ engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
                              the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
-src/                         55 files and Jobs/ (5), namespace FreePBX\Modules\Oryk_Provisioner
+src/                         56 files and Jobs/ (6), namespace FreePBX\Modules\Oryk_Provisioner
 library/                     the profiles the module ships, one directory each -- see The library
 tests/                       smoke.php, the stubs it runs against and its lexical check
                              (namespacing.php); services_db.php, seed() on real tables
@@ -288,7 +288,7 @@ views/                       one view per page, plus views/partials/
 | `AsteriskConfig` | one Asterisk config file, edited without disturbing what others wrote |
 | `EndpointSettings` | the From Domain chain, and `pjsip.endpoint_custom_post.conf` |
 | `NumberAllocator` | which numbers are free, and the next `999…` one |
-| `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
+| `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `CalendarManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
 | `ExtensionRenumberer` | moving a user to another number, in order |
 | `Users` | saving, deleting and listing a user |
 | `Devices` | FreePBX's devices, listed, and which user one is on |
@@ -477,9 +477,25 @@ profiles that open.
 
 **`oryk_provisioner_services`** -- `slug` (the primary key), `name` (unique),
 `owner` (0, the default, is the module; a service made on the Services page
-is 1).
+is 1), `requires` (the slugs of the services this one cannot work without,
+comma-separated; '' for none).
 There is no numeric id: a page, a save, a delete, a link and an assignment all
 name a service by its slug. Where a service sits is the table below.
+
+- **`requires` is a column, not links**, because it is a different relation:
+  a pack *contains* what is under it, a service *needs* what it requires, and
+  a service with a `requires` is no pack. What they share is the walk:
+  `Services::links()` answers both as edges, `[parent, child]` for a link and
+  `[service, required, 'requires']` for a requirement, and `held()`,
+  `descendants()` and `ServiceEngine::changes()` take the two alike -- so a
+  user holding Calendar holds Find Me Follow, a pack giving Calendar gives
+  it too, and the engine grants and revokes it like anything else. Where the
+  pack tree is the question (`packs()`, `related()`, the form's loop checks,
+  what a withhold takes) only the links count: `packLinks()`, or
+  `empty($edge[2])`. A requirement cannot be withheld while something held
+  needs it (`assignedAfter()`'s `required`), and `held()` gives one back
+  that a withheld pack would have taken. A loop through requirements is
+  refused on save, as one through links is.
 
 - **The slug is the identity anything but a person uses**: lowercase letters
   and digits joined by hyphens (`Services::SLUG_PATTERN`). **It is never
@@ -488,7 +504,7 @@ name a service by its slug. Where a service sits is the table below.
   name changes. No page shows it but in its own address.
 - **A slug that changes is carried to every reference in the same
   transaction** (`Services::renameLinks()`): today that is both columns of the
-  links table and a user's assignments. Anything else that comes to store a service's slug must be
+  links table, every row's `requires`, and a user's assignments. Anything else that comes to store a service's slug must be
   added to that method, or a rename leaves it naming nothing. A default's
   slug never changes -- renaming one in `DEFAULTS` renames the row only.
 - A table written before this had an `id` key, and before that no slug. An
@@ -496,11 +512,11 @@ name a service by its slug. Where a service sits is the table below.
   fills it from each name, and `Schema::dropServiceIdColumn()` then drops the
   id and makes the slug the key -- in that order, which `Installer` keeps. The
   one `Schema` step that takes something away.
-- **The module's own services are `Services::DEFAULTS`**, by slug: a name, and
-  the slugs under it. **Adding, renaming or regrouping one is an edit to that
+- **The module's own services are `Services::DEFAULTS`**, by slug: a name,
+  the slugs under it, and the slugs it requires. **Adding, renaming or regrouping one is an edit to that
   array and nothing else** -- `install()` runs `Services::seed()`, which
   **deletes every row with `owner` 0 and writes the array again**, and sets
-  what is under each to exactly what the array says. Like a setting, a
+  what is under each, and what each requires, to exactly what the array says. Like a setting, a
   change appears once the module is installed or upgraded. Assignments and
   links name a slug, so they stay with a default that is written again; a
   slug taken out of the array is deleted with its links and assignments, and
@@ -580,9 +596,10 @@ primary key, so a service is given or withheld, never both. No other
   regrouping a pack changes what its users have without touching this table.
 - **What a user holds** is `Services::held()`, and every reader goes through
   it -- jobs, holder counts, `{{extension.services}}`, the Services tab: every
-  given service and everything under it, less every withheld service and
-  everything under it -- except what is given itself, which a withhold never
-  takes. Withholding is for one service a pack includes that this user is not
+  given service, everything under it and everything those require, less
+  every withheld service and everything under it -- except what is given
+  itself, which a withhold never takes, and what something held requires,
+  which it never takes either. Withholding is for one service a pack includes that this user is not
   to have: it is refused for a service the user is given itself or does not
   hold through a given pack (`Services::assignedAfter()`), and assigning a
   withheld service replaces the withhold. In the class a user's assignments
@@ -790,7 +807,15 @@ or takes it out of voicemail.conf and sets the extension `novm` -- **the
 messages on disk are kept**; Call Recording External and Internal each set
 their two recording keys to `yes`, or to `no`; On Demand Recording `enabled` / `disabled`;
 Find Me Follow switches Find Me/Follow Me on (made with its own defaults where
-there is none) or off, its list kept. Each sets a state, so a second run is the
+there is none) or off, its list kept; Calendar makes a local calendar named
+after the user and links Find Me/Follow Me to it, or unlinks it and deletes
+the calendar, events included -- all of it `CalendarManager`'s, which is
+also what deletes the calendar with the user and renames it with the number,
+since no job runs for a user that is gone. Calendar requires Find Me Follow
+(`DEFAULTS`' `requires`), so a user given it is given both, in whichever
+order: Find Me Follow owns `ddial` and Calendar the `calendar_*` columns,
+each sets its own and makes the Follow Me row if missing, and a calendar
+held without Follow Me is simply inert until it is. Each sets a state, so a second run is the
 first; none reloads, and one that changes what Apply Config writes raises it
 for the reload after the last job. A
 missing module fails the step and says so. Packs -- Guest User and Lobby User
@@ -922,6 +947,7 @@ a device on an extension that is no user.
 | extension | `users`, astdb `AMPUSER/` | `ExtensionManager` |
 | User Manager account | `userman_users` | `UsermanManager` |
 | mailbox | `voicemail.conf`, the spool | `VoicemailManager` |
+| own calendar | the Calendar module's store, `findmefollow.calendar_id` | `CalendarManager` |
 | UCP access | `userman_*_settings`, `webrtc_clients` | `UcpAssignments` |
 | call history | `asteriskcdrdb` | `CdrHistory` |
 | From Domain | `pjsip.endpoint_custom_post.conf` | `EndpointSettings` |

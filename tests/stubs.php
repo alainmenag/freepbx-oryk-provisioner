@@ -569,6 +569,79 @@ class StubApp
 	}
 }
 
+/** The Calendar module: calendars by id, made the way its local driver makes them. */
+class StubCalendar
+{
+	public $calendars = [];
+	public $deleted = [];
+	private $next = 1;
+
+	public function listCalendars()
+	{
+		return $this->calendars;
+	}
+
+	public function getDriverByAdd($driver, $data)
+	{
+		$id = 'cal-' . $this->next++;
+		$this->calendars[$id] = ['name' => $data['name'], 'description' => $data['description'] ?? '', 'type' => $driver, 'timezone' => $data['timezone'] ?? ''];
+
+		return $this;
+	}
+
+	public function getDriverById($id)
+	{
+		$stub = $this;
+
+		return new class($stub, $id) {
+			private $stub;
+			private $id;
+
+			public function __construct($stub, $id)
+			{
+				$this->stub = $stub;
+				$this->id = $id;
+			}
+
+			public function updateCalendar($data)
+			{
+				$this->stub->calendars[$this->id] = $data + $this->stub->calendars[$this->id];
+
+				return true;
+			}
+		};
+	}
+
+	public function delCalendarByID($id)
+	{
+		unset($this->calendars[$id]);
+		$this->deleted[] = $id;
+	}
+}
+
+/** Find Me/Follow Me: one row per extension, written the way the module writes it. */
+class StubFindmefollow
+{
+	public $rows = [];
+	public $added = [];
+
+	public function get($extension)
+	{
+		return $this->rows[(string) $extension] ?? false;
+	}
+
+	public function add($extension, $data)
+	{
+		$this->rows[(string) $extension] = ['grpnum' => (string) $extension, 'calendar_enable' => 0, 'calendar_id' => '', 'calendar_group_id' => '', 'calendar_match' => 'yes'];
+		$this->added[] = [(string) $extension, $data];
+	}
+
+	public function addSettingsById($extension, array $settings)
+	{
+		$this->rows[(string) $extension] = $settings + ($this->rows[(string) $extension] ?? ['grpnum' => (string) $extension]);
+	}
+}
+
 /** The static entry points, pointed at one shared set of stubs. */
 class FreePBX
 {
@@ -615,6 +688,38 @@ class FreePBX
 		}
 
 		return self::$cdr;
+	}
+
+	public static $calendar;
+
+	public static function Calendar()
+	{
+		if (self::$calendar === null) {
+			self::$calendar = new StubCalendar();
+		}
+
+		return self::$calendar;
+	}
+
+	public static $findmefollow;
+
+	public static function Findmefollow()
+	{
+		if (self::$findmefollow === null) {
+			self::$findmefollow = new StubFindmefollow();
+		}
+
+		return self::$findmefollow;
+	}
+
+	public static function View()
+	{
+		return new class {
+			public function getTimezone()
+			{
+				return 'America/New_York';
+			}
+		};
 	}
 
 	public static function Framework()

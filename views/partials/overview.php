@@ -72,7 +72,9 @@ if ($oParts) {
 }
 
 if ($oIsUser) {
-	$oAsk .= ' ' . _('Every device on the extension, the extension, its User Manager account, its voicemail and its call history and recordings are removed permanently.');
+	$oAsk .= ' ' . (!empty($oFreepbx['calendar'])
+		? _('Every device on the extension, the extension, its User Manager account, its voicemail, its calendar and its call history and recordings are removed permanently.')
+		: _('Every device on the extension, the extension, its User Manager account, its voicemail and its call history and recordings are removed permanently.'));
 }
 
 if ($oApplying) {

@@ -37,8 +37,15 @@ The provisioner's own services do something on the PBX:
 | Call Recording Internal | inbound and outbound internal calls: *Yes* | *No* |
 | On Demand Recording | *Enable* | *Disable* |
 | Find Me Follow | Find Me/Follow Me switched on, set up with its defaults where it never was | switched off; its list and settings are kept |
+| Calendar | a local calendar named after the user, in the Calendar module, with Find Me/Follow Me linked to it and matching *outside* its events — so an empty calendar changes nothing until you add events, each of which switches Follow Me off for its duration (change that on the Follow Me page) | Follow Me is unlinked and the calendar is deleted, **events included** |
 
-Voicemail and a new Find Me/Follow Me need the configuration applied. When
+Calendar requires Find Me Follow, so giving one gives both; a calendar held
+without Follow Me switched on does nothing until it is. The calendar goes with
+the user when the user is deleted, and is renamed when the user is renumbered.
+A calendar you pick on the Follow Me page yourself is never deleted: only one
+the provisioner made, which says so in its description.
+
+Voicemail, a new Find Me/Follow Me and Calendar need the configuration applied. When
 the last job has run — none queued or running for anyone — the provisioner
 runs `fwconsole reload` once, if FreePBX says Apply Config is needed. That
 applies **everything pending**, including changes of yours not yet applied,

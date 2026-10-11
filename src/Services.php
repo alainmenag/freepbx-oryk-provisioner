@@ -13,8 +13,16 @@ use PDO;
  * table: one row per parent and child, each named by its slug, so a service
  * has any number of parents and
  * any number of children. One with a child is a service pack: that is read
- * off the links, never stored. Not to be confused with Service, the base class
- * this extends.
+ * off the links, never stored. A service also names, in its `requires`
+ * column, the services it cannot work without: holding it holds those too,
+ * the way a pack holds what is under it, but it is no pack for that. Not to
+ * be confused with Service, the base class this extends.
+ *
+ * **An edge is [from, to], a pack link, or [from, to, 'requires']**: links()
+ * answers both kinds, and every walk of what a user holds -- held(),
+ * descendants(), ServiceEngine::changes() -- takes them alike. Where the
+ * question is the pack tree (packs(), related(), the form) only the links
+ * count: packLinks(), or `empty($edge[2])`.
  *
  * A user is assigned services in a third table, by extension and slug. A
  * row there is a service **given** to the user (`status` NULL) or one
@@ -34,8 +42,9 @@ use PDO;
 class Services extends Service
 {
 	/**
-	 * The services the module ships, by slug: `name`, and under `services`
-	 * the slugs of the services directly under it.
+	 * The services the module ships, by slug: `name`, under `services` the
+	 * slugs of the services directly under it, and under `requires` the
+	 * slugs it brings with it.
 	 *
 	 * **Adding, renaming or regrouping one is an edit here and nothing else**;
 	 * seed() carries it to the tables on the next install or upgrade. A slug
@@ -51,6 +60,7 @@ class Services extends Service
 		'call-recording' => ['name' => 'Call Recording', 'services' => ['call-recording-external', 'call-recording-internal']],
 		'call-recording-external' => ['name' => 'Call Recording External'],
 		'call-recording-internal' => ['name' => 'Call Recording Internal'],
+		'calendar' => ['name' => 'Calendar', 'requires' => ['find-me-follow']],
 		'find-me-follow' => ['name' => 'Find Me Follow'],
 		'on-demand-recording' => ['name' => 'On Demand Recording'],
 		'support' => ['name' => 'Support'],
@@ -76,6 +86,12 @@ class Services extends Service
 
 	/** `owner` of a service made on the Services page. */
 	const OWNER_OPERATOR = 1;
+
+	/** The kind on an edge that is a requirement, not a link. */
+	const REQUIRES = 'requires';
+
+	/** Longest `requires` stored: the column's width. */
+	const REQUIRES_MAX = 1000;
 
 	/** Longest name stored: the column's width. */
 	const NAME_MAX = 191;
@@ -164,7 +180,8 @@ class Services extends Service
 			SELECT
 				s.name,
 				s.slug,
-				s.owner
+				s.owner,
+				s.requires
 			FROM `{$this->servicesTable}` s
 			$where
 			ORDER BY s.name " . ($byHolders ? 'ASC' : $order . ' LIMIT :limit OFFSET :offset') . "
@@ -192,7 +209,7 @@ class Services extends Service
 		}
 
 		$rows = [];
-		$packs = array_column($links, 0);
+		$packs = array_column(self::packsOnly($links), 0);
 
 		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 			$rows[] = $this->marked($row) + [
@@ -285,7 +302,7 @@ class Services extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"SELECT name, slug, owner FROM `{$this->servicesTable}` WHERE slug = :slug"
+			"SELECT name, slug, owner, requires FROM `{$this->servicesTable}` WHERE slug = :slug"
 		);
 		$stmt->execute([':slug' => $slug]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -296,12 +313,12 @@ class Services extends Service
 	/**
 	 * Every service, for the editor's two lists.
 	 *
-	 * @return array<int, array<string, mixed>> name, slug, managed, ordered by name.
+	 * @return array<int, array<string, mixed>> name, slug, managed, requires (slugs), ordered by name.
 	 */
 	public function serviceChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT name, slug, owner, updated_at AS touched FROM `{$this->servicesTable}` ORDER BY name"
+			"SELECT name, slug, owner, requires, updated_at AS touched FROM `{$this->servicesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 
@@ -312,13 +329,15 @@ class Services extends Service
 	 * What one service is linked to, and what it may not be linked to.
 	 *
 	 * A service already under this one cannot also be its parent, and one it
-	 * is already under cannot also be its child: either closes a loop.
+	 * is already under cannot also be its child: either closes a loop. So
+	 * does requiring a service that, at any remove, requires this one.
 	 *
 	 * @param string $slug The service's slug, or '' for a new one.
 	 *
 	 * @return array<string, array<int, string>> parents, children: slugs linked
-	 *										   directly; barredParents,
-	 *										   barredChildren: slugs not to
+	 *										   directly; requires: the slugs
+	 *										   it requires; barredParents,
+	 *										   barredChildren, barredRequires: slugs not to
 	 *										   offer. The module's own are not
 	 *										   among them: serviceChoices()
 	 *										   marks those.
@@ -326,8 +345,9 @@ class Services extends Service
 	public function related($slug)
 	{
 		$slug = (string) $slug;
-		$links = $slug !== '' ? $this->links() : [];
-		$found = ['parents' => [], 'children' => []];
+		$links = $slug !== '' ? $this->packLinks() : [];
+		$requires = $slug !== '' ? $this->requires() : [];
+		$found = ['parents' => [], 'children' => [], 'requires' => []];
 
 		foreach ($links as $link) {
 			if ($link[1] === $slug) {
@@ -339,18 +359,25 @@ class Services extends Service
 			}
 		}
 
+		foreach ($requires as $edge) {
+			if ($edge[0] === $slug) {
+				$found['requires'][] = $edge[1];
+			}
+		}
+
 		return $found + [
 			'barredParents' => self::descendants($links, $slug),
 			'barredChildren' => self::ancestors($links, $slug),
+			'barredRequires' => self::ancestors($requires, $slug),
 		];
 	}
 
 	/**
 	 * Create or update a service, and its links when they were submitted.
 	 *
-	 * `parents` and `children` are each the whole set -- slugs, comma-separated
-	 * or an array -- and replace what was there; a key not submitted leaves
-	 * that side as it is. All of it is one transaction.
+	 * `parents`, `children` and `requires` are each the whole set -- slugs,
+	 * comma-separated or an array -- and replace what was there; a key not
+	 * submitted leaves that side as it is. All of it is one transaction.
 	 *
 	 * One of the module's is refused outright. A service of the operator's
 	 * own can still be put under one, or over one, from its own page.
@@ -361,10 +388,11 @@ class Services extends Service
 	 * is changed on every link naming it, in the same transaction, so nothing
 	 * that names the service by it is left pointing at nothing.
 	 *
-	 * Links changed are a pack edit: every user holding something different
-	 * afterwards gets a job, in the transaction, and the worker is started.
+	 * Links or requirements changed are a pack edit: every user holding
+	 * something different afterwards gets a job, in the transaction, and the
+	 * worker is started.
 	 *
-	 * @param array<string, mixed> $request slug, name, parents, children.
+	 * @param array<string, mixed> $request slug, name, parents, children, requires.
 	 *
 	 * @return array<string, mixed> Status, and a message when it was refused.
 	 */
@@ -410,10 +438,14 @@ class Services extends Service
 
 		$sides = [];
 
-		foreach (['parents', 'children'] as $side) {
+		foreach (['parents', 'children', 'requires'] as $side) {
 			if (array_key_exists($side, $request)) {
 				$sides[$side] = self::slugs($request[$side]);
 			}
+		}
+
+		if (isset($sides['requires']) && strlen(implode(',', $sides['requires'])) > self::REQUIRES_MAX) {
+			return ['status' => false, 'message' => _('A service cannot require that many services.')];
 		}
 
 		if ($sides) {
@@ -433,7 +465,7 @@ class Services extends Service
 			$queued = [];
 
 			try {
-				// Only links change what anyone holds; a rename alone changes no one's.
+				// Only links and requirements change what anyone holds; a rename alone changes no one's.
 				$watch = $sides && $this->jobs;
 
 				if ($watch) {
@@ -459,7 +491,12 @@ class Services extends Service
 				}
 
 				foreach ($sides as $side => $others) {
-					$this->relink($slug, $side, $others);
+					if ($side === 'requires') {
+						$stmt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET requires = :requires WHERE slug = :slug");
+						$stmt->execute([':requires' => implode(',', $others), ':slug' => $slug]);
+					} else {
+						$this->relink($slug, $side, $others);
+					}
 				}
 
 				if ($sides) {
@@ -494,7 +531,8 @@ class Services extends Service
 	}
 
 	/**
-	 * Remove a service, and every link to or from it.
+	 * Remove a service, every link to or from it, and its slug from every
+	 * `requires`.
 	 *
 	 * The services it was over or under are kept: only the links go, and it
 	 * is taken off every user it was assigned to. One of the module's is
@@ -544,6 +582,7 @@ class Services extends Service
 
 				$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE slug = :slug");
 				$stmt->execute([':slug' => $slug]);
+				$this->rewriteRequires($slug, '');
 
 				$this->pruneWithheld($this->links(), $this->assignments());
 
@@ -592,12 +631,17 @@ class Services extends Service
 		$rows = $this->assigned($extension);
 		$assigned = self::given($rows);
 		$withheld = self::withheld($rows);
-		$packs = array_column($links, 0);
+		$packs = array_column(self::packsOnly($links), 0);
 		$via = [];
 		$children = [];
+		$requires = [];
 
 		foreach ($links as $link) {
-			$children[(string) $link[0]][] = (string) $link[1];
+			if (empty($link[2])) {
+				$children[(string) $link[0]][] = (string) $link[1];
+			} else {
+				$requires[(string) $link[0]][] = (string) $link[1];
+			}
 		}
 
 		foreach ($assigned as $slug) {
@@ -622,6 +666,7 @@ class Services extends Service
 				'withheld' => in_array($slug, $withheld, true),
 				'via' => $via[$slug] ?? [],
 				'children' => $children[$slug] ?? [],
+				'requires' => $requires[$slug] ?? [],
 			];
 		}
 
@@ -659,12 +704,13 @@ class Services extends Service
 	 * What saving or deleting a service would change for its users, without
 	 * doing it: what the service page asks with before it does.
 	 *
-	 * A save is worked out from the links it would write -- `parents` and
-	 * `children` as saveService() takes them -- and a delete from the
-	 * service gone. Whether the save would be refused is saveService()'s to say.
+	 * A save is worked out from the edges it would write -- `parents`,
+	 * `children` and `requires` as saveService() takes them -- and a delete
+	 * from the service gone. Whether the save would be refused is
+	 * saveService()'s to say.
 	 *
 	 * @param array<string, mixed> $request action (save|delete), slug ('' for a
-	 *                                      new one), name, parents, children.
+	 *                                      new one), name, parents, children, requires.
 	 *
 	 * @return array<string, mixed> status, users (how many would get a job),
 	 *                              granted and revoked: [name, users, effect]
@@ -693,17 +739,19 @@ class Services extends Service
 			$name = trim((string) ($request['name'] ?? ''));
 			$names[$key] = $name !== '' ? $name : ($names[$key] ?? $key);
 
-			foreach (['parents' => 1, 'children' => 0] as $side => $mine) {
+			foreach (['parents' => 1, 'children' => 0, 'requires' => 0] as $side => $mine) {
 				if (!array_key_exists($side, $request)) {
 					continue;
 				}
 
-				$linksAfter = array_values(array_filter($linksAfter, function ($link) use ($key, $mine) {
-					return $link[$mine] !== $key;
+				$kind = $side === 'requires' ? self::REQUIRES : '';
+
+				$linksAfter = array_values(array_filter($linksAfter, function ($link) use ($key, $mine, $kind) {
+					return $link[$mine] !== $key || (string) ($link[2] ?? '') !== $kind;
 				}));
 
 				foreach (self::slugs($request[$side]) as $other) {
-					$linksAfter[] = $mine ? [$other, $key] : [$key, $other];
+					$linksAfter[] = $kind !== '' ? [$key, $other, $kind] : ($mine ? [$other, $key] : [$key, $other]);
 				}
 			}
 		}
@@ -749,7 +797,7 @@ class Services extends Service
 	 */
 	public function packs()
 	{
-		return array_values(array_unique(array_column($this->links(), 0)));
+		return array_values(array_unique(array_column($this->packLinks(), 0)));
 	}
 
 	/**
@@ -821,19 +869,21 @@ class Services extends Service
 	 * Assigning replaces a withheld row; unassigning and restoring each
 	 * delete one. Withholding is only of a service the user would then hold
 	 * through a given pack and does not hold itself: anything else named is
-	 * reported under `refused` and left alone. Nothing here checks that the
-	 * slugs exist.
+	 * reported under `refused` and left alone, and one that something the
+	 * user would hold requires under `required`. Nothing here checks that
+	 * the slugs exist.
 	 *
-	 * @param array<int, array{0: string, 1: string}> $links    Every link.
-	 * @param array<string, int|null>                 $before   The user's rows, slug => status.
-	 * @param array<int, string>                      $assign   Slugs to assign.
-	 * @param array<int, string>                      $unassign Slugs to unassign.
-	 * @param array<int, string>                      $withhold Slugs to withhold.
-	 * @param array<int, string>                      $restore  Slugs to restore.
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $links    Every edge, as held() takes them.
+	 * @param array<string, int|null>                              $before   The user's rows, slug => status.
+	 * @param array<int, string>                                   $assign   Slugs to assign.
+	 * @param array<int, string>                                   $unassign Slugs to unassign.
+	 * @param array<int, string>                                   $withhold Slugs to withhold.
+	 * @param array<int, string>                                   $restore  Slugs to restore.
 	 *
 	 * @return array<string, mixed> after (slug => status); assign, unassign,
 	 *                              withhold, restore (what changes); refused
-	 *                              (withholds that could not be).
+	 *                              (withholds that could not be); required
+	 *                              (withholds of a service something requires).
 	 */
 	public static function assignedAfter(array $links, array $before, array $assign, array $unassign, array $withhold = [], array $restore = [])
 	{
@@ -875,6 +925,8 @@ class Services extends Service
 		}
 
 		$through = self::held($links, array_fill_keys(self::given($after), null));
+		$needed = self::required($links, $through);
+		$required = [];
 
 		foreach ($clean($withhold) as $slug) {
 			if (array_key_exists($slug, $after)) {
@@ -890,6 +942,11 @@ class Services extends Service
 				continue;
 			}
 
+			if (in_array($slug, $needed, true)) {
+				$required[] = $slug;
+				continue;
+			}
+
 			$after[$slug] = self::STATUS_WITHHELD;
 			$withheld[] = $slug;
 		}
@@ -901,6 +958,7 @@ class Services extends Service
 			'withhold' => $withheld,
 			'restore' => $restored,
 			'refused' => $refused,
+			'required' => $required,
 		];
 	}
 
@@ -950,6 +1008,10 @@ class Services extends Service
 			return ['status' => false, 'message' => _('A service can only be withheld while it is included in a pack the user is assigned.')];
 		}
 
+		if ($change['required']) {
+			return ['status' => false, 'message' => _('A service cannot be withheld while another the user holds requires it.')];
+		}
+
 		return [
 			'status' => true,
 			'extension' => $extension,
@@ -990,7 +1052,7 @@ class Services extends Service
 
 		$links = $change['links'];
 		$names = $change['names'];
-		$packs = array_column($links, 0);
+		$packs = array_column(self::packsOnly($links), 0);
 
 		$named = function (array $slugs, $event = '') use ($names, $packs) {
 			$rows = [];
@@ -1318,17 +1380,19 @@ class Services extends Service
 			$find->execute([':slug' => $slug]);
 			$row = $find->fetch(PDO::FETCH_ASSOC);
 
+			$requires = implode(',', $default['requires'] ?? []);
+
 			try {
 				if (!$row) {
-					$add = $this->db->prepare("INSERT INTO `{$this->servicesTable}` (name, slug, owner) VALUES (:name, :slug, " . self::OWNER_MODULE . ")");
-					$add->execute([':name' => $default['name'], ':slug' => $slug]);
+					$add = $this->db->prepare("INSERT INTO `{$this->servicesTable}` (name, slug, owner, requires) VALUES (:name, :slug, " . self::OWNER_MODULE . ", :requires)");
+					$add->execute([':name' => $default['name'], ':slug' => $slug, ':requires' => $requires]);
 					$written[] = $slug;
 
 					continue;
 				}
 
-				$adopt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name, owner = " . self::OWNER_MODULE . " WHERE slug = :slug");
-				$adopt->execute([':name' => $default['name'], ':slug' => $slug]);
+				$adopt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name, owner = " . self::OWNER_MODULE . ", requires = :requires WHERE slug = :slug");
+				$adopt->execute([':name' => $default['name'], ':slug' => $slug, ':requires' => $requires]);
 
 				$written[] = $slug;
 			} catch (\Exception $e) {
@@ -1360,7 +1424,16 @@ class Services extends Service
 			WHERE NOT EXISTS (SELECT 1 FROM `{$this->servicesTable}` s WHERE s.slug = a.service)"
 		);
 
-		$links = $this->links();
+		// A requirement is a slug in a column, which no key keeps: dropped by hand.
+		$slugs = $this->db->query("SELECT slug FROM `{$this->servicesTable}`")->fetchAll(PDO::FETCH_COLUMN);
+
+		foreach (array_unique(array_column($this->requires(), 1)) as $required) {
+			if (!in_array($required, array_map('strval', $slugs), true)) {
+				$this->rewriteRequires($required, '');
+			}
+		}
+
+		$links = $this->packLinks();
 		$drop = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent AND child = :child");
 		$add = $this->db->prepare("INSERT INTO `{$this->serviceLinksTable}` (parent, child) VALUES (:parent, :child)");
 
@@ -1436,12 +1509,15 @@ class Services extends Service
 	}
 
 	/**
-	 * What a user's assignments amount to: every given service and
-	 * everything under it, less every withheld service and everything under
-	 * it -- except what is given itself, which a withhold never takes.
+	 * What a user's assignments amount to: every given service, everything
+	 * under it and everything those require, less every withheld service and
+	 * everything under it -- except what is given itself, which a withhold
+	 * never takes. A withhold walks the links only: what a withheld service
+	 * requires stays if anything else held needs it, and a service that is
+	 * required is never withheld (assignedAfter()).
 	 *
-	 * @param array<int, array{0: string, 1: string}> $links Every link: [parent, child], slugs.
-	 * @param array<string, int|null>                 $rows  The user's assignments, slug => status.
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $links Every edge: links, and requirements marked REQUIRES.
+	 * @param array<string, int|null>                              $rows  The user's assignments, slug => status.
 	 *
 	 * @return array<int, string> Slugs, each once, in order.
 	 */
@@ -1449,12 +1525,31 @@ class Services extends Service
 	{
 		$given = self::given($rows);
 		$withheld = self::withheld($rows);
-		$taken = array_merge($withheld, self::reach($links, $withheld, 0, 1, ''));
+		$taken = array_merge($withheld, self::reach(self::packsOnly($links), $withheld, 0, 1, ''));
 
 		$held = array_values(array_unique(array_merge($given, array_diff(self::reach($links, $given, 0, 1, ''), $taken))));
+		$needed = array_diff(self::reach(self::requiresOnly($links), $held, 0, 1, ''), $held);
+
+		if ($needed) {
+			$held = array_values(array_unique(array_merge($held, $needed, self::reach($links, $needed, 0, 1, ''))));
+		}
+
 		sort($held, SORT_STRING);
 
 		return $held;
+	}
+
+	/**
+	 * The services some held ones require, at any depth: never withheld.
+	 *
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $links Every edge, as held() takes them.
+	 * @param array<int, string>                                   $held  What is held.
+	 *
+	 * @return array<int, string> Slugs, each once.
+	 */
+	public static function required(array $links, array $held)
+	{
+		return self::reach(self::requiresOnly($links), $held, 0, 1, '');
 	}
 
 	/**
@@ -1724,9 +1819,9 @@ class Services extends Service
 	 * Write a job for every user a change leaves holding something different.
 	 * Inside the caller's transaction.
 	 *
-	 * @param array<int, array{0: string, 1: string}> $linksBefore Every link before the change.
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $linksBefore Every edge before the change, as Services::held() takes them.
 	 * @param array<string, array<int, string>>       $before      Assignments before it, by extension.
-	 * @param array<int, array{0: string, 1: string}> $linksAfter  Every link after it.
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $linksAfter  Every edge after it.
 	 * @param array<string, array<int, string>>       $after       Assignments after it, by extension.
 	 * @param string                                  $service     The service the change was made to, '' for an upgrade or several at once.
 	 * @param string                                  $name        Its name.
@@ -1817,7 +1912,8 @@ class Services extends Service
 	}
 
 	/**
-	 * A row, with `managed` added: whether the module owns it.
+	 * A row, with `managed` added: whether the module owns it; a `requires`
+	 * it carries read as slugs.
 	 *
 	 * @param array<string, mixed> $row A services row carrying `owner`.
 	 *
@@ -1825,6 +1921,10 @@ class Services extends Service
 	 */
 	private function marked(array $row)
 	{
+		if (array_key_exists('requires', $row)) {
+			$row['requires'] = self::slugs($row['requires']);
+		}
+
 		return $row + ['managed' => (int) ($row['owner'] ?? self::OWNER_OPERATOR) === self::OWNER_MODULE];
 	}
 
@@ -1895,11 +1995,21 @@ class Services extends Service
 
 		// A side not submitted stays as it is, and still counts.
 		$kept = $this->related($was);
-		$sides += ['parents' => $kept['parents'], 'children' => $kept['children']];
+		$sides += ['parents' => $kept['parents'], 'children' => $kept['children'], 'requires' => $kept['requires']];
 
-		return (in_array($slug, array_merge($sides['parents'], $sides['children']), true)
-			|| self::loops($this->links(), $was, $sides['parents'], $sides['children']))
-			? _('A service cannot be under itself, or under a service that is under it.')
+		if (in_array($slug, array_merge($sides['parents'], $sides['children']), true)
+			|| self::loops($this->packLinks(), $was, $sides['parents'], $sides['children'])) {
+			return _('A service cannot be under itself, or under a service that is under it.');
+		}
+
+		// Its own requirements are the ones being replaced, so they are not walked.
+		$others = array_values(array_filter($this->requires(), function ($edge) use ($was) {
+			return $was === '' || $edge[0] !== $was;
+		}));
+
+		return (in_array($slug, $sides['requires'], true)
+			|| in_array($was, self::reach($others, $sides['requires'], 0, 1, ''), true))
+			? _('A service cannot require itself, or a service that requires it.')
 			: null;
 	}
 
@@ -1933,8 +2043,9 @@ class Services extends Service
 	 * Carry a changed slug to everything that names the old one.
 	 *
 	 * **Anything that comes to store a service's slug is added here**: this is
-	 * the one place a rename is followed. Today: both ends of a link, a
-	 * user's assignments, and the jobs and steps naming it.
+	 * the one place a rename is followed. Today: both ends of a link, every
+	 * service's `requires`, a user's assignments, and the jobs and steps
+	 * naming it.
 	 *
 	 * @param string $was  The slug the references hold.
 	 * @param string $slug The slug they are to hold.
@@ -1950,6 +2061,8 @@ class Services extends Service
 			$stmt->execute([':slug' => $slug, ':was' => $was]);
 		}
 
+		$this->rewriteRequires($was, $slug);
+
 		$stmt = $this->db->prepare(
 			"UPDATE `{$this->serviceAssignmentsTable}` SET service = :slug WHERE service = :was"
 		);
@@ -1961,11 +2074,22 @@ class Services extends Service
 	}
 
 	/**
-	 * Every link. The whole table: a loop can run through any row of it.
+	 * Every edge a user's hold is walked over: the links, then what each
+	 * service requires. The whole of both: a loop can run through any row.
+	 *
+	 * @return array<int, array{0: string, 1: string, 2?: string}> [parent, child] for a link, [service, required, 'requires'] for a requirement.
+	 */
+	private function links()
+	{
+		return array_merge($this->packLinks(), $this->requires());
+	}
+
+	/**
+	 * Every link, and only the links: the pack tree.
 	 *
 	 * @return array<int, array{0: string, 1: string}> [parent, child] each, slugs.
 	 */
-	private function links()
+	private function packLinks()
 	{
 		$stmt = $this->db->prepare(
 			"SELECT parent, child FROM `{$this->serviceLinksTable}`"
@@ -1975,5 +2099,88 @@ class Services extends Service
 		return array_map(function ($row) {
 			return [(string) $row[0], (string) $row[1]];
 		}, $stmt->fetchAll(PDO::FETCH_NUM));
+	}
+
+	/**
+	 * Every requirement, as edges: one per slug in each row's `requires`.
+	 *
+	 * @return array<int, array{0: string, 1: string, 2: string}> [service, required, 'requires'] each.
+	 */
+	private function requires()
+	{
+		$stmt = $this->db->prepare(
+			"SELECT slug, requires FROM `{$this->servicesTable}` WHERE requires != ''"
+		);
+		$stmt->execute();
+		$edges = [];
+
+		foreach ($stmt->fetchAll(PDO::FETCH_NUM) as $row) {
+			foreach (self::slugs($row[1]) as $required) {
+				$edges[] = [(string) $row[0], $required, self::REQUIRES];
+			}
+		}
+
+		return $edges;
+	}
+
+	/**
+	 * Only the links among some edges: the pack tree.
+	 *
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $edges As links() answers them.
+	 *
+	 * @return array<int, array{0: string, 1: string}> The edges with no kind.
+	 */
+	private static function packsOnly(array $edges)
+	{
+		return array_values(array_filter($edges, function ($edge) {
+			return empty($edge[2]);
+		}));
+	}
+
+	/**
+	 * Only the requirements among some edges.
+	 *
+	 * @param array<int, array{0: string, 1: string, 2?: string}> $edges As links() answers them.
+	 *
+	 * @return array<int, array{0: string, 1: string, 2: string}> The edges marked REQUIRES.
+	 */
+	private static function requiresOnly(array $edges)
+	{
+		return array_values(array_filter($edges, function ($edge) {
+			return !empty($edge[2]);
+		}));
+	}
+
+	/**
+	 * Rewrite one slug in every row's `requires`: a rename, or '' to take it out.
+	 *
+	 * @param string $was  The slug the column holds.
+	 * @param string $slug What it is to hold, or '' for nothing.
+	 *
+	 * @return void
+	 */
+	private function rewriteRequires($was, $slug)
+	{
+		$stmt = $this->db->prepare(
+			"SELECT slug, requires FROM `{$this->servicesTable}` WHERE FIND_IN_SET(:was, requires)"
+		);
+		$stmt->execute([':was' => $was]);
+		$update = $this->db->prepare(
+			"UPDATE `{$this->servicesTable}` SET requires = :requires, updated_at = updated_at WHERE slug = :slug"
+		);
+
+		foreach ($stmt->fetchAll(PDO::FETCH_NUM) as $row) {
+			$kept = [];
+
+			foreach (self::slugs($row[1]) as $one) {
+				$one = $one === $was ? $slug : $one;
+
+				if ($one !== '' && $one !== (string) $row[0] && !in_array($one, $kept, true)) {
+					$kept[] = $one;
+				}
+			}
+
+			$update->execute([':requires' => implode(',', $kept), ':slug' => (string) $row[0]]);
+		}
 	}
 }
