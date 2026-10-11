@@ -823,6 +823,15 @@ label.oryk-disabled {
 .oryk-service-head .oryk-check {
 	cursor: pointer;
 }
+/* A row's message wraps within itself; its parts are dotted apart. */
+.oryk-service-note {
+	min-width: 0;
+}
+.oryk-service-note > :not(:empty) ~ :not(:empty)::before {
+	content: "\00b7";
+	margin: 0 6px;
+	color: var(--oryk-faint);
+}
 /* What a pack gives, under its row, indented past the tick. */
 .oryk-service-gives {
 	padding: 0 12px 10px 38px;
