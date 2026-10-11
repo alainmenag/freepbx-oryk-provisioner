@@ -9,11 +9,11 @@ Vendor-specific syntax stays in templates you write; the module holds the data
 and the rendering.
 
 Alongside provisioning it manages **users** (an extension, its User Manager
-account, mailbox and SIP device as one number), **services** — named
-features, and packs of them, assigned to users, with a job run for every
-change — **bans** — refusing, or explicitly allowing, an address, MAC, user,
-client or profile, with IP bans kept in step with fail2ban — and logs every
-request a phone makes.
+account, mailbox and SIP device as one number) and **bans** — refusing, or
+explicitly allowing, an address, MAC, user, client or profile, with IP bans
+kept in step with fail2ban — and logs every request a phone makes. With
+[Oryk Services](https://github.com/alainmenag/freepbx-oryk-services) installed it shows a user's **services** — named features,
+and packs of them — beside the user.
 
 > [!WARNING]
 > A new client is given a token when you save it, and is then served only to
@@ -75,6 +75,5 @@ run as root does it for you.
 ## Documentation
 
 Everything else is in [`docs/`](docs/README.md): the endpoint and filename
-matching, every template placeholder, the admin pages, users, services and
-jobs, bans and fail2ban, security, and [releasing a version](docs/releasing.md). How the module is built
+matching, every template placeholder, the admin pages, users, bans and fail2ban, security, and [releasing a version](docs/releasing.md). How the module is built
 is in [`ARCHITECTURE.md`](ARCHITECTURE.md).

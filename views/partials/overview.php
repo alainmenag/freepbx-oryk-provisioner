@@ -199,7 +199,6 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	<?php if ($oIsUser && $servicesAvailable): ?>
 	<h4 class="oryk-heading"><?php echo _('Jobs'); ?></h4>
 	<?php
-	$jobFilter = null;
 	$jobScope = $overview['key'];
 	include __DIR__ . '/jobs.php';
 	?>
@@ -309,7 +308,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 
 	// The user in view -- a client's is its user -- or '' with none, and its Services tab.
 	const orykOverviewUser = <?php echo json_encode((string) ($overview['user']['extension'] ?? '')); ?>;
-	const orykOverviewServicesUrl = <?php echo json_encode(!empty($overview['user']['extension']) ? '?display=oryk_provisioner&user=' . rawurlencode((string) $overview['user']['extension']) . '&tab=services' : ''); ?>;
+	const orykOverviewServicesUrl = <?php echo json_encode(!empty($overview['user']['extension']) ? '?display=oryk_services&user=' . rawurlencode((string) $overview['user']['extension']) : ''); ?>;
 	const orykOverviewAsk = <?php echo json_encode($oAsk); ?>;
 	const orykOverviewRemoves = <?php echo json_encode(_('Removes')); ?>;
 	const orykOverviewKeeps = <?php echo json_encode(_('Keeps')); ?>;
@@ -419,7 +418,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	// Assigning is the user's Services tab, which Edit opens; a trash can
 	// unassigns the one service, asked with what the user would lose.
 	function formatOverviewService(value, row) {
-		return `<a href="?display=oryk_provisioner&service=${encodeURIComponent(row.slug)}">${orykEscape(value)}</a>`;
+		return `<a href="?display=oryk_services&service=${encodeURIComponent(row.slug)}">${orykEscape(value)}</a>`;
 	}
 
 	function formatOverviewServiceKind(value) {

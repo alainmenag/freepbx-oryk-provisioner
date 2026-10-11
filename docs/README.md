@@ -3,18 +3,19 @@
 | | |
 | --- | --- |
 | [Installing](installing.md) | what install and uninstall do, the `/provisioner` symlink, moving over from Oryk Connect |
-| [Clients, profiles and resources](concepts.md) | what each one is, tokens, a phone's addresses, services and service packs |
+| [Clients, profiles and resources](concepts.md) | what each one is, tokens, a phone's addresses, and where services come in |
 | [The provisioning endpoint](endpoint.md) | the URLs a phone asks, and how a filename finds its resource |
 | [Template placeholders](templates.md) | every `{{name}}` a template can use |
 | [The library](library.md) | starting a profile from one the module ships |
 | [The admin interface](admin.md) | the pages, tabs and previews, Overview, and the Settings tab |
 | [Users](users.md) | creating, renumbering and deleting extensions, the lobby, a user's services, and From Domain |
-| [Jobs](jobs.md) | what changing a user's services does, failures and Retry |
-| [Hooking the provisioner](hooks.md) | for module authors: reacting when a user gains or loses a service |
 | [Bans](bans.md) | refusing or allowing an address, MAC, user, client or profile at the endpoint |
 | [Syncing with fail2ban](fail2ban.md) | IP bans kept in step with fail2ban, and the one-time root setup |
 | [Security](security.md) | what is exposed, and to whom — read before going public |
 | [Releasing](releasing.md) | tagging a version so a release zip is built |
+
+Services, packs and their jobs — and hooking them from another module — are
+[Oryk Services](https://github.com/alainmenag/freepbx-oryk-services), a module of their own.
 
 How the module is built, its schema and the reasons behind it are in
 [`ARCHITECTURE.md`](../ARCHITECTURE.md).

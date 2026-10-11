@@ -9,8 +9,10 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  *
  * The tables, the module's settings, the repo directory, the web-root symlink
  * that gives a phone a short URL, the fail2ban sync -- its minute job and,
- * when this runs as root, its helper -- open provisioning's minute sweep
- * and Realtime bridge, and the service job worker's minute run. Nothing about the symlink, the sync or the bridge fails
+ * when this runs as root, its helper -- and open provisioning's minute sweep
+ * and Realtime bridge. The services are a module of their own, which makes
+ * and keeps their tables and worker; this only unschedules the worker it ran
+ * before the split. Nothing about the symlink, the sync or the bridge fails
  * the install: without them the module still works, minus a friendly URL,
  * fail2ban, or sign-ups that register before Apply Config.
  */
@@ -34,22 +36,19 @@ class Installer extends Service
 	/** @var RealtimeBridge|null */
 	private $bridge;
 
-	/** @var ServicesLink|null */
-	private $services;
-
 	/** The FreePBX job the minute sync is registered as. */
 	const SYNC_JOB = 'fail2ban-sync';
 
 	/** The FreePBX job the open-provisioning sweep is registered as. */
 	const SWEEP_JOB = 'signup-sweep';
 
-	/** The FreePBX job the service job worker's minute run is registered as. */
+	/** The FreePBX job the service worker ran as before the services were a module of their own. */
 	const JOBS_JOB = 'service-jobs';
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null, ?ServicesLink $services = null)
+	public function __construct($freepbx, Schema $schema, FileRepo $files, LogRepo $logs, Settings $settings, Fail2ban $fail2ban, ?RealtimeBridge $bridge = null)
 	{
 		parent::__construct($freepbx);
 
@@ -59,7 +58,6 @@ class Installer extends Service
 		$this->settings = $settings;
 		$this->fail2ban = $fail2ban;
 		$this->bridge = $bridge;
-		$this->services = $services;
 	}
 
 	/**
@@ -255,13 +253,6 @@ class Installer extends Service
 		$this->schema->addBanSyncColumns();
 		$this->schema->addClientSignupColumns();
 
-		// The services' tables and the services the module ships: theirs to make.
-		if ($this->services) {
-			foreach ($this->services->install() as $line) {
-				$this->installMessage('Provisioner: ' . $line);
-			}
-		}
-
 		// Advanced Settings -> Oryk Provisioner. Registering again on an upgrade
 		// keeps whatever is set there.
 		if (!$this->settings->register()) {
@@ -290,7 +281,13 @@ class Installer extends Service
 
 		$this->registerJob(self::SYNC_JOB, 'oryk-fail2ban-sync', 'the fail2ban sync');
 		$this->registerJob(self::SWEEP_JOB, 'oryk-signup-sweep', 'the open-provisioning sweep');
-		$this->registerJob(self::JOBS_JOB, 'oryk-jobs', 'the service job worker', 'services/bin');
+
+		// The services module runs its own worker now; its tables are left for it.
+		try {
+			$this->FreePBX->Job->remove('oryk_provisioner', self::JOBS_JOB);
+		} catch (\Throwable $e) {
+			// No Job BMO: nothing was registered.
+		}
 		$this->setUpFail2ban();
 
 		// Like the symlink, nothing about the bridge fails the install: without
@@ -343,7 +340,7 @@ class Installer extends Service
 	}
 
 	/**
-	 * Register one of bin/'s minute jobs, or services/bin/'s, with FreePBX's scheduler.
+	 * Register one of bin/'s minute jobs with FreePBX's scheduler.
 	 *
 	 * Removed and added again on every install, so the path in it is this
 	 * install's. It runs as the web user, like every FreePBX job; the sync
@@ -352,14 +349,13 @@ class Installer extends Service
 	 * @param string $job    Job name, one of the *_JOB constants.
 	 * @param string $script File name under bin/.
 	 * @param string $what   What it is, for the message when it cannot be.
-	 * @param string $dir    Directory under the module it is in.
 	 *
 	 * @return void
 	 */
-	private function registerJob($job, $script, $what, $dir = 'bin')
+	private function registerJob($job, $script, $what)
 	{
 		$php = $this->phpBinary();
-		$path = (realpath(dirname(__DIR__) . '/' . $dir) ?: dirname(__DIR__) . '/' . $dir) . '/' . $script;
+		$path = (realpath(dirname(__DIR__) . '/bin') ?: dirname(__DIR__) . '/bin') . '/' . $script;
 
 		try {
 			$jobs = $this->FreePBX->Job;

@@ -1,7 +1,8 @@
 <?php
 /**
  * The module page: one pane per section -- Users, Devices, Clients,
- * Profiles, Services, Logs, Jobs, Bans, Overview and Settings.
+ * Profiles, Logs, Bans, Overview and Settings. Services and Jobs are on the
+ * bar too, and are the services module's pages.
  *
  * Every table is filled by the module's AJAX commands, so nothing on this
  * page is rendered from data: what it is handed is which tab to open and
@@ -30,9 +31,6 @@
  * partials/settings.php and saved by the action bar's Save. Under them it has
  * the button that brings dismissed notices back.
  *
- * Services is drawn by partials/services.php, and Jobs -- what changes to
- * users' services set going, see ARCHITECTURE.md, "Jobs" -- by partials/jobs.php.
- *
  * Devices is every FreePBX device, with the user it is on and the client
  * on it. Edit leads to the
  * device's own page, views/device.php, where that user is changed; a trash
@@ -58,8 +56,6 @@
  * @var array<string, mixed>              $sync      Fail2ban::status(), on the Bans tab
  * @var string                            $remote    The address this page was asked from, canonical
  * @var array<string, string>|null        $scope     Pages::scopeBanner(): what the list is narrowed to, or null
- * @var array<string, string>              $serviceFilter Services::filters(), on Services -- see partials/services.php
- * @var array<string, string>              $jobFilter Jobs::filters(), on Jobs -- see partials/jobs.php
  * @var array<string, mixed>|null         $overview  Overview::inventory(), on Overview -- see partials/overview.php
  */
 
@@ -168,12 +164,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 						</table>
 					</div>
 
-					<?php endif; ?>
-
-					<?php if ($tab === 'services'): ?>
-					<div class="tab-pane active" id="oryk_services">
-						<?php include __DIR__ . '/partials/services.php'; ?>
-					</div>
 					<?php endif; ?>
 
 					<?php if ($tab === 'users'): ?>
@@ -318,15 +308,6 @@ $scopeQuery = htmlspecialchars($scope ? '&scope=' . rawurlencode($scope['key']) 
 							<?php endif; ?>
 						</div>
 						<?php endif; ?>
-					</div>
-					<?php endif; ?>
-
-					<?php if ($tab === 'jobs'): ?>
-					<div class="tab-pane active" id="oryk_jobs">
-						<?php
-						$jobScope = $scope ? $scope['key'] : '';
-						include __DIR__ . '/partials/jobs.php';
-						?>
 					</div>
 					<?php endif; ?>
 

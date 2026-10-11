@@ -60,7 +60,7 @@ class Pages extends Service
 	/** @var Overview */
 	private $overview;
 
-	/** @var ServicesLink The Services and Jobs pages' rows, and a user's Services tab. */
+	/** @var ServicesLink Whether the services are there to link to, and what a job is called. */
 	private $services;
 
 	/** @var Library */
@@ -102,17 +102,12 @@ class Pages extends Service
 	/**
 	 * Render the requested module page.
 	 *
-	 * A list, six editors, a device, a log entry and a job, told apart by which key the URL carries.
+	 * A list, five editors, a device and a log entry, told apart by which key the URL carries.
 	 *
 	 *   ?display=oryk_provisioner                            the list
 	 *   ?display=oryk_provisioner&tab=<section>&scope=<kind>:<id>
 	 *                                                        the list, narrowed
 	 *                                                        to what that row scopes
-	 *   ?display=oryk_provisioner&tab=services&source=<all|custom|module>&kind=<all|single|pack>
-	 *                                                        the Services list,
-	 *                                                        as its filters are set
-	 *   ?display=oryk_provisioner&tab=jobs&state=&reason=&source=
-	 *                                                        the Jobs list, likewise
 	 *   ?display=oryk_provisioner&tab=overview&scope=<user|client>:<id>
 	 *                                                        everything tied to
 	 *                                                        that user or client
@@ -124,13 +119,14 @@ class Pages extends Service
 	 *   ?display=oryk_provisioner&profile=<id>&resource=     a new one
 	 *   ?display=oryk_provisioner&user=<extension>           one user
 	 *   ?display=oryk_provisioner&user=                      a new one
-	 *   ?display=oryk_provisioner&service=<slug>             one service
-	 *   ?display=oryk_provisioner&service=                   a new one
 	 *   ?display=oryk_provisioner&ban=<id>                   one ban
 	 *   ?display=oryk_provisioner&ban=                       a new one
 	 *   ?display=oryk_provisioner&device=<id>                one FreePBX device
 	 *   ?display=oryk_provisioner&log=<id>                   one log entry
-	 *   ?display=oryk_provisioner&job=<id>                   one job
+	 *
+	 * Services, Jobs, a service, a job and a user's services are the services
+	 * module's pages (ServicesLink::PAGE); doConfigPageInit() sends any of
+	 * them asked for here there.
 	 *
 	 * A key present but empty is the same page doing the same thing, minus a row
 	 * to replace.
@@ -143,20 +139,12 @@ class Pages extends Service
 			return $this->showLog(trim((string) $_REQUEST['log']));
 		}
 
-		if (isset($_REQUEST['job']) && $this->services->available()) {
-			return $this->showJob(trim((string) $_REQUEST['job']));
-		}
-
 		if (isset($_REQUEST['device'])) {
 			return $this->showDevice(trim((string) $_REQUEST['device']));
 		}
 
 		if (isset($_REQUEST['ban'])) {
 			return $this->showBan(trim((string) $_REQUEST['ban']));
-		}
-
-		if (isset($_REQUEST['service']) && $this->services->available()) {
-			return $this->showService(trim((string) $_REQUEST['service']));
 		}
 
 		// Checked before ?profile= only because neither URL carries the other's
@@ -278,7 +266,7 @@ class Pages extends Service
 	 * Core device, and a renumbering save moves it to a new address.
 	 *
 	 * @param string $wanted Extension, or '' for a new one.
-	 * @param string $tab    Tab to open on: user|clients|services.
+	 * @param string $tab    Tab to open on: user|clients. Services is a link to the services' own page.
 	 *
 	 * @return string Rendered page output.
 	 */
@@ -309,11 +297,7 @@ class Pages extends Service
 			// Blank on the form is not nothing: it is this.
 			'pbxDomain' => $this->endpoints->fromDomain(null),
 			'available' => $available,
-			// Every service, as this user has them, and where its jobs stand;
-			// only that tab draws them.
-			'services' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->userServices($extension) : [],
-			'serviceJobs' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->jobStatus($extension) : [],
-			'tab' => !empty($available[$tab]) ? $tab : 'user',
+			'tab' => ($tab === 'clients' && !empty($available[$tab])) ? $tab : 'user',
 		]);
 	}
 
@@ -357,40 +341,6 @@ class Pages extends Service
 			// An unwritten ban names nothing yet, so it scopes nothing.
 			'navigator' => $this->navigator->levels([
 				'ban' => $ban['id'] ? (int) $ban['id'] : 'new',
-			]),
-		]);
-	}
-
-	/**
-	 * Render the service editor.
-	 *
-	 * @param string $wanted Service slug, or '' for a new one.
-	 *
-	 * @return string Rendered page output.
-	 */
-	private function showService($wanted)
-	{
-		$service = ['name' => '', 'slug' => '', 'managed' => false];
-
-		if ($wanted !== '') {
-			// doConfigPageInit() has already bounced one that has gone.
-			$found = $this->services->serviceBySlug($wanted);
-
-			if (!$found) {
-				return $this->showList('services');
-			}
-
-			$service = $found;
-		}
-
-		return $this->view('service', [
-			'service' => $service,
-			'choices' => $this->services->serviceChoices(),
-			'related' => $this->services->related((string) ($service['slug'] ?? '')),
-			'sections' => $this->navigator->sections('services'),
-			// An unwritten service is assigned to nobody yet, so it scopes nothing.
-			'navigator' => $this->navigator->levels([
-				'service' => (string) $service['slug'] !== '' ? (string) $service['slug'] : 'new',
 			]),
 		]);
 	}
@@ -446,29 +396,31 @@ class Pages extends Service
 	}
 
 	/**
-	 * Render one job: its steps, and Retry when it failed. There is no new
-	 * one: a change to services is the only thing that writes them.
+	 * Where on the services' own pages a request for one of them here goes.
 	 *
-	 * @param string $wanted Job id.
-	 *
-	 * @return string Rendered page output.
+	 * @return string|null The address there, or null when this is not one.
 	 */
-	private function showJob($wanted)
+	private function servicesPage()
 	{
-		// doConfigPageInit() has already bounced one that has gone.
-		$job = $this->services->jobRow($wanted);
+		$tab = (string) ($_REQUEST['tab'] ?? '');
 
-		if (!$job) {
-			return $this->showList('jobs');
+		if (isset($_REQUEST['job'])) {
+			return ServicesLink::PAGE . '&job=' . rawurlencode(trim((string) $_REQUEST['job']));
 		}
 
-		return $this->view('job', [
-			'job' => $job,
-			'names' => array_column($this->services->serviceChoices(), 'name', 'slug'),
-			'jobTitle' => $this->services->jobTitle($job),
-			'sections' => $this->navigator->sections('jobs'),
-			'navigator' => $this->navigator->levels(['job' => (int) $job['id']]),
-		]);
+		if (isset($_REQUEST['service'])) {
+			return ServicesLink::PAGE . '&service=' . rawurlencode(trim((string) $_REQUEST['service']));
+		}
+
+		if (isset($_REQUEST['user']) && $tab === 'services' && trim((string) $_REQUEST['user']) !== '') {
+			return ServicesLink::PAGE . '&user=' . rawurlencode(trim((string) $_REQUEST['user']));
+		}
+
+		if (!isset($_REQUEST['user']) && in_array($tab, ['services', 'jobs'], true)) {
+			return ServicesLink::PAGE . '&tab=' . $tab;
+		}
+
+		return null;
 	}
 
 	/**
@@ -674,10 +626,6 @@ class Pages extends Service
 			'dismissedNotices' => $tab === 'settings' ? $this->notices->dismissedCount() : 0,
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
-			// The Services list's two filters, as the address has them.
-			'serviceFilter' => $tab === 'services' ? $this->services->serviceFilters($_REQUEST) : [],
-			// The Jobs list's three, likewise.
-			'jobFilter' => $tab === 'jobs' ? $this->services->jobFilters($_REQUEST) : [],
 			// What the State column warns with before refusing your own address.
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),
@@ -909,8 +857,8 @@ class Pages extends Service
 	 */
 	public function getActionBar($request)
 	{
-		// A log entry and a job are read, not edited: Delete and Close, never Save.
-		if (isset($_REQUEST['log']) || isset($_REQUEST['job'])) {
+		// A log entry is read, not edited: Delete and Close, never Save.
+		if (isset($_REQUEST['log'])) {
 			return [
 				'orykdelete' => [
 					'name' => 'orykdelete',
@@ -938,14 +886,6 @@ class Pages extends Service
 		// buttons act on.
 		if (isset($_REQUEST['ban'])) {
 			$row = trim((string) $_REQUEST['ban']);
-		} elseif (isset($_REQUEST['service'])) {
-			$row = trim((string) $_REQUEST['service']);
-			$service = $this->services->serviceBySlug($row);
-
-			// One of the module's is read, not edited: nothing to save or delete.
-			if ($service && $service['managed']) {
-				return ['orykclose' => ['name' => 'orykclose', 'id' => 'orykclose', 'value' => _('Close')]];
-			}
 		} elseif (isset($_REQUEST['user'])) {
 			$row = trim((string) $_REQUEST['user']);
 		} elseif (isset($_REQUEST['client'])) {
@@ -984,21 +924,6 @@ class Pages extends Service
 			];
 		}
 
-		// A user's Services tab stages its ticks and has its own Save and Reset
-		// (views/partials/user_services.php): orykEditor()'s posts the User tab's fields.
-		if (isset($_REQUEST['user']) && $this->openTab() === 'services' && $this->services->available()) {
-			$bar['orykservicessave'] = [
-				'name' => 'orykservicessave',
-				'id' => 'orykservicessave',
-				'value' => _('Save'),
-			];
-			$bar['orykservicesreset'] = [
-				'name' => 'orykservicesreset',
-				'id' => 'orykservicesreset',
-				'value' => _('Reset'),
-			];
-		}
-
 		// Nothing to delete until there is a row.
 		if ($row !== '') {
 			$bar['orykdelete'] = [
@@ -1031,6 +956,15 @@ class Pages extends Service
 	 */
 	public function doConfigPageInit($page)
 	{
+		// The services' pages are theirs: a link or bookmark from before the
+		// split, or a user's Services tab, goes there; without the module, home.
+		$theirs = $this->servicesPage();
+
+		if ($theirs !== null) {
+			header('Location: config.php' . ($this->services->available() ? $theirs : '?display=oryk_provisioner'));
+			exit;
+		}
+
 		// There is no new entry, so empty is as stale as an id that has gone.
 		if (isset($_REQUEST['log'])) {
 			if (!$this->requestLog->logRow(trim((string) $_REQUEST['log']))) {
@@ -1051,40 +985,12 @@ class Pages extends Service
 			return;
 		}
 
-		// Without the services there is no job or service page to open.
-		if ((isset($_REQUEST['job']) || isset($_REQUEST['service'])) && !$this->services->available()) {
-			header('Location: config.php?display=oryk_provisioner');
-			exit;
-		}
-
-		// Nor is there a new job; a finished one purged is gone the same way.
-		if (isset($_REQUEST['job'])) {
-			if (!$this->services->jobRow(trim((string) $_REQUEST['job']))) {
-				header('Location: config.php?display=oryk_provisioner&tab=jobs');
-				exit;
-			}
-
-			return;
-		}
-
 		// Empty is the new-ban editor. An expired ban is still a row and opens.
 		if (isset($_REQUEST['ban'])) {
 			$ban = trim((string) $_REQUEST['ban']);
 
 			if ($ban !== '' && !$this->bans->banRow($ban)) {
 				header('Location: config.php?display=oryk_provisioner&tab=bans');
-				exit;
-			}
-
-			return;
-		}
-
-		// Empty is the new-service editor. A service's key is its slug.
-		if (isset($_REQUEST['service'])) {
-			$service = trim((string) $_REQUEST['service']);
-
-			if ($service !== '' && !$this->services->serviceBySlug($service)) {
-				header('Location: config.php?display=oryk_provisioner&tab=services');
 				exit;
 			}
 

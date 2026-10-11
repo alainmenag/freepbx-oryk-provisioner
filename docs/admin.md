@@ -20,11 +20,9 @@ with how many are in scope: on a profile, Clients lists that profile's clients
 and Users the people they belong to; on a client, Resources lists the files
 it is served, Logs its latest requests and Bans every ban that would apply to
 it. A list page has no trail, only the counts. On a ban, the other dropdowns list what that ban
-covers. Services lists the services assigned to the users in view — the ones
-ticked for them, not those that come with a pack — and on a service, Users
-lists who is assigned it and the rest follow from their phones. Jobs lists the
-[jobs](jobs.md) of the users in view, and on a service the jobs changes to it
-made. The dropdown for the thing you are on
+covers. With [Oryk Services](https://github.com/alainmenag/freepbx-oryk-services) installed, Services lists the services
+assigned to the users in view — the ones ticked for them, not those that come
+with a pack — and Jobs their jobs; choosing one opens it in that module. The dropdown for the thing you are on
 lists all of its kind, so you can switch straight to another one. A
 dropdown's title, with its count, opens the table of exactly those: on a
 client, **Profiles 1** opens the Profiles list showing only that client's
@@ -48,18 +46,14 @@ that were dismissed and still apply.
 | --- | --- | --- |
 | `?display=oryk_provisioner&tab=<section>` | a section's list | — |
 | `&tab=<section>&scope=<kind>:<id>` | that list, narrowed to what a `user`, `client`, `profile`, `log`, `ban`, `service` or `job` row scopes; `holders:<slug>` is a service's users with those who have it through a pack | — |
-| `&tab=services&source=module&kind=pack` | the Services list with its filters set; each is left out at its default (Available, All) | — |
-| `&tab=jobs&state=failed&reason=&source=` | the Jobs list with its filters set; each is left out at its default (any) | — |
 | `&tab=overview&scope=user:<extension>` or `client:<id>` | [Overview](#overview): everything tied to that user or client | — |
 | `&client=<id>` | one client (`&client=` for a new one) | Client, Resources, Logs |
 | `&profile=<id>` | one profile (`&profile=` for a new one) | Profile, Resources, Clients |
 | `&profile=<id>&resource=<id>` | one file (`&resource=` for a new one) | Resource, Clients |
-| `&user=<extension>` | one user (`&user=` for a new one) | User, Clients, Services |
-| `&service=<slug>` | one service (`&service=` for a new one) | Service |
+| `&user=<extension>` | one user (`&user=` for a new one) | User, Clients, Services (Oryk Services' page) |
 | `&ban=<id>` | one ban (`&ban=` for a new one) | Ban |
 | `&device=<id>` | one FreePBX [device](#devices): the user it is on | Device |
 | `&log=<id>` | one provisioning log entry, read-only | Log Entry |
-| `&job=<id>` | one [job](jobs.md): its steps, Retry when it failed, Delete | Job |
 
 Every table is paginated, searchable and sortable server-side. Save, Delete
 and Close are in the FreePBX action bar on every editor. Save leaves you on
@@ -135,11 +129,11 @@ It is tables, the same ones the lists show:
 | **User** | the user, with a link to its User Manager account | its user, which is kept |
 | **Devices** | the FreePBX devices on its extension | — |
 | **Clients** | every client on it, with the logs each has stored | the client itself |
-| **Services** | the services it is assigned itself, not those a pack brings; a trash can unassigns one, **Edit** opens its Services tab | its user's |
+| **Services** | with Oryk Services: the services it is assigned itself, not those a pack brings; a trash can unassigns one, **Edit** opens its page there | its user's |
 | **Call Detail Record** | the calls it made or received | — |
 | **Voicemail** | the messages in its mailbox, every folder | — |
 | **Provisioning Logs** | the requests from its clients' MACs | the requests from its MAC |
-| **Jobs** | its [jobs](jobs.md) | — |
+| **Jobs** | with Oryk Services: its jobs, each opening there | — |
 | **Bans** | every ban naming it or applying to it | the same |
 
 Each part can be removed where it is listed: a client, a device, a voicemail
