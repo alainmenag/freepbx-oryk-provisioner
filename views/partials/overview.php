@@ -28,7 +28,7 @@ $oe = function ($value) {
 ?>
 
 <?php if (!$overview): ?>
-<div class="oryk-overview-empty">
+<div class="oryk-empty">
 	<p><strong><?php echo _('Select a user or a client above.'); ?></strong></p>
 	<p class="text-muted"><?php echo _('Overview lists everything tied to it -- clients, provisioning log entries, stored phone logs and bans -- so any of it can be removed on its own, or all of it at once.'); ?></p>
 </div>
@@ -82,9 +82,9 @@ if ($oApplying) {
 $oAsk .= ' ' . _('This cannot be undone.');
 ?>
 
-<div class="oryk-overview">
+<div>
 
-	<h4 class="oryk-overview-heading"><?php echo _('User'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('User'); ?></h4>
 	<table
 		id="user_table"
 		data-toggle="table"
@@ -108,7 +108,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	</table>
 
 	<?php if ($oIsUser): ?>
-	<h4 class="oryk-overview-heading"><?php echo _('Devices'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Devices'); ?></h4>
 	<table
 		id="device_table"
 		data-toggle="table"
@@ -131,7 +131,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	</table>
 	<?php endif; ?>
 
-	<h4 class="oryk-overview-heading"><?php echo $oIsUser ? _('Clients') : _('Client'); ?></h4>
+	<h4 class="oryk-heading"><?php echo $oIsUser ? _('Clients') : _('Client'); ?></h4>
 	<table
 		id="client_table"
 		data-toggle="table"
@@ -159,7 +159,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
-	<h4 class="oryk-overview-heading"><?php echo _('Services'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Services'); ?></h4>
 	<table
 		id="overview_service_table"
 		data-toggle="table"
@@ -182,7 +182,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
-	<h4 class="oryk-overview-heading"><?php echo _('Logs'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Logs'); ?></h4>
 	<?php
 	$logMac = '';
 	$logScope = $overview['key'];
@@ -191,7 +191,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	?>
 
 	<?php if ($oIsUser): ?>
-	<h4 class="oryk-overview-heading"><?php echo _('Jobs'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Jobs'); ?></h4>
 	<?php
 	$jobFilter = null;
 	$jobScope = $overview['key'];
@@ -199,7 +199,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	?>
 	<?php endif; ?>
 
-	<h4 class="oryk-overview-heading"><?php echo _('Bans'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Bans'); ?></h4>
 	<table
 		id="ban_table"
 		data-toggle="table"
@@ -230,7 +230,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	</table>
 
 	<?php if ($oIsUser): ?>
-	<h4 class="oryk-overview-heading"><?php echo _('Call Detail Record'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Call Detail Record'); ?></h4>
 	<div id="call_toolbar" class="oryk-toolbar oryk-toolbar-clear">
 		<button type="button" class="btn btn-danger" id="oryk_overview_calls_clear" title="<?php echo _('Clear Call History'); ?>">
 			<?php echo $icon('trash'); ?>
@@ -262,7 +262,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
-	<h4 class="oryk-overview-heading"><?php echo _('Voicemail'); ?></h4>
+	<h4 class="oryk-heading"><?php echo _('Voicemail'); ?></h4>
 	<div id="voicemail_toolbar" class="oryk-toolbar oryk-toolbar-clear">
 		<button type="button" class="btn btn-danger" id="oryk_overview_voicemail_clear" title="<?php echo _('Clear Voicemail'); ?>">
 			<?php echo $icon('trash'); ?>
@@ -348,7 +348,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	// user's own, it says what that leaves behind. Dev. is its page in
 	// FreePBX, Edit its page here.
 	function formatOverviewDeviceActions(value, row) {
-		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">` +
 			`<a class="btn btn-default btn-sm" href="?display=devices&extdisplay=${encodeURIComponent(row.id)}" title="Open in Devices">Dev.</a>` +
 			`<button type="button" class="btn btn-danger btn-sm" name="overview_device_delete" value="${orykEscape(row.id)}" data-own="${Number(row.own) ? 1 : 0}" data-clients="${Number(row.clients) || 0}" title="Delete this device">${orykIcon('trash')}</button>` +
 			`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&device=${encodeURIComponent(row.id)}">Edit</a>` +
@@ -425,7 +425,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 			return '';
 		}
 
-		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">` +
 			`<button type="button" class="btn btn-danger btn-sm" name="overview_service_unassign" value="${orykEscape(row.slug)}" data-name="${orykEscape(row.name)}" title="Unassign this service from the user">${orykIcon('trash')}</button>` +
 			`<a class="btn btn-primary btn-sm" href="${orykEscape(orykOverviewServicesUrl)}" title="Assign and unassign this user's services">Edit</a>` +
 			`</div>`;
@@ -492,7 +492,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		const number = value ? orykEscape(value) : '-';
 
 		return row.clid && row.clid !== value
-			? `${number}<span class="oryk-log-detail">${orykEscape(row.clid)}</span>`
+			? `${number}<span class="oryk-block oryk-tiny text-danger">${orykEscape(row.clid)}</span>`
 			: number;
 	}
 
@@ -555,7 +555,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	});
 
 	function formatOverviewVoicemailActions(value, row) {
-		return `<div class="flex gap-3" style="justify-content: flex-end;">` +
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">` +
 			`<button type="button" class="btn btn-danger btn-sm" name="overview_voicemail_delete" value="${orykEscape(row.id)}" title="Delete this message">${orykIcon('trash')}</button>` +
 			`</div>`;
 	}

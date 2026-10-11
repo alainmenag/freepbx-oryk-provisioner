@@ -1429,8 +1429,15 @@ made from one of the tables is answered by loading the page again.
   page (a resource's file box and template, a profile's Resources tab). The URL
   is the row and nothing else: no key says a save has just happened. Only Close
   and a finished Delete go back to a list.
-- **Styles live in `assets/oryk_provisioner.css`**, never in a `<style>` in a
-  view. `Pages::view()` puts it on every page: linked through the
+- **Styles live in `assets/oryk_provisioner.css`**, never in a `<style>` or a
+  `style=""` in a view. The file is three layers: tokens (the palette, as
+  custom properties), utilities (`oryk-flex`, `oryk-gap-1`, `oryk-mono`,
+  `oryk-small`: one property or two, named for what they do), and components
+  (what a utility cannot say: a state, a relation between two elements, a
+  fight with Bootstrap). A view composes utilities first -- a row's action cell
+  is `oryk-flex oryk-gap-1 oryk-end` -- and earns a rule of its own only for
+  the rest. A class a script reads may have no rule at all. `Pages::view()`
+  puts the file on every page: linked through the
   `admin/assets/oryk_provisioner` symlink `fwconsole reload` makes, with the
   file's mtime as `?v=`, or inlined until that symlink exists. It is outside
   `assets/css/` on purpose -- FreePBX links everything in there itself, with

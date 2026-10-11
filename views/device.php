@@ -47,7 +47,7 @@ $tabs = [
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -63,7 +63,7 @@ $tabs = [
 										<label class="control-label"><?php echo _('Device'); ?></label>
 									</div>
 									<div class="col-md-8">
-										<p class="form-control-static oryk-name">
+										<p class="form-control-static oryk-mono">
 											<?php echo $h($id); ?>
 											<?php if ((string) $device['tech'] !== ''): ?>
 											&nbsp;<span class="text-muted"><?php echo $h($device['tech']); ?></span>

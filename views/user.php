@@ -81,7 +81,7 @@ if ($clientCount > 0) {
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -105,7 +105,7 @@ if ($clientCount > 0) {
 										<label class="control-label" for="user_extension"><?php echo _('Extension'); ?></label> <i class="fpbx-help-icon" data-for="user_extension"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
-										<input type="text" class="form-control oryk-name" id="user_extension"
+										<input type="text" class="form-control oryk-mono" id="user_extension"
 											autocomplete="off" inputmode="numeric" maxlength="10"
 											placeholder="<?php echo $h($isNew ? _('Next free 999… number') : $extension); ?>"
 											value="<?php echo $h($extension); ?>">
@@ -172,7 +172,7 @@ if ($clientCount > 0) {
 										<label class="control-label" for="user_from_domain"><?php echo _('From Domain'); ?></label> <i class="fpbx-help-icon" data-for="user_from_domain"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
-										<input type="text" class="form-control oryk-name" id="user_from_domain" maxlength="255"
+										<input type="text" class="form-control oryk-mono" id="user_from_domain" maxlength="255"
 											autocomplete="off" spellcheck="false"
 											placeholder="<?php echo $h($pbxDomain !== '' ? $pbxDomain : _('none')); ?>"
 											value="<?php echo $h($user['from_domain'] ?? ''); ?>">
@@ -219,7 +219,7 @@ if ($clientCount > 0) {
 										<label class="control-label" for="user_context"><?php echo _('Context'); ?></label> <i class="fpbx-help-icon" data-for="user_context"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
-										<p class="form-control-static oryk-name" id="user_context">
+										<p class="form-control-static oryk-mono" id="user_context">
 											<?php echo $h($context !== '' ? $context : '-'); ?>
 										</p>
 									</div>
@@ -241,7 +241,7 @@ if ($clientCount > 0) {
 										<label class="control-label"><?php echo _('Account'); ?></label>
 									</div>
 									<div class="col-md-8">
-										<p class="form-control-static oryk-name">
+										<p class="form-control-static oryk-mono">
 											<?php echo $h($extension); ?>
 											&nbsp;<a href="?display=extensions&amp;extdisplay=<?php echo rawurlencode($extension); ?>"><?php echo _('Open in Extensions'); ?></a>
 										</p>

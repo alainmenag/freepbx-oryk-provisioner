@@ -136,7 +136,7 @@ $tabs = [
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 
@@ -154,7 +154,7 @@ $tabs = [
 										<label class="control-label" for="client_mac"><?php echo _('MAC Address'); ?></label> <i class="fpbx-help-icon" data-for="client_mac"><?php echo $icon('help'); ?></i>
 									</div>
 									<div class="col-md-8">
-										<input type="text" class="form-control oryk-name" id="client_mac"
+										<input type="text" class="form-control oryk-mono" id="client_mac"
 											autocomplete="off" placeholder="001565aabbcc"
 											value="<?php echo $h($mac); ?>">
 									</div>
@@ -454,7 +454,7 @@ $tabs = [
 
 		actions.push(`<a class="btn btn-primary btn-sm" href="?display=oryk_provisioner&profile=${orykClientProfileId}&resource=${encodeURIComponent(row.id)}">Edit</a>`);
 
-		return `<div class="flex gap-3" style="justify-content: flex-end;">${actions.join('')}</div>`;
+		return `<div class="oryk-flex oryk-gap-1 oryk-end">${actions.join('')}</div>`;
 	}
 
 	orykEditor({

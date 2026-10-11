@@ -77,15 +77,18 @@ diffing. Never rewrite a file wholesale to reword its comments.
   `ajaxHandler()`, and in `READS` when it only reads: anything not there is
   answered only to a POST.
 - No view contains a `<form>`; fields are read by id and posted over AJAX.
-- CSS goes in `assets/oryk_provisioner.css`, not in a `<style>` in a view.
+- CSS goes in `assets/oryk_provisioner.css`, not in a `<style>` or a `style=`
+  in a view. Compose its `oryk-*` utilities (`oryk-flex oryk-gap-1 oryk-end`,
+  `oryk-mono`, `oryk-small text-muted`) before writing a rule; a rule is for
+  what utilities cannot say, and never names one view's one element.
 - A question before an action is `orykAsk(message, {title, choices})` from
   `assets/oryk_dialog.js`, with the action in `.done(() => { ... })`. No
   `window.confirm()`.
 - A field's help is a `fpbx-help-icon` with `data-for="<id>"` after the label
   and one `fpbx-help-block` with `id="<id>-help"`; without the pair FreePBX
   never shows it.
-- Icons are `assets/icons/*.svg`, printed with `$icon('<name>')` in a view and
-  `orykIcon('<name>')` in JS. No `fa fa-*`.
+- Icons are `assets/icons/*.svg`, printed with `$icon('<name>', '<classes>')` in
+  a view and `orykIcon('<name>', '<classes>')` in JS. No `fa fa-*`.
 - The only badges are the navigator's, from `Navigator`: a dropdown title's
   `count`, and an option's `badge` ("Pack"); tabs and the section bar carry none.
 - `Schema` steps are additive and ask `information_schema`, never a dbversion.

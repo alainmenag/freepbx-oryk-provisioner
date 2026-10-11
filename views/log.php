@@ -36,7 +36,7 @@ $tabs = [
 $fact = function ($label, $html) use ($h) {
 	echo '<div class="element-container"><div class="row"><div class="form-group">';
 	echo '<div class="col-md-4"><label class="control-label">' . $h($label) . '</label></div>';
-	echo '<div class="col-md-8"><p class="form-control-static flex" style="gap: 5px;">' . $html . '</p></div>';
+	echo '<div class="col-md-8"><p class="form-control-static oryk-flex oryk-gap-2">' . $html . '</p></div>';
 	echo '</div></div></div>';
 };
 
@@ -53,7 +53,7 @@ $banMac = Bans::value('mac', $mac);
 			<?php include __DIR__ . '/partials/sections.php'; ?>
 			<?php include __DIR__ . '/partials/navigator.php'; ?>
 
-			<div class="section no-border" style="padding: 0;">
+			<div class="section no-border oryk-p-0">
 
 				<div class="alert alert-danger hidden" id="oryk_error"></div>
 

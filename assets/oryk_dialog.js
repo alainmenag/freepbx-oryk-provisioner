@@ -47,7 +47,7 @@ function orykAsk(message, options) {
 			'<div class="modal-dialog" role="document">' +
 				'<div class="modal-content">' +
 					'<div class="modal-header"><h4 class="modal-title"></h4></div>' +
-					'<div class="modal-body"><p class="oryk-ask-message"></p></div>' +
+					'<div class="modal-body"><p class="oryk-ask-message oryk-prewrap"></p></div>' +
 					'<div class="modal-footer"></div>' +
 				'</div>' +
 			'</div>' +

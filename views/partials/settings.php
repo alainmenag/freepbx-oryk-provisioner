@@ -68,7 +68,7 @@ $h = function ($value) {
 			<div class="col-md-12">
 				<span class="help-block fpbx-help-block" id="<?php echo $h($id); ?>-help">
 					<?php echo $h(_($setting['description'])); ?>
-					<span class="oryk-setting-keyword"><?php echo $h($keyword); ?></span>
+					<span class="oryk-mono text-muted"><?php echo $h($keyword); ?></span>
 				</span>
 			</div>
 		</div>

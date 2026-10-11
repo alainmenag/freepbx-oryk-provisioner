@@ -71,14 +71,14 @@ $serviceLabels = [
 	<?php else: ?>
 	<div class="oryk-service-lists">
 		<div>
-			<div class="oryk-service-list">
-				<div class="oryk-service-list-title"><span><?php echo _('Service Packs'); ?></span><span id="oryk_user_packs_count"></span></div>
+			<div class="oryk-box oryk-mb-3 oryk-service-list">
+				<div class="oryk-flex oryk-between oryk-pad oryk-service-list-title"><span><?php echo _('Service Packs'); ?></span><span id="oryk_user_packs_count"></span></div>
 				<div id="oryk_user_packs"></div>
 			</div>
 		</div>
 		<div>
-			<div class="oryk-service-list">
-				<div class="oryk-service-list-title"><span><?php echo _('Services'); ?></span><span id="oryk_user_singles_count"></span></div>
+			<div class="oryk-box oryk-mb-3 oryk-service-list">
+				<div class="oryk-flex oryk-between oryk-pad oryk-service-list-title"><span><?php echo _('Services'); ?></span><span id="oryk_user_singles_count"></span></div>
 				<div id="oryk_user_singles"></div>
 			</div>
 		</div>
@@ -160,11 +160,11 @@ $serviceLabels = [
 		function given(slug, has, nested) {
 			const list = nested ? kids(slug) : [...under(slug)].sort(byName);
 
-			return '<ul>' + list.map((kid) => [
+			return '<ul class="oryk-tree">' + list.map((kid) => [
 				'<li>',
 				orykEscape(name(kid)),
 				bySlug[kid].pack ? ` <span class="text-muted">(${orykEscape(L.pack)})</span>` : '',
-				has.has(kid) ? ` <span class="oryk-service-has text-success">${orykIcon('check')} ${orykEscape(L.has)}</span>` : '',
+				has.has(kid) ? ` <span class="oryk-small text-success">${orykIcon('check')} ${orykEscape(L.has)}</span>` : '',
 				nested && bySlug[kid].pack ? given(kid, has, true) : '',
 				'</li>'
 			].join('')).join('') + '</ul>';
@@ -180,19 +180,19 @@ $serviceLabels = [
 
 			return [
 				`<div class="oryk-service-row${on !== was ? ' oryk-service-staged' : ''}">`,
-				'<div class="oryk-service-head">',
+				'<div class="oryk-flex oryk-wrap oryk-center oryk-gap-3 oryk-service-head">',
 				`<label class="oryk-check"><input type="checkbox" name="user_service" value="${orykEscape(slug)}"${on ? ' checked' : ''}${!on && through.length ? ' data-held="1"' : ''}> ${orykEscape(service.name)}</label>`,
-				through.length ? `<span class="oryk-service-via text-muted">${orykEscape(say(L.included, through.join(', ')))}</span>` : '',
-				on !== was ? `<span class="oryk-service-change ${on ? 'text-success' : 'text-danger'}">${orykEscape(on ? L.toAssign : L.toUnassign)}</span>` : '',
-				`<span class="oryk-service-job" data-slug="${orykEscape(slug)}"></span>`,
+				through.length ? `<span class="oryk-small text-muted">${orykEscape(say(L.included, through.join(', ')))}</span>` : '',
+				on !== was ? `<span class="oryk-small ${on ? 'text-success' : 'text-danger'}">${orykEscape(on ? L.toAssign : L.toUnassign)}</span>` : '',
+				`<span class="oryk-service-job oryk-small" data-slug="${orykEscape(slug)}"></span>`,
 				service.pack
-					? `<button type="button" class="btn btn-default btn-xs oryk-service-open${mode ? ' active' : ''}" name="user_service_open" value="${orykEscape(slug)}" title="${orykEscape(L.gives)}" aria-label="${orykEscape(L.gives)}" aria-expanded="${mode ? 'true' : 'false'}">
-							<span class="oryk-service-count text-muted">${under(slug).size}</span>
+					? `<button type="button" class="btn btn-default btn-xs oryk-push${mode ? ' active' : ''}" name="user_service_open" value="${orykEscape(slug)}" title="${orykEscape(L.gives)}" aria-label="${orykEscape(L.gives)}" aria-expanded="${mode ? 'true' : 'false'}">
+							<span class="oryk-small text-muted">${under(slug).size}</span>
 						</button>`
 					: '',
 				'</div>',
 				service.pack && mode
-					? `<div class="oryk-service-gives"><button type="button" class="oryk-service-tree text-muted" name="user_service_tree" value="${orykEscape(slug)}" title="${orykEscape(tree ? L.asFlat : L.asTree)}">${orykIcon(tree ? 'minus' : 'plus')} ${orykEscape(tree ? L.built : L.flat)}</button>${given(slug, has, tree)}</div>`
+					? `<div class="oryk-service-gives"><button type="button" class="oryk-service-tree oryk-bare oryk-block text-muted" name="user_service_tree" value="${orykEscape(slug)}" title="${orykEscape(tree ? L.asFlat : L.asTree)}">${orykIcon(tree ? 'minus' : 'plus')} ${orykEscape(tree ? L.built : L.flat)}</button>${given(slug, has, tree)}</div>`
 					: '',
 				'</div>'
 			].join('');
@@ -204,7 +204,7 @@ $serviceLabels = [
 			[['#oryk_user_packs', true], ['#oryk_user_singles', false]].forEach(function (list) {
 				const mine = rows.filter((service) => Boolean(service.pack) === list[1]);
 
-				$(list[0]).html(mine.length ? mine.map((service) => row(service, has)).join('') : `<p class="oryk-service-none text-muted">${orykEscape(L.none)}</p>`);
+				$(list[0]).html(mine.length ? mine.map((service) => row(service, has)).join('') : `<p class="oryk-pad oryk-m-0 text-muted">${orykEscape(L.none)}</p>`);
 				$(list[0] + '_count').text(say(L.of, mine.filter((service) => staged.has(service.slug)).length, mine.length));
 			});
 
@@ -229,7 +229,7 @@ $serviceLabels = [
 				const status = (jobs || {})[$(this).attr('data-slug')];
 
 				if (!status) {
-					$(this).empty().attr('class', 'oryk-service-job');
+					$(this).empty().attr('class', 'oryk-service-job oryk-small');
 					return;
 				}
 
@@ -244,7 +244,7 @@ $serviceLabels = [
 				}
 
 				$(this).empty().append(link)
-					.attr('class', 'oryk-service-job ' + (status.state === 'failed' ? 'text-danger' : 'text-muted'));
+					.attr('class', 'oryk-service-job oryk-small ' + (status.state === 'failed' ? 'text-danger' : 'text-muted'));
 
 				if (status.state === 'failed') {
 					$(this).append(' ', $('<button type="button" class="btn btn-default btn-xs" name="user_service_retry"></button>')

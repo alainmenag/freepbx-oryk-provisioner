@@ -42,17 +42,17 @@ $sectionEscape = function ($value) {
 	<a class="oryk-sections-home" href="?display=oryk_provisioner">
 		<?php echo $sectionEscape(_('Provisioner')); ?>
 		<?php if ($version !== ''): ?>
-			<span class="oryk-sections-version"><?php echo $sectionEscape(sprintf(_('v%s'), $version)); ?></span>
+			<span class="oryk-sections-version oryk-block oryk-tiny oryk-faint"><?php echo $sectionEscape(sprintf(_('v%s'), $version)); ?></span>
 		<?php endif; ?>
 	</a>
-	<ul>
+	<ul class="oryk-list oryk-flex oryk-wrap">
 		<?php foreach ($sections as $section): ?>
 			<?php if (!empty($section['items'])): ?>
 				<li class="oryk-sections-group<?php echo !empty($section['active']) ? ' active' : ''; ?>">
 					<a href="<?php echo $sectionEscape($section['href']); ?>" aria-haspopup="true"<?php echo !empty($section['active']) ? ' aria-current="true"' : ''; ?>>
-						<?php echo $sectionEscape($section['text']); ?><?php echo $icon('chevron-down', 'oryk-sections-caret'); ?>
+						<?php echo $sectionEscape($section['text']); ?><?php echo $icon('chevron-down', 'oryk-icon-xs oryk-dim oryk-sections-caret'); ?>
 					</a>
-					<ul class="dropdown-menu oryk-sections-menu">
+					<ul class="dropdown-menu oryk-menu oryk-sections-menu">
 						<?php foreach ($section['items'] as $item): ?>
 							<li<?php echo !empty($item['active']) ? ' class="active"' : ''; ?>>
 								<a href="<?php echo $sectionEscape($item['href']); ?>"<?php echo !empty($item['active']) ? ' aria-current="true"' : ''; ?>>

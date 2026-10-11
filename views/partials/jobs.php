@@ -167,7 +167,7 @@ $jobSelects = ['state' => _('State'), 'reason' => _('Reason'), 'source' => _('So
 
 	function formatJobActions(value, row) {
 		return [
-			`<div class="flex gap-3" style="justify-content: flex-end;">`,
+			`<div class="oryk-flex oryk-gap-1 oryk-end">`,
 			row.state === 'failed'
 				? `<button type="button" class="btn btn-default btn-sm" name="job_retry" value="${orykEscape(row.id)}" title="Retry" aria-label="Retry">${orykIcon('refresh')}</button>`
 				: '',
