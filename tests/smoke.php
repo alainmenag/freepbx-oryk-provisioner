@@ -2519,7 +2519,7 @@ is_eq('an upgrade\'s job is titled as one', [Jobs::title(['name' => '']), Jobs::
 is_eq('a job is a scope', Navigator::scopeAt('job:12'), ['job' => '12']);
 is_eq('the Jobs list is narrowed when its scope is', [Navigator::narrows('jobs', ['jobs' => ['extensions' => ['100']]]), Navigator::narrows('jobs', ['jobs' => null])], [true, false]);
 $ownJobs = \FreePBX\Modules\Oryk_Provisioner\Reactions::jobs();
-is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['call-recording', 'find-me-follow', 'on-demand-recording', 'voicemail']);
+is_eq('every job in src/Jobs/ is found, by the services it names', array_keys($ownJobs), ['call-recording-external', 'call-recording-internal', 'find-me-follow', 'on-demand-recording', 'voicemail']);
 is_eq('and each is one of the module\'s own services', array_values(array_filter(array_keys($ownJobs), function ($slug) { return !Services::managed($slug); })), []);
 is_eq('a listener with no services is for every one', ServiceEngine::onlyFor(['module' => 'Mymodule']), null);
 is_eq('one with services is for those slugs', ServiceEngine::onlyFor(['services' => 'voicemail, Call-Recording,,bad slug']), ['voicemail', 'call-recording']);

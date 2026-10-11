@@ -5,27 +5,40 @@
 namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
 
 /**
- * Call Recording: every call to and from the user recorded (`force`), or
- * back to Core's default (`dontcare`). Asterisk reads these keys as calls
- * are made, so nothing is applied.
+ * Call Recording: every external call, or every internal one, to and from
+ * the user recorded (`yes`) or not (`no`). The two are one job; which keys
+ * a step writes is its service. Asterisk reads these keys as calls are
+ * made, so nothing is applied. `yes` rather than `force` so the user can
+ * still stop one call's recording, and `no` rather than `dontcare` so a
+ * take-away is a take-away whatever the route or trunk says.
  */
 class CallRecording extends Job
 {
-	const SERVICES = ['call-recording'];
+	const SERVICES = ['call-recording-external', 'call-recording-internal'];
+
+	/** The calls each service covers, as Core keys them under AMPUSER/<ext>/recording/. */
+	const RECORDED = [
+		'call-recording-external' => ['in/external', 'out/external'],
+		'call-recording-internal' => ['in/internal', 'out/internal'],
+	];
 
 	/**
+	 * @param string $slug Which of SERVICES.
+	 *
 	 * @return array<string, string> granted, revoked: a phrase each.
 	 */
-	public static function effects()
+	public static function effects($slug = '')
 	{
-		return ['granted' => _('every call is recorded'), 'revoked' => _('recording goes back to the default')];
+		$which = $slug === 'call-recording-internal' ? _('internal') : _('external');
+
+		return [
+			'granted' => sprintf(_('every %s call is recorded'), $which),
+			'revoked' => sprintf(_('no %s call is recorded'), $which),
+		];
 	}
 
-	/** The four calls it covers, as Core keys them under AMPUSER/<ext>/recording/. */
-	const RECORDED = ['in/external', 'out/external', 'in/internal', 'out/internal'];
-
 	/**
-	 * Record every call.
+	 * Record every call the service covers.
 	 *
 	 * @param array<string, mixed> $event The step's event.
 	 *
@@ -33,11 +46,11 @@ class CallRecording extends Job
 	 */
 	public function granted(array $event)
 	{
-		$this->set((string) $event['extension'], 'force');
+		$this->set((string) $event['extension'], (string) $event['service'], 'yes');
 	}
 
 	/**
-	 * Back to Core's default.
+	 * Record none of them.
 	 *
 	 * @param array<string, mixed> $event The step's event.
 	 *
@@ -45,20 +58,21 @@ class CallRecording extends Job
 	 */
 	public function revoked(array $event)
 	{
-		$this->set((string) $event['extension'], 'dontcare');
+		$this->set((string) $event['extension'], (string) $event['service'], 'no');
 	}
 
 	/**
-	 * Write all four keys.
+	 * Write the service's keys.
 	 *
 	 * @param string $extension The user.
-	 * @param string $value     force|dontcare.
+	 * @param string $slug      Which of SERVICES.
+	 * @param string $value     yes|no.
 	 *
 	 * @return void
 	 */
-	private function set($extension, $value)
+	private function set($extension, $slug, $value)
 	{
-		foreach (self::RECORDED as $key) {
+		foreach (self::RECORDED[$slug] ?? [] as $key) {
 			$this->astdbPut($extension . '/recording/' . $key, $value);
 		}
 	}

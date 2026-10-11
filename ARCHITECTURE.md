@@ -769,8 +769,8 @@ finds them -- and they are written for `Services::DEFAULTS`, the module's own
 services:
 Voicemail makes a mailbox in `default` with a random PIN where there is none,
 or takes it out of voicemail.conf and sets the extension `novm` -- **the
-messages on disk are kept**; Call Recording sets the four recording keys to
-`force`, or back to `dontcare`; On Demand Recording `enabled` / `disabled`;
+messages on disk are kept**; Call Recording External and Internal each set
+their two recording keys to `yes`, or to `no`; On Demand Recording `enabled` / `disabled`;
 Find Me Follow switches Find Me/Follow Me on (made with its own defaults where
 there is none) or off, its list kept. Each sets a state, so a second run is the
 first; none reloads, and one that changes what Apply Config writes raises it

@@ -32,7 +32,8 @@ The provisioner's own services do something on the PBX:
 | service | given | taken away |
 | --- | --- | --- |
 | Voicemail | a mailbox, in `default`, with a random PIN, where there is none | the mailbox is removed and the extension set to no voicemail — **its messages are kept**, and come back if it is given again |
-| Call Recording | inbound and outbound, internal and external calls: *Force* | back to *Don't Care* |
+| Call Recording External | inbound and outbound external calls: *Yes* | *No* |
+| Call Recording Internal | inbound and outbound internal calls: *Yes* | *No* |
 | On Demand Recording | *Enable* | *Disable* |
 | Find Me Follow | Find Me/Follow Me switched on, set up with its defaults where it never was | switched off; its list and settings are kept |
 

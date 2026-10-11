@@ -19,7 +19,7 @@ class Voicemail extends Job
 	/**
 	 * @return array<string, string> granted, revoked: a phrase each.
 	 */
-	public static function effects()
+	public static function effects($slug = '')
 	{
 		return ['granted' => _('a mailbox is made, with a new PIN, where there is none'), 'revoked' => _('the mailbox is removed; its messages are kept')];
 	}
