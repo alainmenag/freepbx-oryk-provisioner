@@ -13,10 +13,11 @@ use PDO;
  * table: one row per parent and child, each named by its slug, so a service
  * has any number of parents and
  * any number of children. One with a child is a service pack: that is read
- * off the links, never stored. A service also names, in its `requires`
- * column, the services it cannot work without: holding it holds those too,
- * the way a pack holds what is under it, but it is no pack for that. Not to
- * be confused with Service, the base class this extends.
+ * off the links, never stored. A row of `kind` REQUIRES in the same table is
+ * a requirement instead: the parent cannot work without the child, and
+ * holding it holds that too, the way a pack holds what is under it, but it
+ * is no pack for that. Not to be confused with Service, the base class this
+ * extends.
  *
  * **An edge is [from, to], a pack link, or [from, to, 'requires']**: links()
  * answers both kinds, and every walk of what a user holds -- held(),
@@ -87,11 +88,8 @@ class Services extends Service
 	/** `owner` of a service made on the Services page. */
 	const OWNER_OPERATOR = 1;
 
-	/** The kind on an edge that is a requirement, not a link. */
+	/** The `kind` of a links row, and of an edge, that is a requirement; '' is a pack link. */
 	const REQUIRES = 'requires';
-
-	/** Longest `requires` stored: the column's width. */
-	const REQUIRES_MAX = 1000;
 
 	/** Longest name stored: the column's width. */
 	const NAME_MAX = 191;
@@ -167,7 +165,7 @@ class Services extends Service
 
 		if ($kind === 'pack' || $kind === 'single') {
 			$clauses[] = ($kind === 'single' ? 'NOT ' : '')
-				. "EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug)";
+				. "EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug AND k.kind = '')";
 		}
 
 		$where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
@@ -180,8 +178,7 @@ class Services extends Service
 			SELECT
 				s.name,
 				s.slug,
-				s.owner,
-				s.requires
+				s.owner
 			FROM `{$this->servicesTable}` s
 			$where
 			ORDER BY s.name " . ($byHolders ? 'ASC' : $order . ' LIMIT :limit OFFSET :offset') . "
@@ -270,7 +267,7 @@ class Services extends Service
 
 		$stmt = $this->db->prepare(
 			"SELECT s.slug, s.owner,
-				EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug) AS pack
+				EXISTS (SELECT 1 FROM `{$this->serviceLinksTable}` k WHERE k.parent = s.slug AND k.kind = '') AS pack
 			FROM `{$this->servicesTable}` s"
 		);
 		$stmt->execute();
@@ -302,7 +299,7 @@ class Services extends Service
 		}
 
 		$stmt = $this->db->prepare(
-			"SELECT name, slug, owner, requires FROM `{$this->servicesTable}` WHERE slug = :slug"
+			"SELECT name, slug, owner FROM `{$this->servicesTable}` WHERE slug = :slug"
 		);
 		$stmt->execute([':slug' => $slug]);
 		$row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -313,12 +310,12 @@ class Services extends Service
 	/**
 	 * Every service, for the editor's two lists.
 	 *
-	 * @return array<int, array<string, mixed>> name, slug, managed, requires (slugs), ordered by name.
+	 * @return array<int, array<string, mixed>> name, slug, managed, ordered by name.
 	 */
 	public function serviceChoices()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT name, slug, owner, requires, updated_at AS touched FROM `{$this->servicesTable}` ORDER BY name"
+			"SELECT name, slug, owner, updated_at AS touched FROM `{$this->servicesTable}` ORDER BY name"
 		);
 		$stmt->execute();
 
@@ -444,10 +441,6 @@ class Services extends Service
 			}
 		}
 
-		if (isset($sides['requires']) && strlen(implode(',', $sides['requires'])) > self::REQUIRES_MAX) {
-			return ['status' => false, 'message' => _('A service cannot require that many services.')];
-		}
-
 		if ($sides) {
 			$refused = $this->refusedLinks($was, $slug, $sides);
 
@@ -491,12 +484,7 @@ class Services extends Service
 				}
 
 				foreach ($sides as $side => $others) {
-					if ($side === 'requires') {
-						$stmt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET requires = :requires WHERE slug = :slug");
-						$stmt->execute([':requires' => implode(',', $others), ':slug' => $slug]);
-					} else {
-						$this->relink($slug, $side, $others);
-					}
+					$this->relink($slug, $side, $others);
 				}
 
 				if ($sides) {
@@ -531,8 +519,7 @@ class Services extends Service
 	}
 
 	/**
-	 * Remove a service, every link to or from it, and its slug from every
-	 * `requires`.
+	 * Remove a service, and every link and requirement to or from it.
 	 *
 	 * The services it was over or under are kept: only the links go, and it
 	 * is taken off every user it was assigned to. One of the module's is
@@ -582,7 +569,6 @@ class Services extends Service
 
 				$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE slug = :slug");
 				$stmt->execute([':slug' => $slug]);
-				$this->rewriteRequires($slug, '');
 
 				$this->pruneWithheld($this->links(), $this->assignments());
 
@@ -1330,7 +1316,7 @@ class Services extends Service
 	/**
 	 * seed()'s writes: slugs for rows without one, RENAMED carried, the
 	 * module's rows deleted and DEFAULTS written again, what named a service
-	 * now gone deleted, and the links between two defaults made to match DEFAULTS.
+	 * now gone deleted, and the defaults' links and requirements made to match DEFAULTS.
 	 *
 	 * @param array<int, string> $notes What could not be done and what was removed, added to.
 	 *
@@ -1380,19 +1366,17 @@ class Services extends Service
 			$find->execute([':slug' => $slug]);
 			$row = $find->fetch(PDO::FETCH_ASSOC);
 
-			$requires = implode(',', $default['requires'] ?? []);
-
 			try {
 				if (!$row) {
-					$add = $this->db->prepare("INSERT INTO `{$this->servicesTable}` (name, slug, owner, requires) VALUES (:name, :slug, " . self::OWNER_MODULE . ", :requires)");
-					$add->execute([':name' => $default['name'], ':slug' => $slug, ':requires' => $requires]);
+					$add = $this->db->prepare("INSERT INTO `{$this->servicesTable}` (name, slug, owner) VALUES (:name, :slug, " . self::OWNER_MODULE . ")");
+					$add->execute([':name' => $default['name'], ':slug' => $slug]);
 					$written[] = $slug;
 
 					continue;
 				}
 
-				$adopt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name, owner = " . self::OWNER_MODULE . ", requires = :requires WHERE slug = :slug");
-				$adopt->execute([':name' => $default['name'], ':slug' => $slug, ':requires' => $requires]);
+				$adopt = $this->db->prepare("UPDATE `{$this->servicesTable}` SET name = :name, owner = " . self::OWNER_MODULE . " WHERE slug = :slug");
+				$adopt->execute([':name' => $default['name'], ':slug' => $slug]);
 
 				$written[] = $slug;
 			} catch (\Exception $e) {
@@ -1424,17 +1408,21 @@ class Services extends Service
 			WHERE NOT EXISTS (SELECT 1 FROM `{$this->servicesTable}` s WHERE s.slug = a.service)"
 		);
 
-		// A requirement is a slug in a column, which no key keeps: dropped by hand.
-		$slugs = $this->db->query("SELECT slug FROM `{$this->servicesTable}`")->fetchAll(PDO::FETCH_COLUMN);
+		// A default requires exactly what DEFAULTS says, of the defaults written.
+		// Before the links below, so a pair that turns from one kind to the other is free.
+		$clear = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent AND kind = :kind");
+		$need = $this->db->prepare("INSERT INTO `{$this->serviceLinksTable}` (parent, child, kind) VALUES (:parent, :child, :kind)");
 
-		foreach (array_unique(array_column($this->requires(), 1)) as $required) {
-			if (!in_array($required, array_map('strval', $slugs), true)) {
-				$this->rewriteRequires($required, '');
+		foreach ($written as $slug) {
+			$clear->execute([':parent' => $slug, ':kind' => self::REQUIRES]);
+
+			foreach (array_intersect(self::DEFAULTS[$slug]['requires'] ?? [], $written) as $required) {
+				$need->execute([':parent' => $slug, ':child' => $required, ':kind' => self::REQUIRES]);
 			}
 		}
 
 		$links = $this->packLinks();
-		$drop = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent AND child = :child");
+		$drop = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE parent = :parent AND child = :child AND kind = ''");
 		$add = $this->db->prepare("INSERT INTO `{$this->serviceLinksTable}` (parent, child) VALUES (:parent, :child)");
 
 		foreach ($links as $at => $link) {
@@ -1912,8 +1900,7 @@ class Services extends Service
 	}
 
 	/**
-	 * A row, with `managed` added: whether the module owns it; a `requires`
-	 * it carries read as slugs.
+	 * A row, with `managed` added: whether the module owns it.
 	 *
 	 * @param array<string, mixed> $row A services row carrying `owner`.
 	 *
@@ -1921,10 +1908,6 @@ class Services extends Service
 	 */
 	private function marked(array $row)
 	{
-		if (array_key_exists('requires', $row)) {
-			$row['requires'] = self::slugs($row['requires']);
-		}
-
 		return $row + ['managed' => (int) ($row['owner'] ?? self::OWNER_OPERATOR) === self::OWNER_MODULE];
 	}
 
@@ -2002,6 +1985,16 @@ class Services extends Service
 			return _('A service cannot be under itself, or under a service that is under it.');
 		}
 
+		// A pair is one row of the links table, so it is a link or a requirement, never both.
+		$ownPairs = array_intersect($sides['children'], $sides['requires']);
+		$theirPairs = array_filter($this->requires(), function ($edge) use ($was, $sides) {
+			return $was !== '' && $edge[1] === $was && in_array($edge[0], $sides['parents'], true);
+		});
+
+		if ($ownPairs || $theirPairs) {
+			return _('A service cannot both include and require the same service.');
+		}
+
 		// Its own requirements are the ones being replaced, so they are not walked.
 		$others = array_values(array_filter($this->requires(), function ($edge) use ($was) {
 			return $was === '' || $edge[0] !== $was;
@@ -2014,28 +2007,30 @@ class Services extends Service
 	}
 
 	/**
-	 * Replace one side of a service's links.
+	 * Replace one side of a service's links, or what it requires.
 	 *
 	 * @param string			 $slug   The service.
-	 * @param string			 $side   parents|children.
+	 * @param string			 $side   parents|children|requires.
 	 * @param array<int, string> $others The whole of that side, as slugs.
 	 *
 	 * @return void
 	 */
 	private function relink($slug, $side, array $others)
 	{
+		// Columns are interpolated: chosen here, never from $side as sent.
 		$mine = $side === 'parents' ? 'child' : 'parent';
 		$theirs = $side === 'parents' ? 'parent' : 'child';
+		$kind = $side === 'requires' ? self::REQUIRES : '';
 
-		$clear = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE `$mine` = :slug");
-		$clear->execute([':slug' => $slug]);
+		$clear = $this->db->prepare("DELETE FROM `{$this->serviceLinksTable}` WHERE `$mine` = :slug AND kind = :kind");
+		$clear->execute([':slug' => $slug, ':kind' => $kind]);
 
 		$add = $this->db->prepare(
-			"INSERT INTO `{$this->serviceLinksTable}` (`$mine`, `$theirs`) VALUES (:mine, :theirs)"
+			"INSERT INTO `{$this->serviceLinksTable}` (`$mine`, `$theirs`, kind) VALUES (:mine, :theirs, :kind)"
 		);
 
 		foreach ($others as $other) {
-			$add->execute([':mine' => $slug, ':theirs' => $other]);
+			$add->execute([':mine' => $slug, ':theirs' => $other, ':kind' => $kind]);
 		}
 	}
 
@@ -2043,9 +2038,8 @@ class Services extends Service
 	 * Carry a changed slug to everything that names the old one.
 	 *
 	 * **Anything that comes to store a service's slug is added here**: this is
-	 * the one place a rename is followed. Today: both ends of a link, every
-	 * service's `requires`, a user's assignments, and the jobs and steps
-	 * naming it.
+	 * the one place a rename is followed. Today: both ends of a link or a
+	 * requirement, a user's assignments, and the jobs and steps naming it.
 	 *
 	 * @param string $was  The slug the references hold.
 	 * @param string $slug The slug they are to hold.
@@ -2060,8 +2054,6 @@ class Services extends Service
 			);
 			$stmt->execute([':slug' => $slug, ':was' => $was]);
 		}
-
-		$this->rewriteRequires($was, $slug);
 
 		$stmt = $this->db->prepare(
 			"UPDATE `{$this->serviceAssignmentsTable}` SET service = :slug WHERE service = :was"
@@ -2092,7 +2084,7 @@ class Services extends Service
 	private function packLinks()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT parent, child FROM `{$this->serviceLinksTable}`"
+			"SELECT parent, child FROM `{$this->serviceLinksTable}` WHERE kind = ''"
 		);
 		$stmt->execute();
 
@@ -2102,25 +2094,20 @@ class Services extends Service
 	}
 
 	/**
-	 * Every requirement, as edges: one per slug in each row's `requires`.
+	 * Every requirement, as edges: the links rows of `kind` REQUIRES.
 	 *
 	 * @return array<int, array{0: string, 1: string, 2: string}> [service, required, 'requires'] each.
 	 */
 	private function requires()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT slug, requires FROM `{$this->servicesTable}` WHERE requires != ''"
+			"SELECT parent, child FROM `{$this->serviceLinksTable}` WHERE kind = :kind"
 		);
-		$stmt->execute();
-		$edges = [];
+		$stmt->execute([':kind' => self::REQUIRES]);
 
-		foreach ($stmt->fetchAll(PDO::FETCH_NUM) as $row) {
-			foreach (self::slugs($row[1]) as $required) {
-				$edges[] = [(string) $row[0], $required, self::REQUIRES];
-			}
-		}
-
-		return $edges;
+		return array_map(function ($row) {
+			return [(string) $row[0], (string) $row[1], self::REQUIRES];
+		}, $stmt->fetchAll(PDO::FETCH_NUM));
 	}
 
 	/**
@@ -2149,38 +2136,5 @@ class Services extends Service
 		return array_values(array_filter($edges, function ($edge) {
 			return !empty($edge[2]);
 		}));
-	}
-
-	/**
-	 * Rewrite one slug in every row's `requires`: a rename, or '' to take it out.
-	 *
-	 * @param string $was  The slug the column holds.
-	 * @param string $slug What it is to hold, or '' for nothing.
-	 *
-	 * @return void
-	 */
-	private function rewriteRequires($was, $slug)
-	{
-		$stmt = $this->db->prepare(
-			"SELECT slug, requires FROM `{$this->servicesTable}` WHERE FIND_IN_SET(:was, requires)"
-		);
-		$stmt->execute([':was' => $was]);
-		$update = $this->db->prepare(
-			"UPDATE `{$this->servicesTable}` SET requires = :requires, updated_at = updated_at WHERE slug = :slug"
-		);
-
-		foreach ($stmt->fetchAll(PDO::FETCH_NUM) as $row) {
-			$kept = [];
-
-			foreach (self::slugs($row[1]) as $one) {
-				$one = $one === $was ? $slug : $one;
-
-				if ($one !== '' && $one !== (string) $row[0] && !in_array($one, $kept, true)) {
-					$kept[] = $one;
-				}
-			}
-
-			$update->execute([':requires' => implode(',', $kept), ':slug' => (string) $row[0]]);
-		}
 	}
 }

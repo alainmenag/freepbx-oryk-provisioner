@@ -2428,13 +2428,13 @@ is_eq('revoked, the module\'s own is unlinked and deleted', [$calendars->remove(
 is_eq('and revoked again, nothing happens', [$calendars->remove('1001'), $calendars->find('1001')], [false, null]);
 $s['app']->Modules->active = [];
 is_eq('without the Calendar module there is no calendar', $calendars->find('1001'), null);
-$failed = '';
+$refusal = '';
 try {
 	$calendars->ensure('1001');
 } catch (\RuntimeException $e) {
-	$failed = $e->getMessage();
+	$refusal = $e->getMessage();
 }
-is_eq('and a grant refuses, saying why', $failed, 'the Calendar module is not installed and enabled');
+is_eq('and a grant refuses, saying why', $refusal, 'the Calendar module is not installed and enabled');
 is_eq('the Calendar job names its service and its effects', [\FreePBX\Modules\Oryk_Provisioner\Jobs\Calendar::SERVICES, array_keys(\FreePBX\Modules\Oryk_Provisioner\Jobs\Calendar::effects())], [['calendar'], ['granted', 'revoked']]);
 
 echo "\n  a service and what it is under:\n";

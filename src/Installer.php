@@ -243,7 +243,6 @@ class Installer extends Service
 				`slug` VARCHAR(64) NOT NULL,
 				`name` VARCHAR(191) NOT NULL,
 				`owner` INT UNSIGNED NOT NULL DEFAULT 0,
-				`requires` VARCHAR(1000) NOT NULL DEFAULT '',
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				`updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (`slug`),
@@ -253,11 +252,13 @@ class Installer extends Service
 
 		// Both ends are slugs, not ids. The pair is the key, so a link exists
 		// once; `child` has an index of its own for the walk upwards, which the
-		// key's left column cannot serve.
+		// key's left column cannot serve. `kind` '' is a pack link, 'requires'
+		// a requirement.
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->serviceLinksTable}` (
 				`parent` VARCHAR(64) NOT NULL,
 				`child` VARCHAR(64) NOT NULL,
+				`kind` VARCHAR(16) NOT NULL DEFAULT '',
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY (`parent`, `child`),
 				KEY `child` (`child`)
@@ -351,7 +352,7 @@ class Installer extends Service
 		$this->schema->addClientSignupColumns();
 		$this->schema->addServiceSlugColumn();
 		$this->schema->addServiceOwnerColumn(array_keys(Services::DEFAULTS));
-		$this->schema->addServiceRequiresColumn();
+		$this->schema->addServiceLinkKindColumn();
 		$this->schema->addJobStepOwnJobColumn();
 		$this->schema->addJobAdminColumn();
 		$this->schema->addServiceAssignmentStatusColumn();
