@@ -13,13 +13,14 @@
  * list, is a button that draws it as the tree it is built as, and back.
  * "included in", a half-filled box (held through a pack, not assigned
  * itself) and an open pack's ticks all follow the staged boxes, so a change
- * shows what it means before it is saved. A service included through a pack
- * has a button beside that line to withhold it from this user -- it and
- * everything under it, as Services::held() reads a withheld row -- and a
- * withheld one a button to give it back; both staged like a tick. A
- * service that requires others says what else it gives, and a service held
- * only because another requires it says which, with no button to withhold
- * it -- Services::held() would give it straight back.
+ * shows what it means before it is saved. A row is its box, the withhold
+ * toggle, one message -- how it is held, what else it gives, what is staged,
+ * its job -- then a pack's count: a service included
+ * through a pack can be withheld from this user -- it and everything under
+ * it, as Services::held() reads a withheld row -- and a withheld one given
+ * back; both staged like a tick. A service held only because another
+ * requires it says which, with no toggle -- Services::held() would give it
+ * straight back.
  *
  * A change to what the user holds is a job (ARCHITECTURE.md, "Jobs"): each
  * service whose newest step is waiting, running or failed says so, kept
@@ -264,24 +265,38 @@ $serviceLabels = [
 			const tree = mode === 'tree';
 			const stagedTag = on !== was ? (on ? L.toAssign : L.toUnassign) : (taken !== wasTaken ? (taken ? L.toWithhold : L.toRestore) : '');
 
+			// How the row is held, if not by its own tick: one part of its message.
+			const held = needed.length
+				? ['text-muted', say(L.requiredBy, needed.join(', '))]
+				: taken
+				? ['text-danger', say(L.withheldFrom, through.join(', '))]
+				: takenBy.length
+				? ['text-danger', say(L.withheldWith, takenBy.join(', '))]
+				: through.length
+				? ['text-muted', say(L.included, through.join(', '))]
+				: null;
+
+			// Withhold or give back, right after the name. None while it is
+			// assigned, withheld with something above it, or required by another.
+			const toggle = taken
+				? `<button type="button" class="oryk-bare oryk-dim" name="user_service_restore" value="${orykEscape(slug)}" title="${orykEscape(L.restoreIt)}" aria-label="${orykEscape(L.restoreIt)}">${orykIcon('check')}</button>`
+				: (through.length && !on && !takenBy.length && !needed.length
+					? `<button type="button" class="oryk-bare oryk-dim" name="user_service_withhold" value="${orykEscape(slug)}" title="${orykEscape(L.withholdIt)}" aria-label="${orykEscape(L.withholdIt)}">${orykIcon('ban')}</button>`
+					: '');
+
 			return [
 				`<div class="oryk-service-row${stagedTag ? ' oryk-service-staged' : ''}">`,
-				'<div class="oryk-flex oryk-wrap oryk-center oryk-gap-3 oryk-service-head">',
-				`<label class="oryk-check${taken || takenBy.length ? ' oryk-struck' : ''}"><input type="checkbox" name="user_service" value="${orykEscape(slug)}"${on ? ' checked' : ''}${!on && through.length && has.has(slug) ? ' data-held="1"' : ''}> ${orykEscape(service.name)}</label>`,
-				gives.length ? `<span class="oryk-small text-muted">${orykEscape(say(L.alsoGives, gives.join(', ')))}</span>` : '',
-				needed.length
-					? `<span class="oryk-small text-muted">${orykEscape(say(L.requiredBy, needed.join(', ')))}</span>`
-					: taken
-					? `<span class="oryk-small text-danger">${orykEscape(say(L.withheldFrom, through.join(', ')))}</span> <button type="button" class="oryk-bare oryk-dim" name="user_service_restore" value="${orykEscape(slug)}" title="${orykEscape(L.restoreIt)}" aria-label="${orykEscape(L.restoreIt)}">${orykIcon('check')}</button>`
-					: (takenBy.length
-						? `<span class="oryk-small text-danger">${orykEscape(say(L.withheldWith, takenBy.join(', ')))}</span>`
-						: (through.length && !on
-							? `<span class="oryk-small text-muted">${orykEscape(say(L.included, through.join(', ')))}</span> <button type="button" class="oryk-bare oryk-dim" name="user_service_withhold" value="${orykEscape(slug)}" title="${orykEscape(L.withholdIt)}" aria-label="${orykEscape(L.withholdIt)}">${orykIcon('ban')}</button>`
-							: (through.length ? `<span class="oryk-small text-muted">${orykEscape(say(L.included, through.join(', ')))}</span>` : ''))),
-				stagedTag ? `<span class="oryk-small ${stagedTag === L.toAssign || stagedTag === L.toRestore ? 'text-success' : 'text-danger'}">${orykEscape(stagedTag)}</span>` : '',
+				'<div class="oryk-flex oryk-center oryk-gap-3 oryk-service-head">',
+				`<label class="oryk-check oryk-nowrap${taken || takenBy.length ? ' oryk-struck' : ''}"><input type="checkbox" name="user_service" value="${orykEscape(slug)}"${on ? ' checked' : ''}${!on && through.length && has.has(slug) ? ' data-held="1"' : ''}> ${orykEscape(service.name)}</label>`,
+				toggle,
+				'<span class="oryk-small oryk-grow oryk-service-note">',
+				held ? `<span class="${held[0]}">${orykEscape(held[1])}</span>` : '',
+				gives.length ? `<span class="text-muted">${orykEscape(say(L.alsoGives, gives.join(', ')))}</span>` : '',
+				stagedTag ? `<span class="${stagedTag === L.toAssign || stagedTag === L.toRestore ? 'text-success' : 'text-danger'}">${orykEscape(stagedTag)}</span>` : '',
 				`<span class="oryk-service-job oryk-small" data-slug="${orykEscape(slug)}"></span>`,
+				'</span>',
 				service.pack
-					? `<button type="button" class="btn btn-default btn-xs oryk-push${mode ? ' active' : ''}" name="user_service_open" value="${orykEscape(slug)}" title="${orykEscape(L.gives)}" aria-label="${orykEscape(L.gives)}" aria-expanded="${mode ? 'true' : 'false'}">
+					? `<button type="button" class="btn btn-default btn-xs${mode ? ' active' : ''}" name="user_service_open" value="${orykEscape(slug)}" title="${orykEscape(L.gives)}" aria-label="${orykEscape(L.gives)}" aria-expanded="${mode ? 'true' : 'false'}">
 							<span class="oryk-small text-muted">${under(slug).size}</span>
 						</button>`
 					: '',

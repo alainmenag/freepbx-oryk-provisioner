@@ -2,7 +2,7 @@
 	<rawname>oryk_provisioner</rawname>
 	<name>Provisioner</name>
 	<repo>commercial</repo>
-	<version>1.3.2</version>
+	<version>1.3.3</version>
 	<dbversion>1.0.12</dbversion>
 	<publisher>Oryk</publisher>
 	<type>setup</type>
