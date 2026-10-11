@@ -567,14 +567,32 @@ same in the table, in `DEFAULTS` and to anything outside the module.
   the slug its answer names, which is a new address after a rename; saves and
   deletes are posted the row's slug.
 
-**`oryk_provisioner_service_assignments`** -- `extension`, `service`: one row
-says the user has the service. A user is its extension and a service its
-slug, as everywhere else; the pair is the primary key.
+**`oryk_provisioner_service_assignments`** -- `extension`, `service`,
+`status`: one row is a service **given** to the user (`status` NULL) or
+**withheld** from it (`Services::STATUS_WITHHELD`, 0). A user is its
+extension and a service its slug, as everywhere else; the pair is the
+primary key, so a service is given or withheld, never both. No other
+`status` is written; the column is an integer so one can be.
 
 - **Only what was ticked is stored.** A user assigned a pack has one row, for
   the pack; the services under it are worked out when asked
   (`Services::userServices()`, which names the pack under `via`), so
   regrouping a pack changes what its users have without touching this table.
+- **What a user holds** is `Services::held()`, and every reader goes through
+  it -- jobs, holder counts, `{{extension.services}}`, the Services tab: every
+  given service and everything under it, less every withheld service and
+  everything under it -- except what is given itself, which a withhold never
+  takes. Withholding is for one service a pack includes that this user is not
+  to have: it is refused for a service the user is given itself or does not
+  hold through a given pack (`Services::assignedAfter()`), and assigning a
+  withheld service replaces the withhold. In the class a user's assignments
+  are always the rows as `slug => status`; `given()` and `withheld()` split
+  them.
+- **A withhold outlives nothing.** After every change to assignments or
+  links (`setUserServices`, `saveService`, `deleteService`, `seed()`),
+  `pruneWithheld()` deletes every withheld row no given pack reaches any
+  more, so unassigning a pack and assigning it again months later gives all
+  of it, not what was once withheld.
 - **Staged, then one write** (`setUserServices`): the user's Services tab
   (`views/partials/user_services.php`) is two lists, packs and single
   services, whose ticks write nothing until its own Save -- which first asks
@@ -640,11 +658,11 @@ one, what one is, and how the worker runs it. `Services` writes them,
 module's own handler.
 
 **What makes a job.** Anything that changes what a user *holds* -- what it is
-assigned and everything under that (`Services::held()`):
+given and everything under that, less what is withheld (`Services::held()`):
 
 | change | users affected | reason |
 | --- | --- | --- |
-| a save of a user's Services tab (`setUserServices`) | that user | assigned / unassigned for one service, changed for several |
+| a save of a user's Services tab (`setUserServices`): assign, unassign, withhold, restore | that user | assigned / unassigned for one service (a restore is assigned, a withhold unassigned), changed for several |
 | delete a service (`deleteService`) | everyone holding it, assigned or through a pack | service-deleted |
 | a service's Parents or Services changed (`saveService`) | everyone holding the pack it changes, at any depth | pack-changed |
 | an install or upgrade regrouping the defaults (`seed()`) | likewise | pack-changed, source `upgrade` |

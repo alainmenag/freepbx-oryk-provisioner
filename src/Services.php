@@ -16,8 +16,12 @@ use PDO;
  * off the links, never stored. Not to be confused with Service, the base class
  * this extends.
  *
- * A user is assigned services in a third table, by extension and slug; see
- * userServices() and setUserServices().
+ * A user is assigned services in a third table, by extension and slug. A
+ * row there is a service **given** to the user (`status` NULL) or one
+ * **withheld** from it (STATUS_WITHHELD): held through a given pack, but
+ * taken away from this one user. Everywhere in this class a user's
+ * assignments are that table's rows for it, as slug => status, and
+ * held() is what they amount to; see userServices() and setUserServices().
  *
  * Every change here that changes what a user holds -- an assignment, a
  * deleted service, a pack's links, a regrouping of the defaults -- writes that
@@ -63,6 +67,9 @@ class Services extends Service
 	 * while any PBX may still upgrade across it.
 	 */
 	const RENAMED = [];
+
+	/** `status` of an assignment withheld; NULL is one given. Nothing else is written. */
+	const STATUS_WITHHELD = 0;
 
 	/** `owner` of a service the module ships: seed() deletes and rewrites every one. */
 	const OWNER_MODULE = 0;
@@ -455,6 +462,10 @@ class Services extends Service
 					$this->relink($slug, $side, $others);
 				}
 
+				if ($sides) {
+					$this->pruneWithheld($this->links(), $this->assignments());
+				}
+
 				if ($watch) {
 					// Before, as if it had always had the new slug: the rename is not a change.
 					if ($was !== '' && $was !== $slug) {
@@ -534,6 +545,8 @@ class Services extends Service
 				$stmt = $this->db->prepare("DELETE FROM `{$this->servicesTable}` WHERE slug = :slug");
 				$stmt->execute([':slug' => $slug]);
 
+				$this->pruneWithheld($this->links(), $this->assignments());
+
 				if ($this->jobs) {
 					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), $slug, (string) $row['name'], 'service-deleted', 'gui', $names);
 				}
@@ -561,21 +574,24 @@ class Services extends Service
 	 *
 	 * `assigned` is the service being given to the user itself. `via` is the
 	 * assigned services it is somewhere under, by name: it reaches the user
-	 * through those whether or not it is assigned as well.
+	 * through those whether or not it is assigned as well. `withheld` is a
+	 * withheld row: it reaches the user through `via` and is taken away.
 	 *
 	 * @param mixed $extension The user's extension.
 	 *
 	 * @return array<int, array<string, mixed>> slug, name, managed, pack,
-	 *                                          assigned, via, children (the
-	 *                                          slugs directly under it);
-	 *                                          ordered by name.
+	 *                                          assigned, withheld, via,
+	 *                                          children (the slugs directly
+	 *                                          under it); ordered by name.
 	 */
 	public function userServices($extension)
 	{
 		$choices = $this->serviceChoices();
 		$names = array_column($choices, 'name', 'slug');
 		$links = $this->links();
-		$assigned = $this->assigned($extension);
+		$rows = $this->assigned($extension);
+		$assigned = self::given($rows);
+		$withheld = self::withheld($rows);
 		$packs = array_column($links, 0);
 		$via = [];
 		$children = [];
@@ -603,6 +619,7 @@ class Services extends Service
 				'managed' => (bool) $choice['managed'],
 				'pack' => in_array($slug, $packs, true),
 				'assigned' => in_array($slug, $assigned, true),
+				'withheld' => in_array($slug, $withheld, true),
 				'via' => $via[$slug] ?? [],
 				'children' => $children[$slug] ?? [],
 			];
@@ -620,9 +637,9 @@ class Services extends Service
 	 */
 	public function userSlugs($extension)
 	{
-		$assigned = $this->assigned($extension);
+		$rows = $this->assigned($extension);
 
-		return $assigned ? self::held($this->links(), $assigned) : [];
+		return $rows ? self::held($this->links(), $rows) : [];
 	}
 
 	/**
@@ -667,8 +684,8 @@ class Services extends Service
 				return $link[0] !== $was && $link[1] !== $was;
 			}));
 
-			foreach ($after as $extension => $slugs) {
-				$after[$extension] = array_values(array_diff($slugs, [$was]));
+			foreach ($after as $extension => $rows) {
+				unset($after[$extension][$was]);
 			}
 		} else {
 			// 'new' is never a slug (freeSlug() refuses it), so it stands in for one not yet made.
@@ -750,7 +767,7 @@ class Services extends Service
 
 		$params = [];
 		$stmt = $this->db->prepare(
-			"SELECT DISTINCT service FROM `{$this->serviceAssignmentsTable}` WHERE "
+			"SELECT DISTINCT service FROM `{$this->serviceAssignmentsTable}` WHERE status IS NULL AND "
 			. $this->inClause('extension', $extensions, 'extension', $params)
 		);
 		$stmt->execute($params);
@@ -790,7 +807,7 @@ class Services extends Service
 	public function usersOf($slug)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT extension FROM `{$this->serviceAssignmentsTable}` WHERE service = :service"
+			"SELECT extension FROM `{$this->serviceAssignmentsTable}` WHERE service = :service AND status IS NULL"
 		);
 		$stmt->execute([':service' => (string) $slug]);
 
@@ -798,34 +815,106 @@ class Services extends Service
 	}
 
 	/**
-	 * What a user is assigned once some services are assigned and others
-	 * unassigned, and which of those change anything.
+	 * A user's assignments once some services are assigned, unassigned,
+	 * withheld or restored, and which of those change anything.
 	 *
-	 * @param array<int, string> $before   What the user is assigned, by slug.
-	 * @param array<int, string> $assign   Slugs to assign.
-	 * @param array<int, string> $unassign Slugs to unassign.
+	 * Assigning replaces a withheld row; unassigning and restoring each
+	 * delete one. Withholding is only of a service the user would then hold
+	 * through a given pack and does not hold itself: anything else named is
+	 * reported under `refused` and left alone. Nothing here checks that the
+	 * slugs exist.
 	 *
-	 * @return array{0: array<int, string>, 1: array<int, string>, 2: array<int, string>}
-	 *         What it is assigned after; what was newly assigned; what was taken away.
+	 * @param array<int, array{0: string, 1: string}> $links    Every link.
+	 * @param array<string, int|null>                 $before   The user's rows, slug => status.
+	 * @param array<int, string>                      $assign   Slugs to assign.
+	 * @param array<int, string>                      $unassign Slugs to unassign.
+	 * @param array<int, string>                      $withhold Slugs to withhold.
+	 * @param array<int, string>                      $restore  Slugs to restore.
+	 *
+	 * @return array<string, mixed> after (slug => status); assign, unassign,
+	 *                              withhold, restore (what changes); refused
+	 *                              (withholds that could not be).
 	 */
-	public static function assignedAfter(array $before, array $assign, array $unassign)
+	public static function assignedAfter(array $links, array $before, array $assign, array $unassign, array $withhold = [], array $restore = [])
 	{
-		$before = array_values(array_unique(array_map('strval', $before)));
-		$added = array_values(array_diff(array_unique(array_map('strval', $assign)), $before));
-		$removed = array_values(array_intersect($before, array_map('strval', $unassign)));
+		$after = [];
 
-		return [array_values(array_merge(array_diff($before, $removed), $added)), $added, $removed];
+		foreach ($before as $slug => $status) {
+			$after[(string) $slug] = $status === null ? null : (int) $status;
+		}
+
+		$clean = function (array $slugs) {
+			return array_values(array_unique(array_map('strval', $slugs)));
+		};
+
+		$added = [];
+		$removed = [];
+		$restored = [];
+		$withheld = [];
+		$refused = [];
+
+		foreach ($clean($unassign) as $slug) {
+			if (array_key_exists($slug, $after) && $after[$slug] === null) {
+				unset($after[$slug]);
+				$removed[] = $slug;
+			}
+		}
+
+		foreach ($clean($restore) as $slug) {
+			if (array_key_exists($slug, $after) && $after[$slug] === self::STATUS_WITHHELD) {
+				unset($after[$slug]);
+				$restored[] = $slug;
+			}
+		}
+
+		foreach ($clean($assign) as $slug) {
+			if (!array_key_exists($slug, $after) || $after[$slug] !== null) {
+				$after[$slug] = null;
+				$added[] = $slug;
+			}
+		}
+
+		$through = self::held($links, array_fill_keys(self::given($after), null));
+
+		foreach ($clean($withhold) as $slug) {
+			if (array_key_exists($slug, $after)) {
+				if ($after[$slug] === null) {
+					$refused[] = $slug;
+				}
+
+				continue;
+			}
+
+			if (!in_array($slug, $through, true)) {
+				$refused[] = $slug;
+				continue;
+			}
+
+			$after[$slug] = self::STATUS_WITHHELD;
+			$withheld[] = $slug;
+		}
+
+		return [
+			'after' => $after,
+			'assign' => $added,
+			'unassign' => $removed,
+			'withhold' => $withheld,
+			'restore' => $restored,
+			'refused' => $refused,
+		];
 	}
 
 	/**
 	 * A request to change a user's services, read and checked against what
 	 * the user is assigned now. Writes nothing.
 	 *
-	 * @param array<string, mixed> $request extension, assign and unassign (slugs; see slugs()).
+	 * @param array<string, mixed> $request extension, assign, unassign,
+	 *                                      withhold and restore (slugs; see slugs()).
 	 *
 	 * @return array<string, mixed> status and a message when refused; else
 	 *                              extension, links, names, before, after,
-	 *                              assign and unassign (assignedAfter()).
+	 *                              assign, unassign, withhold and restore
+	 *                              (assignedAfter()).
 	 */
 	private function userChange($request)
 	{
@@ -835,33 +924,43 @@ class Services extends Service
 			return ['status' => false, 'message' => _('That user no longer exists.')];
 		}
 
-		$assign = self::slugs($request['assign'] ?? []);
-		$unassign = self::slugs($request['unassign'] ?? []);
+		$lists = [];
 
-		if (array_intersect($assign, $unassign)) {
-			return ['status' => false, 'message' => _('A service cannot be assigned and unassigned at once.')];
+		foreach (['assign', 'unassign', 'withhold', 'restore'] as $key) {
+			$lists[$key] = self::slugs($request[$key] ?? []);
+		}
+
+		if (count(array_unique(array_merge(...array_values($lists)))) !== array_sum(array_map('count', $lists))) {
+			return ['status' => false, 'message' => _('A service cannot be changed two ways at once.')];
 		}
 
 		$names = $this->names();
 
 		// A service deleted since the page was drawn took its assignment with
-		// it, so only one to assign can be missing.
-		if (array_diff($assign, array_map('strval', array_keys($names)))) {
+		// it, so only one to assign or withhold can be missing.
+		if (array_diff(array_merge($lists['assign'], $lists['withhold']), array_map('strval', array_keys($names)))) {
 			return ['status' => false, 'message' => _('A service no longer exists; reload the page.')];
 		}
 
+		$links = $this->links();
 		$before = $this->assigned($extension);
-		list($after, $added, $removed) = self::assignedAfter($before, $assign, $unassign);
+		$change = self::assignedAfter($links, $before, $lists['assign'], $lists['unassign'], $lists['withhold'], $lists['restore']);
+
+		if ($change['refused']) {
+			return ['status' => false, 'message' => _('A service can only be withheld while it is included in a pack the user is assigned.')];
+		}
 
 		return [
 			'status' => true,
 			'extension' => $extension,
-			'links' => $this->links(),
+			'links' => $links,
 			'names' => $names,
 			'before' => $before,
-			'after' => $after,
-			'assign' => $added,
-			'unassign' => $removed,
+			'after' => $change['after'],
+			'assign' => $change['assign'],
+			'unassign' => $change['unassign'],
+			'withhold' => $change['withhold'],
+			'restore' => $change['restore'],
 		];
 	}
 
@@ -871,14 +970,15 @@ class Services extends Service
 	 *
 	 * @param array<string, mixed> $request As setUserServices() takes it.
 	 *
-	 * @return array<string, mixed> status; assign, unassign, granted and
-	 *                              revoked, each [name, pack] by name, the
-	 *                              last two with `effect` (Reactions::effect(),
-	 *                              what the module's own job does); kept --
-	 *                              unassigned but still held -- with `via`,
-	 *                              the assigned services it stays through;
-	 *                              job, whether one would be made. Or a
-	 *                              message when the save would be refused.
+	 * @return array<string, mixed> status; assign, unassign, withhold,
+	 *                              restore, granted and revoked, each [name,
+	 *                              pack] by name, the last two with `effect`
+	 *                              (Reactions::effect(), what the module's
+	 *                              own job does); kept -- unassigned but
+	 *                              still held -- with `via`, the assigned
+	 *                              services it stays through; job, whether
+	 *                              one would be made. Or a message when the
+	 *                              save would be refused.
 	 */
 	public function userServicesImpact($request)
 	{
@@ -918,7 +1018,7 @@ class Services extends Service
 		foreach (array_intersect($change['unassign'], self::held($links, $change['after'])) as $slug) {
 			$via = [];
 
-			foreach ($change['after'] as $over) {
+			foreach (self::given($change['after']) as $over) {
 				if (in_array($slug, self::descendants($links, $over), true)) {
 					$via[] = (string) ($names[$over] ?? $over);
 				}
@@ -936,6 +1036,8 @@ class Services extends Service
 			'status' => true,
 			'assign' => $named($change['assign']),
 			'unassign' => $named($change['unassign']),
+			'withhold' => $named($change['withhold']),
+			'restore' => $named($change['restore']),
 			'granted' => $named($events['granted'], 'granted'),
 			'revoked' => $named($events['revoked'], 'revoked'),
 			'kept' => $kept,
@@ -944,17 +1046,21 @@ class Services extends Service
 	}
 
 	/**
-	 * Change which services a user is assigned: several at once, as one change.
+	 * Change which services a user is assigned, and which are withheld from
+	 * it: several at once, as one change.
 	 *
 	 * **The state of each service named is sent, not toggled, and one not
 	 * named is not touched**: the same request twice leaves the user where
 	 * the first put it, and a page drawn before someone else's change cannot
 	 * undo that change. Everything named is one write and one net change to
 	 * what the user holds, so at most one job -- a service given up with one
-	 * pack and gained with another is never revoked on the way. Nothing about
-	 * the user itself is written, so this raises no Apply Config.
+	 * pack and gained with another is never revoked on the way. A withheld
+	 * row the change leaves outside every given pack is deleted with it, so
+	 * it cannot come back with the pack months later. Nothing about the user
+	 * itself is written, so this raises no Apply Config.
 	 *
-	 * @param array<string, mixed> $request extension, assign and unassign (slugs; see slugs()).
+	 * @param array<string, mixed> $request extension, assign, unassign,
+	 *                                      withhold and restore (slugs; see slugs()).
 	 *
 	 * @return array<string, mixed> Status, userServices() as it now is and
 	 *                              `jobs` (Jobs::statusFor()), or a message when refused.
@@ -975,11 +1081,11 @@ class Services extends Service
 			}
 
 			$extension = $change['extension'];
-			$changed = array_merge($change['assign'], $change['unassign']);
+			$changed = array_merge($change['assign'], $change['unassign'], $change['withhold'], $change['restore']);
 
 			// One service is a job named for it; several are one job named for none.
 			$one = count($changed) === 1 ? (string) $changed[0] : '';
-			$reason = $one === '' ? 'changed' : ($change['assign'] ? 'assigned' : 'unassigned');
+			$reason = $one === '' ? 'changed' : (($change['assign'] || $change['restore']) ? 'assigned' : 'unassigned');
 
 			$this->db->beginTransaction();
 
@@ -988,16 +1094,22 @@ class Services extends Service
 					"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension AND service = :service"
 				);
 				$insert = $this->db->prepare(
-					"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service) VALUES (:extension, :service)"
+					"INSERT INTO `{$this->serviceAssignmentsTable}` (extension, service, status) VALUES (:extension, :service, :status)"
 				);
 
-				foreach ($change['unassign'] as $slug) {
+				foreach (array_merge($change['unassign'], $change['restore'], $change['assign']) as $slug) {
 					$delete->execute([':extension' => $extension, ':service' => $slug]);
 				}
 
 				foreach ($change['assign'] as $slug) {
-					$insert->execute([':extension' => $extension, ':service' => $slug]);
+					$insert->execute([':extension' => $extension, ':service' => $slug, ':status' => null]);
 				}
+
+				foreach ($change['withhold'] as $slug) {
+					$insert->execute([':extension' => $extension, ':service' => $slug, ':status' => self::STATUS_WITHHELD]);
+				}
+
+				$this->pruneWithheld($change['links'], [$extension => $change['after']]);
 
 				if ($changed) {
 					$queued = $this->queue(
@@ -1128,6 +1240,8 @@ class Services extends Service
 				foreach ($this->regroup($notes) as $was => $slug) {
 					list($linksBefore, $before) = self::renamed($linksBefore, $before, $was, $slug);
 				}
+
+				$this->pruneWithheld($this->links(), $this->assignments());
 
 				if ($this->jobs) {
 					$queued = $this->queue($linksBefore, $before, $this->links(), $this->assignments(), '', '', 'pack-changed', 'upgrade', $this->names() + $namesBefore);
@@ -1322,29 +1436,53 @@ class Services extends Service
 	}
 
 	/**
-	 * What some assigned services amount to: themselves, and everything under them.
+	 * What a user's assignments amount to: every given service and
+	 * everything under it, less every withheld service and everything under
+	 * it -- except what is given itself, which a withhold never takes.
 	 *
-	 * @param array<int, array{0: string, 1: string}> $links    Every link: [parent, child], slugs.
-	 * @param array<int, string>                      $assigned What is assigned, by slug.
+	 * @param array<int, array{0: string, 1: string}> $links Every link: [parent, child], slugs.
+	 * @param array<string, int|null>                 $rows  The user's assignments, slug => status.
 	 *
 	 * @return array<int, string> Slugs, each once, in order.
 	 */
-	public static function held(array $links, array $assigned)
+	public static function held(array $links, array $rows)
 	{
-		$held = [];
+		$given = self::given($rows);
+		$withheld = self::withheld($rows);
+		$taken = array_merge($withheld, self::reach($links, $withheld, 0, 1, ''));
 
-		foreach ($assigned as $slug) {
-			$held[] = (string) $slug;
-
-			foreach (self::descendants($links, $slug) as $under) {
-				$held[] = (string) $under;
-			}
-		}
-
-		$held = array_values(array_unique($held));
+		$held = array_values(array_unique(array_merge($given, array_diff(self::reach($links, $given, 0, 1, ''), $taken))));
 		sort($held, SORT_STRING);
 
 		return $held;
+	}
+
+	/**
+	 * The services given to a user: the rows assigning it something.
+	 *
+	 * @param array<string, int|null> $rows Assignments, slug => status.
+	 *
+	 * @return array<int, string> Slugs.
+	 */
+	public static function given(array $rows)
+	{
+		return array_map('strval', array_keys(array_filter($rows, function ($status) {
+			return $status === null;
+		})));
+	}
+
+	/**
+	 * The services withheld from a user.
+	 *
+	 * @param array<string, int|null> $rows Assignments, slug => status.
+	 *
+	 * @return array<int, string> Slugs.
+	 */
+	public static function withheld(array $rows)
+	{
+		return array_map('strval', array_keys(array_filter($rows, function ($status) {
+			return $status === self::STATUS_WITHHELD;
+		})));
 	}
 
 	/**
@@ -1450,20 +1588,63 @@ class Services extends Service
 	}
 
 	/**
-	 * The services assigned to a user itself.
+	 * A user's assignment rows: given and withheld.
 	 *
 	 * @param mixed $extension The user's extension.
 	 *
-	 * @return array<int, string> Their slugs.
+	 * @return array<string, int|null> slug => status.
 	 */
 	private function assigned($extension)
 	{
 		$stmt = $this->db->prepare(
-			"SELECT service FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension"
+			"SELECT service, status FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension"
 		);
 		$stmt->execute([':extension' => (string) $extension]);
 
-		return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+		return self::rowsToMap($stmt->fetchAll(PDO::FETCH_NUM));
+	}
+
+	/**
+	 * Assignment rows as the class carries them.
+	 *
+	 * @param array<int, array{0: string, 1: int|string|null}> $rows [service, status] each.
+	 *
+	 * @return array<string, int|null> slug => status.
+	 */
+	private static function rowsToMap(array $rows)
+	{
+		$map = [];
+
+		foreach ($rows as $row) {
+			$map[(string) $row[0]] = $row[1] === null ? null : (int) $row[1];
+		}
+
+		return $map;
+	}
+
+	/**
+	 * Delete every withheld row that no given pack reaches any more: an
+	 * unassigned pack, a pack edit or a deleted service left it meaning
+	 * nothing, and it must not mean something again later.
+	 *
+	 * @param array<int, array{0: string, 1: string}> $links Every link, as they are now.
+	 * @param array<string, array<string, int|null>>  $rows  Assignments to check, by extension.
+	 *
+	 * @return void
+	 */
+	private function pruneWithheld(array $links, array $rows)
+	{
+		$delete = $this->db->prepare(
+			"DELETE FROM `{$this->serviceAssignmentsTable}` WHERE extension = :extension AND service = :service AND status = " . self::STATUS_WITHHELD
+		);
+
+		foreach ($rows as $extension => $map) {
+			$through = self::held($links, array_fill_keys(self::given($map), null));
+
+			foreach (array_diff(self::withheld($map), $through) as $slug) {
+				$delete->execute([':extension' => (string) $extension, ':service' => $slug]);
+			}
+		}
 	}
 
 	/**
@@ -1505,19 +1686,19 @@ class Services extends Service
 	/**
 	 * Every user's assignments, for working out what a change does to them.
 	 *
-	 * @return array<string, array<int, string>> Slugs assigned, by extension.
+	 * @return array<string, array<string, int|null>> slug => status, by extension.
 	 */
 	private function assignments()
 	{
 		$stmt = $this->db->prepare(
-			"SELECT extension, service FROM `{$this->serviceAssignmentsTable}` ORDER BY extension, service"
+			"SELECT extension, service, status FROM `{$this->serviceAssignmentsTable}` ORDER BY extension, service"
 		);
 		$stmt->execute();
 
 		$assigned = [];
 
 		foreach ($stmt->fetchAll(PDO::FETCH_NUM) as $row) {
-			$assigned[(string) $row[0]][] = (string) $row[1];
+			$assigned[(string) $row[0]][(string) $row[1]] = $row[2] === null ? null : (int) $row[2];
 		}
 
 		return $assigned;
@@ -1587,11 +1768,11 @@ class Services extends Service
 	 * Links and assignments with one slug read as another.
 	 *
 	 * @param array<int, array{0: string, 1: string}> $links    Every link.
-	 * @param array<string, array<int, string>>       $assigned Assignments, by extension.
+	 * @param array<string, array<string, int|null>>  $assigned Assignments, by extension.
 	 * @param string                                  $was      The slug they hold.
 	 * @param string                                  $slug     The slug to read it as.
 	 *
-	 * @return array{0: array<int, array{0: string, 1: string}>, 1: array<string, array<int, string>>} Both.
+	 * @return array{0: array<int, array{0: string, 1: string}>, 1: array<string, array<string, int|null>>} Both.
 	 */
 	private static function renamed(array $links, array $assigned, $was, $slug)
 	{
@@ -1603,8 +1784,14 @@ class Services extends Service
 			$links[$at] = [$swap($link[0]), $swap($link[1])];
 		}
 
-		foreach ($assigned as $extension => $slugs) {
-			$assigned[$extension] = array_map($swap, $slugs);
+		foreach ($assigned as $extension => $rows) {
+			$renamed = [];
+
+			foreach ($rows as $one => $status) {
+				$renamed[$swap($one)] = $status;
+			}
+
+			$assigned[$extension] = $renamed;
 		}
 
 		return [$links, $assigned];

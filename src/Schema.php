@@ -349,6 +349,22 @@ class Schema extends Service
 	}
 
 	/**
+	 * Give a service assignments table written before it its `status`: NULL,
+	 * a service given, on every older row.
+	 *
+	 * @return void
+	 */
+	public function addServiceAssignmentStatusColumn()
+	{
+		if (!$this->schemaHas($this->serviceAssignmentsTable, 'column', 'status')) {
+			$this->db->exec(
+				"ALTER TABLE `{$this->serviceAssignmentsTable}`
+				ADD COLUMN `status` TINYINT NULL DEFAULT NULL AFTER `service`"
+			);
+		}
+	}
+
+	/**
 	 * Give a services table written before it its `owner`: 0 is the module,
 	 * and the column's default.
 	 *

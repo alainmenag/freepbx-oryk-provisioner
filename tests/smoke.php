@@ -2417,9 +2417,15 @@ is_eq('a new service is checked through what it is given', Services::loops($link
 is_eq('its own old links are not held against it', Services::loops($links, 'vm', ['greeting'], []), false);
 is_eq('a loop in the data is walked once, not for ever', Services::descendants([['a', 'b'], ['b', 'a']], 'a'), ['b']);
 is_eq('a slug of digits is still a string', Services::descendants([['100', '200']], '100'), ['200']);
-is_eq('a user has what it is assigned and everything under it', Services::held($links, ['basic']), ['basic', 'greeting', 'vm']);
-is_eq('each once, however many packs it comes through', Services::held($links, ['vm', 'advanced', 'basic']), ['advanced', 'basic', 'greeting', 'vm']);
+// Assignments are slug => status: null given, 0 withheld.
+$given = function (array $slugs) { return array_fill_keys($slugs, null); };
+is_eq('a user has what it is assigned and everything under it', Services::held($links, $given(['basic'])), ['basic', 'greeting', 'vm']);
+is_eq('each once, however many packs it comes through', Services::held($links, $given(['vm', 'advanced', 'basic'])), ['advanced', 'basic', 'greeting', 'vm']);
 is_eq('and a user assigned nothing has nothing', Services::held($links, []), []);
+is_eq('a withheld service is taken, with everything under it', Services::held($links, ['basic' => null, 'vm' => 0]), ['basic']);
+is_eq('but never what is assigned itself', Services::held($links, ['basic' => null, 'vm' => 0, 'greeting' => null]), ['basic', 'greeting']);
+is_eq('a withhold of nothing held takes nothing', Services::held($links, ['fax' => null, 'vm' => 0]), ['fax']);
+is_eq('given and withheld are read off the status', [Services::given(['a' => null, 'b' => 0, 'c' => null]), Services::withheld(['a' => null, 'b' => 0, 'c' => null])], [['a', 'c'], ['b']]);
 is_eq('slugs arrive as one string', Services::slugs('vm, Basic,vm,not ok,,-x,'), ['vm', 'basic']);
 is_eq('or as an array', Services::slugs(['fax', 'fax', [], 'call-recording']), ['fax', 'call-recording']);
 is_eq('and nothing is no slugs', Services::slugs(''), []);
@@ -2488,9 +2494,12 @@ echo "\n  what a change to services makes a job of:\n";
 // gold is over fax and sms; silver over fax.
 $packs = [['gold', 'fax'], ['gold', 'sms'], ['silver', 'fax']];
 $change = function (array $before, array $after, ?array $linksAfter = null) use ($packs) {
+	// A list is slugs given; a map is slug => status as the class carries them.
+	$rows = function (array $one) { return $one && array_keys($one) === range(0, count($one) - 1) ? array_fill_keys($one, null) : $one; };
+
 	return array_map(function ($step) {
 		return $step['event'][0] . ':' . $step['service'] . ($step['via'] !== null ? '<' . $step['via'] : '');
-	}, ServiceEngine::changes($packs, $before, $linksAfter ?? $packs, $after));
+	}, ServiceEngine::changes($packs, $rows($before), $linksAfter ?? $packs, $rows($after)));
 };
 is_eq('assigning a pack grants it and all under it', $change([], ['gold']), ['g:fax<gold', 'g:gold', 'g:sms<gold']);
 is_eq('nothing already held is granted again', $change(['silver'], ['silver', 'gold']), ['g:gold', 'g:sms<gold']);
@@ -2500,9 +2509,22 @@ is_eq('the same state again is nothing', $change(['gold'], ['gold']), []);
 is_eq('a pack losing a service revokes it', $change(['gold'], ['gold'], [['gold', 'fax'], ['silver', 'fax']]), ['r:sms<gold']);
 is_eq('one gaining a service grants it', $change(['silver'], ['silver'], [['gold', 'fax'], ['gold', 'sms'], ['silver', 'fax'], ['silver', 'sms']]), ['g:sms<silver']);
 is_eq('a deleted service goes, with what came only through it', $change(['gold', 'silver'], ['silver'], [['silver', 'fax']]), ['r:gold', 'r:sms<gold']);
-is_eq('several services at once are one change', Services::assignedAfter(['silver', 'fax'], ['gold', 'fax'], ['silver', 'sms']), [['fax', 'gold'], ['gold'], ['silver']]);
-is_eq('and a pack swapped for another never revokes what both give', $change(['silver'], Services::assignedAfter(['silver'], ['gold'], ['silver'])[0]), ['r:silver', 'g:gold', 'g:sms<gold']);
-is_eq('naming what is already so changes nothing', Services::assignedAfter(['gold'], ['gold'], ['sms']), [['gold'], [], []]);
+is_eq('withholding a service the user has through a pack revokes it', $change(['gold'], ['gold' => null, 'sms' => 0]), ['r:sms<gold']);
+is_eq('and giving it back grants it again', $change(['gold' => null, 'sms' => 0], ['gold']), ['g:sms<gold']);
+$after = function (array $before, array $assign, array $unassign, array $withhold = [], array $restore = []) use ($packs) {
+	$got = Services::assignedAfter($packs, $before, $assign, $unassign, $withhold, $restore);
+
+	return [$got['after'], $got['assign'], $got['unassign'], $got['withhold'], $got['restore'], $got['refused']];
+};
+is_eq('several services at once are one change', $after(['silver' => null, 'fax' => null], ['gold', 'fax'], ['silver', 'sms']), [['fax' => null, 'gold' => null], ['gold'], ['silver'], [], [], []]);
+is_eq('and a pack swapped for another never revokes what both give', $change(['silver'], $after(['silver' => null], ['gold'], ['silver'])[0]), ['r:silver', 'g:gold', 'g:sms<gold']);
+is_eq('naming what is already so changes nothing', $after(['gold' => null], ['gold'], ['sms']), [['gold' => null], [], [], [], [], []]);
+is_eq('a service included in an assigned pack can be withheld', $after(['gold' => null], [], [], ['sms']), [['gold' => null, 'sms' => 0], [], [], ['sms'], [], []]);
+is_eq('one assigned itself, or not held at all, cannot', $after(['gold' => null, 'fax' => null], [], [], ['fax', 'silver']), [['gold' => null, 'fax' => null], [], [], [], [], ['fax', 'silver']]);
+is_eq('a withheld service is restored by name', $after(['gold' => null, 'sms' => 0], [], [], [], ['sms']), [['gold' => null], [], [], [], ['sms'], []]);
+is_eq('or replaced by assigning it', $after(['gold' => null, 'sms' => 0], ['sms'], []), [['gold' => null, 'sms' => null], ['sms'], [], [], [], []]);
+is_eq('a withhold is judged against the packs after the change', $after([], ['gold'], [], ['sms']), [['gold' => null, 'sms' => 0], ['gold'], [], ['sms'], [], []]);
+is_eq('withholding the pack a withhold came through, nothing is withheld', $after([], [], [], ['gold']), [[], [], [], [], [], ['gold']]);
 is_eq('a save of several is titled as one', Jobs::title(['name' => '', 'reason' => 'changed']), 'Several services');
 is_eq('a renamed default goes from a slug DEFAULTS dropped to one it has', array_filter(Services::RENAMED, function ($slug, $was) { return isset(Services::DEFAULTS[$was]) || !isset(Services::DEFAULTS[$slug]); }, ARRAY_FILTER_USE_BOTH), []);
 is_eq('each of the module\'s own jobs says what it does, both ways', array_values(array_filter(array_keys(\FreePBX\Modules\Oryk_Provisioner\Reactions::jobs()), function ($slug) { return \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'granted') === '' || \FreePBX\Modules\Oryk_Provisioner\Reactions::effect($slug, 'revoked') === ''; })), []);
