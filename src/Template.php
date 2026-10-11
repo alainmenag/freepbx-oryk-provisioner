@@ -21,16 +21,16 @@ class Template extends Service
 	/** @var Settings */
 	private $settings;
 
-	/** @var Services */
+	/** @var ServicesLink */
 	private $services;
 
 	/**
 	 * @param object   $freepbx  FreePBX application instance.
 	 * @param Freepbx  $pbx      FreePBX lookups.
 	 * @param Settings $settings The module's settings.
-	 * @param Services $services What a user is assigned.
+	 * @param ServicesLink $services What a user holds.
 	 */
-	public function __construct($freepbx, Freepbx $pbx, Settings $settings, Services $services)
+	public function __construct($freepbx, Freepbx $pbx, Settings $settings, ServicesLink $services)
 	{
 		parent::__construct($freepbx);
 
@@ -157,7 +157,8 @@ class Template extends Service
 	 *
 	 * @param mixed $extension The client's extension, or null with no device.
 	 *
-	 * @return string Slugs joined by commas; empty with no user or no service.
+	 * @return string Slugs joined by commas; empty with no user, no service,
+	 *                or no services installed.
 	 */
 	private function extensionServices($extension)
 	{

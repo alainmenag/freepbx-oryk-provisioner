@@ -18,9 +18,11 @@
  *
  * @var array<string, mixed>|null $overview Overview::inventory(), or null with
  *                                          no user or client chosen
+ * @var bool                      $servicesAvailable Whether the Services and Jobs tables are drawn
  */
 
 $overview = isset($overview) && is_array($overview) ? $overview : null;
+$servicesAvailable = !empty($servicesAvailable);
 
 $oe = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -161,6 +163,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 		</thead>
 	</table>
 
+	<?php if ($servicesAvailable): ?>
 	<h4 class="oryk-heading"><?php echo _('Services'); ?></h4>
 	<table
 		id="overview_service_table"
@@ -183,6 +186,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 			</tr>
 		</thead>
 	</table>
+	<?php endif; ?>
 
 	<h4 class="oryk-heading"><?php echo _('Logs'); ?></h4>
 	<?php
@@ -192,7 +196,7 @@ $oAsk .= ' ' . _('This cannot be undone.');
 	include __DIR__ . '/logs.php';
 	?>
 
-	<?php if ($oIsUser): ?>
+	<?php if ($oIsUser && $servicesAvailable): ?>
 	<h4 class="oryk-heading"><?php echo _('Jobs'); ?></h4>
 	<?php
 	$jobFilter = null;

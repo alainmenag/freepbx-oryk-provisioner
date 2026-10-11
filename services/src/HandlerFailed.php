@@ -1,8 +1,8 @@
 <?php
 
-// src/HandlerFailed.php
+// services/src/HandlerFailed.php
 
-namespace FreePBX\Modules\Oryk_Provisioner;
+namespace FreePBX\Modules\Oryk_Services;
 
 /**
  * A handler of a service event threw: the step it was on fails, and the job stops there.

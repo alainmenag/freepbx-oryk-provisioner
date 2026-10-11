@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 /**
- * bin/oryk-jobs -- one run of the service job worker.
+ * services/bin/oryk-jobs -- one run of the service job worker.
  *
  * `--user=<extension>` runs that user's queue: what a save starts in the
  * background. With no argument it runs every user with a job waiting and

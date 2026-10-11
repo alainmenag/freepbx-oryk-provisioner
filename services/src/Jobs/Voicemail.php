@@ -1,8 +1,8 @@
 <?php
 
-// src/Jobs/Voicemail.php
+// services/src/Jobs/Voicemail.php
 
-namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
+namespace FreePBX\Modules\Oryk_Services\Jobs;
 
 /**
  * Voicemail: the user's mailbox.

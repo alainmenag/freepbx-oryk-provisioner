@@ -40,7 +40,7 @@ namespace {
 	}
 }
 
-namespace FreePBX\Modules\Oryk_Provisioner {
+namespace FreePBX\Modules\Oryk_Services {
 
 	use PDO;
 
@@ -51,8 +51,8 @@ namespace FreePBX\Modules\Oryk_Provisioner {
 		exit(0);
 	}
 
-	foreach (['Logs', 'Service', 'Schema', 'Jobs', 'ServiceEngine', 'Reactions', 'Services'] as $class) {
-		require dirname(__DIR__) . '/src/' . $class . '.php';
+	foreach (['Logs', 'Component', 'Schema', 'Jobs', 'ServiceEngine', 'Reactions', 'Services'] as $class) {
+		require dirname(__DIR__) . '/services/src/' . $class . '.php';
 	}
 
 	/** Services as a later release would ship it: `old-support` has become `support`. */

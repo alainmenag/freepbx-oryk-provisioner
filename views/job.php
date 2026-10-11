@@ -9,17 +9,17 @@
  *
  * @var array<string, mixed>             $job       Jobs::jobRow(), with steps
  * @var array<string, string>            $names     Every service's name, by slug: a step's own is a snapshot
+ * @var string                           $jobTitle  Jobs::title(), for a job made for no one service
+ * @var array<string, array<string, string>> $jobLabels Jobs::labels(), as every view is handed it
  * @var array<int, array<string, mixed>> $navigator Levels the navigator draws -- see partials/navigator.php
  * @var array<int, array<string, mixed>> $sections  Navigator::sections() -- see partials/sections.php
  * @var string                           $version   Module version -- see partials/sections.php
  */
 
-use FreePBX\Modules\Oryk_Provisioner\Jobs;
-
 $jobId = (int) $job['id'];
 $state = (string) $job['state'];
 $names = isset($names) && is_array($names) ? $names : [];
-$labels = Jobs::labels();
+$labels = $jobLabels;
 
 $h = function ($value) {
 	return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -73,7 +73,7 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 					<div class="tab-pane oryk-tab-section active" id="oryk_job">
 
 						<?php
-						$fact(_('Job'), '#' . $jobId . ' ' . ((string) $job['service'] !== '' ? $service($job['service'], (string) $job['name']) : $h(Jobs::title($job))));
+						$fact(_('Job'), '#' . $jobId . ' ' . ((string) $job['service'] !== '' ? $service($job['service'], (string) $job['name']) : $h($jobTitle)));
 
 						$fact(_('User'), '<a href="?display=oryk_provisioner&amp;user=' . $h(rawurlencode((string) $job['extension'])) . '&amp;tab=services">' . $h($job['extension']) . '</a>');
 
@@ -126,7 +126,7 @@ $stepClass = ['pending' => 'label-default', 'done' => 'label-success', 'failed' 
 										return $name === 'oryk_provisioner' && (string) ($step['own_job'] ?? '') !== ''
 											? $name . ' (' . $step['own_job'] . ')'
 											: $name;
-									}, Jobs::doneBy($step));
+									}, array_values(array_filter(explode(',', (string) ($step['done_by'] ?? '')), 'strlen')));
 									echo $finished ? $h(implode(', ', $finished)) : '-';
 									?></td>
 									<td><?php echo $h($step['attempts']); ?></td>

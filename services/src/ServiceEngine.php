@@ -1,8 +1,8 @@
 <?php
 
-// src/ServiceEngine.php
+// services/src/ServiceEngine.php
 
-namespace FreePBX\Modules\Oryk_Provisioner;
+namespace FreePBX\Modules\Oryk_Services;
 
 /**
  * What a change to services means for a user, and running it: the job worker.
@@ -13,7 +13,7 @@ namespace FreePBX\Modules\Oryk_Provisioner;
  * included, first by its priority, which runs src/Jobs/ through ownJob(). The rules -- ordering, retries, what stops a job -- are
  * ARCHITECTURE.md, "Jobs".
  */
-class ServiceEngine extends Service
+class ServiceEngine extends Component
 {
 	/** This module's rawname, as its own hook is listed and recorded in a step's `done_by`. */
 	const OWN = 'oryk_provisioner';

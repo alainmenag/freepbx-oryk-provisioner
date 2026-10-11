@@ -56,7 +56,7 @@ function oryk_unqualified_classes($path)
 	// Anything in the same namespace is fine: the loader finds it
 	$siblings = [];
 
-	foreach (glob(__DIR__ . '/../src/*.php') as $sibling) {
+	foreach (glob(dirname($path) . '/*.php') as $sibling) {
 		$siblings[strtolower(basename($sibling, '.php'))] = true;
 	}
 

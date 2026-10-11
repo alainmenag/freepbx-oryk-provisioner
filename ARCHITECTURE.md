@@ -29,8 +29,9 @@ number under it, and assigned to users. The endpoint knows nothing of a
 service, but a template can ask what a user holds, and every change to what a
 user holds is a **job**: one step per service gained or lost, run at once,
 calling every module hooked to it -- this one included, whose own jobs are
-classes in `src/Jobs/`.
-See [Schema](#schema) and [Jobs](#jobs).
+classes in `services/src/Jobs/`. Services and jobs are their own part of the
+code, on their way to a module of their own: see
+[The services boundary](#the-services-boundary), [Schema](#schema) and [Jobs](#jobs).
 
 A **user** is the other half of the module: a pjsip device that is its own
 extension, managed from the Users tab, and stored in none of this module's
@@ -252,8 +253,11 @@ page.oryk_provisioner.php    one line into showPage()
 engine/provisioner.php       the anonymous endpoint a phone reaches
 engine/.htaccess             rewrites everything under engine/ to provisioner.php
 bin/                         the fail2ban helper, its setup script, the minute sync -- see Syncing with fail2ban;
-                             the open-provisioning sweep -- see The Realtime bridge; the job worker -- see Jobs
-src/                         56 files and Jobs/ (6), namespace FreePBX\Modules\Oryk_Provisioner
+                             the open-provisioning sweep -- see The Realtime bridge
+src/                         51 files, namespace FreePBX\Modules\Oryk_Provisioner
+services/                    the services and their jobs -- see The services boundary:
+  src/                       11 files and Jobs/ (6), namespace FreePBX\Modules\Oryk_Services
+  bin/                       the job worker -- see Jobs
 library/                     the profiles the module ships, one directory each -- see The library
 tests/                       smoke.php, the stubs it runs against and its lexical check
                              (namespacing.php); services_db.php, seed() on real tables
@@ -275,7 +279,7 @@ views/                       one view per page, plus views/partials/
 | `Schema` | the columns added after a table first existed |
 | `FileRepo` | `ASTSPOOLDIR/repo`, one file per resource id |
 | `LogRepo` | `ASTLOGDIR/provisioner/<client id>/`, what a phone sent back |
-| `Clients`, `Profiles`, `Resources`, `Services` | one per table |
+| `Clients`, `Profiles`, `Resources` | one per table |
 | `Library` | the profiles the module ships, and making one of the operator's from one |
 | `Matcher` | a filename is a MAC and a name, read both ways |
 | `Previews` | which filename does this phone ask this file by |
@@ -288,7 +292,7 @@ views/                       one view per page, plus views/partials/
 | `AsteriskConfig` | one Asterisk config file, edited without disturbing what others wrote |
 | `EndpointSettings` | the From Domain chain, and `pjsip.endpoint_custom_post.conf` |
 | `NumberAllocator` | which numbers are free, and the next `999…` one |
-| `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `CalendarManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
+| `ExtensionManager`, `UsermanManager`, `VoicemailManager`, `UcpAssignments`, `CdrHistory` | one each of what a number is made of |
 | `ExtensionRenumberer` | moving a user to another number, in order |
 | `Users` | saving, deleting and listing a user |
 | `Devices` | FreePBX's devices, listed, and which user one is on |
@@ -300,13 +304,72 @@ views/                       one view per page, plus views/partials/
 | `DashboardNotices` | the module's dashboard notices, raised and cleared on a change only |
 | `SignupSweep` | the minute job behind open provisioning: out of the bridge once applied; the notices |
 | `LobbyContext` | the lobby's dialplan, on Apply Config |
+| `ServicesLink` | the provisioner's one way to the services -- see [The services boundary](#the-services-boundary) |
+
+`services/src/`:
+
+| file | what it is |
+| --- | --- |
+| `Module` | the services as one thing: everything outside `services/` reaches them through it |
+| `Component` | base class: `Service`'s, for this namespace, with the services' table names |
+| `Logs` | the provisioner's trait, for this namespace |
+| `Schema` | the services' tables: made, and the columns added after |
+| `Services` | the services table, its links, and who is assigned what |
 | `Jobs` | the jobs and their steps: written, listed, and what the worker asks while it runs one |
 | `ServiceEngine`, `HandlerFailed` | what a change means for a user (`changes()`, static), and the worker; a handler that threw (exception) |
-| `Reactions` | the module's own jobs: finds the classes in `src/Jobs/`, and runs the one a step's service names |
+| `Reactions` | the module's own jobs: finds the classes in `services/src/Jobs/`, and runs the one a step's service names |
 | `Jobs\Job`, `Jobs\*` | one class per job of the module's own, each naming the services it is run for |
+| `Extensions` | the one write to an extension the jobs make that FreePBX has no call for |
+| `CalendarManager` | a user's own calendar, which the Calendar job makes |
 
 `AsteriskConfig` through `Users` came from `oryk_connect` 1.3.2, which this module replaces for
 Extension/User devices.
+
+## The services boundary
+
+Services, packs and jobs manage what an extension is given, which is not
+provisioning, so they are being split into a module of their own. Until then
+they live in `services/`, laid out as that module will be, and **the boundary
+is enforced now** (tests/smoke.php, "the services boundary"):
+
+- nothing in `services/` names `FreePBX\Modules\Oryk_Provisioner`, and
+- nothing outside it names `FreePBX\Modules\Oryk_Services` but `src/ServicesLink.php`.
+
+`ServicesLink` is the provisioner's whole view of the services. It registers
+their autoloader and holds one `Oryk_Services\Module`; every other class --
+`Users`, `ExtensionRenumberer`, `Template`, `Navigator`, `Pages`, `Installer`,
+the module class -- is handed the link. **Without the services every method
+answers as if there were none**: no slugs, no rows, no commands, nothing done
+on a delete or renumber. `available()` is asked only to decide what is drawn:
+
+| without the services | where |
+| --- | --- |
+| no Services or Jobs section; `?tab=services`, `?tab=jobs` open Users | `Navigator::sectionNames()` |
+| no Services or Jobs level in the navigator | `Navigator::build()` |
+| no `?service=` or `?job=` page; either redirects to the module | `Pages::doConfigPageInit()`, `showPage()` |
+| no Services tab on a user, and no Save/Reset for it | `Pages::userTabs()`, `getActionBar()` |
+| no Services or Jobs table on Overview | `views/partials/overview.php`, `$servicesAvailable` |
+| `{{extension.services}}` renders empty | `Template` |
+| the services' AJAX commands are not this module's | `ajaxRequest()`, `ajaxHandler()` |
+
+What the link carries, by what it is for:
+
+- **the user's life**: `userDeleting()` before Core deletes a user (its
+  calendar is found by its Follow Me row), `userDeleted()` after (and from the
+  `delUser` hook), `userRenumbered()` before the old number is given up,
+  `hasCalendar()` for what Delete says;
+- **the hooks**: `dispatch()`, `ownJob()`, `runJobs()` -- `serviceGranted`,
+  `serviceRevoked`, the module's own hook on them and the worker are still
+  this module's class until the split;
+- **the commands**: `commands()`, `reads()`, `ajax()` -- the services answer
+  their own (`Module::COMMANDS`), narrowed by the navigator's scope;
+- **the pages**: the rows the Services and Jobs pages, the navigator and a
+  user's Services tab draw. Those pages and their views are still the
+  provisioner's, and go to the services module with step two.
+
+The tables keep their `oryk_provisioner_*` names until the split, which moves
+them with their rows.
+
 
 `install()` symlinks `engine/` to `<AMPWEBROOT>/provisioner`, which is the short
 URL phones are given. **Nothing about that link is allowed to fail the install**
@@ -361,7 +424,10 @@ never serves from here.
 
 ## Schema
 
-Ten tables, and the bridge's three (below). Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
+Ten tables, and the bridge's three (below): the five services and jobs tables
+are made and stepped by the services' own `Schema` (`services/src/Schema.php`),
+asked by `Installer` through `ServicesLink::install()`, the other five by
+`Installer` and `src/Schema.php`. Every `Schema` step but one (the services table's re-keying) is additive and asks `information_schema`
 rather than a dbversion: "is the column there?" answers the same whether the
 module arrived by upgrade, reinstall or a restore of an older backup, and a
 failed DDL statement is not something a PDO exception cleanly distinguishes from
@@ -666,7 +732,7 @@ made, last started and finished.
 `job_id` and `position` (revokes first, then grants, each by slug), `service`
 and `name`, `via` (the assigned service it comes or went through, NULL for
 the service itself), `event` (`granted`, `revoked`), `state` (`pending`,
-`done`, `failed`, `skipped`), `done_by`, `own_job` (the `src/Jobs/` class
+`done`, `failed`, `skipped`), `done_by`, `own_job` (the `services/src/Jobs/` class
 this module ran for it, shown beside `oryk_provisioner` on the job's page),
 `attempts`, `error`.
 
@@ -717,7 +783,7 @@ and gets no job; its jobs move with it.
 without writing anything, so Save and Delete on a service say how many users
 it changes, and how, before they do it.
 
-**Running.** A change from a page starts `bin/oryk-jobs` in the background
+**Running.** A change from a page starts `services/bin/oryk-jobs` in the background
 (`Jobs::start()`, `nohup`), `--user=<ext>` for one user and with no argument
 for many, and the request returns. A user's queue is run **one job at a time,
 oldest first** (`ServiceEngine::drain()`), under a MySQL named lock per user
@@ -743,7 +809,7 @@ after letting go. Different users run side by side. Per job:
   `serviceGranted` or `serviceRevoked`, in FreePBX's hook order -- **this
   one included**, through its own module.xml at priority 100, so first unless
   another asks for less. Its hook (`runOwnJobGranted()` / `runOwnJobRevoked()`
-  → `ServiceEngine::ownJob()`) runs the `src/Jobs/` class for the service,
+  → `ServiceEngine::ownJob()`) runs the `services/src/Jobs/` class for the service,
   under one lock across every worker (`Jobs::lockReactions()`): users' queues
   run side by side, and Voicemail's rewrites all of voicemail.conf. A service
   with a job of its own while FreePBX has not yet read that hook fails the
@@ -770,7 +836,7 @@ an admin's unapplied changes included, as Apply Config would; a minute run
 that ran no job never reloads. A failed reload is logged and leaves Apply
 Config raised.
 
-**The minute job** (`bin/oryk-jobs`, registered by `install()`) runs every
+**The minute job** (`services/bin/oryk-jobs`, registered by `install()`) runs every
 user with a job queued or left running -- an upgrade's jobs, and anything whose
 background start was lost -- and purges `done` jobs finished more than
 `Jobs::KEEP_DAYS` (30) ago. It never retries a failed job on its own.
@@ -811,7 +877,7 @@ Edit mode is a save -- Core deletes and re-adds the user -- and is passed
 over. `ExtensionRenumberer` moves a user's services and jobs **before** it
 deletes the old number, which this hook would otherwise take them with.
 
-**The module's own reactions** are the classes in `src/Jobs/`, reached through
+**The module's own reactions** are the classes in `services/src/Jobs/`, reached through
 its own hook like any other module's: each extends
 `Jobs\Job`, names the service slugs it is run for in `SERVICES`, and has
 `granted()` and `revoked()`. **Adding one is adding a file** -- `Reactions`

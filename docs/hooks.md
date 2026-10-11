@@ -88,7 +88,7 @@ public function onServiceGranted(array $event)
 - **Do not count on the service still existing.** A `service-deleted` revoke
   arrives after the service has gone; `name` is all there is of it.
 - **Expect to run in the background**, as the web user, from
-  `bin/oryk-jobs` — not inside the request that made the change. Every module
+  `services/bin/oryk-jobs` — not inside the request that made the change. Every module
   is loaded, as on a page.
 
 A step is run only while it is still true: a grant only while the user has the

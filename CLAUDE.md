@@ -97,6 +97,13 @@ diffing. Never rewrite a file wholesale to reword its comments.
   argument, and `HELPER_VERSION` is bumped whenever it changes.
 - `AsteriskConfig`'s lock file stays named `oryk-connect-…` while any PBX may
   still have `oryk_connect` installed: both write the same file.
+- `services/` is the services and their jobs, namespace `Oryk_Services`, on
+  their way to a module of their own: nothing in it names
+  `Oryk_Provisioner`, and nothing outside it but `src/ServicesLink.php` names
+  `Oryk_Services` (tests/smoke.php checks both). A new need of the
+  provisioner's is a method on `Oryk_Services\Module` and on `ServicesLink`,
+  answering as if there were no services when there are none. See
+  `ARCHITECTURE.md`, "The services boundary".
 - PHP and views are indented with **tabs**. Operator-facing strings go through
   `_()`.
 

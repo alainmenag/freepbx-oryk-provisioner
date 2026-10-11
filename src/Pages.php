@@ -60,11 +60,8 @@ class Pages extends Service
 	/** @var Overview */
 	private $overview;
 
-	/** @var Services */
+	/** @var ServicesLink The Services and Jobs pages' rows, and a user's Services tab. */
 	private $services;
-
-	/** @var Jobs */
-	private $jobs;
 
 	/** @var Library */
 	private $library;
@@ -78,7 +75,7 @@ class Pages extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, Services $services, Jobs $jobs, Library $library, Notices $notices, Devices $devices)
+	public function __construct($freepbx, Clients $clients, Profiles $profiles, Resources $resources, Freepbx $pbx, Template $template, ProvisioningLog $requestLog, Navigator $navigator, LogRepo $logs, Users $users, EndpointSettings $endpoints, Settings $settings, Bans $bans, Fail2ban $fail2ban, Overview $overview, ServicesLink $services, Library $library, Notices $notices, Devices $devices)
 	{
 		parent::__construct($freepbx);
 
@@ -97,7 +94,6 @@ class Pages extends Service
 		$this->fail2ban = $fail2ban;
 		$this->overview = $overview;
 		$this->services = $services;
-		$this->jobs = $jobs;
 		$this->library = $library;
 		$this->notices = $notices;
 		$this->devices = $devices;
@@ -147,7 +143,7 @@ class Pages extends Service
 			return $this->showLog(trim((string) $_REQUEST['log']));
 		}
 
-		if (isset($_REQUEST['job'])) {
+		if (isset($_REQUEST['job']) && $this->services->available()) {
 			return $this->showJob(trim((string) $_REQUEST['job']));
 		}
 
@@ -159,7 +155,7 @@ class Pages extends Service
 			return $this->showBan(trim((string) $_REQUEST['ban']));
 		}
 
-		if (isset($_REQUEST['service'])) {
+		if (isset($_REQUEST['service']) && $this->services->available()) {
 			return $this->showService(trim((string) $_REQUEST['service']));
 		}
 
@@ -316,7 +312,7 @@ class Pages extends Service
 			// Every service, as this user has them, and where its jobs stand;
 			// only that tab draws them.
 			'services' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->userServices($extension) : [],
-			'serviceJobs' => ($tab === 'services' && !empty($available[$tab])) ? $this->jobs->statusFor($extension) : [],
+			'serviceJobs' => ($tab === 'services' && !empty($available[$tab])) ? $this->services->jobStatus($extension) : [],
 			'tab' => !empty($available[$tab]) ? $tab : 'user',
 		]);
 	}
@@ -460,7 +456,7 @@ class Pages extends Service
 	private function showJob($wanted)
 	{
 		// doConfigPageInit() has already bounced one that has gone.
-		$job = $this->jobs->jobRow($wanted);
+		$job = $this->services->jobRow($wanted);
 
 		if (!$job) {
 			return $this->showList('jobs');
@@ -469,6 +465,7 @@ class Pages extends Service
 		return $this->view('job', [
 			'job' => $job,
 			'names' => array_column($this->services->serviceChoices(), 'name', 'slug'),
+			'jobTitle' => $this->services->jobTitle($job),
 			'sections' => $this->navigator->sections('jobs'),
 			'navigator' => $this->navigator->levels(['job' => (int) $job['id']]),
 		]);
@@ -486,7 +483,7 @@ class Pages extends Service
 	{
 		return [
 			'clients' => (string) ($user['extension'] ?? '') !== '',
-			'services' => (string) ($user['extension'] ?? '') !== '',
+			'services' => (string) ($user['extension'] ?? '') !== '' && $this->services->available(),
 		];
 	}
 
@@ -678,9 +675,9 @@ class Pages extends Service
 			// The fail2ban sync's one line under the Bans table.
 			'sync' => $tab === 'bans' ? $this->fail2ban->status() + ['command' => $this->fail2ban->setupCommand()] : [],
 			// The Services list's two filters, as the address has them.
-			'serviceFilter' => $tab === 'services' ? Services::filters($_REQUEST) : [],
+			'serviceFilter' => $tab === 'services' ? $this->services->serviceFilters($_REQUEST) : [],
 			// The Jobs list's three, likewise.
-			'jobFilter' => $tab === 'jobs' ? Jobs::filters($_REQUEST) : [],
+			'jobFilter' => $tab === 'jobs' ? $this->services->jobFilters($_REQUEST) : [],
 			// What the State column warns with before refusing your own address.
 			'remote' => (string) Bans::canonical($_SERVER['REMOTE_ADDR'] ?? ''),
 			'sections' => $this->navigator->sections($tab),
@@ -781,6 +778,10 @@ class Pages extends Service
 				'icon' => $this->icon(),
 				// Drawn by partials/sections.php, which every view includes.
 				'notices' => $this->notices->showing($_REQUEST),
+				// Whether anything of the services is drawn: see ServicesLink.
+				'servicesAvailable' => $this->services->available(),
+				// What each job state, reason and source is called, wherever a job is drawn.
+				'jobLabels' => $this->services->jobLabels(),
 			]);
 	}
 
@@ -985,7 +986,7 @@ class Pages extends Service
 
 		// A user's Services tab stages its ticks and has its own Save and Reset
 		// (views/partials/user_services.php): orykEditor()'s posts the User tab's fields.
-		if (isset($_REQUEST['user']) && $this->openTab() === 'services') {
+		if (isset($_REQUEST['user']) && $this->openTab() === 'services' && $this->services->available()) {
 			$bar['orykservicessave'] = [
 				'name' => 'orykservicessave',
 				'id' => 'orykservicessave',
@@ -1050,9 +1051,15 @@ class Pages extends Service
 			return;
 		}
 
+		// Without the services there is no job or service page to open.
+		if ((isset($_REQUEST['job']) || isset($_REQUEST['service'])) && !$this->services->available()) {
+			header('Location: config.php?display=oryk_provisioner');
+			exit;
+		}
+
 		// Nor is there a new job; a finished one purged is gone the same way.
 		if (isset($_REQUEST['job'])) {
-			if (!$this->jobs->jobRow(trim((string) $_REQUEST['job']))) {
+			if (!$this->services->jobRow(trim((string) $_REQUEST['job']))) {
 				header('Location: config.php?display=oryk_provisioner&tab=jobs');
 				exit;
 			}

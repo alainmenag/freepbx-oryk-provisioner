@@ -1,11 +1,11 @@
 <?php
 
-// src/Jobs/Job.php
+// services/src/Jobs/Job.php
 
-namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
+namespace FreePBX\Modules\Oryk_Services\Jobs;
 
-use FreePBX\Modules\Oryk_Provisioner\ExtensionManager;
-use FreePBX\Modules\Oryk_Provisioner\Service;
+use FreePBX\Modules\Oryk_Services\Extensions;
+use FreePBX\Modules\Oryk_Services\Component;
 
 /**
  * One of the module's own jobs: what it does when a user gains or loses the
@@ -20,18 +20,18 @@ use FreePBX\Modules\Oryk_Provisioner\Service;
  * once. None reloads: one that changes what Apply Config writes raises it,
  * and the worker reloads once when the last job has run.
  */
-abstract class Job extends Service
+abstract class Job extends Component
 {
 	/** The service slugs this job is run for. */
 	const SERVICES = [];
 
-	/** @var ExtensionManager */
+	/** @var Extensions */
 	protected $extensions;
 
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, ExtensionManager $extensions)
+	public function __construct($freepbx, Extensions $extensions)
 	{
 		parent::__construct($freepbx);
 

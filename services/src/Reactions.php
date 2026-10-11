@@ -1,10 +1,10 @@
 <?php
 
-// src/Reactions.php
+// services/src/Reactions.php
 
-namespace FreePBX\Modules\Oryk_Provisioner;
+namespace FreePBX\Modules\Oryk_Services;
 
-use FreePBX\Modules\Oryk_Provisioner\Jobs\Job;
+use FreePBX\Modules\Oryk_Services\Jobs\Job;
 
 /**
  * The module's own jobs, found in src/Jobs/, and which one a step runs.
@@ -14,9 +14,9 @@ use FreePBX\Modules\Oryk_Provisioner\Jobs\Job;
  * Guest User, Lobby User -- is an event for other modules alone. A guest's or
  * lobby user's context is changed in Extensions, never here.
  */
-class Reactions extends Service
+class Reactions extends Component
 {
-	/** @var ExtensionManager */
+	/** @var Extensions */
 	private $extensions;
 
 	/** @var array<string, Job> Jobs made so far, by class. */
@@ -25,7 +25,7 @@ class Reactions extends Service
 	/**
 	 * @param object $freepbx FreePBX application instance.
 	 */
-	public function __construct($freepbx, ExtensionManager $extensions)
+	public function __construct($freepbx, Extensions $extensions)
 	{
 		parent::__construct($freepbx);
 

@@ -1,10 +1,10 @@
 <?php
 
-// src/Jobs/Calendar.php
+// services/src/Jobs/Calendar.php
 
-namespace FreePBX\Modules\Oryk_Provisioner\Jobs;
+namespace FreePBX\Modules\Oryk_Services\Jobs;
 
-use FreePBX\Modules\Oryk_Provisioner\CalendarManager;
+use FreePBX\Modules\Oryk_Services\CalendarManager;
 
 /**
  * Calendar: a local calendar named after the user, with Find Me/Follow Me

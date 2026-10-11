@@ -1,8 +1,8 @@
 <?php
 
-// src/Services.php
+// services/src/Services.php
 
-namespace FreePBX\Modules\Oryk_Provisioner;
+namespace FreePBX\Modules\Oryk_Services;
 
 use PDO;
 
@@ -16,8 +16,7 @@ use PDO;
  * off the links, never stored. A row of `kind` REQUIRES in the same table is
  * a requirement instead: the parent cannot work without the child, and
  * holding it holds that too, the way a pack holds what is under it, but it
- * is no pack for that. Not to be confused with Service, the base class this
- * extends.
+ * is no pack for that.
  *
  * **An edge is [from, to], a pack link, or [from, to, 'requires']**: links()
  * answers both kinds, and every walk of what a user holds -- held(),
@@ -40,7 +39,7 @@ use PDO;
  * Every service has a slug, made from its name and never typed, and the ones whose slug is in DEFAULTS are the
  * module's: written by seed() on install, and refused every edit and delete.
  */
-class Services extends Service
+class Services extends Component
 {
 	/**
 	 * The services the module ships, by slug: `name`, under `services` the
