@@ -223,6 +223,10 @@
 .oryk-dim {
 	opacity: 0.6;
 }
+/* Struck through: a service withheld from the user. */
+.oryk-struck {
+	text-decoration: line-through;
+}
 .oryk-dim:hover,
 .oryk-dim:focus {
 	opacity: 1;
