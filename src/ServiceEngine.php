@@ -53,9 +53,9 @@ class ServiceEngine extends Service
 	 * is never granted again. Revokes come first, then grants, each by slug.
 	 *
 	 * @param array<int, array{0: string, 1: string}> $linksBefore Every link before the change.
-	 * @param array<int, string>                      $before      What the user was assigned.
+	 * @param array<string, int|null>                 $before      The user's assignments before, slug => status.
 	 * @param array<int, array{0: string, 1: string}> $linksAfter  Every link after it.
-	 * @param array<int, string>                      $after       What the user is assigned.
+	 * @param array<string, int|null>                 $after       The user's assignments after.
 	 *
 	 * @return array<int, array<string, mixed>> Each: service, event (granted|revoked),
 	 *                                          via (the assigned service it comes or
@@ -532,15 +532,15 @@ class ServiceEngine extends Service
 	/**
 	 * The assigned service a held one comes through, for a step's `via`.
 	 *
-	 * @param array<int, array{0: string, 1: string}> $links    Every link.
-	 * @param array<int, string>                      $assigned What the user is assigned.
-	 * @param string                                  $slug     The service held.
+	 * @param array<int, array{0: string, 1: string}> $links Every link.
+	 * @param array<string, int|null>                 $rows  The user's assignments, slug => status.
+	 * @param string                                  $slug  The service held.
 	 *
 	 * @return string|null The first by slug; null when it is assigned itself.
 	 */
-	private static function via(array $links, array $assigned, $slug)
+	private static function via(array $links, array $rows, $slug)
 	{
-		$assigned = array_map('strval', $assigned);
+		$assigned = Services::given($rows);
 
 		if (in_array((string) $slug, $assigned, true)) {
 			return null;

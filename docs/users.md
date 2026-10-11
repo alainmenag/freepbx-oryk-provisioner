@@ -107,6 +107,16 @@ row, which counts what it gives, opens that list; click the line above the
 list to show it as a tree, pack inside pack, and again to go back. Both follow
 the boxes as they are ticked, before anything is saved.
 
+A service a pack includes can be **withheld** from this one user: the button
+beside *included in* marks it *to withhold*, and Save takes it away -- it and,
+if it is a pack itself, everything under it, struck through and marked
+*withheld with* it. The pack stays assigned and gives the rest. A withheld
+service shows *withheld from* the pack, and the button beside that gives it
+back; ticking it assigns it outright instead. Only a service included in an
+assigned pack can be withheld, never one assigned on its own, and a withhold
+goes with the pack: unassign the pack and the withhold is forgotten, so
+assigning the pack again gives all of it.
+
 Renumbering a user keeps its services, deleting it removes them, and deleting
 a service takes it off every user.
 

@@ -13,7 +13,10 @@
  * list, is a button that draws it as the tree it is built as, and back.
  * "included in", a half-filled box (held through a pack, not assigned
  * itself) and an open pack's ticks all follow the staged boxes, so a change
- * shows what it means before it is saved.
+ * shows what it means before it is saved. A service included through a pack
+ * has a button beside that line to withhold it from this user -- it and
+ * everything under it, as Services::held() reads a withheld row -- and a
+ * withheld one a button to give it back; both staged like a tick.
  *
  * A change to what the user holds is a job (ARCHITECTURE.md, "Jobs"): each
  * service whose newest step is waiting, running or failed says so, kept
@@ -29,6 +32,14 @@
 
 $serviceLabels = [
 	'included' => _('included in %s'),
+	'withheldFrom' => _('withheld from %s'),
+	'withheldWith' => _('withheld with %s'),
+	'withholdIt' => _('Withhold from this user'),
+	'restoreIt' => _('Give back to this user'),
+	'toWithhold' => _('to withhold'),
+	'toRestore' => _('to restore'),
+	'withhold' => _('Withhold'),
+	'restore' => _('Restore'),
 	'toAssign' => _('to assign'),
 	'toUnassign' => _('to unassign'),
 	'of' => _('%1$s of %2$s'),
@@ -99,6 +110,8 @@ $serviceLabels = [
 		let bySlug = {};
 		let saved = new Set();
 		let staged = new Set();
+		let savedWithheld = new Set();
+		let stagedWithheld = new Set();
 		let jobs = <?php echo json_encode((object) $serviceJobs, JSON_HEX_TAG); ?>;
 		let poll = null;
 
@@ -109,14 +122,16 @@ $serviceLabels = [
 			return values.reduce((said, value, at) => said.replace('%' + (at + 1) + '$s', () => value).replace('%s', () => value), text);
 		};
 
-		// Rows as Services::userServices() answers them; what is assigned is
-		// both what is saved and, until a box changes, what is staged.
+		// Rows as Services::userServices() answers them; what is assigned and
+		// withheld is both what is saved and, until a box changes, what is staged.
 		function load(list) {
 			rows = list || [];
 			bySlug = {};
 			rows.forEach((service) => { bySlug[service.slug] = service; });
 			saved = new Set(rows.filter((service) => service.assigned).map((service) => service.slug));
 			staged = new Set(saved);
+			savedWithheld = new Set(rows.filter((service) => service.withheld).map((service) => service.slug));
+			stagedWithheld = new Set(savedWithheld);
 		}
 
 		const name = (slug) => (bySlug[slug] ? bySlug[slug].name : slug);
@@ -137,12 +152,35 @@ $serviceLabels = [
 			return into;
 		}
 
-		function held(assigned) {
-			const all = new Set(assigned);
+		// Everything some services reach: themselves and all under them.
+		function reached(from) {
+			const all = new Set(from);
 
-			assigned.forEach((slug) => under(slug, all));
+			from.forEach((slug) => under(slug, all));
 
 			return all;
+		}
+
+		// What the staged boxes amount to, as Services::held() reads them: a
+		// withhold takes a service and everything under it, never one ticked itself.
+		function held(assigned, withheld) {
+			const all = reached(assigned);
+
+			reached(withheld).forEach(function (slug) {
+				if (!assigned.has(slug)) {
+					all.delete(slug);
+				}
+			});
+
+			return all;
+		}
+
+		// The staged withholds that still mean something: of services a
+		// staged pack includes. One left outside every pack is dropped with it.
+		function withholds() {
+			const through = reached(staged);
+
+			return new Set([...stagedWithheld].filter((slug) => through.has(slug) && !staged.has(slug)));
 		}
 
 		// The staged services one is somewhere under, by name.
@@ -150,11 +188,27 @@ $serviceLabels = [
 			return [...staged].filter((over) => over !== slug && under(over).has(slug)).sort(byName).map(name);
 		}
 
+		// The staged withholds one is under, by name.
+		function takenWith(slug) {
+			return [...withholds()].filter((over) => over !== slug && under(over).has(slug)).sort(byName).map(name);
+		}
+
 		function changes() {
+			const slugs = rows.map((service) => service.slug);
+			const withheld = withholds();
+
 			return {
-				assign: rows.map((service) => service.slug).filter((slug) => staged.has(slug) && !saved.has(slug)),
-				unassign: rows.map((service) => service.slug).filter((slug) => !staged.has(slug) && saved.has(slug))
+				assign: slugs.filter((slug) => staged.has(slug) && !saved.has(slug)),
+				unassign: slugs.filter((slug) => !staged.has(slug) && saved.has(slug)),
+				withhold: slugs.filter((slug) => withheld.has(slug) && !savedWithheld.has(slug)),
+				restore: slugs.filter((slug) => !withheld.has(slug) && savedWithheld.has(slug) && reached(staged).has(slug) && !staged.has(slug))
 			};
+		}
+
+		function changeCount() {
+			const change = changes();
+
+			return change.assign.length + change.unassign.length + change.withhold.length + change.restore.length;
 		}
 
 		function given(slug, has, nested) {
@@ -170,20 +224,30 @@ $serviceLabels = [
 			].join('')).join('') + '</ul>';
 		}
 
-		function row(service, has) {
+		function row(service, has, withheld) {
 			const slug = service.slug;
 			const on = staged.has(slug);
 			const was = saved.has(slug);
 			const through = via(slug);
+			const taken = withheld.has(slug);
+			const wasTaken = savedWithheld.has(slug);
+			const takenBy = !on && !taken ? takenWith(slug) : [];
 			const mode = open[slug];
 			const tree = mode === 'tree';
+			const stagedTag = on !== was ? (on ? L.toAssign : L.toUnassign) : (taken !== wasTaken ? (taken ? L.toWithhold : L.toRestore) : '');
 
 			return [
-				`<div class="oryk-service-row${on !== was ? ' oryk-service-staged' : ''}">`,
+				`<div class="oryk-service-row${stagedTag ? ' oryk-service-staged' : ''}">`,
 				'<div class="oryk-flex oryk-wrap oryk-center oryk-gap-3 oryk-service-head">',
-				`<label class="oryk-check"><input type="checkbox" name="user_service" value="${orykEscape(slug)}"${on ? ' checked' : ''}${!on && through.length ? ' data-held="1"' : ''}> ${orykEscape(service.name)}</label>`,
-				through.length ? `<span class="oryk-small text-muted">${orykEscape(say(L.included, through.join(', ')))}</span>` : '',
-				on !== was ? `<span class="oryk-small ${on ? 'text-success' : 'text-danger'}">${orykEscape(on ? L.toAssign : L.toUnassign)}</span>` : '',
+				`<label class="oryk-check${taken || takenBy.length ? ' oryk-struck' : ''}"><input type="checkbox" name="user_service" value="${orykEscape(slug)}"${on ? ' checked' : ''}${!on && through.length && has.has(slug) ? ' data-held="1"' : ''}> ${orykEscape(service.name)}</label>`,
+				taken
+					? `<span class="oryk-small text-danger">${orykEscape(say(L.withheldFrom, through.join(', ')))}</span> <button type="button" class="oryk-bare oryk-dim" name="user_service_restore" value="${orykEscape(slug)}" title="${orykEscape(L.restoreIt)}" aria-label="${orykEscape(L.restoreIt)}">${orykIcon('check')}</button>`
+					: (takenBy.length
+						? `<span class="oryk-small text-danger">${orykEscape(say(L.withheldWith, takenBy.join(', ')))}</span>`
+						: (through.length && !on
+							? `<span class="oryk-small text-muted">${orykEscape(say(L.included, through.join(', ')))}</span> <button type="button" class="oryk-bare oryk-dim" name="user_service_withhold" value="${orykEscape(slug)}" title="${orykEscape(L.withholdIt)}" aria-label="${orykEscape(L.withholdIt)}">${orykIcon('ban')}</button>`
+							: (through.length ? `<span class="oryk-small text-muted">${orykEscape(say(L.included, through.join(', ')))}</span>` : ''))),
+				stagedTag ? `<span class="oryk-small ${stagedTag === L.toAssign || stagedTag === L.toRestore ? 'text-success' : 'text-danger'}">${orykEscape(stagedTag)}</span>` : '',
 				`<span class="oryk-service-job oryk-small" data-slug="${orykEscape(slug)}"></span>`,
 				service.pack
 					? `<button type="button" class="btn btn-default btn-xs oryk-push${mode ? ' active' : ''}" name="user_service_open" value="${orykEscape(slug)}" title="${orykEscape(L.gives)}" aria-label="${orykEscape(L.gives)}" aria-expanded="${mode ? 'true' : 'false'}">
@@ -199,20 +263,20 @@ $serviceLabels = [
 		}
 
 		function draw() {
-			const has = held(staged);
+			const withheld = withholds();
+			const has = held(staged, withheld);
 
 			[['#oryk_user_packs', true], ['#oryk_user_singles', false]].forEach(function (list) {
 				const mine = rows.filter((service) => Boolean(service.pack) === list[1]);
 
-				$(list[0]).html(mine.length ? mine.map((service) => row(service, has)).join('') : `<p class="oryk-pad oryk-m-0 text-muted">${orykEscape(L.none)}</p>`);
+				$(list[0]).html(mine.length ? mine.map((service) => row(service, has, withheld)).join('') : `<p class="oryk-pad oryk-m-0 text-muted">${orykEscape(L.none)}</p>`);
 				$(list[0] + '_count').text(say(L.of, mine.filter((service) => staged.has(service.slug)).length, mine.length));
 			});
 
 			// Half-filled: held through a pack, not assigned itself.
 			$('#oryk_user_services [data-held]').prop('indeterminate', true);
 
-			const change = changes();
-			const count = change.assign.length + change.unassign.length;
+			const count = changeCount();
 
 			$('#oryk_services_staged').text(count ? say(L.staged, count) : '');
 			$('#orykservicessave, #orykservicesreset').prop('disabled', !count);
@@ -267,13 +331,30 @@ $serviceLabels = [
 			}
 		}
 
+		// A tick is an assignment, which replaces a withhold; an untick puts a
+		// saved withhold back as it was.
 		$(document).on('change', '[name="user_service"]', function () {
 			if (this.checked) {
 				staged.add(this.value);
+				stagedWithheld.delete(this.value);
 			} else {
 				staged.delete(this.value);
+
+				if (savedWithheld.has(this.value)) {
+					stagedWithheld.add(this.value);
+				}
 			}
 
+			draw();
+		});
+
+		$(document).on('click', '[name="user_service_withhold"]', function () {
+			stagedWithheld.add(this.value);
+			draw();
+		});
+
+		$(document).on('click', '[name="user_service_restore"]', function () {
+			stagedWithheld.delete(this.value);
 			draw();
 		});
 
@@ -313,6 +394,7 @@ $serviceLabels = [
 		$(document).on('click', '#orykservicesreset', function (event) {
 			event.preventDefault();
 			staged = new Set(saved);
+			stagedWithheld = new Set(savedWithheld);
 			draw();
 		});
 
@@ -323,12 +405,12 @@ $serviceLabels = [
 
 			const change = changes();
 
-			if (!change.assign.length && !change.unassign.length) {
+			if (!changeCount()) {
 				return;
 			}
 
 			const button = $(this).prop('disabled', true);
-			const request = { extension: user, assign: change.assign.join(','), unassign: change.unassign.join(',') };
+			const request = { extension: user, assign: change.assign.join(','), unassign: change.unassign.join(','), withhold: change.withhold.join(','), restore: change.restore.join(',') };
 			const refused = function (message) {
 				button.prop('disabled', false);
 				notie.alert(3, message || L.refused, 4);
@@ -347,6 +429,8 @@ $serviceLabels = [
 					sections: [
 						{ title: L.assign, items: named(impact.assign) },
 						{ title: L.unassign, items: named(impact.unassign) },
+						{ title: L.withhold, items: named(impact.withhold) },
+						{ title: L.restore, items: named(impact.restore) },
 						{ title: L.gains, items: named(impact.granted) },
 						{ title: L.loses, items: named(impact.revoked) },
 						{ title: L.kept, items: (impact.kept || []).map((service) => say(L.keptVia, service.name, service.via.join(', '))) }
@@ -376,9 +460,7 @@ $serviceLabels = [
 
 		// The other tabs are links, so leaving one is leaving the page.
 		$(window).on('beforeunload', function () {
-			const change = changes();
-
-			if (change.assign.length || change.unassign.length) {
+			if (changeCount()) {
 				return L.unsaved;
 			}
 		});

@@ -265,11 +265,14 @@ class Installer extends Service
 
 		// A user is its extension and a service its slug, as everywhere else.
 		// `service` has an index of its own: a renamed or deleted service is
-		// looked up by it.
+		// looked up by it. `status` NULL is a service given to the user; 0 is
+		// one withheld from it, that a pack it is given would give otherwise.
+		// See ARCHITECTURE.md, "Services".
 		$this->db->exec(
 			"CREATE TABLE IF NOT EXISTS `{$this->serviceAssignmentsTable}` (
 				`extension` VARCHAR(20) NOT NULL,
 				`service` VARCHAR(64) NOT NULL,
+				`status` TINYINT NULL DEFAULT NULL,
 				`created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY (`extension`, `service`),
 				KEY `service` (`service`)
@@ -349,6 +352,7 @@ class Installer extends Service
 		$this->schema->addServiceOwnerColumn(array_keys(Services::DEFAULTS));
 		$this->schema->addJobStepOwnJobColumn();
 		$this->schema->addJobAdminColumn();
+		$this->schema->addServiceAssignmentStatusColumn();
 
 		// The services the module ships -- Services::DEFAULTS -- deleted and
 		// written again to match. After the slug column, which they are found

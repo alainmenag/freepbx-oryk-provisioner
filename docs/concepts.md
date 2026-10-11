@@ -87,7 +87,8 @@ any of them, or over it, from your service's page. They are written again
 whenever the module is installed or upgraded.
 
 Services are assigned to users on each user's
-[Services tab](users.md#services). Every change to what a user has is a
+[Services tab](users.md#services), where one a pack includes can also be
+withheld from that user. Every change to what a user has is a
 [job](jobs.md): Voicemail, the two recording services and Find Me Follow set
 the matching FreePBX feature for the user, and any module that hooks the
 provisioner is told about every service. What a phone is served depends on a

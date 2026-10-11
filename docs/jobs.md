@@ -9,7 +9,7 @@ users gets one job, and it runs straight away.
 
 | you | who gets a job |
 | --- | --- |
-| save a change on a user's Services tab — one service or several, as one job | that user |
+| save a change on a user's Services tab — assign, unassign, withhold or restore, one service or several, as one job | that user |
 | delete a service | everyone who had it — assigned it, or through a pack it was in |
 | change a service's **Parents** or **Services** | everyone who has the pack it changes |
 | upgrade the module, when a release regroups its own services | everyone that changes |
@@ -18,8 +18,9 @@ A job has one **step** for every service the user gains or loses: assigning a
 pack gives a step for the pack and one for each service under it. A service
 the user still has another way is not taken away — unassign Basic User from
 someone who also has Advanced User and they keep Voicemail — and one they
-already have is not given again. Saving a box that is already as it was, or
-renaming a service, makes no job. Renumbering a user moves its jobs to the new
+already have is not given again. Withholding a service a pack includes is a
+step taking it away, and giving it back a step for it alone. Saving a box
+that is already as it was, or renaming a service, makes no job. Renumbering a user moves its jobs to the new
 number and makes none.
 
 Saving or deleting a service that changes users' services says so first: how
