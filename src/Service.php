@@ -40,7 +40,7 @@ abstract class Service
 	/** @var string The services: a name each. */
 	protected $servicesTable = 'oryk_provisioner_services';
 
-	/** @var string Which service is under which: one row per parent and child, by slug. */
+	/** @var string Which service is under, or required by, which: one row per parent and child, by slug. */
 	protected $serviceLinksTable = 'oryk_provisioner_service_links';
 
 	/** @var string Which user has which service: one row per extension and service slug. */

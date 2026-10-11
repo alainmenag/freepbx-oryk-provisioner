@@ -365,17 +365,17 @@ class Schema extends Service
 	}
 
 	/**
-	 * Give a services table written before it its `requires`: the slugs a
-	 * service brings with it, comma-separated, '' for none.
+	 * Give a links table written before it its `kind`: '' is a pack link,
+	 * the column's default, so every row already there stays one.
 	 *
 	 * @return void
 	 */
-	public function addServiceRequiresColumn()
+	public function addServiceLinkKindColumn()
 	{
-		if (!$this->schemaHas($this->servicesTable, 'column', 'requires')) {
+		if (!$this->schemaHas($this->serviceLinksTable, 'column', 'kind')) {
 			$this->db->exec(
-				"ALTER TABLE `{$this->servicesTable}`
-				ADD COLUMN `requires` VARCHAR(1000) NOT NULL DEFAULT '' AFTER `owner`"
+				"ALTER TABLE `{$this->serviceLinksTable}`
+				ADD COLUMN `kind` VARCHAR(16) NOT NULL DEFAULT '' AFTER `child`"
 			);
 		}
 	}

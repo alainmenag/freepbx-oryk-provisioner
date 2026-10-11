@@ -477,22 +477,26 @@ profiles that open.
 
 **`oryk_provisioner_services`** -- `slug` (the primary key), `name` (unique),
 `owner` (0, the default, is the module; a service made on the Services page
-is 1), `requires` (the slugs of the services this one cannot work without,
-comma-separated; '' for none).
+is 1).
 There is no numeric id: a page, a save, a delete, a link and an assignment all
-name a service by its slug. Where a service sits is the table below.
+name a service by its slug. Where a service sits, and what it requires, is the
+table below.
 
-- **`requires` is a column, not links**, because it is a different relation:
-  a pack *contains* what is under it, a service *needs* what it requires, and
-  a service with a `requires` is no pack. What they share is the walk:
+- **A requirement is a links row of `kind` `requires`**, a different relation
+  from a pack link (`kind` ''): a pack *contains* what is under it, a service
+  *needs* what it requires, and a requirement makes no pack. Calendar
+  requiring Find Me Follow is the row `calendar`, `find-me-follow`,
+  `requires`. What they share is the walk:
   `Services::links()` answers both as edges, `[parent, child]` for a link and
   `[service, required, 'requires']` for a requirement, and `held()`,
   `descendants()` and `ServiceEngine::changes()` take the two alike -- so a
   user holding Calendar holds Find Me Follow, a pack giving Calendar gives
   it too, and the engine grants and revokes it like anything else. Where the
   pack tree is the question (`packs()`, `related()`, the form's loop checks,
-  what a withhold takes) only the links count: `packLinks()`, or
-  `empty($edge[2])`. A requirement cannot be withheld while something held
+  what a withhold takes, the list's `kind` filter and counts) only the pack
+  links count: `packLinks()`, `kind = ''` in SQL, or `empty($edge[2])`.
+  **Anything new that reads the links table as the pack tree must say
+  `kind = ''`**, or a service that requires another shows as a pack. A requirement cannot be withheld while something held
   needs it (`assignedAfter()`'s `required`), and `held()` gives one back
   that a withheld pack would have taken. A loop through requirements is
   refused on save, as one through links is.
@@ -504,7 +508,7 @@ name a service by its slug. Where a service sits is the table below.
   name changes. No page shows it but in its own address.
 - **A slug that changes is carried to every reference in the same
   transaction** (`Services::renameLinks()`): today that is both columns of the
-  links table, every row's `requires`, and a user's assignments. Anything else that comes to store a service's slug must be
+  links table (links and requirements alike) and a user's assignments. Anything else that comes to store a service's slug must be
   added to that method, or a rename leaves it naming nothing. A default's
   slug never changes -- renaming one in `DEFAULTS` renames the row only.
 - A table written before this had an `id` key, and before that no slug. An
@@ -539,20 +543,30 @@ name a service by its slug. Where a service sits is the table below.
   locked on its own page, but a service of the operator's own can be put
   under it or over it from that service's page. A default link the
   operator's links would turn into a loop is not added, and install says so.
+- **`seed()` owns a default's requirements whole**: every `requires` row with
+  a default as its parent is written again from `DEFAULTS`' `requires`,
+  before the links, so a pair a release turns from one kind to the other is
+  free. An operator's service may require a default, and that row is theirs.
 - A service already named like a default when the slug column arrives is given
   that slug by the backfill and so becomes the default, links kept. A
   default whose name another slug already holds is not written, and install
   says so.
 
-**`oryk_provisioner_service_links`** -- `parent`, `child`: one row says the
-child is under the parent. **Both are slugs, not ids**, so a link reads the
-same in the table, in `DEFAULTS` and to anything outside the module.
+**`oryk_provisioner_service_links`** -- `parent`, `child`, `kind`: one row says
+the child is under the parent (`kind` '', the default) or that the parent
+requires the child (`kind` `requires`, `Services::REQUIRES`; see
+`oryk_provisioner_services` above). **Both ends are slugs, not ids**, so a link
+reads the same in the table, in `DEFAULTS` and to anything outside the module.
+`Schema::addServiceLinkKindColumn()` adds `kind` to a table written before it,
+every row already there a pack link.
 
 - **A table of its own rather than a `parent_id` column**, because a service
   has many parents: "Voicemail" is under both "Basic User" and "Advanced
   User", and each of those is over many services.
-- The pair is the primary key, so a link exists once. `child` has its own
-  index for the walk upwards.
+- The pair is the primary key, so a link exists once, and a pair is a link
+  or a requirement, never both: `saveService()` refuses a service that would
+  include and require the same one. `child` has its own index for the walk
+  upwards.
 - A deleted service's links go by its slug, and a renamed one's follow it,
   so no link names a slug with no row.
 - **No loop is ever written.** `Services::saveService()` refuses a set of
@@ -560,11 +574,12 @@ same in the table, in `DEFAULTS` and to anything outside the module.
   somewhere under a child (`loops()`, pure, asked of the whole links table),
   and the editor draws those choices disabled (`related()`). Every walk stops
   at a row seen twice, so a loop put there by hand hangs nothing.
-- **A save replaces a side whole, or leaves it alone.** `parents` and
-  `children` are each the full set of slugs; a key that is not submitted leaves
-  that side as it was. Name and links are one transaction.
-- Deleting a service deletes its links and nothing else: what was over or
-  under it stays.
+- **A save replaces a side whole, or leaves it alone.** `parents`,
+  `children` and `requires` are each the full set of slugs; a key that is not
+  submitted leaves that side as it was, and a side's rows of the other kind
+  are never touched (`relink()`). Name and links are one transaction.
+- Deleting a service deletes its links and requirements, either end, and
+  nothing else: what was over or under it stays.
 - **A service pack is a service with at least one child**, read off the links
   (`listServices`' `kind` filter) and stored nowhere, so it cannot disagree
   with them. The list has no column for it. Its toolbar's two
